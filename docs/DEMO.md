@@ -18,9 +18,10 @@ at the end.
    one screen, read top-down. *"How much money was found?"* **Opportunity
    ($200,200)**. *"How much came back?"* **Revenue Returned ($83,400)**. *"How do
    you know?"* **CFO-Auditable ($79,800)**. The funnel underneath tells the story —
-   Opportunity → Detected (14 accounts) → Recommended play → Applied (11 processed)
-   → Returned → Auditable. No feature names; the customer sees Identify → Fix → Prove
-   in one glance. Forecast (amber) and proven (green) are never added together.
+   Opportunity → Detected (14 accounts) → Action Taken (11 logged & auditable) →
+   Returned → Auditable. No feature names; the customer sees Identify → Act → Prove
+   in one glance. Forecast (amber) and proven (green) are never added together, and we
+   show only observable states — "Action Taken", never an unprovable "Fixed".
 2. **(1–3 min) Identify — the leak is real and separated.** Executive Dashboard:
    **Detected Opportunity ($71,800)** is amber and labeled *potential, not revenue*;
    **Proven Recovered ($83,400)** is green. "We never blend the two. Most tools show

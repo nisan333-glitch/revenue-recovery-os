@@ -222,27 +222,37 @@ The rule is: **never ship a slice of the loop as the product.**
 > The user must be able to see **Identify → Fix → Prove** in a single workflow.
 > Detection alone is not the product.
 
-### Roadmap constraint — make the Fix layer explicit
+### Roadmap constraint — the Fix layer, introduced only when it is provable
 
-Today the loop demonstrates **Identify → Recommend → Prove**: a problem is detected,
-a play is recommended, and proven dollars are reported. That is a strong demo — but
-it proves the system *recommended*, not yet that it *fixed*. A CFO does not pay for
-detection or a recommendation; they pay for: **who did what, when, was it executed,
-and how much money came back.**
+The loop must stay honest: **display only states that are objectively observable.
+Never claim more than you can prove** — that discipline is the product's most
+important asset. A CFO does not pay for detection or a recommendation; they pay for
+*who did what, when, was it executed, and how much money came back.*
 
-So the next evolution must model the **Fix** layer explicitly. The recovery chain
-should become:
+**Today** the loop is:
+
+```
+Opportunity → Detected → Action Taken → Returned → Auditable
+```
+
+**Action Taken** is the honest bridge between detection and proof. It is backed by
+logged actions (`actionsTaken`) and the audit trail, so it is observable and
+auditable. It states only that *we acted* — never that the problem was "fixed".
+
+**Do not introduce "Assigned" or "Fixed" as states** until execution is fully
+modeled and auditable — owner, task, SLA, completion proof. Without that, those
+rungs are just words on a screen and the CFO's question *"how do you know it was
+fixed?"* has no answer.
+
+**Long-term**, once execution is real and provable, the chain becomes:
 
 ```
 Opportunity → Detected → Assigned → Fixed → Returned → Auditable
 ```
 
-…where **Assigned** (an accountable owner) and **Fixed** (the action executed and
-logged) are first-class, visible rungs — not implied. The long-term promise is not
-detection alone, but *identify, **fix**, and prove* revenue recovery. This is a
-forward design constraint, not a current task: keep the architecture ready for it
-(the audit trail and `actionsTaken` already capture execution), and close the
-recommend-vs-fixed gap when the Fix layer is built.
+The vision stays **Identify → Fix → Prove**; the product only ever shows what it can
+prove. (The architecture is already ready: the audit trail and `actionsTaken`
+capture execution; the Recovery Queue holds the workflow.)
 
 ---
 
