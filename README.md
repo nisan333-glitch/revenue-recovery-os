@@ -20,6 +20,8 @@ Recovery** — *"we return money lost between signature and activation."*
   (matched-cohort baseline, delta-over-baseline = recovered, audit chain to cash).
 - [`docs/VALIDATION.md`](docs/VALIDATION.md) — the validation program: 10 companies →
   10 interviews → 3 CSV-first pilots → willingness-to-pay.
+- [`docs/gtm/`](docs/gtm/) — ready-to-run validation assets: ICP, target-account
+  list, outreach sequence, discovery script, ROI calculator, executive one-pager.
 - [`docs/DEMO.md`](docs/DEMO.md) — the 10-minute discovery demo.
 
 ## Why this exists

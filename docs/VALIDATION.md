@@ -3,6 +3,10 @@
 **Status: engines frozen.** No new product is built until this program returns a
 positive signal. The bottleneck is no longer architecture — it is **demand proof.**
 
+> **Ready-to-use assets live in [`gtm/`](gtm/):** ICP, target-account list, outreach
+> sequence, discovery script, ROI calculator, and the executive one-pager. This file
+> is the rationale; `gtm/` is what you run.
+
 ## The only question that matters
 
 > **Where can we CREATE recovery that would not have happened otherwise?**
