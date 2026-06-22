@@ -17,6 +17,7 @@ mkdirSync(outDir, { recursive: true });
 
 // [nav label, output filename]. Labels match the sidebar buttons in App.tsx.
 const SHOTS = [
+  ["Recovery Loop", "00-recovery-loop"],
   ["Executive Dashboard", "01-executive-dashboard"],
   ["CFO Proof View", "02-cfo-proof-view"],
   ["Reconciliation", "03-reconciliation"],
