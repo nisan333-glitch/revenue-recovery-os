@@ -101,6 +101,58 @@ This is the beachhead.
 
 ---
 
+## The wedge is not the category
+
+Activation Recovery is the **first recovery workflow**, not the final product.
+
+The product is **Revenue Recovery OS**.
+
+Activation Recovery is simply the first workflow because it has:
+
+* clear pain
+* measurable outcome
+* provable recovery
+* lower competition than billing
+
+Build the Activation workflow **end to end** — but keep the architecture **generic
+enough to support additional recovery workflows later.** Never narrow the company
+into an "Activation Recovery System."
+
+The recovery workflows, staged:
+
+**Stage 1 — land the beachhead**
+
+* Activation Recovery — Signed → Activated → Second Invoice
+
+**Stage 2 — widen the loop**
+
+* Sales Recovery
+* Ownership Recovery
+* Handoff Recovery
+
+**Stage 3 — the full continent**
+
+* Expansion Recovery
+* Renewal Recovery
+* Churn Prevention
+
+Activation is the shore where we land. Revenue Recovery OS is the continent.
+
+Two things held at once:
+
+1. Start from something focused and **sellable** (Activation).
+2. Do not lock the company into a single niche (the architecture stays generic).
+
+**Architecture rule (already true, keep it true):** the domain core is workflow-
+agnostic. A `RecoveryEvent` carries a `LeakageType`, and the decision `PLAYBOOK` is
+keyed by `LeakageType` (`src/domain/recommendation.ts`). Adding a new recovery
+workflow = new `LeakageType` values + new `PLAYBOOK` entries + new `RecoveryReason`
+plays — **not** a rewrite. If a change to the Activation workflow forces a special
+case into the invariants, the ledger, or the proof chain, that is a red flag: keep
+the generic core generic; let the workflow live in data, not in the engine.
+
+---
+
 ## What We Are NOT
 
 Not revenue intelligence.

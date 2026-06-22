@@ -41,11 +41,20 @@ forecast is summed into a proven number, the moat is gone.
 > "Revenue Protected" (counterfactual avoided loss) is a *deferred* future concept,
 > not a current ledger. Do not present or count it as if it exists.
 
-## The wedge
+## The wedge (first workflow, not the category)
 
 **Activation Recovery**: Signed → Onboarding → Activation → First Value → Second
 Invoice. This is the beachhead. Win it first. Do not sell "tomorrow" (the broader
 Business Outcome OS) — earn it.
+
+But the product is **Revenue Recovery OS**, and Activation is only its **first
+recovery workflow**. Later workflows (Sales / Ownership / Handoff, then Expansion /
+Renewal / Churn) must drop in without a rewrite. **Build Activation end to end, but
+keep the domain generic.** A new workflow = new `LeakageType` + `PLAYBOOK` entry +
+`RecoveryReason` plays — never a special case carved into the invariants, the
+ledger, or the proof chain. If the engine has to learn the word "activation," stop —
+that belongs in data, not the core. Never narrow this into an "Activation Recovery
+System." See `docs/STRATEGY.md` → "The wedge is not the category."
 
 ## What success is
 
