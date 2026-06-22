@@ -11,6 +11,17 @@ Every recovered dollar is auditable. The product visibly separates **detected
 opportunity** from **proven recovered revenue**, and the CFO view shows only
 revenue that survives a skeptical review.
 
+## Current focus — validate before building
+
+The product MVP is built. **Feature development is frozen** while we test the only
+open question: *will someone pay?* The locked wedge is **Onboarding / Activation
+Recovery** — *"we return money lost between signature and activation."*
+- [`docs/PROOF_MODEL.md`](docs/PROOF_MODEL.md) — how activation recovery is proven
+  (matched-cohort baseline, delta-over-baseline = recovered, audit chain to cash).
+- [`docs/VALIDATION.md`](docs/VALIDATION.md) — the validation program: 10 companies →
+  10 interviews → 3 CSV-first pilots → willingness-to-pay.
+- [`docs/DEMO.md`](docs/DEMO.md) — the 10-minute discovery demo.
+
 ## Why this exists
 
 Most software *reports symptoms*. This system owns the full loop for one sharp,

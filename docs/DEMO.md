@@ -8,6 +8,40 @@ is real, separated from hope, and auditable to the dollar.**
 
 ---
 
+## 10-minute discovery demo (the cut to actually run)
+
+For a prospect (VP CS / RevOps), do NOT tour features. Tell the one story:
+**Identify → Recover → Prove**, anchored on *their* leak (activation), with the cash
+at the end.
+
+1. **(0–1 min) The frame.** "You have money falling between signature and
+   activation. We find it, recover it, and prove how much came back — to the
+   dollar." No feature names.
+2. **(1–3 min) Identify — the leak is real and separated.** Executive Dashboard:
+   **Detected Opportunity ($71,800)** is amber and labeled *potential, not revenue*;
+   **Proven Recovered ($83,400)** is green. "We never blend the two. Most tools show
+   one number; that number is a lie."
+3. **(3–6 min) Recover — work one account live.** Recovery Queue → open the top
+   account → assign owner → record an action → set a recovery reason → mark
+   Recovered. Revenue Returned computes live as **Collected − Baseline**. "That is
+   the workflow — owned, time-bound, executed."
+4. **(6–8 min) Prove — the CFO number.** CFO Proof View + Reconciliation: only
+   **auditable** revenue ($79,800), the waterfall Gross → Counted → Auditable, and
+   the **$4,300 unclassified = $0** moment. "We do not count money we cannot
+   explain. This survives your finance review."
+5. **(8–9 min) Audit — the paper trail.** Audit Trail: every change, actor,
+   timestamp. "Each recovered dollar traces to a real event."
+6. **(9–10 min) Their turn — the CSV.** "Send us one export — signed date, activated
+   or not, next invoice paid, ARPA. We'll show you *your* leak and what's
+   recoverable. No integration." (This is the close — see `VALIDATION.md`.)
+
+The demo's job is not to impress with modules. It is to make them say *"that's our
+problem, and nobody proves it today."*
+
+---
+
+---
+
 ## The numbers this demo is built on (verified)
 
 Locked by `src/data/seed.verify.test.ts` — run `npm run test` to confirm:
