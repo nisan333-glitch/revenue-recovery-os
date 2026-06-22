@@ -21,6 +21,7 @@ return money they lose today → deal.
 
 | Step | Asset | Goal |
 |---|---|---|
+| **0 · Validate the test** | [`FIRST_3_CONVERSATIONS.md`](FIRST_3_CONVERSATIONS.md) | **3 learning-only calls before the 15 — does the problem even exist?** |
 | 1 · Define who | [`ICP.md`](ICP.md) | the sharpened ideal customer |
 | 2 · List who | [`TARGET_ACCOUNTS.md`](TARGET_ACCOUNTS.md) | 10–15 named accounts + warm paths |
 | 3 · Reach them | [`OUTREACH.md`](OUTREACH.md) | 3-touch sequence to the activation owner |
@@ -40,6 +41,9 @@ Full program rationale: [`../VALIDATION.md`](../VALIDATION.md).
 
 ## Sequence (suggested 2–3 weeks)
 
+0. **Run [`FIRST_3_CONVERSATIONS.md`](FIRST_3_CONVERSATIONS.md) first** — 3 high-quality,
+   learning-only calls (CS leader · CRO/VP Sales · CEO/COO). Only proceed to the steps
+   below if ≥2 of 3 independently reveal a painful, unowned, measurable revenue gap.
 1. Fill `ICP.md` fit criteria → build the `TARGET_ACCOUNTS.md` list (10–15).
 2. Run `OUTREACH.md` to book 10–15 calls.
 3. Run `DISCOVERY_SCRIPT.md`; for warm ones, request the CSV and run `ROI_CALCULATOR.md`.
