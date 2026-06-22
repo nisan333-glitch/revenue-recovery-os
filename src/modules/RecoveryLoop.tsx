@@ -25,15 +25,15 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         subtitle="Revenue lost between signature and activation — found, acted on, returned, and proven."
       />
 
-      {/* The 15-second answer, in two blocks: the open pipeline (forecast) vs
-          proven results (realized). Separating them resolves the "returned >
-          at-risk" question — they are different time windows, never summed. CFOs
-          buy money, so the headline is money + a rate, not an activity count. */}
-      <div className="mb-3 space-y-5">
-        <div>
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-detect-500">
-            Open Pipeline{" "}
-            <span className="font-normal text-slate-500">— forecast · the current open book</span>
+      {/* A money screen, not a dashboard. Four money numbers in two columns: open
+          exposure (forecast) vs proven results (realized cash). Amber vs green is
+          the forecast/proven Constitution shown visually; the two columns are
+          different time windows, so "returned > at-risk" explains itself. */}
+      <div className="mb-3 grid gap-4 md:grid-cols-2">
+        <div className="rounded-xl border border-detect-600/30 bg-ink-800/40 p-4">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-detect-500">
+            Open Exposure{" "}
+            <span className="font-normal text-slate-500">— forecast · open now</span>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <StatCard
@@ -52,16 +52,16 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
             />
           </div>
         </div>
-        <div>
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-proof-500">
+        <div className="rounded-xl border border-proof-600/30 bg-ink-800/40 p-4">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-proof-500">
             Proven Results{" "}
-            <span className="font-normal text-slate-500">— realized cash, to date</span>
+            <span className="font-normal text-slate-500">— realized cash · to date</span>
           </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3">
             <StatCard
               label="Revenue Returned"
               value={money(loop.returned)}
-              sub={`${loop.provenCount} cases recovered`}
+              sub="cash recovered above baseline"
               tone="proof"
               hint="Realized cash, Collected − Baseline (Revenue Returned ledger — proven)."
             />
@@ -72,15 +72,16 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
               tone="proof"
               hint="The CFO-grade subset of Returned (proof-grade confidence + reason + positive uplift)."
             />
-            <StatCard
-              label="Recovery Rate"
-              value={percent(loop.recoveryRate)}
-              sub="recovered ÷ attempted"
-              tone="proof"
-              hint="Counted recoveries ÷ (recovered + failed) — a true effectiveness rate."
-            />
           </div>
         </div>
+      </div>
+
+      {/* The activity behind the money — supporting detail, deliberately quiet. */}
+      <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-slate-500">
+        <span><span className="font-semibold text-slate-300">{loop.actionTakenCount}</span> Actions Taken</span>
+        <span><span className="font-semibold text-slate-300">{loop.provenCount}</span> Recoveries Proven</span>
+        <span><span className="font-semibold text-slate-300">{loop.auditableCount}</span> Auditable Recoveries</span>
+        <span><span className="font-semibold text-slate-300">{percent(loop.recoveryRate)}</span> Recovery Rate</span>
       </div>
 
       {/* The spoken story — read this aloud. */}
@@ -95,14 +96,14 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         it is backed by evidence a CFO can sign.
       </p>
       <p className="mb-8 text-[11px] text-slate-500">
-        Open Pipeline is the current open book (forecast); Proven Results are realized
+        Open Exposure is the current open book (forecast); Proven Results are realized
         to date. Different time windows — reported separately, never summed.
       </p>
 
-      {/* The same five numbers as a connected loop — the drill-down. */}
+      {/* The money story as a connected loop — the drill-down. */}
       <Panel className="p-6">
         <div className="mb-4 text-xs uppercase tracking-wider text-slate-500">
-          The loop, on this portfolio
+          The money story — Opportunity → Recovery → Proof
         </div>
 
         <Rung

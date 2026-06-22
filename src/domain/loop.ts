@@ -40,6 +40,8 @@ export interface RecoveryLoopSummary {
   auditable: number;
   /** Number of proven recoveries. */
   provenCount: number;
+  /** Number of CFO-auditable (proof-grade) recoveries. */
+  auditableCount: number;
   /** Recovered / (recovered + failed). */
   recoveryRate: number;
 }
@@ -71,6 +73,7 @@ export function recoveryLoop(events: RecoveryEvent[]): RecoveryLoopSummary {
     returned: m.recoveredRevenue,
     auditable: m.auditableRevenue,
     provenCount: m.recoveredCount,
+    auditableCount: m.auditableCount,
     recoveryRate: m.recoveryRate,
   };
 }

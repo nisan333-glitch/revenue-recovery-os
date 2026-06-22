@@ -30,12 +30,14 @@ describe("recovery loop summary", () => {
     expect(loop.returned).toBe(83400);
     expect(loop.auditable).toBe(79800);
     expect(loop.provenCount).toBe(7);
+    expect(loop.auditableCount).toBe(6);
     expect(loop.recoveryRate).toBeCloseTo(0.875, 5);
   });
 
-  it("the funnel only narrows: identified ≥ action taken ≥ proven", () => {
+  it("the funnel only narrows: identified ≥ action taken ≥ proven ≥ auditable", () => {
     expect(loop.identifiedCount).toBeGreaterThanOrEqual(loop.actionTakenCount);
     expect(loop.actionTakenCount).toBeGreaterThanOrEqual(loop.provenCount);
+    expect(loop.provenCount).toBeGreaterThanOrEqual(loop.auditableCount);
   });
 
   it("CONSTITUTION: Opportunity (forecast) and Returned (proven) are never the same number, nor summed", () => {
