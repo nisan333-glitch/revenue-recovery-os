@@ -9,7 +9,8 @@ const events = seedEvents();
 const loop = recoveryLoop(events);
 
 describe("recovery loop summary", () => {
-  it("Identify: opportunity is the total at-risk we found (forecast ledger)", () => {
+  it("Identify: money at risk is the live open exposure; opportunity is total surfaced", () => {
+    expect(loop.moneyAtRisk).toBe(71800); // open risk only — the live exposure
     // Σ riskAmount over all 14 seed events.
     expect(loop.opportunity).toBe(200200);
     expect(loop.identifiedCount).toBe(14);

@@ -14,7 +14,9 @@ import { outcomesByLeakage } from "./outcomes";
 
 export interface RecoveryLoopSummary {
   // --- Identify (Revenue Opportunity ledger — FORECAST, never counted as money) ---
-  /** Σ riskAmount over every account we identified at risk — "money found". */
+  /** Open dollars still at risk right now — the live exposure ("money at risk"). */
+  moneyAtRisk: number;
+  /** Σ riskAmount over every account we identified at risk — total surfaced to date. */
   opportunity: number;
   /** Accounts identified at risk. */
   identifiedCount: number;
@@ -59,6 +61,7 @@ export function recoveryLoop(events: RecoveryEvent[]): RecoveryLoopSummary {
   const topOpen = outcomes.find((o) => o.openCount > 0) ?? outcomes[0];
 
   return {
+    moneyAtRisk: m.detectedOpportunity,
     opportunity: events.reduce((sum, e) => sum + e.riskAmount, 0),
     identifiedCount: events.length,
     openCount: open.length,
