@@ -222,6 +222,28 @@ The rule is: **never ship a slice of the loop as the product.**
 > The user must be able to see **Identify → Fix → Prove** in a single workflow.
 > Detection alone is not the product.
 
+### Roadmap constraint — make the Fix layer explicit
+
+Today the loop demonstrates **Identify → Recommend → Prove**: a problem is detected,
+a play is recommended, and proven dollars are reported. That is a strong demo — but
+it proves the system *recommended*, not yet that it *fixed*. A CFO does not pay for
+detection or a recommendation; they pay for: **who did what, when, was it executed,
+and how much money came back.**
+
+So the next evolution must model the **Fix** layer explicitly. The recovery chain
+should become:
+
+```
+Opportunity → Detected → Assigned → Fixed → Returned → Auditable
+```
+
+…where **Assigned** (an accountable owner) and **Fixed** (the action executed and
+logged) are first-class, visible rungs — not implied. The long-term promise is not
+detection alone, but *identify, **fix**, and prove* revenue recovery. This is a
+forward design constraint, not a current task: keep the architecture ready for it
+(the audit trail and `actionsTaken` already capture execution), and close the
+recommend-vs-fixed gap when the Fix layer is built.
+
 ---
 
 ## Build Filter
