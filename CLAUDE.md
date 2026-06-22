@@ -67,5 +67,10 @@ outcomes. **Not** features, engines, screens, or tests built.
   updating the tests with recomputed numbers, never loosening the rule.
 * Before committing: `npm run test` (must stay green) and `npm run build` (strict,
   must be clean).
+* The **Build Filter is enforced as a pre-commit hook** (`.githooks/pre-commit`,
+  wired by `npm install` via the `prepare` script). On any commit that touches
+  `src/`, it surfaces the three questions — Identify? Fix? Prove? — so focus drift
+  is caught at the moment it happens. It is a reminder, not a blocker; answer the
+  three questions honestly before you proceed.
 * Develop on branch `claude/revenue-recovery-os-806cgo`. Commit in logical chunks.
   **No pull request unless explicitly asked.**

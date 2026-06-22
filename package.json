@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Revenue Recovery Operating System — identify, assign, fix, and prove recovered revenue.",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
