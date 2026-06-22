@@ -11,11 +11,21 @@ Every recovered dollar is auditable. The product visibly separates **detected
 opportunity** from **proven recovered revenue**, and the CFO view shows only
 revenue that survives a skeptical review.
 
-## Current focus — validate before building
+## The decision loop (Phase 2)
 
-The product MVP is built. **Feature development is frozen** while we test the only
-open question: *will someone pay?* The locked wedge is **Onboarding / Activation
-Recovery** — *"we return money lost between signature and activation."*
+The product runs the front of the loop, not just proof:
+**Problem → Diagnosis → Recommendation → Action → Proof.** The **Outcomes** surface
+turns events into business problems, and a transparent, rule-based **Decision
+Engine** (`src/domain/recommendation.ts`) recommends the play and an *expected
+recoverable* forecast for every open event. That forecast lives on the **Revenue
+Opportunity** ledger and is **never** blended into recovered/auditable dollars —
+proof stays the moat *inside* the loop. See [`docs/VISION.md`](docs/VISION.md).
+
+## Validation — the open question
+
+The locked wedge is **Onboarding / Activation Recovery** — *"we return money lost
+between signature and activation."* The remaining risk is demand, so the validation
+program runs alongside the build:
 - [`docs/PROOF_MODEL.md`](docs/PROOF_MODEL.md) — how activation recovery is proven
   (matched-cohort baseline, delta-over-baseline = recovered, audit chain to cash).
 - [`docs/VALIDATION.md`](docs/VALIDATION.md) — the validation program: 10 companies →
@@ -40,15 +50,18 @@ vision and an honest board-level critique of it, and
 4. The **CFO view** shows only auditable recovery: `Recovered` + reason +
    proof-grade confidence + real uplift.
 5. The dashboard **never blends** detected opportunity with proven recovery.
+6. **Forecast ≠ proof:** the Decision Engine's *expected recoverable* (Revenue
+   Opportunity ledger) is never summed into recovered/auditable revenue.
 
-These live in `src/domain/invariants.ts` and are covered by
-`src/domain/invariants.test.ts`.
+These live in `src/domain/invariants.ts` / `src/domain/recommendation.ts` and are
+covered by `invariants.test.ts`, `recommendation.test.ts`, and `outcomes.test.ts`.
 
 ## Modules
 
 | Module | Purpose |
 |---|---|
-| Executive Dashboard | Detected opportunity vs proven recovery, money recovered, trends |
+| Outcomes | Problems (not events): at-risk, **expected recoverable (forecast)**, recovered, auditable + the recommended play |
+| Executive Dashboard | Detected → Expected Recoverable → Recovered → Auditable chain; money recovered, trends |
 | Recovery Queue | Prioritized worklist — assign, act, advance (the fix workflow) |
 | Recovery Events | Full record of every event; drill into the workflow drawer |
 | CFO Proof View | Audit-grade ledger of only auditable recovered revenue (+ CSV export) |
@@ -72,7 +85,9 @@ npm run test     # run invariant unit tests
 npm run build    # typecheck (strict) + production build
 ```
 
-Open the app, work an item in the **Recovery Queue** (assign → add action →
-classify a reason → mark Recovered), and watch it appear in the **CFO Proof View**
-with a full **Audit Trail**. Use **Reset demo data** in the sidebar to restore the
+Open the app on **Outcomes** to see the problems and their forecast, then work an
+item in the **Recovery Queue** (open it → **Apply recommendation** to adopt the
+play → mark Recovered). Watch it flow into the **CFO Proof View** with a full
+**Audit Trail** — while the *expected recoverable* forecast stays separate from the
+proven number throughout. Use **Reset demo data** in the sidebar to restore the
 seed. State persists across refreshes.

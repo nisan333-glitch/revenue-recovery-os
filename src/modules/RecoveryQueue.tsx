@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useRecovery } from "../state/RecoveryContext";
 import { OPEN_STATUSES } from "../domain/types";
+import { expectedRecoverable, recommend } from "../domain/recommendation";
+import { reasonLabel } from "../domain/reasons";
 import { money } from "../lib/format";
 import {
   ConfidenceBadge,
@@ -11,29 +13,22 @@ import {
 } from "../components/ui";
 import { EventDetail } from "../components/EventDetail";
 
-// Priority = dollars at risk weighted by a floor of confidence so we don't
-// ignore high-value events that simply haven't been worked yet.
-function priority(riskAmount: number, confidence: number): number {
-  return riskAmount * (0.3 + (confidence / 100) * 0.7);
-}
-
 export function RecoveryQueue() {
   const { events } = useRecovery();
   const [openId, setOpenId] = useState<string | null>(null);
 
+  // Rank by the Decision Engine's expected value (impact × probability), not raw
+  // dollars at risk — work the queue by what we actually expect to recover.
   const queue = useMemo(
     () =>
       events
         .filter((e) => OPEN_STATUSES.includes(e.status))
-        .sort(
-          (a, b) =>
-            priority(b.riskAmount, b.confidence) -
-            priority(a.riskAmount, a.confidence),
-        ),
+        .sort((a, b) => recommend(b).expectedValue - recommend(a).expectedValue),
     [events],
   );
 
   const totalAtRisk = queue.reduce((s, e) => s + e.riskAmount, 0);
+  const totalRecoverable = expectedRecoverable(events);
   const unassigned = queue.filter((e) => e.owner === null).length;
   const open = events.find((e) => e.eventId === openId) ?? null;
 
@@ -41,11 +36,14 @@ export function RecoveryQueue() {
     <div>
       <SectionHeader
         title="Recovery Queue"
-        subtitle="Open opportunities, prioritized by dollars at risk × confidence. This is the fix workflow."
+        subtitle="Open opportunities, ranked by expected recoverable value (impact × probability). This is the fix workflow."
         right={
           <div className="text-right">
             <div className="text-sm text-slate-400">
               {money(totalAtRisk)} at risk
+            </div>
+            <div className="text-[11px] text-sky-400">
+              {money(totalRecoverable)} expected recoverable · forecast
             </div>
             <div className="text-[11px] text-detect-500">
               {unassigned} unassigned
@@ -82,6 +80,13 @@ export function RecoveryQueue() {
                   <Pill>{e.funnelStage}</Pill>
                   <Pill tone="detect">{e.leakageType}</Pill>
                 </div>
+                <div className="mt-1 text-[11px] text-sky-400">
+                  ▸ Recommended: {reasonLabel(recommend(e).recommendedReason)}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="tabular-nums text-sky-400">{money(recommend(e).expectedValue)}</div>
+                <div className="text-[11px] text-slate-500">exp. recoverable</div>
               </div>
               <div className="text-right">
                 <div className="tabular-nums text-detect-500">{money(e.riskAmount)}</div>

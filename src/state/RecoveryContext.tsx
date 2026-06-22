@@ -16,6 +16,7 @@ import type {
 } from "../domain/types";
 import { withDerivedReturn } from "../domain/invariants";
 import { computeConfidence } from "../domain/confidence";
+import { recommend } from "../domain/recommendation";
 import { appendAudit, makeAuditEntry } from "../domain/audit";
 import { createLocalStorageRepo } from "../data/localStorageRepo";
 import type { RecoveryRepository } from "../data/repository";
@@ -29,6 +30,7 @@ interface RecoveryContextValue {
   advanceStatus: (id: string, status: RecoveryStatus) => void;
   addAction: (id: string, action: string) => void;
   setReason: (id: string, reason: RecoveryReason) => void;
+  applyRecommendation: (id: string) => void;
   updateAmounts: (
     id: string,
     amounts: { baselineAmount?: number; collectedAmount?: number },
@@ -105,6 +107,34 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  // Apply the Decision Engine's recommended play in ONE atomic, audited step:
+  // adopt the recommended reason and append any not-yet-recorded actions. Goes
+  // through the same mutate() path, so invariants + confidence + audit hold.
+  const applyRecommendation = useCallback(
+    (id: string) =>
+      mutate(id, (e) => {
+        const rec = recommend(e);
+        const newActions = rec.recommendedActions.filter(
+          (a) => !e.actionsTaken.includes(a),
+        );
+        return appendAudit(
+          {
+            ...e,
+            recoveryReason: rec.recommendedReason,
+            actionsTaken: [...e.actionsTaken, ...newActions],
+          },
+          makeAuditEntry(
+            "action_added",
+            ACTOR,
+            `Applied recommended play: ${rec.recommendedReason} (+${newActions.length} action${newActions.length === 1 ? "" : "s"})`,
+            e.recoveryReason ?? "—",
+            rec.recommendedReason,
+          ),
+        );
+      }),
+    [mutate],
+  );
+
   const updateAmounts = useCallback(
     (id: string, amounts: { baselineAmount?: number; collectedAmount?: number }) =>
       mutate(id, (e) =>
@@ -144,6 +174,7 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
     advanceStatus,
     addAction,
     setReason,
+    applyRecommendation,
     updateAmounts,
     updateEvidence,
     resetData,

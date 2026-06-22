@@ -5,6 +5,7 @@ import {
   byReason,
   recoveredTrend,
 } from "../domain/metrics";
+import { expectedRecoverable } from "../domain/recommendation";
 import { money, percent } from "../lib/format";
 import { reasonLabel } from "../domain/reasons";
 import {
@@ -18,6 +19,7 @@ import {
 export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
   const { events } = useRecovery();
   const m = portfolioMetrics(events);
+  const recoverable = expectedRecoverable(events);
   const stages = byStage(events);
   const reasons = byReason(events).filter((r) => r.key !== "Unclassified");
   const trend = recoveredTrend(events);
@@ -30,6 +32,23 @@ export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
         title="Executive Dashboard"
         subtitle="Detected opportunity and proven recovery are reported separately — never blended."
       />
+
+      {/* The chain: forecast flows left→right but never merges into proof. */}
+      <div className="mb-4 flex flex-wrap items-stretch gap-2">
+        <ChainCell label="Detected" value={money(m.detectedOpportunity)} note="open at risk" tone="detect" />
+        <Arrow />
+        <ChainCell label="Expected Recoverable" value={money(recoverable)} note="forecast · not proven" tone="forecast" />
+        <Arrow />
+        <ChainCell label="Recovered" value={money(m.recoveredRevenue)} note="proven" tone="proof" />
+        <Arrow />
+        <ChainCell label="CFO-Auditable" value={money(m.auditableRevenue)} note="signed-off" tone="proof" />
+      </div>
+      <p className="mb-5 text-[11px] text-slate-500">
+        <span className="text-slate-300">Outcome</span> (what you buy) ·{" "}
+        <span className="text-sky-400">Decision loop</span> (diagnose → recommend → act) ·{" "}
+        <span className="text-proof-500">Proof</span> (what you trust). The two amber/blue
+        buckets are forecast; the two green buckets are realized — they are never summed together.
+      </p>
 
       {/* The two numbers that must never mix */}
       <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -140,4 +159,34 @@ export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
       </div>
     </div>
   );
+}
+
+const CHAIN_TONE = {
+  detect: "text-detect-500",
+  forecast: "text-sky-400",
+  proof: "text-proof-500",
+} as const;
+
+function ChainCell({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  tone: keyof typeof CHAIN_TONE;
+}) {
+  return (
+    <div className="min-w-[9rem] flex-1 rounded-lg border border-ink-500/40 bg-ink-800/60 p-3">
+      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
+      <div className={`mt-1 text-lg font-semibold tabular-nums ${CHAIN_TONE[tone]}`}>{value}</div>
+      <div className="text-[10px] text-slate-500">{note}</div>
+    </div>
+  );
+}
+
+function Arrow() {
+  return <div className="flex items-center text-slate-600">→</div>;
 }

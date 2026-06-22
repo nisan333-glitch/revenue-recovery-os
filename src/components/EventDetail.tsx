@@ -1,11 +1,13 @@
 // Event detail drawer — the workflow surface: assign, act, classify, prove.
 import { useState } from "react";
+import { OPEN_STATUSES } from "../domain/types";
 import type { RecoveryEvent, RecoveryStatus } from "../domain/types";
 import { OWNERS, useRecovery } from "../state/RecoveryContext";
-import { RECOVERY_REASONS } from "../domain/reasons";
+import { RECOVERY_REASONS, reasonLabel } from "../domain/reasons";
+import { recommend } from "../domain/recommendation";
 import { isAuditable, isCounted } from "../domain/invariants";
 import { explainConfidence } from "../domain/confidence";
-import { money } from "../lib/format";
+import { money, percent } from "../lib/format";
 import {
   ConfidenceBadge,
   MoneyDelta,
@@ -36,6 +38,7 @@ export function EventDetail({
     advanceStatus,
     addAction,
     setReason,
+    applyRecommendation,
     updateAmounts,
     updateEvidence,
   } = useRecovery();
@@ -46,6 +49,11 @@ export function EventDetail({
 
   const counted = isCounted(event);
   const auditable = isAuditable(event);
+  const isOpen = OPEN_STATUSES.includes(event.status);
+  const rec = recommend(event);
+  const recommendationApplied =
+    event.recoveryReason === rec.recommendedReason &&
+    rec.recommendedActions.every((a) => event.actionsTaken.includes(a));
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/50" onClick={onClose}>
@@ -87,6 +95,46 @@ export function EventDetail({
                 ? "Not counted: no recovery reason classified."
                 : "Open opportunity — not yet recovered."}
         </div>
+
+        {/* Recommended play (Decision Engine) — forecast, not proof */}
+        {isOpen && (
+          <div className="mb-5 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wide text-sky-300">
+                Recommended play
+              </span>
+              <span className="text-[10px] text-sky-300/70" title="Decision Engine forecast — not proven recovery">
+                forecast · not counted
+              </span>
+            </div>
+            <p className="mt-1.5 text-sm text-slate-300">{rec.rootCause}</p>
+            <div className="mt-2 grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-slate-500">Play</div>
+                <div className="text-slate-200">{reasonLabel(rec.recommendedReason)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-slate-500">Win probability</div>
+                <div className="text-slate-200">{percent(rec.probabilityOfSuccess)} · {rec.effort} effort</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-slate-500">Expected value</div>
+                <div className="tabular-nums text-sky-400">{money(rec.expectedValue)}</div>
+              </div>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-500">
+              {money(rec.expectedImpact)} impact × {percent(rec.probabilityOfSuccess)} = {money(rec.expectedValue)} expected.
+              Next steps: {rec.recommendedActions.join("; ")}.
+            </div>
+            <button
+              className="mt-3 w-full rounded-md border border-sky-500/50 bg-sky-500/15 px-3 py-1.5 text-sm font-medium text-sky-300 hover:bg-sky-500/25 disabled:opacity-50"
+              onClick={() => applyRecommendation(event.eventId)}
+              disabled={recommendationApplied}
+            >
+              {recommendationApplied ? "✓ Recommendation applied" : "Apply recommendation"}
+            </button>
+          </div>
+        )}
 
         {/* The equation */}
         <div className="mb-5 grid grid-cols-3 gap-3">

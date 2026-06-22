@@ -121,3 +121,33 @@ system of record.
 
 The rule across all phases: **the ledger and its auditability come first; the
 intelligence is added on top of a number people already trust.**
+
+---
+
+## 7. The reframe — product = decision loop, proof = moat *inside* it
+
+A refinement that shapes the build: customers do not buy "proof." They buy
+**outcomes.** A CEO wakes up with a *problem* — renewals leaking, conversion down —
+not a desire for an audit trail. So the product is a **decision loop**:
+
+```
+Problem → Diagnosis → Recommendation → Action → Proof
+```
+
+and **Proof is the moat *inside* the loop** — the thing that makes the loop
+trustworthy and compounding. Prediction is becoming cheap; **proof is still rare.**
+Every proven outcome calibrates the next recommendation (the flywheel).
+
+This is now built (Phase 2 in code):
+
+- **Outcomes** turns events into business problems.
+- A transparent, rule-based **Decision Engine** (`src/domain/recommendation.ts`)
+  diagnoses a root cause and recommends a play, with an **expected recoverable**
+  forecast = `expectedImpact × probabilityOfSuccess`. It is explainable, not a
+  black box — a later Learning layer calibrates the priors from proven outcomes.
+- The forecast lives on the **Revenue Opportunity** ledger and is **never** summed
+  into recovered/auditable dollars. The Constitution holds: *forecast ≠ proof.*
+
+**Positioning stays disciplined:** sell **Revenue Recovery OS** (a sharp problem
+with clear ROI), not "Decision Intelligence" as a banner — that category is already
+contested (Aera, Google, Peak). We earn the broader category; we don't claim it.
