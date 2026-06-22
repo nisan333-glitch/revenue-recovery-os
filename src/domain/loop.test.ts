@@ -17,11 +17,12 @@ describe("recovery loop summary", () => {
     expect(loop.recoverableForecast).toBe(32660); // forecast, not proven
   });
 
-  it("Fix: dominant play = the biggest live problem's recommended play; applied narrows", () => {
+  it("Act: dominant play is advice; action-taken counts only logged, observable actions", () => {
     // Largest open exposure is the missed activation (RE-1007, $31k second invoice).
     expect(loop.recommendedPlay).toBe("MilestoneNudge");
-    // Acted on = not Detected/Queued/Dismissed → 11 of 14.
-    expect(loop.appliedCount).toBe(11);
+    // Observable bridge: accounts with a logged action (actionsTaken > 0) → 11 of 14.
+    // Excludes RE-1006/1007/1010 (no action logged); we never claim "fixed".
+    expect(loop.actionTakenCount).toBe(11);
   });
 
   it("Prove: returned and auditable come straight from the proven ledger", () => {
@@ -31,9 +32,9 @@ describe("recovery loop summary", () => {
     expect(loop.recoveryRate).toBeCloseTo(0.875, 5);
   });
 
-  it("the funnel only narrows: identified ≥ applied ≥ proven", () => {
-    expect(loop.identifiedCount).toBeGreaterThanOrEqual(loop.appliedCount);
-    expect(loop.appliedCount).toBeGreaterThanOrEqual(loop.provenCount);
+  it("the funnel only narrows: identified ≥ action taken ≥ proven", () => {
+    expect(loop.identifiedCount).toBeGreaterThanOrEqual(loop.actionTakenCount);
+    expect(loop.actionTakenCount).toBeGreaterThanOrEqual(loop.provenCount);
   });
 
   it("CONSTITUTION: Opportunity (forecast) and Returned (proven) are never the same number, nor summed", () => {

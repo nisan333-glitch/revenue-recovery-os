@@ -22,11 +22,15 @@ export interface RecoveryLoopSummary {
   openCount: number;
   /** Σ expectedValue over open events — the forecast of what we can recover. */
   recoverableForecast: number;
-  // --- Fix ---
-  /** The recommended play for the largest open problem (null if nothing open). */
+  // --- Act (the honest bridge to proof — only objectively observable states) ---
+  /** The recommended play for the largest open problem (advice, not a state). */
   recommendedPlay: NonNullable<RecoveryReason> | null;
-  /** Accounts a recovery play has been put in motion on (acted, not just queued). */
-  appliedCount: number;
+  /**
+   * Accounts where a recovery action was actually logged (actionsTaken > 0).
+   * This is observable and auditable — NOT a claim that the problem was "fixed".
+   * We display "Action Taken", never "Fixed", until execution is fully modeled.
+   */
+  actionTakenCount: number;
   // --- Prove (Revenue Returned ledger — PROVEN, realized cash) ---
   /** Proven, counted recovered revenue. */
   returned: number;
@@ -38,23 +42,17 @@ export interface RecoveryLoopSummary {
   recoveryRate: number;
 }
 
-// "Applied" = a play was actually put in motion — not merely detected/queued,
-// and not dismissed. Recovered and Failed both count as worked.
-const APPLIED_STATUSES: readonly string[] = [
-  "Assigned",
-  "InProgress",
-  "Recovered",
-  "Failed",
-];
-
 /**
  * The complete loop as a single summary. Forecast (opportunity) and proven
  * (returned) are distinct fields; nothing here adds one ledger to the other.
+ * The middle of the loop reports only observable states ("action taken"), never
+ * an unprovable claim that a problem was "fixed".
  */
 export function recoveryLoop(events: RecoveryEvent[]): RecoveryLoopSummary {
   const m = portfolioMetrics(events);
   const open = events.filter((e) => OPEN_STATUSES.includes(e.status));
-  const applied = events.filter((e) => APPLIED_STATUSES.includes(e.status));
+  // Observable + auditable: an action was logged on the account.
+  const actioned = events.filter((e) => e.actionsTaken.length > 0);
 
   // The dominant play = the recommended play of the biggest LIVE problem.
   const outcomes = outcomesByLeakage(events);
@@ -66,7 +64,7 @@ export function recoveryLoop(events: RecoveryEvent[]): RecoveryLoopSummary {
     openCount: open.length,
     recoverableForecast: expectedRecoverable(events),
     recommendedPlay: topOpen ? topOpen.recommendedReason : null,
-    appliedCount: applied.length,
+    actionTakenCount: actioned.length,
     returned: m.recoveredRevenue,
     auditable: m.auditableRevenue,
     provenCount: m.recoveredCount,

@@ -69,27 +69,22 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
           tone="forecast"
           label="Detected"
           value={`${loop.identifiedCount} accounts`}
-          note="signed but not activated"
+          note={
+            loop.recommendedPlay
+              ? `signed but not activated · suggested play: ${reasonLabel(loop.recommendedPlay)}`
+              : "signed but not activated"
+          }
         />
-        <Arrow caption="Recommended play" />
+        <Arrow caption="Action taken" />
 
         <Rung
-          phase="Fix"
+          phase="Act"
           tone="neutral"
-          label="Recommended Play"
-          value={loop.recommendedPlay ? reasonLabel(loop.recommendedPlay) : "—"}
-          note="the play for the biggest live problem"
-        />
-        <Arrow caption="Applied" />
-
-        <Rung
-          phase="Fix"
-          tone="neutral"
-          label="Applied"
-          value={`${loop.appliedCount} accounts processed`}
-          note="a recovery play was put in motion"
-          onClick={() => onOpen("queue")}
-          cta="Open the Recovery Queue →"
+          label="Action Taken"
+          value={`${loop.actionTakenCount} accounts`}
+          note="email · call · milestone · workflow — each action logged & auditable"
+          onClick={() => onOpen("audit")}
+          cta="See the actions in the audit trail →"
         />
         <Arrow caption="Proven" />
 
@@ -120,7 +115,10 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         Opportunity ledger) and is never counted as money.{" "}
         <span className="text-proof-500">Revenue Returned</span> is realized cash
         (Revenue Returned ledger). The two are reported separately and never summed —
-        that separation is what makes the recovered number auditable.
+        that separation is what makes the recovered number auditable.{" "}
+        <span className="text-slate-400">Action Taken</span> reports only logged,
+        auditable actions; we never claim a problem was “fixed” until execution is
+        modeled and proven. We display only what is objectively observable.
       </p>
     </div>
   );
@@ -136,7 +134,7 @@ const TONE_TEXT: Record<Tone, string> = {
 
 const PHASE_TONE: Record<string, string> = {
   Identify: "bg-detect-600/15 text-detect-500",
-  Fix: "bg-ink-600/60 text-slate-300",
+  Act: "bg-ink-600/60 text-slate-300",
   Prove: "bg-proof-600/15 text-proof-500",
 };
 
@@ -149,7 +147,7 @@ function Rung({
   onClick,
   cta,
 }: {
-  phase: "Identify" | "Fix" | "Prove";
+  phase: "Identify" | "Act" | "Prove";
   label: string;
   value: string;
   note: string;
