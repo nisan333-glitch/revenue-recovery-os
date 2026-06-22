@@ -38,13 +38,11 @@ at the end.
 The demo's job is not to impress with modules. It is to make them say *"that's our
 problem, and nobody proves it today."*
 
-**Optional opener (decision loop, Phase 2).** Start on **Outcomes** for 30 seconds:
-"Here are your problems, not a list of events. For each one we show what's at risk,
-what we *forecast* we can recover (in blue), and what we've *proven* (in green) —
-and those two never get added together." Open the top queue item and hit **Apply
-recommendation** to show the engine proposes the play; then continue to Recover →
-Prove as above. Keep the emphasis on proof: the forecast earns attention; the green
-number earns the budget.
+> Backstage note (do not lead with this): when you open an item in the Recovery
+> Queue, a rule-based engine already ranks it by expected value and suggests the
+> play (**Apply recommendation**). It's a quiet operator convenience — not part of
+> the pitch. The story stays **Identify → Recover → Prove**; the green number, not
+> the forecast, earns the budget.
 
 ---
 

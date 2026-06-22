@@ -23,13 +23,12 @@ export function Outcomes() {
         subtitle="Problems, not events. Forecast (what we can recover) and proof (what we did) are reported in separate columns — never blended."
       />
 
-      {/* The three-layer framing the whole product runs on */}
+      {/* Backstage operator view. Forecast is shown beside proof, never merged.
+          Not part of the product's positioning — see docs/VISION.md §7. */}
       <Panel className="mb-4 p-4 text-sm text-slate-400">
-        <span className="text-slate-300">Outcome</span> (the problem you buy a fix for)
-        {"  ·  "}
-        <span className="text-sky-400">Decision loop</span> (diagnose → recommend → act)
-        {"  ·  "}
-        <span className="text-proof-500">Proof</span> (what you can actually trust)
+        Operator view — what to work on first. <span className="text-sky-400">Forecast</span>{" "}
+        (what we can recover) sits beside <span className="text-proof-500">proof</span>{" "}
+        (what we did); the two ledgers are never summed.
       </Panel>
 
       {/* Portfolio chain: Detected → Expected Recoverable → Recovered → Auditable */}

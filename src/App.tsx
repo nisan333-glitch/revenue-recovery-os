@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useRecovery } from "./state/RecoveryContext";
 import { portfolioMetrics } from "./domain/metrics";
 import { money } from "./lib/format";
-import { Outcomes } from "./modules/Outcomes";
 import { ExecutiveDashboard } from "./modules/ExecutiveDashboard";
 import { RecoveryEventsTable } from "./modules/RecoveryEventsTable";
 import { RecoveryQueue } from "./modules/RecoveryQueue";
@@ -14,7 +13,6 @@ import { RecoveryReasons } from "./modules/RecoveryReasons";
 import { ConfidencePanel } from "./modules/ConfidencePanel";
 
 type ModuleKey =
-  | "outcomes"
   | "dashboard"
   | "queue"
   | "events"
@@ -26,7 +24,6 @@ type ModuleKey =
   | "audit";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
-  { key: "outcomes", label: "Outcomes", group: "Decide" },
   { key: "dashboard", label: "Executive Dashboard", group: "Prove" },
   { key: "cfo", label: "CFO Proof View", group: "Prove" },
   { key: "reconciliation", label: "Reconciliation", group: "Prove" },
@@ -39,7 +36,7 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
 ];
 
 export function App() {
-  const [active, setActive] = useState<ModuleKey>("outcomes");
+  const [active, setActive] = useState<ModuleKey>("dashboard");
   const { events, resetData } = useRecovery();
   const m = portfolioMetrics(events);
 
@@ -98,7 +95,6 @@ export function App() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-8 py-8">
-          {active === "outcomes" && <Outcomes />}
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}
           {active === "events" && <RecoveryEventsTable />}

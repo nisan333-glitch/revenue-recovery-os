@@ -11,15 +11,17 @@ Every recovered dollar is auditable. The product visibly separates **detected
 opportunity** from **proven recovered revenue**, and the CFO view shows only
 revenue that survives a skeptical review.
 
-## The decision loop (Phase 2)
+## Under the hood — a backstage decision engine
 
-The product runs the front of the loop, not just proof:
-**Problem → Diagnosis → Recommendation → Action → Proof.** The **Outcomes** surface
-turns events into business problems, and a transparent, rule-based **Decision
-Engine** (`src/domain/recommendation.ts`) recommends the play and an *expected
-recoverable* forecast for every open event. That forecast lives on the **Revenue
-Opportunity** ledger and is **never** blended into recovered/auditable dollars —
-proof stays the moat *inside* the loop. See [`docs/VISION.md`](docs/VISION.md).
+The product is **positioned and sold as Identify → Recover → Prove.** Behind that,
+a transparent, rule-based decision engine (`src/domain/recommendation.ts`) quietly
+**ranks the Recovery Queue by expected value** and **suggests the play** for each
+open event (one-click *Apply recommendation*). This is an operator convenience, not
+the pitch — it is deliberately **not surfaced as a headline view**. Its *expected
+recoverable* forecast lives on the **Revenue Opportunity** ledger and is **never**
+blended into recovered/auditable dollars. The moat stays **Proof**, not the
+recommendation. We promote this to the front only if customers ask *"great — what do
+I do now?"* See [`docs/VISION.md`](docs/VISION.md) §7.
 
 ## Validation — the open question
 
@@ -60,8 +62,7 @@ covered by `invariants.test.ts`, `recommendation.test.ts`, and `outcomes.test.ts
 
 | Module | Purpose |
 |---|---|
-| Outcomes | Problems (not events): at-risk, **expected recoverable (forecast)**, recovered, auditable + the recommended play |
-| Executive Dashboard | Detected → Expected Recoverable → Recovered → Auditable chain; money recovered, trends |
+| Executive Dashboard | Detected opportunity vs proven recovery, money recovered, trends |
 | Recovery Queue | Prioritized worklist — assign, act, advance (the fix workflow) |
 | Recovery Events | Full record of every event; drill into the workflow drawer |
 | CFO Proof View | Audit-grade ledger of only auditable recovered revenue (+ CSV export) |
@@ -85,9 +86,8 @@ npm run test     # run invariant unit tests
 npm run build    # typecheck (strict) + production build
 ```
 
-Open the app on **Outcomes** to see the problems and their forecast, then work an
-item in the **Recovery Queue** (open it → **Apply recommendation** to adopt the
-play → mark Recovered). Watch it flow into the **CFO Proof View** with a full
-**Audit Trail** — while the *expected recoverable* forecast stays separate from the
-proven number throughout. Use **Reset demo data** in the sidebar to restore the
-seed. State persists across refreshes.
+Open the app, work an item in the **Recovery Queue** (open it → optionally **Apply
+recommendation** → assign → add action → classify a reason → mark Recovered), and
+watch it appear in the **CFO Proof View** with a full **Audit Trail**. The *expected
+recoverable* forecast stays separate from the proven number throughout. Use **Reset
+demo data** in the sidebar to restore the seed. State persists across refreshes.

@@ -124,30 +124,32 @@ intelligence is added on top of a number people already trust.**
 
 ---
 
-## 7. The reframe — product = decision loop, proof = moat *inside* it
+## 7. The decision engine — built, but kept BACKSTAGE (governance rule)
 
-A refinement that shapes the build: customers do not buy "proof." They buy
-**outcomes.** A CEO wakes up with a *problem* — renewals leaking, conversion down —
-not a desire for an audit trail. So the product is a **decision loop**:
+A decision engine exists in code (Phase 2): a transparent, rule-based playbook
+(`src/domain/recommendation.ts`) that diagnoses a root cause, recommends a play, and
+computes an **expected recoverable** forecast = `expectedImpact × probabilityOfSuccess`.
+It powers three operator conveniences: queue ranking by expected value, a one-click
+*Apply recommendation*, and the (currently un-surfaced) Outcomes problem view.
 
-```
-Problem → Diagnosis → Recommendation → Action → Proof
-```
+**Founder ruling — separate two questions.** *Is it sound to build?* Yes. *Does it
+change the positioning?* It must not. So:
 
-and **Proof is the moat *inside* the loop** — the thing that makes the loop
-trustworthy and compounding. Prediction is becoming cheap; **proof is still rare.**
-Every proven outcome calibrates the next recommendation (the flywheel).
+> **The product sold and positioned is `Identify → Recover → Prove`.**
+> **The decision layer lives backstage** — not the pitch, not a brand, not a
+> headline view, not the default screen, not the website. The customer buys
+> **recovered money + proof**; only later do they discover there's also a decision
+> engine helping them act.
 
-This is now built (Phase 2 in code):
+Why: with no market evidence yet that buyers want "help deciding," leading with
+Decision would shift the story from Recovery to a generic "Decision OS / RevOps /
+BI" — the graveyard in §2. The test that matters: in front of a CFO/CRO,
+*"we identify, recover and prove revenue"* still beats *"we identify, diagnose,
+prioritize, recommend and orchestrate"* — by a wide margin. **The unique advantage
+is still Proof, not Recommendation.**
 
-- **Outcomes** turns events into business problems.
-- A transparent, rule-based **Decision Engine** (`src/domain/recommendation.ts`)
-  diagnoses a root cause and recommends a play, with an **expected recoverable**
-  forecast = `expectedImpact × probabilityOfSuccess`. It is explainable, not a
-  black box — a later Learning layer calibrates the priors from proven outcomes.
-- The forecast lives on the **Revenue Opportunity** ledger and is **never** summed
-  into recovered/auditable dollars. The Constitution holds: *forecast ≠ proof.*
-
-**Positioning stays disciplined:** sell **Revenue Recovery OS** (a sharp problem
-with clear ROI), not "Decision Intelligence" as a banner — that category is already
-contested (Aera, Google, Peak). We earn the broader category; we don't claim it.
+**The trigger to promote it.** If, across ~10 customer conversations, people say
+*"great — but what do I do now?"*, that is the signal to bring Outcomes to the front.
+Until then it stays a quiet engine. The code is ready; the positioning waits for
+evidence. The Constitution still holds throughout: *forecast ≠ proof*, three ledgers
+never blended.
