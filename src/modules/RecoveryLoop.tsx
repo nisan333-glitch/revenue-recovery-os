@@ -1,7 +1,10 @@
-// Recovery Loop — the product's front door. Read outside-in, the way a CFO/CRO
-// thinks: Opportunity → Recovery → Proof. It answers three questions before it
-// shows any workflow: how much money was found, how much came back, how do we
-// know. The function screens (Queue, CFO Proof, Audit) are deep-dives behind it.
+// Recovery Loop — the product's front door, built to pass the 15-second test for a
+// CRO/CFO/CEO. It answers five questions in order, before any workflow:
+//   Money At Risk · Recovery Opportunity · Actions Taken · Revenue Returned ·
+//   Auditable Revenue.
+// Forecast (at risk, opportunity) and proven (returned, auditable) stay visually
+// separate and are never summed. The function screens (Queue, CFO Proof, Audit) are
+// deep-dives behind it.
 import { useRecovery } from "../state/RecoveryContext";
 import { recoveryLoop } from "../domain/loop";
 import { reasonLabel } from "../domain/reasons";
@@ -19,37 +22,66 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
     <div>
       <SectionHeader
         title="Recovery Loop"
-        subtitle="Revenue lost between signature and activation — found, recovered, and proven."
+        subtitle="Revenue lost between signature and activation — found, acted on, returned, and proven."
       />
 
-      {/* The three questions an exec actually asks — answered first, before any
-          workflow. Forecast (found) and proven (returned) are different colors
-          and are never added together. */}
-      <div className="mb-8 grid grid-cols-1 gap-3 md:grid-cols-3">
+      {/* The 15-second answer: five numbers in narrative order. Amber = forecast
+          (Opportunity ledger), green = proven (Returned ledger); never summed. */}
+      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-5">
         <StatCard
-          label="How much money was found?"
-          value={money(loop.opportunity)}
-          sub={`${loop.identifiedCount} accounts identified · Opportunity (forecast)`}
+          label="Money At Risk"
+          value={money(loop.moneyAtRisk)}
+          sub={`${loop.openCount} open · signed, not activated`}
           tone="detect"
-          hint="Revenue Opportunity ledger — total at-risk we identified. A forecast, never counted as recovered money."
+          hint="Open dollars still at risk right now (Revenue Opportunity ledger — forecast, not money)."
         />
         <StatCard
-          label="How much was recovered?"
+          label="Recovery Opportunity"
+          value={money(loop.recoverableForecast)}
+          sub="forecast we can recover"
+          tone="detect"
+          hint="Σ expected value over open accounts. Forecast — never counted as recovered cash."
+        />
+        <StatCard
+          label="Actions Taken"
+          value={String(loop.actionTakenCount)}
+          sub="accounts · logged & auditable"
+          tone="neutral"
+          hint="Accounts with a recovery action recorded in the audit trail. Observable — not a claim of 'fixed'."
+        />
+        <StatCard
+          label="Revenue Returned"
           value={money(loop.returned)}
-          sub={`${loop.provenCount} accounts recovered · ${percent(loop.recoveryRate)} recovery rate`}
+          sub={`${loop.provenCount} recovered · ${percent(loop.recoveryRate)} rate`}
           tone="proof"
+          hint="Realized cash, Collected − Baseline (Revenue Returned ledger — proven)."
         />
         <StatCard
-          label="How was it proven?"
+          label="Auditable Revenue"
           value={money(loop.auditable)}
-          sub="CFO-auditable · proof-grade"
+          sub="CFO-signed · proof-grade"
           tone="proof"
-          hint="Revenue Returned = Collected − Baseline. Auditable is the CFO-grade subset (proof-grade confidence + reason + positive uplift)."
+          hint="The CFO-grade subset of Returned (proof-grade confidence + reason + positive uplift)."
         />
       </div>
 
-      {/* The story, top-down: Opportunity → Detected → Play → Applied → Returned
-          → Auditable. The Identify/Fix/Prove spine is the caption, not the head. */}
+      {/* The spoken story — read this aloud. */}
+      <p className="mb-1 text-sm text-slate-300">
+        We found <span className="font-semibold text-detect-500">{money(loop.moneyAtRisk)}</span>{" "}
+        at risk, forecast{" "}
+        <span className="font-semibold text-detect-500">{money(loop.recoverableForecast)}</span>{" "}
+        recoverable, took action on{" "}
+        <span className="font-semibold text-slate-100">{loop.actionTakenCount}</span> accounts,
+        returned <span className="font-semibold text-proof-500">{money(loop.returned)}</span> —
+        and <span className="font-semibold text-proof-500">{money(loop.auditable)}</span> of it is
+        backed by evidence a CFO can sign.
+      </p>
+      <p className="mb-8 text-[11px] text-slate-500">
+        At Risk and Opportunity are the current open book (forecast); Returned and
+        Auditable are proven to date. The two ledgers are never summed.
+      </p>
+
+      {/* The same five numbers as a connected loop — the drill-down. */}
       <Panel className="p-6">
         <div className="mb-4 text-xs uppercase tracking-wider text-slate-500">
           The loop, on this portfolio
@@ -58,29 +90,29 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         <Rung
           phase="Identify"
           tone="forecast"
-          label="Opportunity"
-          value={money(loop.opportunity)}
-          note="revenue we found at risk — signed but not yet safe"
+          label="Money At Risk"
+          value={money(loop.moneyAtRisk)}
+          note={
+            loop.recommendedPlay
+              ? `${loop.openCount} open · signed but not activated · suggested play: ${reasonLabel(loop.recommendedPlay)}`
+              : `${loop.openCount} open · signed but not activated`
+          }
         />
-        <Arrow caption={`Detected · ${loop.openCount} still open`} />
+        <Arrow caption="Forecast recoverable" />
 
         <Rung
           phase="Identify"
           tone="forecast"
-          label="Detected"
-          value={`${loop.identifiedCount} accounts`}
-          note={
-            loop.recommendedPlay
-              ? `signed but not activated · suggested play: ${reasonLabel(loop.recommendedPlay)}`
-              : "signed but not activated"
-          }
+          label="Recovery Opportunity"
+          value={money(loop.recoverableForecast)}
+          note="what we forecast we can recover — Opportunity ledger"
         />
-        <Arrow caption="Action taken" />
+        <Arrow caption="We act" />
 
         <Rung
           phase="Act"
           tone="neutral"
-          label="Action Taken"
+          label="Actions Taken"
           value={`${loop.actionTakenCount} accounts`}
           note="email · call · milestone · workflow — each action logged & auditable"
           onClick={() => onOpen("audit")}
@@ -102,21 +134,22 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         <Rung
           phase="Prove"
           tone="proof"
-          label="CFO-Auditable"
+          label="Auditable Revenue"
           value={money(loop.auditable)}
-          note="proof-grade subset, signed off"
+          note="proof-grade subset, CFO signed off"
           onClick={() => onOpen("audit")}
           cta="See the audit trail →"
         />
       </Panel>
 
       <p className="mt-6 text-[11px] text-slate-500">
-        <span className="text-detect-500">Opportunity</span> is a forecast (Revenue
-        Opportunity ledger) and is never counted as money.{" "}
+        <span className="text-detect-500">Money At Risk</span> and{" "}
+        <span className="text-detect-500">Recovery Opportunity</span> are forecast
+        (Revenue Opportunity ledger) and are never counted as money.{" "}
         <span className="text-proof-500">Revenue Returned</span> is realized cash
         (Revenue Returned ledger). The two are reported separately and never summed —
         that separation is what makes the recovered number auditable.{" "}
-        <span className="text-slate-400">Action Taken</span> reports only logged,
+        <span className="text-slate-400">Actions Taken</span> reports only logged,
         auditable actions; we never claim a problem was “fixed” until execution is
         modeled and proven. We display only what is objectively observable.
       </p>
