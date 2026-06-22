@@ -183,6 +183,47 @@ A system that:
 
 ---
 
+## Build the complete loop, not a detection product
+
+The single biggest risk right now is **not** that a queue is missing.
+
+The risk is that the product becomes **just another system that identifies problems.**
+
+A CFO, CRO or CEO does not buy Detection. Does not buy a Queue. Does not buy Alerts.
+
+They buy: *"I found $200K leaking, I fixed it, and I returned $80K in cash."*
+
+The value to the customer is the **whole loop**, not one part of it:
+
+Identify → Fix → Prove
+
+So from day one, the product must let a user see the **complete recovery loop in a
+single workflow**, on one case:
+
+1. the problem identified
+2. the recommended action
+3. the action taken
+4. the result proven (money returned)
+
+Without all four it looks like another dashboard, and the differentiation is gone.
+
+**But depth may vary — that is allowed.** You do not have to build every part to the
+same depth to show the full loop:
+
+* **Identify** — built real (detection of revenue at risk).
+* **Fix** — playbooks and rules (the recommended play per problem).
+* **Prove** — full proof math (`Collected − Baseline`, auditable).
+* **Execute** — manual or semi-automatic at first (the human takes the action).
+
+That is still a complete package. The rule is not "build everything deeply at once."
+The rule is: **never ship a slice of the loop as the product.**
+
+> Build the complete recovery loop, not a detection product.
+> The user must be able to see **Identify → Fix → Prove** in a single workflow.
+> Detection alone is not the product.
+
+---
+
 ## Build Filter
 
 Before building anything ask:

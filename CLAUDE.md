@@ -56,6 +56,21 @@ ledger, or the proof chain. If the engine has to learn the word "activation," st
 that belongs in data, not the core. Never narrow this into an "Activation Recovery
 System." See `docs/STRATEGY.md` → "The wedge is not the category."
 
+## Build the complete loop, not a detection product
+
+The biggest risk is not a missing queue — it is the product quietly becoming "just
+another system that identifies problems." A CFO/CRO/CEO does not buy Detection,
+Scoring, or Prioritization. They buy *"I found $200K leaking, I fixed it, and I
+returned $80K in cash."*
+
+So **never ship a slice of the loop as the product.** From day one the user must be
+able to see **Identify → Fix → Prove** in a single workflow, on one case: problem
+identified → recommended action → action taken → money proven returned. Depth may
+vary — Execute can be manual/semi-automatic at first — but all four must be visible
+together. If a demo shows Detection / Scoring / Prioritization but not Action /
+Recovery / Proof, the differentiation is gone. See `docs/STRATEGY.md` → "Build the
+complete loop, not a detection product."
+
 ## What success is
 
 Revenue recovered · revenue proven · customer willingness to pay · repeatable
