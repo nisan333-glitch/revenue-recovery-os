@@ -16,12 +16,13 @@ back, here is the proof** — anchored on the Activation leak: *signed → never
 activated → second invoice at risk.*
 
 1. **(0–1 min) The whole story on one screen — the Recovery Loop.** The front door,
-   read left to right in five numbers — the 15-second answer: **Money At Risk
-   $71,800 → Recovery Opportunity $32,660 → Actions Taken 11 → Revenue Returned
-   $83,400 → Auditable Revenue $79,800.** Say it aloud: *"We found $71,800 at risk,
-   forecast $32,660 recoverable, acted on 11 accounts, returned $83,400 — and $79,800
-   of it is backed by evidence a CFO can sign."* Amber (at risk, opportunity) is
-   forecast; green (returned, auditable) is proven — we never add the two together.
+   in two blocks. **Open Pipeline** (amber, forecast): **Money At Risk $71,800**,
+   **Recovery Opportunity $32,660**. **Proven Results** (green, realized): **Revenue
+   Returned $83,400**, **Auditable Revenue $79,800**, **Recovery Rate 87.5%**. Say it
+   aloud: *"We have $71,800 at risk and forecast $32,660 recoverable. To date we've
+   returned $83,400 at an 87.5% recovery rate — and $79,800 of it is backed by
+   evidence a CFO can sign."* The two blocks are different time windows (open book vs
+   proven to date), so we never imply the ledgers sum.
 2. **(1–2 min) The leak is the activation gap.** *"These accounts signed and never
    reached activation, so the second invoice is at risk — money falling between
    signature and value."* Point to the biggest live one: **Stark Solutions, $31,000

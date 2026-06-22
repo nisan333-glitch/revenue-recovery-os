@@ -25,60 +25,78 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         subtitle="Revenue lost between signature and activation — found, acted on, returned, and proven."
       />
 
-      {/* The 15-second answer: five numbers in narrative order. Amber = forecast
-          (Opportunity ledger), green = proven (Returned ledger); never summed. */}
-      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <StatCard
-          label="Money At Risk"
-          value={money(loop.moneyAtRisk)}
-          sub={`${loop.openCount} open · signed, not activated`}
-          tone="detect"
-          hint="Open dollars still at risk right now (Revenue Opportunity ledger — forecast, not money)."
-        />
-        <StatCard
-          label="Recovery Opportunity"
-          value={money(loop.recoverableForecast)}
-          sub="forecast we can recover"
-          tone="detect"
-          hint="Σ expected value over open accounts. Forecast — never counted as recovered cash."
-        />
-        <StatCard
-          label="Actions Taken"
-          value={String(loop.actionTakenCount)}
-          sub="accounts · logged & auditable"
-          tone="neutral"
-          hint="Accounts with a recovery action recorded in the audit trail. Observable — not a claim of 'fixed'."
-        />
-        <StatCard
-          label="Revenue Returned"
-          value={money(loop.returned)}
-          sub={`${loop.provenCount} recovered · ${percent(loop.recoveryRate)} rate`}
-          tone="proof"
-          hint="Realized cash, Collected − Baseline (Revenue Returned ledger — proven)."
-        />
-        <StatCard
-          label="Auditable Revenue"
-          value={money(loop.auditable)}
-          sub="CFO-signed · proof-grade"
-          tone="proof"
-          hint="The CFO-grade subset of Returned (proof-grade confidence + reason + positive uplift)."
-        />
+      {/* The 15-second answer, in two blocks: the open pipeline (forecast) vs
+          proven results (realized). Separating them resolves the "returned >
+          at-risk" question — they are different time windows, never summed. CFOs
+          buy money, so the headline is money + a rate, not an activity count. */}
+      <div className="mb-3 space-y-5">
+        <div>
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-detect-500">
+            Open Pipeline{" "}
+            <span className="font-normal text-slate-500">— forecast · the current open book</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              label="Money At Risk"
+              value={money(loop.moneyAtRisk)}
+              sub={`${loop.openCount} open · signed, not activated`}
+              tone="detect"
+              hint="Open dollars still at risk right now (Revenue Opportunity ledger — forecast, not money)."
+            />
+            <StatCard
+              label="Recovery Opportunity"
+              value={money(loop.recoverableForecast)}
+              sub="forecast we can recover"
+              tone="detect"
+              hint="Σ expected value over open accounts. Forecast — never counted as recovered cash."
+            />
+          </div>
+        </div>
+        <div>
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-proof-500">
+            Proven Results{" "}
+            <span className="font-normal text-slate-500">— realized cash, to date</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <StatCard
+              label="Revenue Returned"
+              value={money(loop.returned)}
+              sub={`${loop.provenCount} cases recovered`}
+              tone="proof"
+              hint="Realized cash, Collected − Baseline (Revenue Returned ledger — proven)."
+            />
+            <StatCard
+              label="Auditable Revenue"
+              value={money(loop.auditable)}
+              sub="CFO-signed · proof-grade"
+              tone="proof"
+              hint="The CFO-grade subset of Returned (proof-grade confidence + reason + positive uplift)."
+            />
+            <StatCard
+              label="Recovery Rate"
+              value={percent(loop.recoveryRate)}
+              sub="recovered ÷ attempted"
+              tone="proof"
+              hint="Counted recoveries ÷ (recovered + failed) — a true effectiveness rate."
+            />
+          </div>
+        </div>
       </div>
 
       {/* The spoken story — read this aloud. */}
       <p className="mb-1 text-sm text-slate-300">
-        We found <span className="font-semibold text-detect-500">{money(loop.moneyAtRisk)}</span>{" "}
-        at risk, forecast{" "}
+        We have <span className="font-semibold text-detect-500">{money(loop.moneyAtRisk)}</span>{" "}
+        at risk and forecast{" "}
         <span className="font-semibold text-detect-500">{money(loop.recoverableForecast)}</span>{" "}
-        recoverable, took action on{" "}
-        <span className="font-semibold text-slate-100">{loop.actionTakenCount}</span> accounts,
-        returned <span className="font-semibold text-proof-500">{money(loop.returned)}</span> —
-        and <span className="font-semibold text-proof-500">{money(loop.auditable)}</span> of it is
-        backed by evidence a CFO can sign.
+        recoverable. To date we have returned{" "}
+        <span className="font-semibold text-proof-500">{money(loop.returned)}</span> — a{" "}
+        <span className="font-semibold text-proof-500">{percent(loop.recoveryRate)}</span> recovery
+        rate — and <span className="font-semibold text-proof-500">{money(loop.auditable)}</span> of
+        it is backed by evidence a CFO can sign.
       </p>
       <p className="mb-8 text-[11px] text-slate-500">
-        At Risk and Opportunity are the current open book (forecast); Returned and
-        Auditable are proven to date. The two ledgers are never summed.
+        Open Pipeline is the current open book (forecast); Proven Results are realized
+        to date. Different time windows — reported separately, never summed.
       </p>
 
       {/* The same five numbers as a connected loop — the drill-down. */}
