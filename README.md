@@ -11,6 +11,9 @@ Every recovered dollar is auditable. The product visibly separates **detected
 opportunity** from **proven recovered revenue**, and the CFO view shows only
 revenue that survives a skeptical review.
 
+> → Read [`docs/STRATEGY.md`](docs/STRATEGY.md) — the strategic direction every
+> change must serve (Identify · Fix · Prove). New here? Start there.
+
 ## Under the hood — a backstage decision engine
 
 The product is **positioned and sold as Identify → Recover → Prove.** Behind that,
