@@ -222,6 +222,16 @@ The rule is: **never ship a slice of the loop as the product.**
 > The user must be able to see **Identify → Fix → Prove** in a single workflow.
 > Detection alone is not the product.
 
+**The loop, today (canonical):**
+
+```
+Opportunity → Detected → Action Taken → Returned → Auditable
+```
+
+Every rung is an objectively observable state. **"Fixed" is future terminology
+only** — it is not a state the product displays until execution is observable and
+auditable (owner, task, SLA, completion proof). See the roadmap constraint below.
+
 ### Roadmap constraint — the Fix layer, introduced only when it is provable
 
 The loop must stay honest: **display only states that are objectively observable.

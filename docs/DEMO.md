@@ -8,46 +8,51 @@ is real, separated from hope, and auditable to the dollar.**
 
 ---
 
-## 10-minute discovery demo (the cut to actually run)
+## Executive demo (5 minutes) — the sharp cut
 
-For a prospect (VP CS / RevOps), do NOT tour features. Tell the one story:
-**Identify → Recover → Prove**, anchored on *their* leak (activation), with the cash
-at the end.
+Audience: CRO / CFO / CEO (it doubles as the discovery open). Do **not** tour
+features or name engines. Tell one story — **we found money, we acted, the money came
+back, here is the proof** — anchored on the Activation leak: *signed → never
+activated → second invoice at risk.*
 
-1. **(0–1 min) The frame — open on the Recovery Loop.** This is the front door:
-   one screen, read top-down. *"How much money was found?"* **Opportunity
-   ($200,200)**. *"How much came back?"* **Revenue Returned ($83,400)**. *"How do
-   you know?"* **CFO-Auditable ($79,800)**. The funnel underneath tells the story —
-   Opportunity → Detected (14 accounts) → Action Taken (11 logged & auditable) →
-   Returned → Auditable. No feature names; the customer sees Identify → Act → Prove
-   in one glance. Forecast (amber) and proven (green) are never added together, and we
-   show only observable states — "Action Taken", never an unprovable "Fixed".
-2. **(1–3 min) Identify — the leak is real and separated.** Executive Dashboard:
-   **Detected Opportunity ($71,800)** is amber and labeled *potential, not revenue*;
-   **Proven Recovered ($83,400)** is green. "We never blend the two. Most tools show
-   one number; that number is a lie."
-3. **(3–6 min) Recover — work one account live.** Recovery Queue → open the top
-   account → assign owner → record an action → set a recovery reason → mark
-   Recovered. Revenue Returned computes live as **Collected − Baseline**. "That is
-   the workflow — owned, time-bound, executed."
-4. **(6–8 min) Prove — the CFO number.** CFO Proof View + Reconciliation: only
-   **auditable** revenue ($79,800), the waterfall Gross → Counted → Auditable, and
-   the **$4,300 unclassified = $0** moment. "We do not count money we cannot
-   explain. This survives your finance review."
-5. **(8–9 min) Audit — the paper trail.** Audit Trail: every change, actor,
-   timestamp. "Each recovered dollar traces to a real event."
-6. **(9–10 min) Their turn — the CSV.** "Send us one export — signed date, activated
-   or not, next invoice paid, ARPA. We'll show you *your* leak and what's
-   recoverable. No integration." (This is the close — see `VALIDATION.md`.)
+1. **(0–1 min) The whole story on one screen — the Recovery Loop.** The front door.
+   Read the three hero numbers the way a CFO thinks: *"How much was found?"*
+   **Opportunity $200,200** · *"How much came back?"* **Revenue Returned $83,400** ·
+   *"How do you know?"* **CFO-Auditable $79,800.** Then the funnel below:
+   **Opportunity → Detected (14 accounts, signed but not activated) → Action Taken
+   (11 logged) → Returned → Auditable.** *"Every step is something we can show you.
+   Forecast is amber, proven cash is green — we never add the two together."*
+2. **(1–2 min) The leak is the activation gap.** *"These accounts signed and never
+   reached activation, so the second invoice is at risk — money falling between
+   signature and value."* Point to the biggest live one: **Stark Solutions, $31,000
+   at risk.**
+3. **(2–3½ min) Work one account live — found → acted → returned.** Open **Stark
+   Solutions (RE-1007)** in the Recovery Queue. Record the activation action
+   ("Guided the account to its activation milestone"), set **Recovery Reason =
+   Milestone Nudge**, **Collected = 31,000** (baseline 6,200), **Status → Recovered.**
+   **Revenue Returned computes live to +$24,800.** *"We didn't forecast it — we
+   acted, the second invoice cleared, and the number is Collected − Baseline."*
+4. **(3½–4½ min) The number a CFO can sign.** CFO Proof View + Reconciliation:
+   **$83,400 recovered, but only $79,800 auditable.** The $3,600 gap is one named
+   low-confidence event; the $4,300 unclassified recovery counts for **nothing**.
+   *"We don't count money we can't explain. This survives your finance review — to
+   the dollar."* One click — **Export CSV** — and the ledger leaves the room auditable.
+5. **(4½–5 min) Their turn — the close.** *"Send us one export: signed date,
+   activated or not, second invoice paid, ARPA. No integration. We'll show you your
+   leak and what's recoverable."* (See `VALIDATION.md`.)
 
 The demo's job is not to impress with modules. It is to make them say *"that's our
 problem, and nobody proves it today."*
 
-> Backstage note (do not lead with this): when you open an item in the Recovery
-> Queue, a rule-based engine already ranks it by expected value and suggests the
-> play (**Apply recommendation**). It's a quiet operator convenience — not part of
-> the pitch. The story stays **Identify → Recover → Prove**; the green number, not
-> the forecast, earns the budget.
+> Honest-loop note: we show **Action Taken**, never "Fixed." An action is observable
+> and sits in the audit trail; "fixed" is a claim we don't make until execution is
+> fully modeled (owner, task, SLA, completion proof). Saying only what we can prove
+> *is* the pitch — see `STRATEGY.md`.
+
+> Backstage note (do not lead with this): the Recovery Queue is quietly ranked by a
+> rule-based engine that also suggests the play (**Apply recommendation**). An
+> operator convenience, not the pitch. The green proven number — not the forecast —
+> earns the budget. See `docs/VISION.md` §7.
 
 ---
 
@@ -71,6 +76,11 @@ difference is exactly the $3,600 low-confidence event — and the $4,300 unclass
 recovery is in *no* total at all.
 
 ---
+
+## Deep-dive beats (optional — for a longer or more technical session)
+
+The 5-minute cut above is the demo. These beats are the slower module-by-module
+walkthrough when someone wants to see every surface.
 
 ## Beat 1 — "Two numbers we never blend" (Executive Dashboard)
 
@@ -137,12 +147,12 @@ recovery is in *no* total at all.
 ## Beat 5 — "Work the queue, prove a dollar" (Recovery Queue → live)
 
 1. Open **Recovery Queue** — open activation risks ranked by expected recoverable
-   value (**Stark Solutions $31,000** at risk on top).
+   value (**Stark Solutions $31,000** at risk on top — signed but not activated).
 2. Click **Stark Solutions (RE-1007)** to open the drawer. Then:
    - **Assign** an owner.
-   - **Record an action** (e.g. "Sent renewal outreach with ROI recap").
+   - **Record an action** (e.g. "Guided the account to its activation milestone").
    - Set **Collected = 31000** (baseline is $6,200).
-   - Set **Recovery Reason = Renewal Outreach**.
+   - Set **Recovery Reason = Milestone Nudge**.
    - Advance **Status → Recovered**.
 3. Watch **Revenue Returned** compute to **+$24,800** live, and confidence climb as
    reason/evidence/owner are filled in.
@@ -160,8 +170,9 @@ recovery is in *no* total at all.
 
 ## One-line close
 
-*"Revenue Recovery OS doesn't tell you revenue leaked. It recovers it, assigns it,
-fixes it, and hands your CFO a number that survives the audit — to the dollar."*
+*"Revenue Recovery OS doesn't tell you revenue leaked. It finds the leak, acts on
+it, recovers the cash, and hands your CFO a number that survives the audit — to the
+dollar."*
 
 ---
 
@@ -176,6 +187,6 @@ npm run build && npm run preview &      # serves on http://localhost:4173
 npm run screenshots                     # writes docs/screenshots/*.png
 ```
 
-This captures all 8 modules plus an event-detail drawer. (It was not run in the
-build sandbox here because that environment's network policy blocks the browser
-download — the script is ready to run wherever it doesn't.)
+This captures the Recovery Loop and every module plus an event-detail drawer. (It
+was not run in the build sandbox here because that environment's network policy
+blocks the browser download — the script is ready to run wherever it doesn't.)
