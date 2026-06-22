@@ -39,6 +39,7 @@ These live in `src/domain/invariants.ts` and are covered by
 | Recovery Queue | Prioritized worklist — assign, act, advance (the fix workflow) |
 | Recovery Events | Full record of every event; drill into the workflow drawer |
 | CFO Proof View | Audit-grade ledger of only auditable recovered revenue (+ CSV export) |
+| Reconciliation | Waterfall from gross recovered → auditable, with every excluded dollar named |
 | Attribution Engine | How dollars are credited, by reason / owner / stage, with methodology |
 | Recovery Reasons | Canonical taxonomy; flags unclassified (uncounted) events |
 | Confidence Score | Transparent scoring; low vs proof-grade split |

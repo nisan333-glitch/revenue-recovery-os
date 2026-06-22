@@ -19,12 +19,13 @@ mkdirSync(outDir, { recursive: true });
 const SHOTS = [
   ["Executive Dashboard", "01-executive-dashboard"],
   ["CFO Proof View", "02-cfo-proof-view"],
-  ["Attribution Engine", "03-attribution-engine"],
-  ["Recovery Queue", "04-recovery-queue"],
-  ["Recovery Events", "05-recovery-events"],
-  ["Recovery Reasons", "06-recovery-reasons"],
-  ["Confidence Score", "07-confidence-score"],
-  ["Audit Trail", "08-audit-trail"],
+  ["Reconciliation", "03-reconciliation"],
+  ["Attribution Engine", "04-attribution-engine"],
+  ["Recovery Queue", "05-recovery-queue"],
+  ["Recovery Events", "06-recovery-events"],
+  ["Recovery Reasons", "07-recovery-reasons"],
+  ["Confidence Score", "08-confidence-score"],
+  ["Audit Trail", "09-audit-trail"],
 ];
 
 const browser = await chromium.launch();
@@ -44,8 +45,8 @@ await page.getByRole("button", { name: "Recovery Events", exact: true }).click()
 await page.waitForTimeout(300);
 await page.getByText("Northwind Trading").first().click();
 await page.waitForTimeout(400);
-await page.screenshot({ path: `${outDir}/09-event-detail.png`, fullPage: true });
-console.log("captured", `${outDir}/09-event-detail.png`);
+await page.screenshot({ path: `${outDir}/10-event-detail.png`, fullPage: true });
+console.log("captured", `${outDir}/10-event-detail.png`);
 
 await browser.close();
 console.log("\nDone. Screenshots written to docs/screenshots/");

@@ -51,6 +51,27 @@ recovery is in *no* total at all.
    unclassified one. *"They're real events — they're just not proof."*
 5. Click **Export CSV** — the ledger leaves the building as an auditable file.
 
+## Beat 2b — "Show me the gap" (Reconciliation)
+
+1. Open **Reconciliation**. This is the view a CFO actually argues with.
+2. Walk the waterfall top to bottom:
+   - **Gross Recovered $87,700** — every dollar collected above baseline.
+   - **− Unclassified $4,300** → **Counted Recovered $83,400.**
+   - **− Low Confidence $3,600** → **CFO Auditable $79,800.**
+3. Point to the **Excluded Revenue by reason** table:
+
+   | Excluded | Amount |
+   |---|---:|
+   | Unclassified (no reason) | $4,300 |
+   | Low Confidence | $3,600 |
+   | Double Claim | $0 |
+   | Missing Proof | $0 |
+   | **Total excluded** | **$7,900** |
+
+4. Key line: *"Recovered is $83,400. Auditable is $79,800. The $3,600 gap isn't
+   hidden — it's one low-confidence event, named. And the $4,300 we collected but
+   can't explain counts for nothing. We don't count money we can't explain."*
+
 ## Beat 3 — "Nothing is counted on faith" (Confidence Score)
 
 1. Open **Confidence Score**.

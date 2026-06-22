@@ -6,6 +6,7 @@ import { ExecutiveDashboard } from "./modules/ExecutiveDashboard";
 import { RecoveryEventsTable } from "./modules/RecoveryEventsTable";
 import { RecoveryQueue } from "./modules/RecoveryQueue";
 import { CFOProofView } from "./modules/CFOProofView";
+import { Reconciliation } from "./modules/Reconciliation";
 import { AttributionEngine } from "./modules/AttributionEngine";
 import { AuditTrail } from "./modules/AuditTrail";
 import { RecoveryReasons } from "./modules/RecoveryReasons";
@@ -16,6 +17,7 @@ type ModuleKey =
   | "queue"
   | "events"
   | "cfo"
+  | "reconciliation"
   | "attribution"
   | "reasons"
   | "confidence"
@@ -24,6 +26,7 @@ type ModuleKey =
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "dashboard", label: "Executive Dashboard", group: "Prove" },
   { key: "cfo", label: "CFO Proof View", group: "Prove" },
+  { key: "reconciliation", label: "Reconciliation", group: "Prove" },
   { key: "attribution", label: "Attribution Engine", group: "Prove" },
   { key: "queue", label: "Recovery Queue", group: "Operate" },
   { key: "events", label: "Recovery Events", group: "Operate" },
@@ -96,6 +99,7 @@ export function App() {
           {active === "queue" && <RecoveryQueue />}
           {active === "events" && <RecoveryEventsTable />}
           {active === "cfo" && <CFOProofView />}
+          {active === "reconciliation" && <Reconciliation />}
           {active === "attribution" && <AttributionEngine />}
           {active === "reasons" && <RecoveryReasons />}
           {active === "confidence" && <ConfidencePanel />}
