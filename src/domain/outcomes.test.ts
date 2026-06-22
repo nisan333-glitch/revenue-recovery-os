@@ -11,21 +11,21 @@ const outcomes = outcomesByLeakage(events);
 const get = (t: string) => outcomes.find((o) => o.leakageType === t)!;
 
 describe("outcomes rollup", () => {
-  it("largest live problem (FailedPayment) leads, with forecast and proven separated", () => {
-    const fp = outcomes[0]!;
-    expect(fp.leakageType).toBe("FailedPayment");
-    expect(fp.atRisk).toBe(31000); // RE-1007 open
-    expect(fp.recoverable).toBe(17360); // forecast
-    expect(fp.recovered).toBe(36000); // RE-1001 19,200 + RE-1013 16,800 proven
-    expect(fp.auditable).toBe(36000);
+  it("largest live problem (RenewalAtRisk) leads, with forecast and proven separated", () => {
+    const top = outcomes[0]!;
+    expect(top.leakageType).toBe("RenewalAtRisk");
+    expect(top.atRisk).toBe(31000); // RE-1007 open
+    expect(top.recoverable).toBe(14880); // forecast (24,800 × 0.60)
+    expect(top.recovered).toBe(19200); // RE-1001 proven
+    expect(top.auditable).toBe(19200);
   });
 
   it("a problem can have proven recovery and zero open exposure", () => {
-    const be = get("BillingError"); // only RE-1003, recovered
-    expect(be.atRisk).toBe(0);
-    expect(be.recoverable).toBe(0);
-    expect(be.recovered).toBe(15000);
-    expect(be.openCount).toBe(0);
+    const es = get("ExpansionStalled"); // only RE-1004, recovered
+    expect(es.atRisk).toBe(0);
+    expect(es.recoverable).toBe(0);
+    expect(es.recovered).toBe(10500);
+    expect(es.openCount).toBe(0);
   });
 
   it("totals reconcile with the portfolio — forecast and proven each add up", () => {
@@ -34,7 +34,7 @@ describe("outcomes rollup", () => {
     const totalAuditable = outcomes.reduce((s, o) => s + o.auditable, 0);
     const m = portfolioMetrics(events);
 
-    expect(totalRecoverable).toBe(expectedRecoverable(events)); // 35,180 forecast
+    expect(totalRecoverable).toBe(expectedRecoverable(events)); // 33,900 forecast
     expect(totalRecovered).toBe(m.recoveredRevenue); // 83,400 proven
     expect(totalAuditable).toBe(m.auditableRevenue); // 79,800 proven
   });

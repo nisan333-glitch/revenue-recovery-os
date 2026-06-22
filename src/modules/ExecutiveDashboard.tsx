@@ -28,7 +28,7 @@ export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
     <div>
       <SectionHeader
         title="Executive Dashboard"
-        subtitle="Detected opportunity and proven recovery are reported separately — never blended."
+        subtitle="Revenue lost between signature and activation — found, recovered, and proven. Detected opportunity and proven recovery never blend."
       />
 
       {/* The two numbers that must never mix */}

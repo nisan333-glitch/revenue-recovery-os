@@ -13,14 +13,14 @@ const events = seedEvents();
 const byId = (id: string) => events.find((e) => e.eventId === id)!;
 
 describe("recommendation playbook", () => {
-  it("recommends the right play for RE-1007 (FailedPayment) with exact expected value", () => {
+  it("recommends the right play for RE-1007 (RenewalAtRisk) with exact expected value", () => {
     const rec = recommend(byId("RE-1007"));
-    // risk 31,000 − baseline 6,200 = 24,800 impact; × 0.70 = 17,360
-    expect(rec.recommendedReason).toBe("DunningRetry");
+    // risk 31,000 − baseline 6,200 = 24,800 impact; × 0.60 = 14,880
+    expect(rec.recommendedReason).toBe("RenewalOutreach");
     expect(rec.expectedImpact).toBe(24800);
-    expect(rec.probabilityOfSuccess).toBe(0.7);
-    expect(rec.expectedValue).toBe(17360);
-    expect(rec.effort).toBe("Low");
+    expect(rec.probabilityOfSuccess).toBe(0.6);
+    expect(rec.expectedValue).toBe(14880);
+    expect(rec.effort).toBe("Medium");
   });
 
   it("expectedImpact is clamped at zero and equals risk − baseline", () => {
@@ -37,8 +37,11 @@ describe("recommendation playbook", () => {
   });
 
   it("expectedRecoverable sums expected value over OPEN events only", () => {
-    // RE-1007 17,360 + RE-1008 6,500 + RE-1009 3,520 + RE-1010 7,800 = 35,180
-    expect(expectedRecoverable(events)).toBe(35180);
+    // RE-1007 RenewalAtRisk 24,800×0.60 = 14,880
+    // RE-1008 ActivationMissed 10,000×0.55 = 5,500
+    // RE-1009 StalledOnboarding 8,800×0.65 = 5,720
+    // RE-1010 NoFirstValue 15,600×0.50 = 7,800  → total 33,900
+    expect(expectedRecoverable(events)).toBe(33900);
   });
 
   it("forecast never reads from terminal events (recovered/failed/dismissed)", () => {

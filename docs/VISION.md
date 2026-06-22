@@ -69,11 +69,14 @@ Finance *defends* tools that survive an audit — that is the moat and the reten
 > Detection and prediction are how you *fill* the ledger later; Proof is why anyone
 > keeps paying.
 
-- **Correct wedge / first customer:** Subscription/SaaS or e-commerce RevOps +
-  Finance, where leakage is already quantifiable.
-- **Highest-ROI first use case:** failed-payment / dunning / involuntary-churn
-  recovery — because **baseline and collected are both measurable from a single
-  billing system**, sidestepping the multi-integration cold-start trap entirely.
+- **Correct wedge / first customer:** Subscription/SaaS, $2–50M ARR, where the
+  signed→activated→second-invoice journey is owned by Customer Success / RevOps.
+- **First use case (founder decision):** **Onboarding / Activation Recovery** —
+  *signed → never activated → second invoice never happened.* Billing/dunning
+  recovery is easier to prove from a single system, but it is **crowded** (Stripe,
+  Chargebee, Churnbuster) and **low on buyability** (selling into a solved problem).
+  On the four parameters — pain · proof · crowding · **buyability** — Activation is
+  the strongest entry. (See the wedge table in the build plan.)
 - **Why it defends itself:** the output is a number Finance signs off on. Once it
   is in the board deck, removing it is removing proven revenue.
 

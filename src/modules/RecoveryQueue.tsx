@@ -36,7 +36,7 @@ export function RecoveryQueue() {
     <div>
       <SectionHeader
         title="Recovery Queue"
-        subtitle="Open opportunities, ranked by expected recoverable value (impact × probability). This is the fix workflow."
+        subtitle="Open activation risks (signed → not yet activated → next invoice at risk), ranked by expected recoverable value. This is the fix workflow."
         right={
           <div className="text-right">
             <div className="text-sm text-slate-400">

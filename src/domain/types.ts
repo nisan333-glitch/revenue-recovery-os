@@ -3,21 +3,20 @@
 // recovery "engine" that could later run server-side or behind agents.
 
 export type FunnelStage =
-  | "Lead"
-  | "Trial"
-  | "Checkout"
+  | "Signed"
   | "Onboarding"
+  | "Activation"
+  | "FirstValue"
   | "Renewal"
   | "Expansion";
 
 export type LeakageType =
-  | "FailedPayment"
-  | "InvoluntaryChurn"
-  | "AbandonedCheckout"
-  | "ExpiredCard"
-  | "FailedRenewal"
-  | "Downgrade"
-  | "BillingError";
+  | "StalledOnboarding"
+  | "ActivationMissed"
+  | "NoFirstValue"
+  | "LowAdoption"
+  | "RenewalAtRisk"
+  | "ExpansionStalled";
 
 // Lifecycle of a recovery event: Detect -> Queue -> Assign -> Fix -> Prove.
 export type RecoveryStatus =
@@ -32,14 +31,13 @@ export type RecoveryStatus =
 // Canonical recovery reasons live in reasons.ts. Nullable on purpose:
 // an event without a reason is NOT counted as proven recovery.
 export type RecoveryReason =
-  | "DunningRetry"
-  | "CardUpdater"
-  | "ManualOutreach"
-  | "DiscountOffer"
-  | "BillingFix"
-  | "PaymentMethodSwitch"
-  | "RenewalNudge"
-  | "CheckoutRescue"
+  | "OnboardingReboot"
+  | "MilestoneNudge"
+  | "EnablementSession"
+  | "CSMOutreach"
+  | "ExecBusinessReview"
+  | "RenewalOutreach"
+  | "UsageActivation"
   | null;
 
 export interface AuditEntry {

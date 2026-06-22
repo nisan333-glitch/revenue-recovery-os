@@ -131,13 +131,13 @@ recovery is in *no* total at all.
 
 ## Beat 5 — "Work the queue, prove a dollar" (Recovery Queue → live)
 
-1. Open **Recovery Queue** — open events ranked by risk × confidence
-   (**Stark Solutions $31,000** on top).
+1. Open **Recovery Queue** — open activation risks ranked by expected recoverable
+   value (**Stark Solutions $31,000** at risk on top).
 2. Click **Stark Solutions (RE-1007)** to open the drawer. Then:
    - **Assign** an owner.
-   - **Record an action** (e.g. "Scheduled smart retry").
+   - **Record an action** (e.g. "Sent renewal outreach with ROI recap").
    - Set **Collected = 31000** (baseline is $6,200).
-   - Set **Recovery Reason = Dunning Retry**.
+   - Set **Recovery Reason = Renewal Outreach**.
    - Advance **Status → Recovered**.
 3. Watch **Revenue Returned** compute to **+$24,800** live, and confidence climb as
    reason/evidence/owner are filled in.

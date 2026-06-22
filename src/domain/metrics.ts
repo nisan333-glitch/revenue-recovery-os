@@ -62,10 +62,10 @@ export interface Bucket {
 
 export function byStage(events: RecoveryEvent[]): Bucket[] {
   const stages: FunnelStage[] = [
-    "Lead",
-    "Trial",
-    "Checkout",
+    "Signed",
     "Onboarding",
+    "Activation",
+    "FirstValue",
     "Renewal",
     "Expansion",
   ];

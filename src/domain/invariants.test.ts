@@ -15,8 +15,8 @@ function ev(partial: Partial<RecoveryEvent>): RecoveryEvent {
     eventId: "e1",
     customer: "Acme",
     funnelStage: "Renewal",
-    leakageType: "FailedPayment",
-    recoveryReason: "DunningRetry",
+    leakageType: "RenewalAtRisk",
+    recoveryReason: "RenewalOutreach",
     owner: "Dana",
     status: "Recovered",
     riskAmount: 1000,
@@ -51,7 +51,7 @@ describe("rule 2: no reason => not counted", () => {
   it("excludes unclassified recovered events", () => {
     const noReason = ev({ recoveryReason: null, status: "Recovered" });
     expect(isCounted(noReason)).toBe(false);
-    const withReason = ev({ recoveryReason: "DunningRetry" });
+    const withReason = ev({ recoveryReason: "RenewalOutreach" });
     expect(isCounted(withReason)).toBe(true);
   });
 });

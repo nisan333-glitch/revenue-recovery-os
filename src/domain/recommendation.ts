@@ -29,75 +29,65 @@ export interface PlaybookEntry {
 // Priors are deliberately conservative and human-readable. The Learning layer
 // (Phase 3) will blend these with realized success rates from proven events.
 export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
-  FailedPayment: {
-    rootCause: "A charge failed (insufficient funds / bank decline), not a churn decision.",
-    recommendedReason: "DunningRetry",
+  StalledOnboarding: {
+    rootCause: "Onboarding stalled after signature — kickoff/setup never progressed.",
+    recommendedReason: "OnboardingReboot",
     recommendedActions: [
-      "Schedule a smart retry at an optimized time",
-      "Prompt the customer to confirm or switch payment method",
-    ],
-    probabilityOfSuccess: 0.7,
-    effort: "Low",
-  },
-  ExpiredCard: {
-    rootCause: "The card on file expired or rotated — collection is blocked by stale credentials.",
-    recommendedReason: "CardUpdater",
-    recommendedActions: [
-      "Run network Account Updater to refresh the card",
-      "Auto-charge the refreshed card",
+      "Re-kick off with a fresh onboarding plan and a named owner",
+      "Book the first setup milestone within 7 days",
     ],
     probabilityOfSuccess: 0.65,
+    effort: "Medium",
+  },
+  ActivationMissed: {
+    rootCause: "The account never reached its activation milestone (the 'aha') by day N.",
+    recommendedReason: "MilestoneNudge",
+    recommendedActions: [
+      "Guide the account to the specific activation milestone",
+      "Trigger the in-product activation flow",
+    ],
+    probabilityOfSuccess: 0.55,
     effort: "Low",
   },
-  FailedRenewal: {
-    rootCause: "A renewal stalled — usually inertia or unproven value, not a hard cancel.",
-    recommendedReason: "RenewalNudge",
+  NoFirstValue: {
+    rootCause: "Technically live, but the account has not yet reached first value.",
+    recommendedReason: "EnablementSession",
     recommendedActions: [
-      "Send a value-based renewal nudge with a usage report",
-      "Offer to walk through ROI before the term lapses",
+      "Run a focused enablement/training session",
+      "Map the fastest path to a first value event",
     ],
     probabilityOfSuccess: 0.5,
     effort: "Medium",
   },
-  AbandonedCheckout: {
-    rootCause: "The customer dropped at the payment step — intent was high, friction won.",
-    recommendedReason: "CheckoutRescue",
+  LowAdoption: {
+    rootCause: "Weak usage is putting the next invoice at risk — adoption never took hold.",
+    recommendedReason: "CSMOutreach",
     recommendedActions: [
-      "Trigger the checkout-rescue follow-up flow",
-      "Offer a one-click resume link",
-    ],
-    probabilityOfSuccess: 0.4,
-    effort: "Low",
-  },
-  InvoluntaryChurn: {
-    rootCause: "An account is lapsing without an explicit decision — recoverable with a human touch.",
-    recommendedReason: "ManualOutreach",
-    recommendedActions: [
-      "Have the CS/AM owner reach out personally",
-      "Confirm intent and remove the blocker to pay",
+      "Have the CSM reach out personally to unblock adoption",
+      "Identify and remove the top usage blocker",
     ],
     probabilityOfSuccess: 0.45,
     effort: "High",
   },
-  Downgrade: {
-    rootCause: "The account intends to reduce spend — a retention/save play can hold value.",
-    recommendedReason: "DiscountOffer",
+  RenewalAtRisk: {
+    rootCause: "The renewal / second invoice has stalled — inertia or unproven value.",
+    recommendedReason: "RenewalOutreach",
     recommendedActions: [
-      "Extend a targeted save/loyalty offer",
-      "Reframe the tier on the value they actually use",
+      "Direct renewal outreach with a value/usage recap",
+      "Confirm the second invoice before the term lapses",
     ],
-    probabilityOfSuccess: 0.5,
+    probabilityOfSuccess: 0.6,
     effort: "Medium",
   },
-  BillingError: {
-    rootCause: "A billing/config error blocks an invoice the customer is willing to pay.",
-    recommendedReason: "BillingFix",
+  ExpansionStalled: {
+    rootCause: "An expansion opportunity stalled — value not re-established with the buyer.",
+    recommendedReason: "ExecBusinessReview",
     recommendedActions: [
-      "Diagnose the misconfiguration (tax rule, plan mapping)",
-      "Correct it and re-issue the invoice",
+      "Run an executive business review tying usage to ROI",
+      "Re-open the expansion with a quantified case",
     ],
-    probabilityOfSuccess: 0.8,
-    effort: "Medium",
+    probabilityOfSuccess: 0.4,
+    effort: "High",
   },
 };
 
