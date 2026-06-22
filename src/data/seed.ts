@@ -177,9 +177,9 @@ export function seedEvents(): RecoveryEvent[] {
     make({
       eventId: "RE-1007",
       customer: "Stark Solutions",
-      funnelStage: "Renewal",
-      leakageType: "RenewalAtRisk",
-      recoveryReason: "RenewalOutreach",
+      funnelStage: "Activation",
+      leakageType: "ActivationMissed",
+      recoveryReason: "MilestoneNudge",
       owner: null,
       status: "Detected",
       riskAmount: 31000,
@@ -187,11 +187,11 @@ export function seedEvents(): RecoveryEvent[] {
       collectedAmount: 0,
       confidence: 20,
       actionsTaken: [],
-      evidenceNotes: "Renewal / second invoice stalled (no response to renewal notice). Awaiting outreach play.",
+      evidenceNotes: "Signed but never reached the activation milestone by day 30; the second invoice ($31,000 ARR) is at risk. Awaiting a milestone-nudge play.",
       createdAt: "2026-06-18T07:00:00.000Z",
       updatedAt: "2026-06-18T07:00:00.000Z",
       audit: [
-        entry("2026-06-18T07:00:00.000Z", "system", "created", "Detected stalled renewal — second invoice at risk ($31,000)"),
+        entry("2026-06-18T07:00:00.000Z", "system", "created", "Detected activation milestone missed — second invoice at risk ($31,000)"),
       ],
     } as Seed),
     make({

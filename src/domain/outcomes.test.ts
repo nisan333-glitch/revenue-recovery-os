@@ -11,13 +11,13 @@ const outcomes = outcomesByLeakage(events);
 const get = (t: string) => outcomes.find((o) => o.leakageType === t)!;
 
 describe("outcomes rollup", () => {
-  it("largest live problem (RenewalAtRisk) leads, with forecast and proven separated", () => {
+  it("largest live problem (ActivationMissed) leads, with forecast and proven separated", () => {
     const top = outcomes[0]!;
-    expect(top.leakageType).toBe("RenewalAtRisk");
-    expect(top.atRisk).toBe(31000); // RE-1007 open
-    expect(top.recoverable).toBe(14880); // forecast (24,800 × 0.60)
-    expect(top.recovered).toBe(19200); // RE-1001 proven
-    expect(top.auditable).toBe(19200);
+    expect(top.leakageType).toBe("ActivationMissed");
+    expect(top.atRisk).toBe(43500); // RE-1007 31,000 + RE-1008 12,500 open
+    expect(top.recoverable).toBe(19140); // forecast (13,640 + 5,500)
+    expect(top.recovered).toBe(18300); // RE-1002 7,700 + RE-1014 10,600 proven
+    expect(top.auditable).toBe(18300);
   });
 
   it("a problem can have proven recovery and zero open exposure", () => {
@@ -34,7 +34,7 @@ describe("outcomes rollup", () => {
     const totalAuditable = outcomes.reduce((s, o) => s + o.auditable, 0);
     const m = portfolioMetrics(events);
 
-    expect(totalRecoverable).toBe(expectedRecoverable(events)); // 33,900 forecast
+    expect(totalRecoverable).toBe(expectedRecoverable(events)); // 32,660 forecast
     expect(totalRecovered).toBe(m.recoveredRevenue); // 83,400 proven
     expect(totalAuditable).toBe(m.auditableRevenue); // 79,800 proven
   });

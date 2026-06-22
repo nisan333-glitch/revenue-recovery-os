@@ -14,12 +14,12 @@ describe("recovery loop summary", () => {
     expect(loop.opportunity).toBe(200200);
     expect(loop.identifiedCount).toBe(14);
     expect(loop.openCount).toBe(4);
-    expect(loop.recoverableForecast).toBe(33900); // forecast, not proven
+    expect(loop.recoverableForecast).toBe(32660); // forecast, not proven
   });
 
   it("Fix: dominant play = the biggest live problem's recommended play; applied narrows", () => {
-    // Largest open exposure is the stalled renewal (RE-1007, $31k).
-    expect(loop.recommendedPlay).toBe("RenewalOutreach");
+    // Largest open exposure is the missed activation (RE-1007, $31k second invoice).
+    expect(loop.recommendedPlay).toBe("MilestoneNudge");
     // Acted on = not Detected/Queued/Dismissed → 11 of 14.
     expect(loop.appliedCount).toBe(11);
   });
