@@ -65,7 +65,7 @@ covered by `invariants.test.ts`, `recommendation.test.ts`, and `outcomes.test.ts
 
 | Module | Purpose |
 |---|---|
-| **Recovery Loop** | The front door — the whole loop on one screen, outside-in: how much was found (Opportunity), how much came back (Returned), how it was proven. Identify → Fix → Prove |
+| **Recovery Loop** | The front door — the 15-second executive answer in five numbers: Money At Risk → Recovery Opportunity → Actions Taken → Revenue Returned → Auditable Revenue. Forecast and proven never blended |
 | Executive Dashboard | Detected opportunity vs proven recovery, money recovered, trends |
 | Recovery Queue | Prioritized worklist — assign, act, advance (the fix workflow) |
 | Recovery Events | Full record of every event; drill into the workflow drawer |
