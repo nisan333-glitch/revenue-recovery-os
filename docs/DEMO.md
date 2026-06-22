@@ -14,9 +14,13 @@ For a prospect (VP CS / RevOps), do NOT tour features. Tell the one story:
 **Identify → Recover → Prove**, anchored on *their* leak (activation), with the cash
 at the end.
 
-1. **(0–1 min) The frame.** "You have money falling between signature and
-   activation. We find it, recover it, and prove how much came back — to the
-   dollar." No feature names.
+1. **(0–1 min) The frame — open on the Recovery Loop.** This is the front door:
+   one screen, read top-down. *"How much money was found?"* **Opportunity
+   ($200,200)**. *"How much came back?"* **Revenue Returned ($83,400)**. *"How do
+   you know?"* **CFO-Auditable ($79,800)**. The funnel underneath tells the story —
+   Opportunity → Detected (14 accounts) → Recommended play → Applied (11 processed)
+   → Returned → Auditable. No feature names; the customer sees Identify → Fix → Prove
+   in one glance. Forecast (amber) and proven (green) are never added together.
 2. **(1–3 min) Identify — the leak is real and separated.** Executive Dashboard:
    **Detected Opportunity ($71,800)** is amber and labeled *potential, not revenue*;
    **Proven Recovered ($83,400)** is green. "We never blend the two. Most tools show
