@@ -23,6 +23,12 @@ architecture.
 
 ## The Constitution (never blend)
 
+> **North star: every recovered dollar must be explainable.** Revenue Returned says
+> where the money came from; Auditable Revenue proves it. This is the *vocation*, not a
+> rule — it needs no test, it directs every test. The three rules below are how we
+> enforce it. (Full treatment in [`docs/STRATEGY.md`](docs/STRATEGY.md) → "Explainability
+> is the product.")
+
 1. Forecast ≠ Proof
 2. Prediction ≠ Recovery
 3. Recovery ≠ Auditable Revenue

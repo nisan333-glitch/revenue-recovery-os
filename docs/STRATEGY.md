@@ -75,6 +75,40 @@ The day a forecast is mixed into a proven number, the moat disappears.
 
 ---
 
+## Explainability is the product
+
+The Constitution above is not arbitrary. It exists to serve one north star:
+
+> **Every recovered dollar must be explainable.** Revenue Returned says where the money
+> came from; Auditable Revenue proves it.
+
+This is the *vocation*, not a rule — the way "increase the GDP of the internet" or
+"customer obsession" are vocations, not invariants. It needs no test; it directs every
+test. It is the answer to *why* the Constitution exists at all: why forecast and proof
+must never blend, why a baseline is mandatory, why Auditable is a stricter subset of
+Returned, and why **every proven dollar must trace back to a Recovery Case.**
+
+**A CFO does not buy a number — they buy the ability to check it.** The moment that
+wins is not *"I believe you,"* it is *"I can audit you."* Verifiability beats
+credibility, because every vendor claims credibility and a CFO has learned to discount
+it. *"You can check us"* is the opposite of a sales posture — which is precisely why it
+closes.
+
+This reframes the category. What is being built is not only Revenue Recovery — it is
+**Revenue Recovery + Revenue Explainability.** Many companies *detect* problems. Few
+actually *return* money. Almost none can show, on one screen, the full chain:
+
+```
+Auditable Revenue → Case → Owner → Action → Evidence → Audit Trail
+```
+
+In the product this is literal and clickable: click `Auditable Revenue` → the auditable
+case ledger → a single Case → its owner, the action taken, the proof event, and the
+append-only audit trail. Explainability is not a report we attach to recovery; **it is
+the product.**
+
+---
+
 ## Product Wedge
 
 Primary wedge:
