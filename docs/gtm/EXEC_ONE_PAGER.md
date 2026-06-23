@@ -30,8 +30,10 @@ Recovered = (treated conversion − baseline conversion) × ARPA × stalled acco
 
 Baseline comes from your history, not a guess. We never claim revenue that would
 have come back anyway. Every recovered dollar traces to a paid invoice, with a
-timestamped audit trail. Three separate books — **Returned, Protected, Opportunity**
-— never blended. *We don't count money we can't explain.*
+timestamped audit trail. Three terms, never blended: **Recovery Opportunity**
+(forecast), **Revenue Returned** (proven cash = Collected − Baseline), and
+**Auditable Revenue** (the CFO-signable subset). *We don't count money we can't
+explain.*
 
 ## What it's worth (illustrative)
 

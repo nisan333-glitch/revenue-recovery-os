@@ -29,6 +29,11 @@ return money they lose today → deal.
 | 5 · Show the leak | [`ROI_CALCULATOR.md`](ROI_CALCULATOR.md) | size *their* leak from one CSV |
 | 6 · Leave-behind | [`EXEC_ONE_PAGER.md`](EXEC_ONE_PAGER.md) | one-page exec narrative |
 
+The narrative funnel — same three terms at every stage, never blended:
+**[`PITCH_60S.md`](PITCH_60S.md) (60s) → `EXEC_ONE_PAGER.md` (1 page) →
+[`../DEMO.md`](../DEMO.md) (5 min) → `ROI_CALCULATOR.md` (their leak).** Open every
+conversation with the 60-second pitch.
+
 Proof method behind the numbers: [`../PROOF_MODEL.md`](../PROOF_MODEL.md).
 Full program rationale: [`../VALIDATION.md`](../VALIDATION.md).
 
