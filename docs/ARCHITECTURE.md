@@ -119,6 +119,12 @@ unproven agents validate nothing and create 100× the noise (VISION.md §2.4 —
 is an org chart, not an MVP"*). The bottleneck is demand, not design — the foundation is
 already here.
 
+**The standing design test.** Every architectural decision from here is evaluated through
+one lens: *does it preserve the path to 50–100 specialized agents without redesign?* This
+sits alongside the Build Filter — the Build Filter governs whether to build a thing *now*;
+this test governs whether a thing built now **forecloses the swarm later.** If a change
+would make agent #14 require a schema / ledger / invariant change, it is wrong.
+
 ## Deliberately deferred
 
 No backend, no auth, no graph database, no agents, no live integrations. These are

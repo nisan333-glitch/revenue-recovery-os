@@ -203,3 +203,9 @@ You → BPO → client → CRM → data        (vs. the direct:  You → client 
 More hops = slower first proof. The BPO is the best **scale channel** *after* the model is
 proven — but for the **first proven event**, prefer whoever gives the cleanest, most direct
 data access. A plain company with its own data beats a BPO for proving event #1.
+
+**7 · What the BPO validates — and what it doesn't.** It validates **portability and
+distribution**: the same Recovery Agent works across many organizations and industries
+because it attaches to a **revenue-failure pattern, not a business type.** It is **not** a
+product pivot — Revenue Recovery OS is not BPO / workforce-management / call-center
+software. Same product, wider reach.
