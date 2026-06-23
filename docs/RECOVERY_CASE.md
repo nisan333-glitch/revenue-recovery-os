@@ -89,6 +89,57 @@ actually fired for this account.
   `canBeCase(signal): boolean` at the data boundary — the same place a real
   CRM / CS / Billing feed would enter.
 
+### Detector v0 — the first Discovery experiment (spec; build-on-CSV)
+
+The narrowest first implementation of the `canBeCase` enforcement point above. It is **a
+scientific experiment, not a platform**: *can the system discover a valid Recovery Case
+without a human pointing to it first?* Success is a valid Case **surfaced**, not a dollar
+recovered.
+
+**The detector** is one **pure function** applying a *single* creationRule to a **batch
+CSV** — no integration, no scheduler:
+
+```ts
+// Input = the CSV gtm already asks for: account, signedDate, activatedDate|null, nextInvoiceAmount
+detectActivationMisses(rows, asOf, thresholdDays = 30): CandidateSignal[]
+  // → for each row with activatedDate == null AND daysSince(signedDate) ≥ thresholdDays
+
+const cases = detectActivationMisses(rows, today)
+  .filter(canBeCase)       // for ONE type, collapses to amountAtRisk ≥ economicThreshold
+  .map(toRecoveryEvent);   // → existing RecoveryEvent(status: Detected)
+```
+
+The **only new code** is the parser, `detect()`, `canBeCase`, and a trivial mapper —
+everything downstream (prioritization, recommendation, baseline, proof, audit, the Recovery
+Loop) is reused unchanged.
+
+**Agent Contract** (per the model in [`ARCHITECTURE.md`](ARCHITECTURE.md)):
+
+| Field | Detector v0 |
+|---|---|
+| Inputs | one batch CSV (`account, signedDate, activatedDate, nextInvoiceAmount`) |
+| Outputs | `ActivationMissed` Cases (status `Detected`) |
+| **Authority** | **detect & create candidates only** — never assigns, acts, or claims money |
+| **Success metric** | **precision** — % of surfaced Cases the customer confirms *real AND previously-unmanaged* (target ≈ ≥80%) |
+| Evidence | each Case carries its source row + the fired rule |
+
+**Why `ActivationMissed` first.** The decisive criterion is the **ownership gap**, not signal
+cleanliness. ActivationMissed is the sweet spot — a clean, binary, already-logged signal that
+still lands in a real Sales→CS gap. `FailedPayment` has the *cleanest* signal but **no gap**
+(dunning already watches it), so surfacing it fails the discovery hypothesis (*"we already see
+those"*). So Activation is both the wedge and the right first detector.
+
+**Data precondition.** Precision rests entirely on a **clean, customer-defined "activated"
+flag** — the first dataset must have an unambiguous `activated: yes/no` (their milestone
+definition, not ours).
+
+**Discipline & trigger.** Detect-only computes **no money**, so baseline / attribution /
+auditability / the Constitution are structurally untouched. **Batch first;** "continuous
+discovery" is the same pure function scheduled later (operational, deferred). Build it **only
+when a real CSV is in hand** (the [`gtm/SCOREBOARD.md`](gtm/SCOREBOARD.md) *"run it on our
+data"* trigger). Validation = *confirmed surfacing* (precision); recovered dollars come later
+through the existing loop.
+
 ## 3. Two schemas — RecoveryType Definition vs Recovery Case
 
 A sharp **Type → Instance** separation, like `Account → Opportunity` or
