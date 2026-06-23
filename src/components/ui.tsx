@@ -10,12 +10,15 @@ export function StatCard({
   sub,
   tone = "neutral",
   hint,
+  onClick,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "proof" | "detect" | "neutral";
   hint?: string;
+  /** When set, the card becomes a clickable drill-down (e.g. money → its cases). */
+  onClick?: () => void;
 }) {
   const ring =
     tone === "proof"
@@ -29,8 +32,14 @@ export function StatCard({
       : tone === "detect"
         ? "text-detect-500"
         : "text-slate-100";
+  const clickable = Boolean(onClick);
   return (
-    <div className={`rounded-xl border ${ring} bg-ink-800/60 p-4`}>
+    <div
+      onClick={onClick}
+      className={`rounded-xl border ${ring} bg-ink-800/60 p-4 ${
+        clickable ? "cursor-pointer transition hover:bg-ink-700/60" : ""
+      }`}
+    >
       <div className="flex items-center justify-between">
         <span className="text-xs uppercase tracking-wide text-slate-400">
           {label}
@@ -41,8 +50,9 @@ export function StatCard({
           </span>
         )}
       </div>
-      <div className={`mt-2 text-2xl font-semibold tabular-nums ${accent}`}>
-        {value}
+      <div className={`mt-2 flex items-center justify-between text-2xl font-semibold tabular-nums ${accent}`}>
+        <span>{value}</span>
+        {clickable && <span className="text-sm" aria-hidden>→</span>}
       </div>
       {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
     </div>

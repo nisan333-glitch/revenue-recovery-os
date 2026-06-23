@@ -68,9 +68,10 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
             <StatCard
               label="Auditable Revenue"
               value={money(loop.auditable)}
-              sub="CFO-signed · proof-grade"
+              sub="CFO-signed · click for the cases"
               tone="proof"
               hint="The CFO-grade subset of Returned (proof-grade confidence + reason + positive uplift)."
+              onClick={() => onOpen("cfo")}
             />
           </div>
         </div>
@@ -156,8 +157,8 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
           label="Auditable Revenue"
           value={money(loop.auditable)}
           note="proof-grade subset, CFO signed off"
-          onClick={() => onOpen("audit")}
-          cta="See the audit trail →"
+          onClick={() => onOpen("cfo")}
+          cta="See the auditable cases →"
         />
       </Panel>
 
