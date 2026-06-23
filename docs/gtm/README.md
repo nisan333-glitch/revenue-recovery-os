@@ -4,6 +4,10 @@
 longer in the product; it's in proving someone will *pay*. These assets exist to run
 **10–15 focused discovery conversations** and decide go / pivot — nothing more.
 
+> **Update [`SCOREBOARD.md`](SCOREBOARD.md) weekly — and nothing else.** It is the only
+> metric that counts now. The single sentence that authorizes building again is *"show
+> me that on our data."*
+
 ## The wedge
 
 **Onboarding / Activation Recovery** — `Signed → Not Activated → Next Invoice At Risk`.

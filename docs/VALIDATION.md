@@ -2,6 +2,9 @@
 
 **Status: engines frozen.** No new product is built until this program returns a
 positive signal. The bottleneck is no longer architecture — it is **demand proof.**
+The single living metric is [`gtm/SCOREBOARD.md`](gtm/SCOREBOARD.md) — updated weekly,
+and the only thing that is. Building resumes on one sentence: *"show me that on our
+data."*
 
 > **Ready-to-use assets live in [`gtm/`](gtm/):** the 60-second pitch
 > ([`PITCH_60S.md`](gtm/PITCH_60S.md) — open every conversation with it), ICP,
