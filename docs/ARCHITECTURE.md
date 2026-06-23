@@ -37,6 +37,11 @@ Because this layer is pure, it can later run **server-side, behind an API, or
 inside agents** unchanged. The UI computes nothing important itself — it asks the
 domain.
 
+> **The governed object lives here.** `RecoveryEvent` (`types.ts`) **is** the Recovery
+> Case instance; `PLAYBOOK[leakageType]` (`recommendation.ts`) **is** the RecoveryType
+> Definition that creates it. A new recovery workflow is a new Definition, not a schema
+> change. See [`RECOVERY_CASE.md`](RECOVERY_CASE.md).
+
 ### `data/` — swappable persistence
 
 `RecoveryRepository` is the only thing the app knows about storage.

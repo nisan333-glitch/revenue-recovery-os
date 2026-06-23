@@ -107,6 +107,12 @@ Activation Recovery is the **first recovery workflow**, not the final product.
 
 The product is **Revenue Recovery OS**.
 
+> **The governed object.** What the product governs is the **Recovery Case** — the one
+> canonical object every workflow instantiates. A *Recovery Opportunity* is its forecast
+> view, not the object. Each recovery type is a **RecoveryType Definition** (a governed
+> unit: creation rule + economic threshold + proof event + default play). A new workflow
+> is a new Definition, never a new object. See [`RECOVERY_CASE.md`](RECOVERY_CASE.md).
+
 Activation Recovery is simply the first workflow because it has:
 
 * clear pain

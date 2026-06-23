@@ -41,6 +41,10 @@ forecast is summed into a proven number, the moat is gone.
 > "Revenue Protected" (counterfactual avoided loss) is a *deferred* future concept,
 > not a current ledger. Do not present or count it as if it exists.
 
+> **The governed object is the Recovery Case** (instance of a RecoveryType; in code,
+> `RecoveryEvent` created from `PLAYBOOK[leakageType]`). *Recovery Opportunity* is its
+> forecast view, never the object. See [`docs/RECOVERY_CASE.md`](docs/RECOVERY_CASE.md).
+
 ## The wedge (first workflow, not the category)
 
 **Activation Recovery**: Signed → Onboarding → Activation → First Value → Second
