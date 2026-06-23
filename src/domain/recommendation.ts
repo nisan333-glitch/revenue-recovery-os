@@ -13,10 +13,39 @@ import { OPEN_STATUSES } from "./types";
 
 export type Effort = "Low" | "Medium" | "High";
 
+// A PlaybookEntry is the RecoveryType Definition (the template / governed unit) for
+// one LeakageType. It owns *when* a Case opens (creationRule), *whether it is worth
+// opening* (economicThreshold), *how it proves out* (expectedProofEvent), *what to
+// do* (recommendedReason = the defaultPlay), and the forecast priors. A new recovery
+// workflow ships as one entry here — never a change to the Case schema or invariants.
+// See docs/RECOVERY_CASE.md (§3a). All of this is FORECAST/metadata; none of it is
+// proven money.
 export interface PlaybookEntry {
   /** Plain-language diagnosis of why the money is at risk. */
   rootCause: string;
-  /** The play we recommend — a canonical recovery reason. */
+  /**
+   * The concrete trigger that mints a Case of this type — the operational form of
+   * admission criterion 1's "measurable risk". Lives on the type, never copied onto
+   * each Case; the Case's evidence records that the rule fired.
+   */
+  creationRule: string;
+  /**
+   * Materiality floor: the minimum dollars at risk that justify opening a Case of
+   * this type. Refines admission criterion 1 to `amountAtRisk ≥ economicThreshold`
+   * (you open a Case on $70k, not $7). Metadata for now — read by the future
+   * `canBeCase` gate, NOT by recommend(). Values here are illustrative defaults.
+   */
+  economicThreshold: number;
+  /**
+   * The concrete future money event that will confirm recovery (admission
+   * criterion 3 made explicit) — e.g. "second invoice paid". Lives on the type.
+   */
+  expectedProofEvent: string;
+  /**
+   * The play we recommend — a canonical recovery reason. This IS the type's
+   * `defaultPlay` (the Case's applied `recoveryReason` defaults from it). Kept as
+   * `recommendedReason` to avoid churning recommend() and its tests.
+   */
   recommendedReason: NonNullable<RecoveryReason>;
   /** Concrete next steps the owner should take. */
   recommendedActions: string[];
@@ -31,6 +60,9 @@ export interface PlaybookEntry {
 export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
   StalledOnboarding: {
     rootCause: "Onboarding stalled after signature — kickoff/setup never progressed.",
+    creationRule: "Signed but onboarding has not progressed past kickoff after X days.",
+    economicThreshold: 5000,
+    expectedProofEvent: "Onboarding milestone reached and the account resumes setup.",
     recommendedReason: "OnboardingReboot",
     recommendedActions: [
       "Re-kick off with a fresh onboarding plan and a named owner",
@@ -41,6 +73,9 @@ export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
   },
   ActivationMissed: {
     rootCause: "The account never reached its activation milestone (the 'aha') by day N.",
+    creationRule: "Signed but not activated after X days.",
+    economicThreshold: 5000,
+    expectedProofEvent: "Activation milestone reached and the second invoice is paid.",
     recommendedReason: "MilestoneNudge",
     recommendedActions: [
       "Guide the account to the specific activation milestone",
@@ -51,6 +86,9 @@ export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
   },
   NoFirstValue: {
     rootCause: "Technically live, but the account has not yet reached first value.",
+    creationRule: "Live but no first-value event recorded after X days.",
+    economicThreshold: 5000,
+    expectedProofEvent: "First value event recorded and usage begins.",
     recommendedReason: "EnablementSession",
     recommendedActions: [
       "Run a focused enablement/training session",
@@ -61,6 +99,9 @@ export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
   },
   LowAdoption: {
     rootCause: "Weak usage is putting the next invoice at risk — adoption never took hold.",
+    creationRule: "Usage below the adoption threshold for X consecutive days.",
+    economicThreshold: 5000,
+    expectedProofEvent: "Adoption recovers and the next invoice is paid.",
     recommendedReason: "CSMOutreach",
     recommendedActions: [
       "Have the CSM reach out personally to unblock adoption",
@@ -71,6 +112,9 @@ export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
   },
   RenewalAtRisk: {
     rootCause: "The renewal / second invoice has stalled — inertia or unproven value.",
+    creationRule: "Renewal at risk within X days of the term end with no commitment.",
+    economicThreshold: 10000,
+    expectedProofEvent: "Renewal booked / second invoice paid before the term lapses.",
     recommendedReason: "RenewalOutreach",
     recommendedActions: [
       "Direct renewal outreach with a value/usage recap",
@@ -81,6 +125,9 @@ export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
   },
   ExpansionStalled: {
     rootCause: "An expansion opportunity stalled — value not re-established with the buyer.",
+    creationRule: "Expansion opportunity stalled with no movement for X days.",
+    economicThreshold: 10000,
+    expectedProofEvent: "Expansion order signed and invoiced.",
     recommendedReason: "ExecBusinessReview",
     recommendedActions: [
       "Run an executive business review tying usage to ROI",

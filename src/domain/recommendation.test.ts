@@ -36,6 +36,16 @@ describe("recommendation playbook", () => {
     }
   });
 
+  it("every RecoveryType Definition carries its creation rule, proof event, and economic floor", () => {
+    // The type owns when a Case opens, whether it is worth opening, and how it
+    // proves out — the governed-unit fields (docs/RECOVERY_CASE.md §3a).
+    for (const entry of Object.values(PLAYBOOK)) {
+      expect(entry.creationRule.length).toBeGreaterThan(0);
+      expect(entry.expectedProofEvent.length).toBeGreaterThan(0);
+      expect(entry.economicThreshold).toBeGreaterThan(0);
+    }
+  });
+
   it("expectedRecoverable sums expected value over OPEN events only", () => {
     // RE-1007 ActivationMissed 24,800×0.55 = 13,640
     // RE-1008 ActivationMissed 10,000×0.55 = 5,500
