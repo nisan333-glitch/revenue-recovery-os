@@ -107,6 +107,12 @@ case ledger → a single Case → its owner, the action taken, the proof event, 
 append-only audit trail. Explainability is not a report we attach to recovery; **it is
 the product.**
 
+**The anchor:** Proof is the moat; recovered revenue is the wedge. The market is full of
+AI builders, agents, and dashboards; almost nobody owns the Proof layer. So we **compete on
+Proof** but **sell proven recovered revenue** — a concrete, CFO-legible outcome — never a
+generic "Proof Platform." "Proof" alone is too abstract to buy; *proven recovered revenue*
+is not. Stay anchored to the outcome until the wedge wins.
+
 ---
 
 ## Product Wedge
@@ -319,6 +325,10 @@ Does it improve:
 If the answer is no:
 
 Do not build it.
+
+**Visibility vs. Outcome (second test):** does this feature merely *show* information, or
+does it help *identify, fix, recover, attribute, or prove* an outcome? If it only increases
+visibility, it is likely **non-core** — that is the road back to "just another dashboard."
 
 ---
 

@@ -21,6 +21,11 @@ If the answer is no: **do not build it.** No new engines, no new screens, no
 "interesting ideas" without a demand signal. The bottleneck is demand proof, not
 architecture.
 
+**Visibility vs. Outcome (second test):** does this feature merely **show** information,
+or does it help **identify, fix, recover, attribute, or prove** an outcome? If it only
+increases visibility, it is likely **non-core** — that is the road back to "just another
+dashboard."
+
 ## The Constitution (never blend)
 
 > **North star: every recovered dollar must be explainable.** Revenue Returned says

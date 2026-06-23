@@ -125,6 +125,71 @@ sits alongside the Build Filter — the Build Filter governs whether to build a 
 this test governs whether a thing built now **forecloses the swarm later.** If a change
 would make agent #14 require a schema / ledger / invariant change, it is wrong.
 
+### The customer never sees agents
+
+The agent fleet is an **internal implementation detail.** The customer sees only:
+
+```
+Problem → Action → Recovery → Proof          (market story: Identify · Fix · Prove)
+```
+
+They never see "agents," layers, or orchestration. *Customers buy outcomes, not
+architecture.* The multi-agent model below is how we reach a trustworthy outcome — never
+the pitch.
+
+### Internal reasoning roles (mostly already built)
+
+The fleet is a set of specialized reasoning roles. **Seven of eight already exist as
+functions today; only Diagnostic/detection is missing** — and it is the one role that lets
+the system *continuously discover* new opportunities rather than analyze ones already
+identified. That is Agent #1, the bottleneck.
+
+| Role | Does | Status |
+|---|---|---|
+| **Diagnostic / Detection** | continuously discovers potential leaks | ❌ **not built** — the green-field (Agent #1); future detector + `canBeCase` |
+| Data Quality | validates evidence + confidence | ✅ `confidence.ts` |
+| Prioritization | ranks by expected impact | ✅ `expectedValue` / `expectedRecoverable` |
+| Recommendation | proposes corrective actions | ✅ `PLAYBOOK` / `recommend()` |
+| Recovery | tracks what changed post-intervention | ✅ Case lifecycle / `state/mutate()` |
+| Attribution / Proof | separates real recovery from would-have-happened | ✅ `attribution.ts` + `invariants.ts` |
+| CFO | finance-grade explanation + audit | ✅ CFO Proof View + `audit.ts` + `BASELINE_METHODOLOGY` |
+| Operator | coordinates the flow | ✅ Recovery Loop / queue / assignment |
+
+The reasoning is largely built; the missing capability is **detection** — continuous
+discovery, not analysis of pre-identified cases.
+
+### The Agent Contract (the anti-sprawl primitive)
+
+Before any agent joins the fleet, it must declare a contract — so 100 agents stay governed
+instead of becoming sprawl, and so the standing design test is enforceable:
+
+- **Inputs** — what signals it reads.
+- **Outputs** — what it emits (a `CandidateSignal`, a score, a recommendation…).
+- **Authority** — which decisions it may make autonomously vs. propose.
+- **Success metric** — how its value is measured (in its own currency; only Recovery's is money).
+- **Evidence requirements** — what proof it must attach.
+
+This extends "an agent = a detector + a RecoveryType Definition + `canBeCase`" into a full,
+reviewable spec. No contract, no agent.
+
+### Orchestration — the honest state (reasoning vs. running the loop)
+
+The real question is not "which agents are missing" but *"do these capabilities operate as
+one continuously-reasoning Recovery OS?"* Honest answer: they are **coherent** — one data
+model (`RecoveryEvent`), one mutation spine (`state/mutate()` re-derives Revenue Returned,
+re-scores confidence, and appends audit on every write), one view (the Recovery Loop) — but
+the loop is **not yet autonomously orchestrated.**
+
+- **Reasoning is continuous/automatic:** prioritization, recommendation, and proof all
+  re-compute on every read/write.
+- **Movement between stages is manual:** a human carries each Case `Detect → Fix → Track`.
+
+So the **Recovery Loop is a coherent *read-model of* the lifecycle, not a *runner of* it.**
+Continuous operation needs two deferred pieces: (a) the **detector** (Detect = Agent #1),
+and (b) an **orchestration runner** that advances Cases through the *automatic* stages,
+leaving humans only the genuinely-human Fix. Both gated on Agent #1 proven on real data —
+the next architectural question, **not built now** (you don't orchestrate an empty loop).
+
 ## Deliberately deferred
 
 No backend, no auth, no graph database, no agents, no live integrations. These are
