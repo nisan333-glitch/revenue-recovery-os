@@ -66,6 +66,59 @@ appends an immutable audit entry, (4) persists via the repository. The UI
 | Single-domain recovery events | Nodes in a Business Event Graph |
 | Manual status transitions | Detection, causality, proof, learning agents |
 
+## Target architecture — the three-layer multi-agent OS (deferred)
+
+The end state (VISION.md §6, Phase 4) is **not** one workflow or one dashboard — it is a
+**multi-agent commercial operating system**: many specialized agents (Lead, Response,
+Quote, Callback, Activation, Payment, Retention, Renewal, QA, Forecast, Anomaly…) running
+continuously, all feeding **one shared substrate.** Three layers:
+
+```
+Intelligence   the agents/detectors — watch every commercial signal, 24/7
+      │        (Detect · Predict · Recommend · Escalate · Learn)
+      ▼
+Coordination   Case Creation · Risk Scoring · Prioritization · Assignment
+      ▼
+Proof          Attribution · Recovery Ledger · Revenue Returned · Audit Trail
+```
+
+**What already exists is the bottom two layers** — the hard, defensible part. The
+Intelligence layer is the green-field. Honest mapping:
+
+| Layer | In the code today | Status |
+|---|---|---|
+| **Proof** | `invariants.ts` · `attribution.ts` · `audit.ts` · `metrics.ts` · `confidence.ts` | ✅ built — the moat |
+| **Coordination** | Case + lifecycle · `riskAmount`/`confidence` · `expectedValue` ranking · `owner`+status via `state/mutate()` | 🟡 mostly built (automated Case *creation* is the gap) |
+| **Intelligence** | only the rule-based `PLAYBOOK` recommender (advises an existing Case) | ❌ absent — no detectors yet |
+
+**The smallest architecture that supports 100 agents without redesign** rests on one
+contract — already specified in [`RECOVERY_CASE.md`](RECOVERY_CASE.md) §2, not yet built:
+
+```
+CandidateSignal  →  canBeCase(signal): boolean  →  Recovery Case  →  [shared Proof engine]
+```
+
+An **agent = a detector that emits `CandidateSignal`s + a RecoveryType Definition**. Adding
+agent #14 or #100 = adding a Definition + a detector; the Case schema, ledger, invariants,
+and audit **never change**. The anti-noise primitive: every agent emits the *same governed
+object*, so 100 agents converge on **one Case inventory and one ledger** — not 100 alert
+streams. The user sees `Revenue At Risk · Findings · Actions`, never 1,000 notifications.
+
+Four primitives must stay right so they don't force a later redesign:
+1. the admission gate (`canBeCase`) as a pure, testable predicate;
+2. cross-agent dedup + attribution isolation — two agents touching one account must never
+   double-open or double-count;
+3. the RecoveryType registry as **data**, not typed code (agent #14 shouldn't need a recompile);
+4. a **predict** lane on the *forecast* side of the never-blend line — a prediction
+   ("78% likely to churn") creates and prioritizes a Case but is **never** counted as
+   recovered money (Constitution; VISION.md §2.3).
+
+**The guard.** This is deferred Phase 4. **Build none of it until agent #1 is proven
+end-to-end on real data.** One proven agent validates the contract for all 100; one hundred
+unproven agents validate nothing and create 100× the noise (VISION.md §2.4 — *"ten agents
+is an org chart, not an MVP"*). The bottleneck is demand, not design — the foundation is
+already here.
+
 ## Deliberately deferred
 
 No backend, no auth, no graph database, no agents, no live integrations. These are
