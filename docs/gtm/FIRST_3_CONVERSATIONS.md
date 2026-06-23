@@ -139,3 +139,67 @@ problem that is **painful AND unowned AND measurable**.
 
 The point of these three calls is to earn the right to do the next twelve — or to
 save the effort. Either outcome is a win, because both are *truth*.
+
+---
+
+## Variant — the multi-client operator (the BPO play)
+
+A different angle on the same engine. Everything above is the **Activation** wedge
+(signed → second invoice). A **BPO / multi-client operator** (e.g. 500 agents serving
+many clients) is a different **channel** and a different **leak hypothesis** — captured
+here because it's a shift in the *validation thesis*, not a new product.
+
+> **This is a Validation / GTM layer, not a Product layer.** The engine — Case · Recovery
+> Event · Assignment · Proof · Attribution · Audit Trail — does **not** change. Same
+> engine, new penetration channel. That nothing in `src/` has to move is the good sign,
+> not a gap. (Engine generality: see [`../RECOVERY_CASE.md`](../RECOVERY_CASE.md).)
+
+**1 · Channel, not a customer.** One operator = N clients under one roof = a built-in
+multi-account validation lab. The thesis shifts:
+
+```
+one company → one dataset → one proof        (the normal path)
+one operator → many datasets → recurring type → CATEGORY proof   (the BPO path)
+```
+
+The prize is the recurrence: **if the same recovery pattern leaks money across 3–4 of its
+clients, you've proven a category leak, not one company's quirk.** That is one of the most
+valuable assets the venture can produce — you stop selling a custom fix and start defining
+a category.
+
+**2 · The reframe — a Revenue Recovery *Engine*, not Invoice Recovery.** Each client gets
+different Recovery Types. These are new **RecoveryType Definitions** (data-shaped taxonomy)
+— the Case schema, ledgers, invariants, and proof path are unchanged:
+
+| Example Recovery Type | Proof event |
+|---|---|
+| `LeadNotWorked` (assigned, no contact in X hrs) | lead worked → qualified / converted |
+| `LateResponse` (first touch after SLA) | re-engaged → progressed |
+| `MissedCallback` (promised, none logged) | callback completed → outcome |
+| `QuoteLate` / `QuoteNotSent` | quote sent → opportunity advances |
+
+**3 · Don't assume the leak.** Open with *"where does money leak across your clients?"* —
+**not** Activation. Same learning-first discipline as above: let them name it; the answer
+may be lead response, appointment setting, or the sales process, not onboarding.
+
+**4 · Data-first, price-last (maps to [`SCOREBOARD.md`](SCOREBOARD.md)).** The ask is not a
+pitch: *"Give me one client, one month of data — let's see what falls between the chairs."*
+That is the `Conversation → Data Access → Leak Assessment` path. Only if real, explainable,
+recoverable money turns up does a pricing conversation begin — **never before.**
+
+**5 · The real milestone is one proven event.** Until you can show
+`Detected → Assigned → Fixed → Proved` on a **real** event from **real** data, every
+conversation about SaaS / Recovery-Share / % is premature. Pricing is deliberately **not**
+documented (frozen) — no dataset, no proven event, and attribution-to-the-system is not yet
+provable. Hold the order: `Data Access → Leak Assessment → Proof`, never
+`Pricing → Negotiation → Hope`.
+
+**6 · Honest caveat — channel ≠ shortest proof path.** A BPO adds an intermediation layer:
+
+```
+You → BPO → client → CRM → data        (vs. the direct:  You → client → data)
+```
+
+More hops = slower first proof. The BPO is the best **scale channel** *after* the model is
+proven — but for the **first proven event**, prefer whoever gives the cleanest, most direct
+data access. A plain company with its own data beats a BPO for proving event #1.
