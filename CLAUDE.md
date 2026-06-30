@@ -99,6 +99,19 @@ outcomes. **Not** features, engines, screens, or tests built.
 3. [`docs/PROOF_MODEL.md`](docs/PROOF_MODEL.md) — the Activation wedge + proof method.
 4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the layers evolve.
 
+## Changing this constitution
+
+The constitution is not changed casually during implementation.
+
+* **Core-definition changes go through the constitution before code.** What a Recovery
+  Loop stage means, what T1/T2/T3 require, what counts as Revenue Returned, what the
+  system is/is not — these are decided here first.
+* **Implementation experiments may happen in code first** (UI layout, state shape,
+  component structure). If an experiment sticks, document it back into the constitution.
+* **Document a discovered gap *before* editing** — not silently patched, not
+  retrofitted to match what the code already does. State the gap and why it exists,
+  then propose the change.
+
 ## Working in the code
 
 * The domain core (`src/domain/`) is **pure and UI-independent** — keep it that way.

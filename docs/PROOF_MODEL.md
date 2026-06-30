@@ -137,3 +137,43 @@ the baseline conversion `b`, and the dollars leaking. **That export is the entir
 "show them their own leakage" demo** — zero engineering, and it directly de-risks
 the cold-start integration problem. Live integration (CRM + product + billing) comes
 only after a pilot proves the delta is real and fundable.
+
+---
+
+## 7. Evidence Classification — how much to trust each number (T1 / T2 / T3)
+
+Not every recovered dollar is proven with the same rigor. Rather than present one
+blended number, **every claim carries an explicit, *earned* evidence tier.** The tier
+is part of the proof — it tells the CFO exactly how much weight to put on the number.
+**The default is not T2 — the default is `Unproven`.** The system must *earn* the
+right to claim. (In code today, this maps to the confidence model: `isAuditable`
+— `confidence ≥ PROOF_THRESHOLD` + reason + positive uplift — is the **T2 floor**;
+a counted-but-sub-threshold recovery is **T3**; an unclassified one is `Unproven`.)
+
+| Tier | Mechanism | Output label | Maps to |
+|---|---|---|---|
+| **T1 — Experimental** | a genuine holdout / control / randomization exists | *Incremental Recovery* | the optional randomized holdout (§3) — strongest, by construction |
+| **T2 — Operational** | matched-cohort baseline + full audit chain, no experiment | *Operational Recovery* | the default proven path (`isAuditable`, §3 + §5) |
+| **T3 — Directional** | causality cannot be isolated; plausible influence only | *Potentially Influenced Revenue* | counted-but-sub-proof-grade |
+
+**T2 Gate Criteria — all required, binary** (miss one → evaluate as T3):
+1. **Pre-registration** — the Expectation was documented *before* the action, not
+   reconstructed after seeing the outcome.
+2. **Case-level traceability** — the claim points to a specific account, not an
+   aggregate trend.
+3. **Complete audit trail** — who acted, when, what was expected, what happened — a
+   continuous chain, not reconstructed from memory.
+
+**T2 Quality Factors — graded** (all Gates met but both low → downgrade to T3):
+causal window (short = strong, long = weak) and confounders (0–1 = strong, 2+ = weak).
+*Exact thresholds are provisional and calibrated per leak type — a failed payment and a
+dormant opportunity don't share a time scale.*
+
+### Excluded Recovery — mandatory on every Proof
+
+Every Proof **must** state **what was deliberately *not* claimed, and why** — even
+revenue that technically returned, if the causal link isn't defensible. This is not an
+optional field; it is the system's core credibility mechanism (the same idea as the
+Found↔Returned gap in [`gtm/PITCH_60S.md`](gtm/PITCH_60S.md) and the Reconciliation
+view). A CFO trusts the *claimed* number precisely because the system is visibly more
+conservative than it has to be. No exclusion statement → no Proof.

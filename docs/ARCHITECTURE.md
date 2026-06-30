@@ -55,6 +55,21 @@ Every mutation flows through one `mutate()` path that (1) re-derives
 appends an immutable audit entry, (4) persists via the repository. The UI
 **cannot** bypass the invariants or skip the audit trail.
 
+### The UI Boundary Rule (business rules never live in React)
+
+The single rule that keeps the prototype honest: **the Presentation layer renders
+state and captures actions — it contains zero business-rule logic.** React components
+may *read* Case/Proof objects and *call* application functions (`assignOwner`,
+`logAction`, `requestVerification`), but may **never**:
+- compute or assign an evidence **Tier** (T1/T2/T3);
+- compute **Claimed** or **Excluded Recovery**;
+- decide whether a new **Proof version** should be generated;
+- branch on evidence quality, causal window, or confounder count.
+
+If a component needs to show *"why is this T2 and not T3,"* it asks the Domain layer for
+an explanation object — it never re-derives the answer. This is what keeps the domain
+usable by a future non-React consumer (backend, agent, mobile) without a rewrite.
+
 ## Evolution hooks (cheap now, valuable later)
 
 | Today (MVP) | Evolves into (platform) |
@@ -189,6 +204,21 @@ Continuous operation needs two deferred pieces: (a) the **detector** (Detect = A
 and (b) an **orchestration runner** that advances Cases through the *automatic* stages,
 leaving humans only the genuinely-human Fix. Both gated on Agent #1 proven on real data —
 the next architectural question, **not built now** (you don't orchestrate an empty loop).
+
+## Extension points — named seams for open decisions
+
+Open business decisions get a *named home* in the architecture so resolving them later
+doesn't require restructuring. These are stubs, not implementations:
+
+| Extension point | Resolves (eventually) | Current state |
+|---|---|---|
+| `ProofTriggerPolicy` | when a new Proof version is generated (tier change / amount delta / manual) | manual trigger only |
+| `RevisionPolicy` | how downward revisions are handled (status, required reason, notification) | `changeReason` field exists; no enforcement |
+| `OwnershipRoutingPolicy` | how a Case gets an owner (manual / rule / AI-suggested) | manual only |
+| `SLAPolicy` | timing thresholds per loop stage (stall detection) | none |
+| `LeakTypeAdapter` | the generalization seam — one engine, many leak types | `leakageType` exists; one adapter; a second leak type is the real test |
+
+Architecture's job is to ensure each has a home, not to decide its contents.
 
 ## Deliberately deferred
 

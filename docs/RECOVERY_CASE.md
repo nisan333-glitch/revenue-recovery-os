@@ -43,6 +43,35 @@ This object already exists in code:
 > A `RecoveryEvent → RecoveryCase` rename is a separate, deliberately-deferred
 > refactor. The names below are the conceptual model; the code seats are noted inline.
 
+### Case vs Proof — two objects, two lifecycles
+
+Do not collapse these into one mutable record:
+
+- **Case** — the **mutable** operational object. Created at Detection, updated
+  continuously through Ownership and Action. A Case can exist with **no claim and no
+  tier** (still in Action, or Verified but not yet over the evidence bar).
+- **Proof** — an **immutable, versioned, append-only** snapshot generated from a Case
+  once it clears the minimum evidence bar (T3+, see
+  [`PROOF_MODEL.md`](PROOF_MODEL.md) §7). A Case has **0..n** Proof versions
+  (`v1, v2…`); existing versions are never edited or deleted — new evidence produces a
+  *new* version with a recorded reason. This is what makes *"what exactly did we claim a
+  month ago"* always answerable. Each version carries its tier, attribution, claimed
+  amount, and **Excluded Recovery**.
+
+The lifecycle, enriched (conceptual model; the code lifecycle `Detected → … → Auditable`
+is unchanged):
+
+```
+Expectation → Detection → Ownership → Action → Verification → Proof
+```
+
+- **Expectation is pre-registered** — the expected money event is recorded *before* the
+  action, never reconstructed after the outcome (this is T2 Gate Criterion #1).
+- **Verification ≠ Proof.** Verification establishes the *fact* ("did the expected event
+  happen?"); Proof decides the *claim* (tier, attribution, Excluded Recovery, the final
+  number). Excluding part of a recovered amount is a **claims** decision (Proof), not a
+  **factual** one (Verification).
+
 ## 2. When is a Recovery Case created? — the admission rule
 
 **The boundary that keeps the system from becoming an event dashboard.** Not every
