@@ -254,6 +254,42 @@ on nothing. This is also the structural home of the *cumulative learning-with-pr
 each proven Recovery leaves the org smarter, and that library is built from proofs, not
 scale — the hardest thing to copy.
 
+## Trust Invariant — The Beneficiary Never Determines the Number
+
+> **North star: the beneficiary never determines the number.** A dollar is counted only
+> when it is supported by evidence the beneficiary cannot fabricate or retroactively
+> change, under a baseline and definition fixed before the result was known. Once counted,
+> the proof is frozen.
+
+A recovery dollar may be counted **only when**:
+
+1. The evidence originates from a source the beneficiary cannot unilaterally alter.
+2. The baseline and recovery definition were established **before** the outcome was known.
+3. Pre-registration timestamps are tamper-evident and cannot be backdated.
+4. The proof captures the exact **model version, policy version, threshold, baseline
+   method, evidence references and calculation** used at the time of approval.
+5. Once approved, historical proof is **immutable and reproducible forever**.
+6. Learning may change **future** decisions only. It must never rewrite historical proof.
+7. Excluded Recovery is **mandatory** and cannot silently default to zero.
+8. No beneficiary may be the sole author, approver, or verifier of their own recovery claim.
+9. Any revision caused by refunds, reversals, disputes, or corrected source data must
+   create a **new linked proof revision** — it must never overwrite the original proof.
+10. **Claimed revenue is not proven revenue.**
+
+**Standing architecture test** — before approving any design, ask:
+
+> Can the person, team, customer, CFO, manager, or AI agent who benefits from a larger
+> recovery number influence the baseline, evidence, timing, attribution, approval, or
+> historical calculation? **If yes, reject the design.**
+
+This sits beside the *standing design test* (§ Target architecture): that one guards the
+path to many agents without redesign; this one guards the path to a number no beneficiary
+can move.
+
+**Non-negotiable learning constraint:** the Learning Layer (and every reserved Learning
+seam above) must optimize for **durable, independently verified, post-reversal auditable
+outcomes** — never for claimed recovery, raw counted recovery, or short-term proof volume.
+
 ## Deliberately deferred
 
 No backend, no auth, no graph database, no agents, no live integrations. These are
