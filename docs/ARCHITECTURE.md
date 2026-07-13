@@ -225,6 +225,35 @@ doesn't require restructuring. **None of these are implemented in this repo** �
 
 Architecture's job is to ensure each has a home, not to decide its contents.
 
+### Reserved seams for the Learning layer (design for evolution, implement on evidence)
+
+**Design now, implement later.** The Learning layer must not be *built* before real
+proven-outcome data exists — but the architecture must already **reserve its seams**, so a
+future learning capability never forces a redesign. These are reserved and **inactive**
+(none built); each is anchored to a real, explicit touchpoint in today's code so it can be
+activated *without* touching the UI, the ledger, or the invariants:
+
+| Reserved seam | Eventually does | Where it plugs in today (already explicit) |
+|---|---|---|
+| `LearningEngine` | umbrella: reads proven outcomes, proposes updates | reads `outcomes.ts` / `metrics.ts`; writes only through the seams below |
+| `ConfidenceCalibration` | recalibrate the confidence model from realized outcomes | `confidence.ts` is a transparent function, not magic constants — replaceable |
+| `PriorUpdates` | update play priors (`probabilityOfSuccess`) from proven recoveries | priors are **explicit fields in `PLAYBOOK`**, updatable as data |
+| `PolicyEvolution` | update governance policies from what worked | policies are future/data (§ target architecture) |
+| `AgentEvolution` | improve detectors/plays from outcomes | agents are future; each is a RecoveryType Definition + detector |
+| `KnowledgeEvolution` / `LessonsLearned` | accumulate the proven **cause→effect library** — the deepest moat | every proven recovery is an append-only record (`revenueReturned` + `audit[]`) |
+
+**Why no redesign will be forced:** the domain is pure; priors (`PLAYBOOK`) and confidence
+(`confidence.ts`) are *explicit and transparent*, not hardcoded magic; and every outcome is
+already recorded (`revenueReturned`, `audit[]`, `outcomes.ts`). A Learning engine can read
+proven outcomes and write updated priors/confidence through these seams **without touching
+the UI, the ledger, or the invariants.** That is the design-for-evolution guarantee.
+
+**The guard:** reserved ≠ built. All inactive until real proven-outcome data exists (the
+same trigger as everything else — a real customer). Calibrating on no data is calibrating
+on nothing. This is also the structural home of the *cumulative learning-with-proof* moat:
+each proven Recovery leaves the org smarter, and that library is built from proofs, not
+scale — the hardest thing to copy.
+
 ## Deliberately deferred
 
 No backend, no auth, no graph database, no agents, no live integrations. These are
