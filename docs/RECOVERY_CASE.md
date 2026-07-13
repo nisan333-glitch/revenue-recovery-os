@@ -72,6 +72,11 @@ Expectation → Detection → Ownership → Action → Verification → Proof
   number). Excluding part of a recovered amount is a **claims** decision (Proof), not a
   **factual** one (Verification).
 
+> **In code today** the Case (`RecoveryEvent`) carries its own proof fields
+> (`revenueReturned`, `confidence`, `evidenceNotes`) plus an append-only `audit[]`. A
+> **distinct, versioned Proof object is not yet implemented** — the Case/Proof split above
+> is the conceptual target, not the current data model.
+
 ## 2. When is a Recovery Case created? — the admission rule
 
 **The boundary that keeps the system from becoming an event dashboard.** Not every

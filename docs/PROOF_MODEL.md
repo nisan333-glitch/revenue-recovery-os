@@ -148,7 +148,9 @@ is part of the proof — it tells the CFO exactly how much weight to put on the 
 **The default is not T2 — the default is `Unproven`.** The system must *earn* the
 right to claim. (In code today, this maps to the confidence model: `isAuditable`
 — `confidence ≥ PROOF_THRESHOLD` + reason + positive uplift — is the **T2 floor**;
-a counted-but-sub-threshold recovery is **T3**; an unclassified one is `Unproven`.)
+a counted-but-sub-threshold recovery is **T3**; an unclassified one is `Unproven`. The
+literal T1/T2/T3 labels are the proof *model* — **not yet surfaced in the app**, which
+today shows the 0–100 confidence score + an auditable badge.)
 
 | Tier | Mechanism | Output label | Maps to |
 |---|---|---|---|
@@ -177,3 +179,7 @@ optional field; it is the system's core credibility mechanism (the same idea as 
 Found↔Returned gap in [`gtm/PITCH_60S.md`](gtm/PITCH_60S.md) and the Reconciliation
 view). A CFO trusts the *claimed* number precisely because the system is visibly more
 conservative than it has to be. No exclusion statement → no Proof.
+
+> **In code today** this lives in the **Reconciliation** view (excluded revenue by
+> reason) and the Found↔Returned gap. A *mandatory field on a distinct Proof object* is
+> the model — not yet enforced in code (there is no Proof object yet).

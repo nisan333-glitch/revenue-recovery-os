@@ -70,6 +70,10 @@ If a component needs to show *"why is this T2 and not T3,"* it asks the Domain l
 an explanation object — it never re-derives the answer. This is what keeps the domain
 usable by a future non-React consumer (backend, agent, mobile) without a rewrite.
 
+> Note: some objects the rule references (Tier, Proof version) are **conceptual / not yet
+> in code** — today the domain exposes `confidence` + `isAuditable`. The rule itself
+> (business logic out of React) **is** honored today by the pure `src/domain/` layer.
+
 ## Evolution hooks (cheap now, valuable later)
 
 | Today (MVP) | Evolves into (platform) |
@@ -208,15 +212,16 @@ the next architectural question, **not built now** (you don't orchestrate an emp
 ## Extension points — named seams for open decisions
 
 Open business decisions get a *named home* in the architecture so resolving them later
-doesn't require restructuring. These are stubs, not implementations:
+doesn't require restructuring. **None of these are implemented in this repo** — they are
+*named seams* (concepts), so a future implementation has an obvious place to land:
 
-| Extension point | Resolves (eventually) | Current state |
+| Extension point | Resolves (eventually) | State in this code |
 |---|---|---|
-| `ProofTriggerPolicy` | when a new Proof version is generated (tier change / amount delta / manual) | manual trigger only |
-| `RevisionPolicy` | how downward revisions are handled (status, required reason, notification) | `changeReason` field exists; no enforcement |
-| `OwnershipRoutingPolicy` | how a Case gets an owner (manual / rule / AI-suggested) | manual only |
-| `SLAPolicy` | timing thresholds per loop stage (stall detection) | none |
-| `LeakTypeAdapter` | the generalization seam — one engine, many leak types | `leakageType` exists; one adapter; a second leak type is the real test |
+| `ProofTriggerPolicy` | when a new Proof version is generated (tier change / amount delta / manual) | not built — no distinct Proof object yet |
+| `RevisionPolicy` | how downward revisions are handled (status, required reason, notification) | not built — no Proof object / no `changeReason` field exists today |
+| `OwnershipRoutingPolicy` | how a Case gets an owner (manual / rule / AI-suggested) | owner assignment is manual today (`assignOwner`); no routing policy |
+| `SLAPolicy` | timing thresholds per loop stage (stall detection) | not built |
+| `LeakTypeAdapter` | the generalization seam — one engine, many leak types | `leakageType` + per-type `PLAYBOOK` exist; a second leak type is the real test |
 
 Architecture's job is to ensure each has a home, not to decide its contents.
 
