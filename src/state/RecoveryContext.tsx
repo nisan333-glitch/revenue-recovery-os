@@ -43,7 +43,12 @@ import {
 } from "../domain/baseline";
 import { type Evidence, makeEvidence, type TrustClassification } from "../domain/evidence";
 import { money } from "../domain/money";
-import { type Proof, effectiveProofs, hasEffectiveRecoveryForCase } from "../domain/proof";
+import {
+  type Proof,
+  appendApprovedProof,
+  appendReversal,
+  hasEffectiveRecoveryForCase,
+} from "../domain/proof";
 import { type Actor, hasRole } from "../domain/authority";
 import { CURRENT_POLICY } from "../domain/policy";
 import { APPROVER_ACTOR, OWNERS, ownerActorIdOf } from "../data/actors";
@@ -514,17 +519,15 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
     (caseId: string, input: ApproveProofInput): ApproveResult => {
       const built = buildApprovalContext(caseId, input);
       if ("error" in built) return { ok: false, error: built.error };
-      // Authoritative synchronous guard against the double-click race (reads the ref, not the
-      // render closure). A second call in the same tick sees the first's appended proof.
-      if (hasEffectiveRecoveryForCase(proofsRef.current, caseId)) {
-        return { ok: false, error: "case already has an approved proof — reverse it before re-approving" };
-      }
+      // Guard + append run through the pure, unit-tested proof-store functions, against the
+      // AUTHORITATIVE synchronous ref (not the render closure) so a second click in the same tick
+      // observes the first's appended proof and is rejected (no duplicate chains / double-count).
       try {
-        const proof = approveProofForCase(built.ctx); // throws (fails closed) on any gate violation
-        const next = [...proofsRef.current, proof]; // append-only; never mutates an existing Proof
-        proofsRef.current = next; // synchronous: the next call this tick observes it
-        setProofs(next);
-        return { ok: true, proof };
+        const res = appendApprovedProof(proofsRef.current, caseId, () => approveProofForCase(built.ctx));
+        if (!res.ok) return { ok: false, error: res.error };
+        proofsRef.current = res.proofs; // synchronous: the next call this tick observes it
+        setProofs(res.proofs);
+        return { ok: true, proof: res.proof };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
@@ -534,20 +537,20 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
 
   const reverseProof = useCallback(
     (chainId: string, reason: string, approver?: Actor): ApproveResult => {
-      // Read the authoritative ref so a rapid second reverse sees the first's reversal.
-      const latest = effectiveProofs(proofsRef.current).find((p) => p.chainId === chainId);
-      if (!latest) return { ok: false, error: `no effective proof for chain ${chainId}` };
-      if (latest.status === "Reversed") return { ok: false, error: "proof is already reversed" };
-      const revision = reverseProofForCase(latest, {
-        newProofId: mkId(`PF-${chainId}-rev`),
-        at: TS.now(),
-        approvedBy: (approver ?? APPROVER_ACTOR).id,
-        reason,
-      });
-      const next = [...proofsRef.current, revision]; // NEW linked record; original untouched
-      proofsRef.current = next;
-      setProofs(next);
-      return { ok: true, proof: revision };
+      // Same pure guard+append, against the authoritative ref, so a rapid second reverse sees the
+      // first's reversal and cannot create a duplicate active reversal.
+      const res = appendReversal(proofsRef.current, chainId, (latest) =>
+        reverseProofForCase(latest, {
+          newProofId: mkId(`PF-${chainId}-rev`),
+          at: TS.now(),
+          approvedBy: (approver ?? APPROVER_ACTOR).id,
+          reason,
+        }),
+      );
+      if (!res.ok) return { ok: false, error: res.error };
+      proofsRef.current = res.proofs; // NEW linked record; original untouched
+      setProofs(res.proofs);
+      return { ok: true, proof: res.proof };
     },
     [],
   );

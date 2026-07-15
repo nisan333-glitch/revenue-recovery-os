@@ -22,6 +22,17 @@ import { dateTime } from "../lib/format";
 // Operator identity for governance actions recorded from this drawer (prototype).
 const OPERATOR = "you@company";
 
+// Evidence sources the operator can attach. Independence is a property of the SOURCE, not a free
+// toggle: only the trusted (simulated) source systems produce an independent reference; an operator
+// note is always beneficiary-controlled. makeEvidence enforces this regardless of what is passed.
+const EVIDENCE_SOURCES = {
+  billing_invoice: { label: "Billing — invoice paid (simulated)", sourceSystem: "billing", evidenceType: "invoice_paid", classification: "independent" as TrustClassification },
+  product_event: { label: "Product — activation event (simulated)", sourceSystem: "product", evidenceType: "activation_event", classification: "independent" as TrustClassification },
+  crm_order: { label: "CRM — signed order (simulated)", sourceSystem: "crm", evidenceType: "order_form_signed", classification: "independent" as TrustClassification },
+  operator_note: { label: "Operator note (beneficiary-controlled)", sourceSystem: "manual", evidenceType: "operator_note", classification: "beneficiary_controlled" as TrustClassification },
+} as const;
+type EvidenceSourceKey = keyof typeof EVIDENCE_SOURCES;
+
 const STATUS_FLOW: RecoveryStatus[] = [
   "Detected",
   "Queued",
@@ -374,8 +385,7 @@ function ProofGovernance({ event }: { event: RecoveryEvent }) {
   const proofs = proofsOf(event.eventId);
 
   const [baselineInput, setBaselineInput] = useState("");
-  const [evType, setEvType] = useState("invoice_paid");
-  const [evClass, setEvClass] = useState<TrustClassification>("independent");
+  const [evSource, setEvSource] = useState<EvidenceSourceKey>("billing_invoice");
   const [evRecordId, setEvRecordId] = useState("");
   const [collectedInput, setCollectedInput] = useState(String(event.collectedAmount));
   const [excludedInput, setExcludedInput] = useState("0");
@@ -409,13 +419,16 @@ function ProofGovernance({ event }: { event: RecoveryEvent }) {
       setErr("evidence needs a source record id");
       return;
     }
+    const src = EVIDENCE_SOURCES[evSource];
+    // Classification is DERIVED from the chosen source — makeEvidence enforces that only trusted
+    // (simulated) source systems yield "independent"; an operator note is always beneficiary-controlled.
     addEvidence(event.eventId, {
-      evidenceType: evType,
-      sourceSystem: evClass === "independent" ? "external" : "manual",
+      evidenceType: src.evidenceType,
+      sourceSystem: src.sourceSystem,
       sourceRecordId: evRecordId.trim(),
       observedAt: new Date().toISOString(),
-      trustClassification: evClass,
-      suppliedBy: evClass === "independent" ? "external" : OPERATOR,
+      trustClassification: src.classification,
+      suppliedBy: src.sourceSystem === "manual" ? OPERATOR : src.sourceSystem,
     });
     setEvRecordId("");
   }
@@ -542,19 +555,16 @@ function ProofGovernance({ event }: { event: RecoveryEvent }) {
           ))}
         </ul>
         <div className="flex flex-wrap gap-2">
-          <select className="num-input" value={evType} onChange={(e) => setEvType(e.target.value)}>
-            <option value="invoice_paid">invoice_paid</option>
-            <option value="order_form_signed">order_form_signed</option>
-            <option value="activation_event">activation_event</option>
-            <option value="operator_note">operator_note</option>
-          </select>
           <select
             className="num-input"
-            value={evClass}
-            onChange={(e) => setEvClass(e.target.value as TrustClassification)}
+            value={evSource}
+            onChange={(e) => setEvSource(e.target.value as EvidenceSourceKey)}
           >
-            <option value="independent">independent</option>
-            <option value="beneficiary_controlled">beneficiary-controlled</option>
+            {(Object.keys(EVIDENCE_SOURCES) as EvidenceSourceKey[]).map((k) => (
+              <option key={k} value={k}>
+                {EVIDENCE_SOURCES[k].label}
+              </option>
+            ))}
           </select>
           <input
             className="num-input flex-1"
@@ -566,6 +576,12 @@ function ProofGovernance({ event }: { event: RecoveryEvent }) {
             Add
           </button>
         </div>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Independence is set by the source, not chosen — only trusted source systems yield an
+          <span className="text-proof-500"> independent</span> reference; an operator note is always
+          beneficiary-controlled. Independent sources here are <em>simulated</em> stand-ins for real
+          integrations (billing / product / CRM); true enforcement is server-side ingestion.
+        </p>
       </div>
 
       {/* Approved proofs (immutable) */}

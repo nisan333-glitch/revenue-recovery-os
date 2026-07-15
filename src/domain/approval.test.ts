@@ -8,7 +8,13 @@ import { makeEvidence, type Evidence } from "./evidence";
 import { money } from "./money";
 import { CURRENT_POLICY } from "./policy";
 import { proofIsAuditable, provenLedger } from "./provenLedger";
-import { effectiveProofs, hasEffectiveRecoveryForCase, type Proof } from "./proof";
+import {
+  effectiveProofs,
+  hasEffectiveRecoveryForCase,
+  appendApprovedProof,
+  appendReversal,
+  type Proof,
+} from "./proof";
 import {
   approveProofForCase,
   reverseProofForCase,
@@ -164,25 +170,19 @@ describe("approval gate — the immutable proof is created only when all invaria
   });
 });
 
-// R2: the state layer approves/reverses through a synchronous authoritative reference. These tests
-// model that reference as an array updated in place BETWEEN calls in the same tick — exactly what
-// the useRef guard guarantees — and prove no duplicate chains / no double-count can result.
-describe("R2 — synchronous double-approval / double-reversal guard (models the useRef path)", () => {
-  // Mirror of the state layer's approveProof guard+append against the authoritative collection.
-  function approveInto(coll: Proof[], caseId: string, proofId: string): Proof[] {
-    if (hasEffectiveRecoveryForCase(coll, caseId)) return coll; // rejected — already effective
-    return [...coll, approveProofForCase(ctx({ proofId, recoveryCaseId: caseId }))];
-  }
-  function reverseInto(coll: Proof[], chainId: string, revId: string): Proof[] {
-    const latest = effectiveProofs(coll).find((p) => p.chainId === chainId);
-    if (!latest || latest.status === "Reversed") return coll; // rejected — no active proof
-    return [...coll, reverseProofForCase(latest, { newProofId: revId, at: "2026-07-02T00:00:00.000Z", approvedBy: APPROVER.id, reason: "refund" })];
-  }
-
+// R2: the state layer approves/reverses through the pure appendApprovedProof / appendReversal
+// functions against a synchronous authoritative reference. These tests exercise THOSE EXACT
+// functions (not a re-implementation) with the collection updated in place between calls — exactly
+// what the useRef guard does — proving no duplicate chains / no double-count can result.
+describe("R2 — synchronous double-approval / double-reversal guard (the real proof-store functions)", () => {
   it("two immediate approvals for the same case create only ONE effective chain", () => {
     let coll: Proof[] = [];
-    coll = approveInto(coll, "RE-2", "PF-A"); // first: appends
-    coll = approveInto(coll, "RE-2", "PF-B"); // second (same tick): guard trips, no-op
+    const r1 = appendApprovedProof(coll, "RE-2", () => approveProofForCase(ctx({ proofId: "PF-A", recoveryCaseId: "RE-2" })));
+    expect(r1.ok).toBe(true);
+    coll = r1.proofs;
+    const r2 = appendApprovedProof(coll, "RE-2", () => approveProofForCase(ctx({ proofId: "PF-B", recoveryCaseId: "RE-2" })));
+    expect(r2.ok).toBe(false); // guard trips — no second chain
+    coll = r2.proofs;
     expect(coll).toHaveLength(1);
     expect(effectiveProofs(coll)).toHaveLength(1);
     expect(provenLedger(coll, USD).provenCount).toBe(1);
@@ -190,15 +190,21 @@ describe("R2 — synchronous double-approval / double-reversal guard (models the
 
   it("provenLedger cannot double-count the same recovery case", () => {
     let coll: Proof[] = [];
-    coll = approveInto(coll, "RE-3", "PF-A");
-    coll = approveInto(coll, "RE-3", "PF-B");
+    coll = appendApprovedProof(coll, "RE-3", () => approveProofForCase(ctx({ proofId: "PF-A", recoveryCaseId: "RE-3" }))).proofs;
+    coll = appendApprovedProof(coll, "RE-3", () => approveProofForCase(ctx({ proofId: "PF-B", recoveryCaseId: "RE-3" }))).proofs;
     expect(provenLedger(coll, USD).revenueReturned.minor).toBe(2_480_000); // once, not twice
   });
 
   it("two immediate reversals cannot create duplicate active reversals", () => {
     let coll: Proof[] = [approveProofForCase(ctx({ proofId: "PF-A", recoveryCaseId: "RE-4" }))];
-    coll = reverseInto(coll, "PF-A", "PF-A-rev1"); // first reversal
-    coll = reverseInto(coll, "PF-A", "PF-A-rev2"); // second (same tick): guard trips, no-op
+    const mk = (latest: Proof, id: string) =>
+      reverseProofForCase(latest, { newProofId: id, at: "2026-07-02T00:00:00.000Z", approvedBy: APPROVER.id, reason: "refund" });
+    const r1 = appendReversal(coll, "PF-A", (latest) => mk(latest, "PF-A-rev1"));
+    expect(r1.ok).toBe(true);
+    coll = r1.proofs;
+    const r2 = appendReversal(coll, "PF-A", (latest) => mk(latest, "PF-A-rev2"));
+    expect(r2.ok).toBe(false); // already reversed — no duplicate
+    coll = r2.proofs;
     expect(coll).toHaveLength(2); // original + one reversal, not two
     const effective = effectiveProofs(coll);
     expect(effective).toHaveLength(1);
@@ -207,9 +213,19 @@ describe("R2 — synchronous double-approval / double-reversal guard (models the
 
   it("a valid LATER reversal remains possible through a linked record", () => {
     let coll: Proof[] = [approveProofForCase(ctx({ proofId: "PF-A", recoveryCaseId: "RE-5" }))];
-    coll = reverseInto(coll, "PF-A", "PF-A-rev"); // legitimate later reversal succeeds
+    const r = appendReversal(coll, "PF-A", (latest) =>
+      reverseProofForCase(latest, { newProofId: "PF-A-rev", at: "2026-07-02T00:00:00.000Z", approvedBy: APPROVER.id, reason: "refund" }),
+    );
+    expect(r.ok).toBe(true);
+    coll = r.proofs;
     expect(coll).toHaveLength(2);
     expect(coll[1]!.previousProofId).toBe("PF-A");
     expect(provenLedger(coll, USD).reversedCount).toBe(1);
+  });
+
+  it("hasEffectiveRecoveryForCase underpins the guard", () => {
+    const p = approveProofForCase(ctx({ proofId: "PF-A", recoveryCaseId: "RE-6" }));
+    expect(hasEffectiveRecoveryForCase([p], "RE-6")).toBe(true);
+    expect(hasEffectiveRecoveryForCase([p], "RE-other")).toBe(false);
   });
 });

@@ -181,3 +181,41 @@ export function hasEffectiveRecoveryForCase(all: Proof[], caseId: string): boole
     (p) => p.recoveryCaseId === caseId && isEffectiveRecovery(p),
   );
 }
+
+export type AppendResult =
+  | { proofs: Proof[]; ok: true; proof: Proof }
+  | { proofs: Proof[]; ok: false; error: string };
+
+/**
+ * Pure guard + append for an approval. Rejects if the case already has an effective proof (no
+ * double-count / double-approval), otherwise builds and appends one record. This is the exact
+ * logic the state layer runs against its authoritative store, extracted so it is unit-tested
+ * directly (not just modelled). `build` may throw on a gate violation — the caller handles it.
+ */
+export function appendApprovedProof(
+  proofs: Proof[],
+  caseId: string,
+  build: () => Proof,
+): AppendResult {
+  if (hasEffectiveRecoveryForCase(proofs, caseId)) {
+    return { proofs, ok: false, error: "case already has an approved proof — reverse it before re-approving" };
+  }
+  const proof = build();
+  return { proofs: [...proofs, proof], ok: true, proof };
+}
+
+/**
+ * Pure guard + append for a reversal. Rejects when there is no active (non-reversed) proof for the
+ * chain, otherwise appends a NEW linked reversal — never mutating the original.
+ */
+export function appendReversal(
+  proofs: Proof[],
+  chainId: string,
+  build: (latest: Proof) => Proof,
+): AppendResult {
+  const latest = effectiveProofs(proofs).find((p) => p.chainId === chainId);
+  if (!latest) return { proofs, ok: false, error: `no effective proof for chain ${chainId}` };
+  if (latest.status === "Reversed") return { proofs, ok: false, error: "proof is already reversed" };
+  const proof = build(latest);
+  return { proofs: [...proofs, proof], ok: true, proof };
+}

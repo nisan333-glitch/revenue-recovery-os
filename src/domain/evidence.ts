@@ -18,14 +18,32 @@ export interface Evidence {
   readonly beneficiaryControl: boolean;
 }
 
-export function makeEvidence(input: Omit<Evidence, "beneficiaryControl"> & {
-  beneficiaryControl?: boolean;
-}): Evidence {
+/**
+ * Source systems whose records the beneficiary cannot unilaterally fabricate or alter — the only
+ * ones that can back an INDEPENDENT evidence classification. A manual/operator source can never be
+ * independent, so a beneficiary cannot self-attest their way to Auditable.
+ *
+ * PROTOTYPE NOTE: in the client-only prototype these are SIMULATED stand-ins for real integrations;
+ * true, verifiable independence requires server-side ingestion from these systems (the deferred M1
+ * boundary). The allow-list makes independence a function of a claimed source rather than a free
+ * operator toggle — a real reduction of the gap, not full enforcement.
+ */
+export const INDEPENDENT_SOURCE_SYSTEMS: readonly string[] = ["billing", "product", "crm", "external"];
+
+export function isIndependentSource(sourceSystem: string): boolean {
+  return INDEPENDENT_SOURCE_SYSTEMS.includes(sourceSystem);
+}
+
+export function makeEvidence(input: Omit<Evidence, "beneficiaryControl">): Evidence {
+  // Independence is DERIVED from the (claimed) source system — never taken on faith from the
+  // caller. A classification of "independent" only survives if the source is on the trusted
+  // allow-list; otherwise it is forced to beneficiary-controlled.
+  const independent =
+    input.trustClassification === "independent" && isIndependentSource(input.sourceSystem);
   return Object.freeze({
     ...input,
-    // independent evidence is, by definition, not beneficiary-controlled
-    beneficiaryControl:
-      input.beneficiaryControl ?? input.trustClassification === "beneficiary_controlled",
+    trustClassification: independent ? "independent" : "beneficiary_controlled",
+    beneficiaryControl: !independent,
   });
 }
 

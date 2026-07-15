@@ -188,3 +188,12 @@ conservative than it has to be. No exclusion statement → no Proof.
 > excluded must be an explicit assertion, never a silent default (Trust Invariant #7). The
 > Reconciliation view (excluded revenue by reason) and the Found↔Returned gap remain the
 > aggregate presentation of the same idea.
+
+> **Evidence independence (prototype boundary).** Auditable-tier claims require an `independent`
+> evidence reference, and independence is **derived from the source system**, not a free operator
+> choice: `makeEvidence` (`src/domain/evidence.ts`) forces any source not on the trusted allow-list
+> (`INDEPENDENT_SOURCE_SYSTEMS` = billing / product / crm / external) to `beneficiary_controlled`, so
+> an operator note can never self-attest its way to Auditable. **However**, in the client-only
+> prototype those trusted sources are **simulated stand-ins** — the app cannot actually verify that
+> a "billing" record is real. True, non-self-attestable independence requires **server-side ingestion**
+> from those systems (the deferred M1 boundary). The allow-list narrows the gap; it does not close it.

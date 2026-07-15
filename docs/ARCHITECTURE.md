@@ -331,7 +331,7 @@ outcomes** — never for claimed recovery, raw counted recovery, or short-term p
 
 | # | Invariant | Where enforced | Status |
 |---|---|---|---|
-| 1 | Evidence source beneficiary can't alter | `evidence.ts` (`independent`/`hasIndependentEvidence`); auditable requires it | ✅ prototype |
+| 1 | Evidence source beneficiary can't alter | `evidence.ts` — independence **derived from source** (`INDEPENDENT_SOURCE_SYSTEMS`); manual/operator sources forced to beneficiary-controlled; auditable requires an independent ref | 🟡 prototype — trusted sources are *simulated*; real verification needs server-side ingestion (M1) |
 | 2 | Baseline/definition fixed before outcome | `baseline.ts` (`lockBaseline`, `baselineTemporallyValid`) | ✅ |
 | 3 | Pre-registration timestamps tamper-evident | `timestamp.ts` seam | 🟡 seam only — needs a server; localStorage is editable |
 | 4 | Proof stamps exact versions used | `proof.ts` (policy/threshold/methodology/baseline versions stamped) | ✅ |
