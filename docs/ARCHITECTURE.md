@@ -9,14 +9,19 @@ source behind a repository interface.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  modules/ + components/   React UI (8 product modules)   │  presentation
+│  modules/ + components/   React UI (product modules)     │  presentation
 ├─────────────────────────────────────────────────────────┤
-│  state/RecoveryContext     workflow actions + wiring     │  application
+│  state/RecoveryContext   provisional Case actions +      │  application
+│                          governed trust actions + wiring │
 ├─────────────────────────────────────────────────────────┤
-│  domain/   PURE engine: types, invariants, attribution,  │  domain (the moat)
-│            confidence, metrics, reasons, audit           │
+│  domain/   PURE engine — two worlds, never blended:      │  domain (the moat)
+│   • Case/provisional: types, invariants, confidence,     │
+│     metrics, attribution, reasons, audit, recommendation │
+│   • Trust/proven: money, baseline, evidence, authority,  │
+│     policy, timestamp, proof, approval, provenLedger     │
 ├─────────────────────────────────────────────────────────┤
-│  data/     repository interface + localStorage + seed    │  infrastructure
+│  data/  repository interface + localStorage (Cases +     │  infrastructure
+│         separate append-only trust store) + seed/actors  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -25,13 +30,28 @@ source behind a repository interface.
 Pure, framework-free TypeScript. No React, no storage, no I/O. Everything that
 makes a recovered dollar *true* lives here and is unit-tested:
 
+**Case / provisional world** (in-flight work, live scoring — never a source of proven money):
 - `invariants.ts` — `revenueReturned = collected − baseline` is always derived;
-  `isCounted` (rule 2), `isAuditable` (rule 4), `validateEvent`.
+  `isCounted`, `isAuditable`, `validateEvent` (Case-level, operational).
 - `attribution.ts` — how dollars are credited + the stated baseline methodology.
 - `confidence.ts` — transparent, explainable scoring + the proof threshold.
-- `metrics.ts` — detected-vs-proven aggregates (rule 5: never blended).
+- `metrics.ts` — detected-vs-proven aggregates (never blended).
 - `reasons.ts` — canonical recovery-reason taxonomy.
 - `audit.ts` — append-only audit-entry helpers.
+
+**Trust / proven world** (the immutable proof chain — the only source of CFO/auditable money):
+- `money.ts` — exact integer minor-unit `Money`; `fromDecimal` is the single, loud decimal→minor
+  boundary (rejects ambiguous precision; no float arithmetic anywhere in the proof path).
+- `baseline.ts` — governed, lockable `Baseline`; locked ⇒ immutable; a correction is a linked
+  successor; `baselineTemporallyValid` gates lock-before-intervention/outcome.
+- `evidence.ts` — `Evidence` with `independent | beneficiary_controlled` classification.
+- `authority.ts` — roles + `canApproveProof` (owner can never be the sole approver).
+- `policy.ts` — versioned `PolicyVersion` (threshold/methodology stamped into every Proof).
+- `timestamp.ts` — `TimestampAuthority` seam (system-recorded, not Case-editable; prototype-grade).
+- `proof.ts` — the immutable, versioned `Proof` snapshot; `effectiveProofs` folds each chain once
+  (no double-count); `hasEffectiveRecoveryForCase` guards double-approval.
+- `approval.ts` — the trust gate: assembles a Proof only when every invariant holds; fails closed.
+- `provenLedger.ts` — proven/auditable aggregated over approved Proofs, per currency, `asOf`-capable.
 
 Because this layer is pure, it can later run **server-side, behind an API, or
 inside agents** unchanged. The UI computes nothing important itself — it asks the
@@ -45,15 +65,29 @@ domain.
 ### `data/` — swappable persistence
 
 `RecoveryRepository` is the only thing the app knows about storage.
-`localStorageRepo` implements it today. To move to a backend, implement the same
-interface against REST/GraphQL — **no UI or domain changes required**.
+`localStorageRepo` implements it today, persisting **two separate stores**: mutable Cases and an
+**append-only trust store** (Baselines, Evidence, approved Proofs), seeded on first run by
+`seedTrust.ts` (built through the real approval gate, so the seed itself cannot violate the
+invariant). Simulated actor identities live in `actors.ts` (shared by seed + state to avoid a
+cycle). To move to a backend, implement the same interface against REST/GraphQL — **no UI or
+domain changes required**.
 
-### `state/` — enforced workflow
+> **localStorage is prototype-grade trust only.** JSON-rehydrated Proofs lose their in-memory
+> `Object.freeze`, and localStorage is user-editable — so tamper-evidence is *not* provided here.
+> The real trust boundary is the deferred server/append-only store (Trust Invariant #3; M1/H2).
+> No code path mutates an approved Proof or locked Baseline in place.
 
-Every mutation flows through one `mutate()` path that (1) re-derives
-`revenueReturned`, (2) re-scores confidence from the transparent model, (3)
-appends an immutable audit entry, (4) persists via the repository. The UI
-**cannot** bypass the invariants or skip the audit trail.
+### `state/` — two enforced worlds
+
+The provisional Case path still flows through one `mutate()` that (1) re-derives `revenueReturned`,
+(2) re-scores confidence, (3) appends an immutable audit entry, (4) persists. **Separately**, the
+governed trust actions — `establishBaseline`, `lockBaseline`, `reviseBaseline`, `addEvidence`,
+`approveProof`, `reverseProof` — read only from governed objects + explicit minor-unit inputs +
+versioned Policy + the `TimestampAuthority`, append to the immutable trust collections, and **never
+read mutable Case money**. `approveProof` is blocked unless the approver differs from the owner, the
+baseline is locked before intervention, an exclusion statement is stated, auditable-tier claims have
+independent evidence, and the case has no existing effective Proof (double-approval guard). The UI
+**cannot** bypass any of this.
 
 ### The UI Boundary Rule (business rules never live in React)
 
@@ -70,9 +104,12 @@ If a component needs to show *"why is this T2 and not T3,"* it asks the Domain l
 an explanation object — it never re-derives the answer. This is what keeps the domain
 usable by a future non-React consumer (backend, agent, mobile) without a rewrite.
 
-> Note: some objects the rule references (Tier, Proof version) are **conceptual / not yet
-> in code** — today the domain exposes `confidence` + `isAuditable`. The rule itself
-> (business logic out of React) **is** honored today by the pure `src/domain/` layer.
+> Note: the **Proof object and Proof versions now exist** in code (`proof.ts` — immutable,
+> versioned, with linked reversals/corrections); components read them and call `approveProof` /
+> `reverseProof` but never compute a Proof, an exclusion, or an auditable judgement themselves
+> (that lives in `approval.ts` / `provenLedger.ts`). Only the richer **T1/T2/T3 tier labels**
+> remain conceptual — today the domain exposes `confidence` + `proofIsAuditable`. The rule itself
+> (business logic out of React) **is** honored by the pure `src/domain/` layer.
 
 ## Evolution hooks (cheap now, valuable later)
 
@@ -217,8 +254,8 @@ doesn't require restructuring. **None of these are implemented in this repo** �
 
 | Extension point | Resolves (eventually) | State in this code |
 |---|---|---|
-| `ProofTriggerPolicy` | when a new Proof version is generated (tier change / amount delta / manual) | not built — no distinct Proof object yet |
-| `RevisionPolicy` | how downward revisions are handled (status, required reason, notification) | not built — no Proof object / no `changeReason` field exists today |
+| `ProofTriggerPolicy` | when a new Proof version is generated (tier change / amount delta / manual) | **partly built** — approval creates a Proof; a distinct *policy* for auto-versioning is not |
+| `RevisionPolicy` | how downward revisions are handled (status, required reason, notification) | **partly built** — `reviseProof`/`reverseProof` append linked records with a reason; notification/routing is not |
 | `OwnershipRoutingPolicy` | how a Case gets an owner (manual / rule / AI-suggested) | owner assignment is manual today (`assignOwner`); no routing policy |
 | `SLAPolicy` | timing thresholds per loop stage (stall detection) | not built |
 | `LeakTypeAdapter` | the generalization seam — one engine, many leak types | `leakageType` + per-type `PLAYBOOK` exist; a second leak type is the real test |
@@ -290,6 +327,25 @@ can move.
 seam above) must optimize for **durable, independently verified, post-reversal auditable
 outcomes** — never for claimed recovery, raw counted recovery, or short-term proof volume.
 
+### Enforcement status in code (what is real today)
+
+| # | Invariant | Where enforced | Status |
+|---|---|---|---|
+| 1 | Evidence source beneficiary can't alter | `evidence.ts` — independence **derived from source** (`INDEPENDENT_SOURCE_SYSTEMS`); manual/operator sources forced to beneficiary-controlled; auditable requires an independent ref | 🟡 prototype — trusted sources are *simulated*; real verification needs server-side ingestion (M1) |
+| 2 | Baseline/definition fixed before outcome | `baseline.ts` (`lockBaseline`, `baselineTemporallyValid`) | ✅ |
+| 3 | Pre-registration timestamps tamper-evident | `timestamp.ts` seam | 🟡 seam only — needs a server; localStorage is editable |
+| 4 | Proof stamps exact versions used | `proof.ts` (policy/threshold/methodology/baseline versions stamped) | ✅ |
+| 5 | Historical proof immutable & reproducible | `proof.ts` `Object.freeze`; read, never recomputed | ✅ in-memory (lost on JSON reload — see localStorage note) |
+| 6 | Learning changes future only | policy is versioned; `proofIsAuditable` judges against **stamped** threshold | ✅ (Learning engine itself deferred) |
+| 7 | Excluded Recovery mandatory | `proof.ts`/`approval.ts` throw without an exclusion statement | ✅ |
+| 8 | No sole author = approver | `authority.ts` `canApproveProof`; approver ≠ owner | ✅ prototype identities |
+| 9 | Revisions are new linked records | `proof.ts` `reviseProof`/`reverseProof`; original never mutated | ✅ |
+| 10 | Claimed ≠ proven | two ledgers; provisional Case money never reaches `provenLedger` | ✅ |
+| — | No double-count | `effectiveProofs` (chain fold) + `hasEffectiveRecoveryForCase` (double-approval guard) | ✅ |
+
+The gaps (#3 tamper-evidence, #5 durability of immutability) share one cause — **no server** —
+and are the honestly-deferred trust boundary, not a design flaw in the domain core.
+
 ## Deliberately deferred
 
 No backend, no auth, no graph database, no agents, no live integrations. These are
@@ -299,6 +355,14 @@ number people already trust.
 
 ## Testing
 
-`domain/invariants.test.ts` locks the rules that are the product's truth: the core
-equation, no-reason exclusion, CFO-auditable gating, and detected/proven
-separation. Run with `npm run test`.
+`domain/invariants.test.ts` locks the Case-level rules (core equation, no-reason exclusion,
+auditable gating, detected/proven separation). The **trust core** is locked by
+`domain/trust.test.ts` (immutable proof, baseline governance, evidence, separation of authority),
+`domain/approval.test.ts` (the full gate + double-approval guard + stamped-threshold history),
+`domain/money.fromDecimal.test.ts` (the decimal→minor boundary), and `data/seedTrust.verify.test.ts`
+(the seed reproduces $83,400 proven / $79,800 auditable over immutable Proofs). Run with
+`npm run test`.
+
+> Not yet covered: the `state/RecoveryContext` React glue has no component tests (jsdom/RTL not
+> wired) — the trust-critical logic it calls is extracted into the pure, tested domain functions
+> above, so the untested surface is thin wiring.

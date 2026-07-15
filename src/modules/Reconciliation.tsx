@@ -1,11 +1,20 @@
 import { useRecovery } from "../state/RecoveryContext";
 import { reconcile } from "../domain/reconciliation";
+import { provenLedger } from "../domain/provenLedger";
 import { money } from "../lib/format";
 import { Bar, Panel, SectionHeader } from "../components/ui";
 
 export function Reconciliation() {
-  const { events } = useRecovery();
+  const { events, proofs } = useRecovery();
   const r = reconcile(events);
+  // The CFO-auditable figure is the immutable-proof number, not recomputed from Cases. Shown in
+  // whole dollars to sit alongside the operational (Case-side) waterfall context above it. The
+  // upper waterfall rungs (gross / counted) are PROVISIONAL (Case-derived); only the auditable line
+  // is proof-derived. Clamp the exclusion step at 0 so it can never invert if a Case's provisional
+  // amount is edited below its already-frozen proof after approval.
+  const auditableRevenue = provenLedger(proofs, "USD").auditableRevenue.minor / 100;
+  const excludedFromAuditable = Math.max(0, r.countedRecovered - auditableRevenue);
+  const recoveredToAuditableGap = excludedFromAuditable;
 
   // The waterfall, top to bottom. Each step states what was removed and why.
   const steps = [
@@ -20,7 +29,7 @@ export function Reconciliation() {
       label: "Gross Recovered",
       amount: r.grossRecovered,
       tone: "neutral" as const,
-      note: "All dollars collected above baseline on recovered events.",
+      note: "Provisional (operational, Case-side): dollars collected above baseline on recovered events.",
     },
     {
       label: "− Unclassified",
@@ -32,19 +41,19 @@ export function Reconciliation() {
       label: "Counted Recovered Revenue",
       amount: r.countedRecovered,
       tone: "neutral" as const,
-      note: "What the product reports as recovered. Includes low confidence.",
+      note: "Provisional (operational). What the product reports as recovered; includes low confidence.",
     },
     {
       label: "− Missing Proof / Double Claim / Low Confidence",
-      amount: -(r.countedRecovered - r.auditableRevenue),
+      amount: -excludedFromAuditable,
       tone: "exclude" as const,
-      note: "Counted, but not yet defensible to a CFO.",
+      note: "Counted operationally, but not yet backed by an approved, immutable proof.",
     },
     {
       label: "CFO Auditable Revenue",
-      amount: r.auditableRevenue,
+      amount: auditableRevenue,
       tone: "proof" as const,
-      note: "Every dollar survives an audit. This is the number a CFO signs.",
+      note: "From immutable approved proofs. Every dollar survives an audit. This is the number a CFO signs.",
       strong: true,
     },
   ];
@@ -55,7 +64,7 @@ export function Reconciliation() {
     <div>
       <SectionHeader
         title="Recovery Reconciliation"
-        subtitle="From gross recovered down to CFO-auditable — every excluded dollar explained. We do not count money we cannot explain."
+        subtitle="From gross recovered (provisional, operational) down to CFO-auditable (proof-derived) — every excluded dollar explained. We do not count money we cannot explain."
       />
 
       {/* The waterfall */}
@@ -118,13 +127,13 @@ export function Reconciliation() {
           <table className="w-full text-sm">
             <tbody>
               <Row label="Detected Opportunity" amount={r.detectedOpportunity} tone="detect" />
-              <Row label="Recovered Revenue" amount={r.countedRecovered} />
-              <Row label="CFO Auditable Revenue" amount={r.auditableRevenue} tone="proof" strong />
+              <Row label="Recovered Revenue (provisional)" amount={r.countedRecovered} />
+              <Row label="CFO Auditable Revenue (proof-derived)" amount={auditableRevenue} tone="proof" strong />
               <Row label="Excluded Revenue" amount={r.excludedTotal} tone="exclude" />
               <tr className="border-t border-ink-600/60">
                 <td className="px-4 py-3 text-slate-400">Recovered → Auditable gap</td>
                 <td className="px-4 py-3 text-right tabular-nums text-detect-500">
-                  {money(r.recoveredToAuditableGap)}
+                  {money(recoveredToAuditableGap)}
                 </td>
               </tr>
             </tbody>

@@ -5,6 +5,8 @@ import {
   byReason,
   recoveredTrend,
 } from "../domain/metrics";
+import { provenLedger } from "../domain/provenLedger";
+import { formatMoney, money as makeMoney } from "../domain/money";
 import { money, percent } from "../lib/format";
 import { reasonLabel } from "../domain/reasons";
 import {
@@ -16,8 +18,11 @@ import {
 } from "../components/ui";
 
 export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
-  const { events } = useRecovery();
+  const { events, proofs } = useRecovery();
   const m = portfolioMetrics(events);
+  // Proven / auditable money come from immutable approved Proofs — never recomputed from Cases.
+  const pl = provenLedger(proofs, "USD");
+  const unprovenMinor = pl.revenueReturned.minor - pl.auditableRevenue.minor;
   const stages = byStage(events);
   const reasons = byReason(events).filter((r) => r.key !== "Unclassified");
   const trend = recoveredTrend(events);
@@ -50,14 +55,14 @@ export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
           </div>
           <div className="mt-2 flex items-end gap-3">
             <span className="text-3xl font-semibold tabular-nums text-proof-500">
-              {money(m.recoveredRevenue)}
+              {formatMoney(pl.revenueReturned)}
             </span>
             <span className="pb-1 text-slate-500">
               <Sparkline data={trend} />
             </span>
           </div>
           <div className="mt-1 text-sm text-slate-400">
-            {m.recoveredCount} counted recoveries · Revenue Returned = Collected − Baseline
+            {pl.provenCount} approved proofs · Revenue Returned = Collected − Baseline
           </div>
         </Panel>
       </div>
@@ -65,22 +70,22 @@ export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
       {/* Money recovered metric + proof split */}
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard
-          label="Money Recovered"
-          value={money(m.recoveredRevenue)}
-          sub="all counted recoveries"
+          label="Revenue Returned"
+          value={formatMoney(pl.revenueReturned)}
+          sub={`${pl.provenCount} approved proofs`}
           tone="proof"
         />
         <StatCard
           label="CFO-Auditable"
-          value={money(m.auditableRevenue)}
-          sub={`${m.auditableCount} proof-grade events`}
+          value={formatMoney(pl.auditableRevenue)}
+          sub={`${pl.auditableCount} proof-grade proofs`}
           tone="proof"
-          hint="Recovered + reason + proof-grade confidence + real uplift"
+          hint="Approved proof + reason + proof-grade confidence + independent evidence + real uplift"
         />
         <StatCard
           label="Unproven (low conf.)"
-          value={money(m.unprovenRevenue)}
-          sub={`${m.unprovenCount} below threshold`}
+          value={formatMoney(makeMoney(unprovenMinor, "USD"))}
+          sub={`${pl.provenCount - pl.auditableCount} below threshold`}
           tone="detect"
         />
         <StatCard

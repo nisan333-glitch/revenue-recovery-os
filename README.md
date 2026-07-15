@@ -52,14 +52,19 @@ vision and an honest board-level critique of it, and
 1. `revenueReturned` is **always computed** as `collected − baseline` — never entered.
 2. Events **without a recovery reason are not counted** toward recovered revenue.
 3. **Low-confidence** recoveries stay visible but **separated** from proof-grade.
-4. The **CFO view** shows only auditable recovery: `Recovered` + reason +
-   proof-grade confidence + real uplift.
+4. The **CFO view** shows only auditable recovery, read from **immutable approved Proofs**:
+   an approved Proof + reason + independent evidence + proof-grade confidence + real uplift.
 5. The dashboard **never blends** detected opportunity with proven recovery.
 6. **Forecast ≠ proof:** the Decision Engine's *expected recoverable* (Revenue
    Opportunity ledger) is never summed into recovered/auditable revenue.
+7. **The beneficiary never determines the number:** proven/auditable money comes only from
+   immutable Proofs created through a trust gate (governed baseline locked before intervention,
+   independent evidence, an approver distinct from the owner, mandatory exclusion statement).
 
-These live in `src/domain/invariants.ts` / `src/domain/recommendation.ts` and are
-covered by `invariants.test.ts`, `recommendation.test.ts`, and `outcomes.test.ts`.
+These live in `src/domain/` (`invariants.ts`, `proof.ts`, `approval.ts`, `provenLedger.ts`,
+`baseline.ts`, `money.ts`) and are covered by `invariants.test.ts`, `trust.test.ts`,
+`approval.test.ts`, `money.fromDecimal.test.ts`, `recommendation.test.ts`, `outcomes.test.ts`,
+and `seedTrust.verify.test.ts`.
 
 ## Modules
 
@@ -78,8 +83,10 @@ covered by `invariants.test.ts`, `recommendation.test.ts`, and `outcomes.test.ts
 
 ## Stack
 
-React 18 · TypeScript (strict) · Tailwind CSS · Vite · Vitest. No backend — data
-is seeded and persisted in `localStorage` behind a swappable repository interface.
+React 18 · TypeScript (strict) · Tailwind CSS · Vite · Vitest. No backend — mutable Cases and a
+separate **append-only trust store** (governed Baselines, Evidence, immutable Proofs) are seeded
+and persisted in `localStorage` behind a swappable repository interface. (localStorage is
+prototype-grade trust only — the tamper-evident boundary is a deferred server.)
 
 ## Run
 
@@ -91,7 +98,10 @@ npm run build    # typecheck (strict) + production build
 ```
 
 Open the app, work an item in the **Recovery Queue** (open it → optionally **Apply
-recommendation** → assign → add action → classify a reason → mark Recovered), and
-watch it appear in the **CFO Proof View** with a full **Audit Trail**. The *expected
-recoverable* forecast stays separate from the proven number throughout. Use **Reset
-demo data** in the sidebar to restore the seed. State persists across refreshes.
+recommendation** → assign → add action → classify a reason → mark Recovered). Then, in the
+**Prove** panel of the drawer, **establish + lock a governed baseline**, **attach independent
+evidence**, and **approve an immutable Proof** (Finance approver, mandatory exclusion statement) —
+only then does it appear in the **CFO Proof View**, with a full **Audit Trail**. Seeded recovered
+cases already carry approved Proofs. The *expected recoverable* forecast stays separate from the
+proven number throughout. Use **Reset demo data** in the sidebar to restore the seed. State
+persists across refreshes.

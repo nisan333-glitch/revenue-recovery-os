@@ -72,10 +72,14 @@ Expectation → Detection → Ownership → Action → Verification → Proof
   number). Excluding part of a recovered amount is a **claims** decision (Proof), not a
   **factual** one (Verification).
 
-> **In code today** the Case (`RecoveryEvent`) carries its own proof fields
-> (`revenueReturned`, `confidence`, `evidenceNotes`) plus an append-only `audit[]`. A
-> **distinct, versioned Proof object is not yet implemented** — the Case/Proof split above
-> is the conceptual target, not the current data model.
+> **In code today** the Case/Proof split above **is implemented.** The Case (`RecoveryEvent`)
+> carries *provisional* live fields (`revenueReturned`, `confidence`, `evidenceNotes`, plus an
+> append-only `audit[]`) for in-flight work; a **distinct, immutable, versioned Proof object**
+> (`src/domain/proof.ts`) is created only at approval, through the trust gate
+> (`src/domain/approval.ts`), and is frozen forever. All proven/auditable money is aggregated over
+> approved Proofs (`src/domain/provenLedger.ts`) — never recomputed from the mutable Case. A
+> reversal/correction appends a new linked Proof; the original is never mutated. What remains
+> conceptual is only the richer T1/T2/T3 tier labels and the `canBeCase` admission predicate (§2).
 
 ## 2. When is a Recovery Case created? — the admission rule
 

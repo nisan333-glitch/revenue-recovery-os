@@ -30,8 +30,15 @@ export function AttributionEngine() {
     <div>
       <SectionHeader
         title="Attribution Engine"
-        subtitle="How every recovered dollar is credited — transparently enough to defend."
+        subtitle="How recovered dollars are credited by reason / owner / stage — transparently enough to defend."
       />
+
+      <Panel className="mb-4 p-3 text-[12px] text-slate-400">
+        <span className="font-semibold text-slate-300">Operational attribution (provisional).</span>{" "}
+        These per-dimension Returned / Auditable figures are Case-level estimates for analysis — the
+        CFO-auditable number of record comes from approved, immutable Proofs in the{" "}
+        <span className="text-proof-500">CFO Proof View</span>.
+      </Panel>
 
       <Panel className="mb-5 p-4">
         <h3 className="mb-2 text-sm font-semibold text-slate-200">
@@ -86,10 +93,10 @@ export function AttributionEngine() {
                 <td className="px-4 py-3 text-right tabular-nums text-slate-300">
                   {money(l.collected)}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums font-medium text-proof-500">
+                <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-300">
                   {money(l.returned)}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-proof-500">
+                <td className="px-4 py-3 text-right tabular-nums text-slate-300">
                   {money(l.auditableReturned)}
                 </td>
               </tr>
@@ -107,10 +114,10 @@ export function AttributionEngine() {
               <td className="px-4 py-3 text-slate-300" colSpan={4}>
                 Total
               </td>
-              <td className="px-4 py-3 text-right tabular-nums text-proof-500">
+              <td className="px-4 py-3 text-right tabular-nums text-slate-300">
                 {money(totalReturned)}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums text-proof-500">
+              <td className="px-4 py-3 text-right tabular-nums text-slate-300">
                 {money(totalAuditable)}
               </td>
             </tr>

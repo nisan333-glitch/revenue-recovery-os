@@ -8,6 +8,7 @@
 import { useRecovery } from "../state/RecoveryContext";
 import { recoveryLoop } from "../domain/loop";
 import { reasonLabel } from "../domain/reasons";
+import { formatMoney } from "../domain/money";
 import { money, percent } from "../lib/format";
 import { StatCard, Panel, SectionHeader, Pill } from "../components/ui";
 
@@ -15,8 +16,8 @@ import { StatCard, Panel, SectionHeader, Pill } from "../components/ui";
 type LoopTarget = "queue" | "cfo" | "audit";
 
 export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) {
-  const { events } = useRecovery();
-  const loop = recoveryLoop(events);
+  const { events, proofs } = useRecovery();
+  const loop = recoveryLoop(events, proofs);
 
   return (
     <div>
@@ -60,14 +61,14 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
           <div className="grid grid-cols-2 gap-3">
             <StatCard
               label="Revenue Returned"
-              value={money(loop.returned)}
+              value={formatMoney(loop.returned)}
               sub="cash recovered above baseline"
               tone="proof"
               hint="Realized cash, Collected − Baseline (Revenue Returned ledger — proven)."
             />
             <StatCard
               label="Auditable Revenue"
-              value={money(loop.auditable)}
+              value={formatMoney(loop.auditable)}
               sub="CFO-signed · click for the cases"
               tone="proof"
               hint="The CFO-grade subset of Returned (proof-grade confidence + reason + positive uplift)."
@@ -91,9 +92,9 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         at risk and forecast{" "}
         <span className="font-semibold text-detect-500">{money(loop.recoverableForecast)}</span>{" "}
         recoverable. To date we have returned{" "}
-        <span className="font-semibold text-proof-500">{money(loop.returned)}</span> — a{" "}
+        <span className="font-semibold text-proof-500">{formatMoney(loop.returned)}</span> — a{" "}
         <span className="font-semibold text-proof-500">{percent(loop.recoveryRate)}</span> recovery
-        rate — and <span className="font-semibold text-proof-500">{money(loop.auditable)}</span> of
+        rate — and <span className="font-semibold text-proof-500">{formatMoney(loop.auditable)}</span> of
         it is backed by evidence a CFO can sign.
       </p>
       <p className="mb-8 text-[11px] text-slate-500">
@@ -144,7 +145,7 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
           phase="Prove"
           tone="proof"
           label="Revenue Returned"
-          value={money(loop.returned)}
+          value={formatMoney(loop.returned)}
           note="proven cash — Collected − Baseline"
           onClick={() => onOpen("cfo")}
           cta="Open the CFO Proof View →"
@@ -155,7 +156,7 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
           phase="Prove"
           tone="proof"
           label="Auditable Revenue"
-          value={money(loop.auditable)}
+          value={formatMoney(loop.auditable)}
           note="proof-grade subset, CFO signed off"
           onClick={() => onOpen("cfo")}
           cta="See the auditable cases →"

@@ -5,8 +5,11 @@ import type { RecoveryEvent, RecoveryStatus } from "../domain/types";
 import { OWNERS, useRecovery } from "../state/RecoveryContext";
 import { RECOVERY_REASONS, reasonLabel } from "../domain/reasons";
 import { recommend } from "../domain/recommendation";
-import { isAuditable, isCounted } from "../domain/invariants";
 import { explainConfidence } from "../domain/confidence";
+import { formatMoney, fromDecimal } from "../domain/money";
+import { effectiveProofs } from "../domain/proof";
+import { proofIsAuditable } from "../domain/provenLedger";
+import type { TrustClassification } from "../domain/evidence";
 import { money, percent } from "../lib/format";
 import {
   ConfidenceBadge,
@@ -15,6 +18,20 @@ import {
   StatusBadge,
 } from "./ui";
 import { dateTime } from "../lib/format";
+
+// Operator identity for governance actions recorded from this drawer (prototype).
+const OPERATOR = "you@company";
+
+// Evidence sources the operator can attach. Independence is a property of the SOURCE, not a free
+// toggle: only the trusted (simulated) source systems produce an independent reference; an operator
+// note is always beneficiary-controlled. makeEvidence enforces this regardless of what is passed.
+const EVIDENCE_SOURCES = {
+  billing_invoice: { label: "Billing — invoice paid (simulated)", sourceSystem: "billing", evidenceType: "invoice_paid", classification: "independent" as TrustClassification },
+  product_event: { label: "Product — activation event (simulated)", sourceSystem: "product", evidenceType: "activation_event", classification: "independent" as TrustClassification },
+  crm_order: { label: "CRM — signed order (simulated)", sourceSystem: "crm", evidenceType: "order_form_signed", classification: "independent" as TrustClassification },
+  operator_note: { label: "Operator note (beneficiary-controlled)", sourceSystem: "manual", evidenceType: "operator_note", classification: "beneficiary_controlled" as TrustClassification },
+} as const;
+type EvidenceSourceKey = keyof typeof EVIDENCE_SOURCES;
 
 const STATUS_FLOW: RecoveryStatus[] = [
   "Detected",
@@ -41,14 +58,21 @@ export function EventDetail({
     applyRecommendation,
     updateAmounts,
     updateEvidence,
+    baselineOf,
+    proofsOf,
   } = useRecovery();
+  // Once a governed baseline is locked, the provisional baseline field is frozen too — the
+  // beneficiary can no longer appear to "move the baseline" (Trust Invariant #2).
+  const governedLocked = !!baselineOf(event.eventId)?.lockedAt;
+  // Proof-based status (the truth the CFO view reads) — NOT the Case-level isAuditable heuristic.
+  const effectiveProof = effectiveProofs(proofsOf(event.eventId))[0];
+  const provenProof = effectiveProof && effectiveProof.status !== "Reversed" ? effectiveProof : undefined;
+  const auditableProof = !!provenProof && proofIsAuditable(provenProof);
   const [action, setAction] = useState("");
   const [collected, setCollected] = useState(String(event.collectedAmount));
   const [baseline, setBaseline] = useState(String(event.baselineAmount));
   const [evidence, setEvidence] = useState(event.evidenceNotes);
 
-  const counted = isCounted(event);
-  const auditable = isAuditable(event);
   const isOpen = OPEN_STATUSES.includes(event.status);
   const rec = recommend(event);
   const recommendationApplied =
@@ -77,23 +101,27 @@ export function EventDetail({
           </button>
         </div>
 
-        {/* Proof status banner */}
+        {/* Proof status banner — driven by the immutable Proof, not the Case-level heuristic */}
         <div
           className={`mb-5 rounded-lg border px-3 py-2 text-sm ${
-            auditable
+            auditableProof
               ? "border-proof-600/40 bg-proof-600/10 text-proof-500"
-              : counted
+              : provenProof
                 ? "border-detect-600/40 bg-detect-600/10 text-detect-500"
                 : "border-ink-500/40 bg-ink-800/60 text-slate-400"
           }`}
         >
-          {auditable
-            ? "✓ CFO-auditable: counted in proven recovered revenue."
-            : counted
-              ? "Counted, but below proof-grade confidence — excluded from CFO total."
-              : event.recoveryReason === null
-                ? "Not counted: no recovery reason classified."
-                : "Open opportunity — not yet recovered."}
+          {auditableProof
+            ? `✓ CFO-auditable: proof ${provenProof!.proofId} counted in Auditable Revenue.`
+            : provenProof
+              ? "Proven (in Revenue Returned) but below proof-grade — excluded from the CFO auditable total."
+              : effectiveProof
+                ? "Proof reversed — no longer counted."
+                : event.recoveryReason === null
+                  ? "Not counted: no recovery reason classified."
+                  : event.status === "Recovered"
+                    ? "Recovered — approve an immutable proof below to count it."
+                    : "Open opportunity — not yet recovered."}
         </div>
 
         {/* Recommended play (Decision Engine) — forecast, not proof */}
@@ -138,10 +166,12 @@ export function EventDetail({
 
         {/* The equation */}
         <div className="mb-5 grid grid-cols-3 gap-3">
-          <Field label="Baseline">
+          <Field label={governedLocked ? "Baseline (locked)" : "Baseline"}>
             <input
-              className="num-input"
-              value={baseline}
+              className="num-input disabled:opacity-50"
+              value={governedLocked ? String(baselineOf(event.eventId)!.calculatedAmount.minor / 100) : baseline}
+              disabled={governedLocked}
+              title={governedLocked ? "Governed baseline is locked — revise it in the Prove panel" : undefined}
               onChange={(e) => setBaseline(e.target.value)}
               onBlur={() => updateAmounts(event.eventId, { baselineAmount: Number(baseline) || 0 })}
             />
@@ -269,7 +299,14 @@ export function EventDetail({
             onChange={(e) => setEvidence(e.target.value)}
             onBlur={() => updateEvidence(event.eventId, evidence)}
           />
+          <p className="mt-1 text-[11px] text-slate-500">
+            Notes are operator-entered (beneficiary-controlled). Auditable proof needs an
+            independent evidence reference — add one below.
+          </p>
         </div>
+
+        {/* Prove — governed baseline, evidence, and the immutable approved proof */}
+        <ProofGovernance event={event} />
 
         {/* Confidence breakdown */}
         <div className="mt-5">
@@ -320,5 +357,307 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </span>
       {children}
     </label>
+  );
+}
+
+// The "Prove" surface: establish + lock a governed baseline, attach evidence, and approve an
+// IMMUTABLE proof through the real trust gate. Money is entered as decimals and converted at this
+// single edge via money.fromDecimal — never coerced. Approval is blocked until every invariant
+// passes (baseline locked before intervention, exclusion stated, independent evidence for
+// auditable, approver distinct from owner).
+function ProofGovernance({ event }: { event: RecoveryEvent }) {
+  const {
+    baselineOf,
+    evidenceOf,
+    proofsOf,
+    establishBaseline,
+    lockBaseline,
+    reviseBaseline,
+    addEvidence,
+    approveProof,
+    reverseProof,
+    approvalBlockers,
+  } = useRecovery();
+
+  const currency = event.currency ?? "USD";
+  const baseline = baselineOf(event.eventId);
+  const evidence = evidenceOf(event.eventId);
+  const proofs = proofsOf(event.eventId);
+
+  const [baselineInput, setBaselineInput] = useState("");
+  const [evSource, setEvSource] = useState<EvidenceSourceKey>("billing_invoice");
+  const [evRecordId, setEvRecordId] = useState("");
+  const [collectedInput, setCollectedInput] = useState(String(event.collectedAmount));
+  const [excludedInput, setExcludedInput] = useState("0");
+  const [exclusion, setExclusion] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  function toMinor(s: string): number | null {
+    try {
+      return fromDecimal(s.trim() === "" ? "0" : s.trim(), currency).minor;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }
+
+  function onEstablish() {
+    setErr(null);
+    const minor = toMinor(baselineInput);
+    if (minor === null) return;
+    establishBaseline(event.eventId, {
+      amountMinor: minor,
+      sourceRefs: [`manual:${event.eventId}`],
+      establishedBy: OPERATOR,
+    });
+    setBaselineInput("");
+  }
+
+  function onAddEvidence() {
+    setErr(null);
+    if (!evRecordId.trim()) {
+      setErr("evidence needs a source record id");
+      return;
+    }
+    const src = EVIDENCE_SOURCES[evSource];
+    // Classification is DERIVED from the chosen source — makeEvidence enforces that only trusted
+    // (simulated) source systems yield "independent"; an operator note is always beneficiary-controlled.
+    addEvidence(event.eventId, {
+      evidenceType: src.evidenceType,
+      sourceSystem: src.sourceSystem,
+      sourceRecordId: evRecordId.trim(),
+      observedAt: new Date().toISOString(),
+      trustClassification: src.classification,
+      suppliedBy: src.sourceSystem === "manual" ? OPERATOR : src.sourceSystem,
+    });
+    setEvRecordId("");
+  }
+
+  const collectedMinor = (() => {
+    try {
+      return fromDecimal(collectedInput.trim() === "" ? "0" : collectedInput.trim(), currency).minor;
+    } catch {
+      return null;
+    }
+  })();
+  const excludedMinor = (() => {
+    try {
+      return fromDecimal(excludedInput.trim() === "" ? "0" : excludedInput.trim(), currency).minor;
+    } catch {
+      return null;
+    }
+  })();
+
+  const approveInput =
+    collectedMinor !== null && excludedMinor !== null
+      ? {
+          collectedMinor,
+          excludedMinor,
+          exclusionStatement: exclusion,
+          attribution: reasonLabel(event.recoveryReason) || "recovery",
+        }
+      : null;
+
+  const blockers = approveInput ? approvalBlockers(event.eventId, approveInput) : ["enter a valid collected / excluded amount"];
+
+  function onApprove() {
+    setErr(null);
+    if (!approveInput) {
+      setErr("enter a valid collected / excluded amount");
+      return;
+    }
+    const res = approveProof(event.eventId, approveInput);
+    if (!res.ok) setErr(res.error);
+    else setExclusion("");
+  }
+
+  return (
+    <div className="mt-5 rounded-lg border border-proof-600/30 bg-proof-600/[0.04] p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-proof-500">
+          Prove — governed baseline · evidence · immutable proof
+        </span>
+      </div>
+
+      {/* Governed baseline */}
+      <div className="mb-4">
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Governed baseline</div>
+        {baseline ? (
+          <div className="flex items-center justify-between rounded bg-ink-800/60 px-3 py-2 text-sm">
+            <span className="text-slate-300">
+              {formatMoney(baseline.calculatedAmount, { exact: true })}{" "}
+              <span className="font-mono text-[11px] text-slate-500">{baseline.baselineId}</span>
+            </span>
+            {baseline.lockedAt ? (
+              <span className="text-[11px] text-proof-500">🔒 locked · immutable</span>
+            ) : (
+              <button
+                className="rounded border border-proof-500/50 px-2 py-0.5 text-[11px] text-proof-500 hover:bg-proof-600/10"
+                onClick={() => lockBaseline(event.eventId, "locked before intervention")}
+              >
+                Lock baseline
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              className="num-input flex-1"
+              placeholder={`Baseline amount (${currency}), e.g. 6200.00`}
+              value={baselineInput}
+              onChange={(e) => setBaselineInput(e.target.value)}
+            />
+            <button
+              className="rounded bg-ink-600 px-3 text-sm text-slate-200 hover:bg-ink-500"
+              onClick={onEstablish}
+            >
+              Establish
+            </button>
+          </div>
+        )}
+        {baseline?.lockedAt && (
+          <button
+            className="mt-1 text-[11px] text-slate-500 underline hover:text-slate-300"
+            onClick={() => {
+              const next = toMinor(baselineInput);
+              if (next === null || baselineInput.trim() === "") {
+                setErr("enter a corrected baseline amount before revising");
+                return;
+              }
+              reviseBaseline(event.eventId, {
+                amountMinor: next,
+                sourceRefs: [`manual:${event.eventId}:corrected`],
+                establishedBy: OPERATOR,
+                reason: "operator correction",
+              });
+              setBaselineInput("");
+            }}
+          >
+            revise (creates a new linked baseline; original preserved)
+          </button>
+        )}
+      </div>
+
+      {/* Evidence */}
+      <div className="mb-4">
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Evidence</div>
+        <ul className="mb-2 space-y-1">
+          {evidence.length === 0 && <li className="text-[11px] text-slate-500">No evidence attached.</li>}
+          {evidence.map((ev) => (
+            <li key={ev.evidenceId} className="flex items-center justify-between rounded bg-ink-800/60 px-2 py-1 text-[12px]">
+              <span className="text-slate-300">
+                {ev.evidenceType} · <span className="font-mono text-slate-500">{ev.sourceRecordId}</span>
+              </span>
+              <span className={ev.trustClassification === "independent" ? "text-proof-500" : "text-slate-500"}>
+                {ev.trustClassification === "independent" ? "independent" : "beneficiary-controlled"}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="num-input"
+            value={evSource}
+            onChange={(e) => setEvSource(e.target.value as EvidenceSourceKey)}
+          >
+            {(Object.keys(EVIDENCE_SOURCES) as EvidenceSourceKey[]).map((k) => (
+              <option key={k} value={k}>
+                {EVIDENCE_SOURCES[k].label}
+              </option>
+            ))}
+          </select>
+          <input
+            className="num-input flex-1"
+            placeholder="source record id (e.g. INV-9001)"
+            value={evRecordId}
+            onChange={(e) => setEvRecordId(e.target.value)}
+          />
+          <button className="rounded bg-ink-600 px-3 text-sm text-slate-200 hover:bg-ink-500" onClick={onAddEvidence}>
+            Add
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Independence is set by the source, not chosen — only trusted source systems yield an
+          <span className="text-proof-500"> independent</span> reference; an operator note is always
+          beneficiary-controlled. Independent sources here are <em>simulated</em> stand-ins for real
+          integrations (billing / product / CRM); true enforcement is server-side ingestion.
+        </p>
+      </div>
+
+      {/* Approved proofs (immutable) */}
+      {proofs.length > 0 && (
+        <div className="mb-4">
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Approved proofs (immutable)</div>
+          <ul className="space-y-1">
+            {proofs.map((p) => (
+              <li key={p.proofId} className="flex items-center justify-between rounded bg-ink-800/60 px-3 py-2 text-sm">
+                <span>
+                  <span className="font-mono text-[11px] text-slate-500">{p.proofId}</span>{" "}
+                  <span className="tabular-nums text-proof-500">{formatMoney(p.revenueReturned, { exact: true })}</span>{" "}
+                  <span className="text-[11px] text-slate-500">
+                    {p.status}
+                    {proofIsAuditable(p) ? " · auditable" : ""}
+                  </span>
+                </span>
+                {p.status !== "Reversed" && (
+                  <button
+                    className="rounded border border-red-500/40 px-2 py-0.5 text-[11px] text-red-400 hover:bg-red-500/10"
+                    onClick={() => reverseProof(p.chainId, "operator reversal (refund/dispute)")}
+                  >
+                    Reverse
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Approve a new proof */}
+      <div className="rounded border border-ink-600/50 bg-ink-800/40 p-3">
+        <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
+          Approve proof (Finance approver — distinct from owner)
+        </div>
+        <div className="mb-2 grid grid-cols-2 gap-2">
+          <Field label={`Collected (${currency})`}>
+            <input
+              className="num-input"
+              value={collectedInput}
+              onChange={(e) => setCollectedInput(e.target.value)}
+            />
+          </Field>
+          <Field label={`Excluded (${currency})`}>
+            <input
+              className="num-input"
+              value={excludedInput}
+              onChange={(e) => setExcludedInput(e.target.value)}
+            />
+          </Field>
+        </div>
+        <Field label="Exclusion statement (mandatory — zero must be asserted)">
+          <input
+            className="num-input"
+            placeholder="e.g. No excluded recovery — full delta independently evidenced."
+            value={exclusion}
+            onChange={(e) => setExclusion(e.target.value)}
+          />
+        </Field>
+        {blockers.length > 0 && (
+          <ul className="mt-2 space-y-0.5">
+            {blockers.map((b) => (
+              <li key={b} className="text-[11px] text-detect-500">• {b}</li>
+            ))}
+          </ul>
+        )}
+        <button
+          className="mt-2 w-full rounded-md border border-proof-500/50 bg-proof-600/15 px-3 py-1.5 text-sm font-medium text-proof-500 hover:bg-proof-600/25 disabled:opacity-40"
+          onClick={onApprove}
+          disabled={blockers.length > 0}
+        >
+          Approve immutable proof
+        </button>
+        {err && <div className="mt-2 text-[11px] text-red-400">{err}</div>}
+      </div>
+    </div>
   );
 }
