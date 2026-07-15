@@ -19,6 +19,12 @@ export interface AdapterOptions {
 
 const REQUIRED = ["entity_id", "signed_at", "next_invoice_due_at", "next_invoice_amount", "currency"] as const;
 
+/** Required columns absent from the header — a structural error (never a silent all-rows-excluded). */
+export function missingRequiredColumns(headers: readonly string[]): string[] {
+  const present = new Set(headers.map((h) => h.trim()));
+  return REQUIRED.filter((r) => !present.has(r));
+}
+
 function exclude(sourceRowId: string, reason: ExclusionRecord["reason"], detail: string): RowOutcome {
   return { kind: "excluded", exclusion: { sourceRowId, reason, detail } };
 }

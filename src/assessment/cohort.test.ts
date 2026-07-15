@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ExpectationCycle } from "./types";
-import { classifyStall, isStalled } from "./cohort";
+import { classifyStall, isStalled, splitCohorts } from "./cohort";
 import { makePolicy } from "./policy";
 import { money } from "../domain/money";
 
@@ -66,6 +66,23 @@ describe("cohort — deviation classification as-of asOf, with an explicit reaso
     expect(typeof r.reason).toBe("string");
     expect(r).toHaveProperty("reason");
     expect(isStalled(cycle("2026-01-01", null), policy("2026-03-01"))).toBe(true); // boolean wrapper still available
+  });
+
+  it("splitCohorts separates stalled / undetermined / reference (no conflation)", () => {
+    const p = policy("2026-03-01", 30);
+    const r = splitCohorts(
+      [
+        cycle("2026-01-01", null), // deadline 2026-01-31 ≤ asOf, no obs → stalled
+        cycle("2026-01-01", "2026-01-10"), // observed within 30 → reference (confirmed non-deviant)
+        cycle("2026-02-20", null), // deadline 2026-03-22 > asOf, no obs → undetermined (within window)
+      ],
+      p,
+    );
+    expect(r.stalled).toHaveLength(1);
+    expect(r.reference).toHaveLength(1);
+    expect(r.undetermined).toHaveLength(1);
+    // A within-window cycle must NOT be counted as confirmed non-deviant.
+    expect(r.reference).not.toContainEqual(r.undetermined[0]);
   });
 
   it("is domain-neutral: classification depends only on expectation/observation/N", () => {

@@ -2,6 +2,11 @@ import type { DateLocale } from "../../assessment/dateNormalize";
 import { SectionHeader, Panel, Pill } from "../../components/ui";
 import { downloadTemplate } from "./exportSummary";
 
+// v1 CSV size cap. Rationale: parsing + SHA-256 run synchronously on the main thread (no workers/
+// streaming in this slice). 10 MB (~50k–100k rows) is generous for a historical export while keeping
+// the UI responsive and bounding memory; larger files are rejected with a clear message.
+export const MAX_CSV_BYTES = 10 * 1024 * 1024;
+
 export interface UploadScreenProps {
   n: number;
   setN: (n: number) => void;
@@ -13,12 +18,21 @@ export interface UploadScreenProps {
   setLocale: (l: DateLocale | "") => void;
   error: string | null;
   onFile: (csvText: string) => void;
+  onReject: (message: string) => void;
 }
 
 export function UploadScreen(props: UploadScreenProps) {
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) props.onFile(await f.text()); // client-side read; the file is never uploaded
+    if (!f) return;
+    if (f.size > MAX_CSV_BYTES) {
+      props.onReject(
+        `File too large: ${(f.size / 1048576).toFixed(1)} MB. The v1 limit is ${MAX_CSV_BYTES / 1048576} MB — split the file or reduce the date range.`,
+      );
+      e.target.value = ""; // allow re-selecting the same (or another) file
+      return;
+    }
+    props.onFile(await f.text()); // client-side read; the file is never uploaded
   }
 
   return (

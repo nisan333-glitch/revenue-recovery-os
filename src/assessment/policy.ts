@@ -27,6 +27,8 @@ export interface AssessmentPolicy {
   readonly calculationMethodVersion: string;
 }
 
+import { isSupportedCurrency, SUPPORTED_CURRENCIES } from "../domain/money";
+
 export const ASSESSMENT_CALC_VERSION = "assess-2026.1-thin";
 
 export function makePolicy(input: {
@@ -46,13 +48,18 @@ export function makePolicy(input: {
     throw new Error(`AssessmentPolicy: asOf must be an ISO date YYYY-MM-DD (got ${JSON.stringify(input.asOf)})`);
   }
   if (!input.currency) throw new Error("AssessmentPolicy: currency is required");
+  // Validate + normalize BEFORE the currency can reach any money/formatting logic.
+  const currency = input.currency.trim().toUpperCase();
+  if (!isSupportedCurrency(currency)) {
+    throw new Error(`AssessmentPolicy: unsupported currency ${JSON.stringify(input.currency)} (supported: ${SUPPORTED_CURRENCIES.join(", ")})`);
+  }
   return Object.freeze({
     policyId: input.policyId ?? "policy-default",
     policyVersion: input.policyVersion ?? "1",
     grain: "ExpectationCycle" as const,
     stallThresholdDays: input.stallThresholdDays,
     asOf: input.asOf,
-    currency: input.currency,
+    currency,
     excludedStatuses: Object.freeze([...(input.excludedStatuses ?? [])]),
     activationDefinition:
       input.activationDefinition ??

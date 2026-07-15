@@ -25,4 +25,11 @@ describe("parseCsv — quotes, CRLF, ragged rows", () => {
     const p = parseCsv("a,b\n1,2\n\n");
     expect(p.rows).toHaveLength(1);
   });
+
+  it("strips a leading UTF-8 BOM so an Excel-exported CSV parses identically", () => {
+    const plain = "entity_id,amount\nE1,100\nE2,200";
+    const withBom = String.fromCharCode(0xfeff) + plain;
+    expect(parseCsv(withBom)).toEqual(parseCsv(plain));
+    expect(parseCsv(withBom).headers[0]).toBe("entity_id"); // not the BOM-prefixed header
+  });
 });

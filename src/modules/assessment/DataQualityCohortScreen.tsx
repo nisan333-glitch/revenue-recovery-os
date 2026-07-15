@@ -1,20 +1,20 @@
 import { useState } from "react";
 import type { AssessmentResult } from "../../assessment/types";
+import { summarizeExclusions } from "../../assessment/summarize";
 import { SectionHeader, Panel, StatCard } from "../../components/ui";
 
 export interface DataQualityCohortScreenProps {
   result: AssessmentResult;
   n: number;
+  error: string | null;
   onChangeN: (n: number) => void;
   onBack: () => void;
   onNext: () => void;
 }
 
-export function DataQualityCohortScreen({ result, n, onChangeN, onBack, onNext }: DataQualityCohortScreenProps) {
+export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, onNext }: DataQualityCohortScreenProps) {
   const [nInput, setNInput] = useState(n);
-  const byReason = new Map<string, number>();
-  for (const e of result.exclusions) byReason.set(e.reason, (byReason.get(e.reason) ?? 0) + 1);
-  const reasons = [...byReason.entries()].sort((a, b) => b[1] - a[1]);
+  const reasons = summarizeExclusions(result);
 
   return (
     <div>
@@ -29,11 +29,18 @@ export function DataQualityCohortScreen({ result, n, onChangeN, onBack, onNext }
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          Re-run failed: {error} — showing the previous result.
+        </div>
+      )}
+
+      <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-5">
         <StatCard label="Accepted cycles" value={String(result.acceptedCycleCount)} />
         <StatCard label="Excluded rows" value={String(result.excludedRowCount)} sub="see reasons below" tone="detect" />
         <StatCard label="Stalled (deviation)" value={String(result.stalledCount)} />
-        <StatCard label="Reference" value={String(result.referenceCount)} sub="non-deviant" />
+        <StatCard label="Undetermined" value={String(result.undeterminedCount)} sub="within window" tone="detect" />
+        <StatCard label="Reference" value={String(result.referenceCount)} sub="confirmed non-deviant" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -62,7 +69,7 @@ export function DataQualityCohortScreen({ result, n, onChangeN, onBack, onNext }
           <div className="border-b border-ink-600/50 px-4 py-3 text-sm font-semibold text-slate-200">Exclusions — by reason (never silent)</div>
           <table className="w-full text-sm">
             <tbody>
-              {reasons.map(([reason, count]) => (
+              {reasons.map(({ reason, count }) => (
                 <tr key={reason} className="border-b border-ink-700/40 last:border-0">
                   <td className="px-4 py-2 text-slate-300">{reason}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-400">{count}</td>

@@ -1,7 +1,7 @@
 // The single explicit decimal→minor conversion boundary (transition rule #2). These tests are the
 // contract: any silent float→minor coercion, or acceptance of ambiguous precision, is a defect.
 import { describe, it, expect } from "vitest";
-import { fromDecimal, minorUnitDigits } from "./money";
+import { fromDecimal, minorUnitDigits, formatMoney, isSupportedCurrency, SUPPORTED_CURRENCIES } from "./money";
 
 const USD = "USD";
 const JPY = "JPY";
@@ -51,5 +51,22 @@ describe("fromDecimal — the one governed decimal→minor boundary", () => {
 
   it("requires an explicit currency", () => {
     expect(() => fromDecimal("1.00", "")).toThrow(/currency/);
+  });
+});
+
+describe("formatMoney safety + supported currencies", () => {
+  it("formats supported currencies", () => {
+    expect(formatMoney({ minor: 1000, currency: "USD" })).toBe("$10");
+    expect(formatMoney({ minor: 1000, currency: "USD" }, { exact: true })).toBe("$10.00");
+  });
+  it("NEVER throws on an unsupported/invalid ISO code (final render containment)", () => {
+    expect(() => formatMoney({ minor: 1000, currency: "ZZ" })).not.toThrow();
+    expect(() => formatMoney({ minor: 1000, currency: "not-a-code" })).not.toThrow();
+    expect(formatMoney({ minor: 1000, currency: "ZZ" })).toContain("ZZ");
+  });
+  it("isSupportedCurrency / SUPPORTED_CURRENCIES", () => {
+    expect(isSupportedCurrency("USD")).toBe(true);
+    expect(isSupportedCurrency("ZZ")).toBe(false);
+    expect(SUPPORTED_CURRENCIES).toContain("USD");
   });
 });

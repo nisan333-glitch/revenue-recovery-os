@@ -13,6 +13,7 @@ import { AuditTrail } from "./modules/AuditTrail";
 import { RecoveryReasons } from "./modules/RecoveryReasons";
 import { ConfidencePanel } from "./modules/ConfidencePanel";
 import { Assessment } from "./modules/assessment/Assessment";
+import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 
 type ModuleKey =
   | "loop"
@@ -111,7 +112,11 @@ export function App() {
           {active === "reasons" && <RecoveryReasons />}
           {active === "confidence" && <ConfidencePanel />}
           {active === "audit" && <AuditTrail />}
-          {active === "assessment" && <Assessment />}
+          {active === "assessment" && (
+            <AssessmentErrorBoundary>
+              <Assessment />
+            </AssessmentErrorBoundary>
+          )}
         </div>
       </main>
     </div>

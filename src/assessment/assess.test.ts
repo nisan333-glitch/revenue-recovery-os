@@ -89,6 +89,16 @@ describe("assess — reproducibility & correctness", () => {
     expect(r.proven.minor).toBe(0);
   });
 
+  it("throws a clear error when required columns are missing (never a silent zero)", async () => {
+    await expect(assessCsv("foo,bar\n1,2", policy(), { createdAt: CREATED })).rejects.toThrow(/missing required column/i);
+  });
+
+  it("a BOM-prefixed CSV still yields accepted cycles (not silently zero)", async () => {
+    const r = await assessCsv(String.fromCharCode(0xfeff) + baseCsv, policy(), { createdAt: CREATED });
+    expect(r.acceptedCycleCount).toBe(2);
+    expect(r.observed.observedUnpaid.minor).toBe(10000_00);
+  });
+
   it("an empty file yields a truthful zero assessment", async () => {
     const r = await assessCsv(HEADER, policy(), { createdAt: CREATED });
     expect(r.acceptedCycleCount).toBe(0);

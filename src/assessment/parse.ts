@@ -69,7 +69,10 @@ function splitRecords(text: string): string[] {
 }
 
 export function parseCsv(text: string): ParsedCsv {
-  const records = splitRecords(text).filter((r, idx) => !(idx > 0 && r.trim() === ""));
+  // Strip a leading UTF-8 BOM (﻿). Excel / Google Sheets "Save as CSV UTF-8" prepend one, which
+  // would otherwise corrupt the first header cell and silently exclude every row.
+  const clean = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const records = splitRecords(clean).filter((r, idx) => !(idx > 0 && r.trim() === ""));
   if (records.length === 0) return { headers: [], rows: [] };
   const headers = tokenizeLine(records[0]!).map((h) => h.trim());
   const rows: RawRow[] = [];

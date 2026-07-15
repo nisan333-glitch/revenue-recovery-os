@@ -115,6 +115,8 @@ export interface AssessmentResult {
   readonly excludedRowCount: number;
   readonly exclusions: readonly ExclusionRecord[];
   readonly stalledCount: number;
+  /** Cycles still within their window (deadline after asOf) — not stalled, not confirmed non-deviant. */
+  readonly undeterminedCount: number;
   readonly referenceCount: number;
   readonly observed: ObservedSummary;
   readonly estimated: NotCalculated; // structurally not calculated in the thin slice

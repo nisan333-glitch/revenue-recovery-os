@@ -51,12 +51,21 @@ export function isStalled(cycle: ExpectationCycle, policy: AssessmentPolicy): bo
 
 export interface Cohorts {
   readonly stalled: ExpectationCycle[]; // the Deviation set D
-  readonly reference: ExpectationCycle[]; // non-deviant cycles (basis for FUTURE matched estimation)
+  /** Not yet classifiable: within its window, deadline after asOf — NOT confirmed non-deviant. */
+  readonly undetermined: ExpectationCycle[];
+  /** Confirmed non-deviant (observed within the threshold). The only valid basis for future matching. */
+  readonly reference: ExpectationCycle[];
 }
 
 export function splitCohorts(cycles: readonly ExpectationCycle[], policy: AssessmentPolicy): Cohorts {
   const stalled: ExpectationCycle[] = [];
+  const undetermined: ExpectationCycle[] = [];
   const reference: ExpectationCycle[] = [];
-  for (const c of cycles) (isStalled(c, policy) ? stalled : reference).push(c);
-  return { stalled, reference };
+  for (const c of cycles) {
+    const cls = classifyStall(c, policy);
+    if (cls.stalled) stalled.push(c);
+    else if (cls.reason === "within_window_not_yet_due") undetermined.push(c);
+    else reference.push(c); // observed_within_threshold ⇒ confirmed non-deviant
+  }
+  return { stalled, undetermined, reference };
 }

@@ -1,6 +1,7 @@
 // Local, methodology-first export for a Design Partner review. `buildSummary` is PURE (unit-tested);
 // the download helpers are browser-only (Blob + object URL) and perform NO network I/O.
 import type { AssessmentResult } from "../../assessment/types";
+import { summarizeExclusions } from "../../assessment/summarize";
 import { formatMoney } from "../../domain/money";
 
 /** A minimal CSV template a Design Partner can populate (one row = one expectation cycle). */
@@ -9,18 +10,12 @@ export const CSV_TEMPLATE =
   "ACME-001,SUB-1001,2026-01-05,,2026-02-05,,12000.00,USD,\n" +
   "ACME-002,SUB-1002,2026-01-06,2026-01-12,2026-02-06,2026-02-01,8000.00,USD,";
 
-function groupExclusions(result: AssessmentResult): Array<[string, number]> {
-  const counts = new Map<string, number>();
-  for (const e of result.exclusions) counts.set(e.reason, (counts.get(e.reason) ?? 0) + 1);
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-}
-
 /** PURE: a deterministic, human-readable methodology + result summary. No browser APIs. */
 export function buildSummary(result: AssessmentResult): string {
   const p = result.policy;
   const o = result.observed;
-  const exclusions = groupExclusions(result)
-    .map(([reason, n]) => `  - ${reason}: ${n}`)
+  const exclusions = summarizeExclusions(result)
+    .map(({ reason, count }) => `  - ${reason}: ${count}`)
     .join("\n");
   const states = Object.entries(o.stateCounts)
     .filter(([, n]) => n > 0)
@@ -52,7 +47,8 @@ export function buildSummary(result: AssessmentResult): string {
     "## Cohort",
     `- accepted cycles: ${result.acceptedCycleCount}`,
     `- stalled (deviation): ${result.stalledCount}`,
-    `- reference (non-deviant): ${result.referenceCount}`,
+    `- undetermined (within window, not yet due): ${result.undeterminedCount}`,
+    `- reference (confirmed non-deviant): ${result.referenceCount}`,
     "",
     "## Observed breakdown (exact minor units)",
     `- gross eligible: ${formatMoney(o.grossEligible, { exact: true })}`,

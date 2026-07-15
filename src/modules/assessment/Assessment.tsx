@@ -36,7 +36,7 @@ export function Assessment() {
 
   async function changeN(newN: number): Promise<void> {
     setN(newN);
-    if (csvText) await run(csvText, newN);
+    if (csvText) await run(csvText, newN); // run() surfaces any failure via `error`, shown on the cohort screen
   }
 
   return (
@@ -53,12 +53,14 @@ export function Assessment() {
           setLocale={setLocale}
           error={error}
           onFile={(text) => void run(text)}
+          onReject={(msg) => setError(msg)}
         />
       )}
       {step === "quality" && result && (
         <DataQualityCohortScreen
           result={result}
           n={n}
+          error={error}
           onChangeN={(newN) => void changeN(newN)}
           onBack={() => setStep("upload")}
           onNext={() => setStep("observed")}

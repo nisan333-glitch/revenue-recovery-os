@@ -31,7 +31,8 @@ describe("buildSummary — pure, deterministic methodology export", () => {
     expect(s).toContain("analysis asOf: 2026-03-01");
     expect(s).toContain("SHA-256:");
     expect(s).toContain("stalled (deviation): 1");
-    expect(s).toContain("reference (non-deviant): 1");
+    expect(s).toContain("undetermined (within window, not yet due): 0");
+    expect(s).toContain("reference (confirmed non-deviant): 1");
   });
 
   it("is deterministic for identical input", async () => {

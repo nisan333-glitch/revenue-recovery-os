@@ -9,17 +9,6 @@ import type { ExpectationCycle, ObservedSummary, PaymentState } from "./types";
 import { classifyPayment } from "./paymentState";
 import { type Money, addMoney, subMoney, zeroMoney, isPositive, clampNonNegative } from "../domain/money";
 
-const ALL_STATES: PaymentState[] = [
-  "NotYetDue",
-  "Unpaid",
-  "PartiallyPaid",
-  "PaidOnTime",
-  "PaidLate",
-  "Refunded",
-  "Cancelled",
-  "Unknown",
-];
-
 export function observedSummary(
   stalled: readonly ExpectationCycle[],
   policy: AssessmentPolicy,
@@ -82,5 +71,3 @@ export function observedSummary(
     stateCounts: Object.freeze(stateCounts),
   }) as ObservedSummary;
 }
-
-export { ALL_STATES };

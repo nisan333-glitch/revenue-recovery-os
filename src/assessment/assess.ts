@@ -8,7 +8,7 @@ import { splitCohorts } from "./cohort";
 import { observedSummary } from "./observed";
 import { shortHash, fingerprintSource } from "./fingerprint";
 import { parseCsv } from "./parse";
-import { toCycle, SAAS_ADAPTER_ID, SAAS_ADAPTER_VERSION, type AdapterOptions } from "./adapters/saasActivation";
+import { toCycle, missingRequiredColumns, SAAS_ADAPTER_ID, SAAS_ADAPTER_VERSION, type AdapterOptions } from "./adapters/saasActivation";
 import { PARSER_VERSION } from "./parse";
 import { zeroMoney } from "../domain/money";
 
@@ -56,7 +56,7 @@ export function assess(outcomes: readonly RowOutcome[], policy: AssessmentPolicy
   const { unique, collisions } = dedupeCollisions(rawCycles);
   const allExclusions = [...exclusions, ...collisions];
 
-  const { stalled, reference } = splitCohorts(unique, policy);
+  const { stalled, undetermined, reference } = splitCohorts(unique, policy);
   const observed = observedSummary(stalled, policy);
 
   const assessmentId =
@@ -80,6 +80,7 @@ export function assess(outcomes: readonly RowOutcome[], policy: AssessmentPolicy
     excludedRowCount: allExclusions.length,
     exclusions: Object.freeze(allExclusions),
     stalledCount: stalled.length,
+    undeterminedCount: undetermined.length,
     referenceCount: reference.length,
     observed,
     estimated: "unavailable_in_validation_slice" as const,
@@ -98,6 +99,12 @@ export async function assessCsv(
   opts: AdapterOptions & { createdAt: string },
 ): Promise<AssessmentResult> {
   const parsed = parseCsv(csvText);
+  // Structural guard: a header missing required columns (wrong file, bad export) must fail LOUDLY,
+  // never silently exclude every row and report zero accepted cycles.
+  const missing = missingRequiredColumns(parsed.headers);
+  if (missing.length > 0) {
+    throw new Error(`CSV is missing required column(s): ${missing.join(", ")}`);
+  }
   const outcomes = parsed.rows.map((r) => toCycle(r, policy, opts));
   const fp = await fingerprintSource(csvText);
   return assess(outcomes, policy, {

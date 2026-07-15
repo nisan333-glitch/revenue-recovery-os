@@ -78,4 +78,11 @@ describe("saasActivation adapter — mapping and exclusions", () => {
     expect(toCycle(raw({ ...base, next_invoice_amount: "0.00" }), policy)).toMatchObject({ exclusion: { reason: "zero_amount" } });
     expect(toCycle(raw({ ...base, next_invoice_amount: "-5.00" }), policy)).toMatchObject({ exclusion: { reason: "negative_amount" } });
   });
+
+  it("preserves Unicode entity and cycle identifiers", () => {
+    const out = toCycle(raw({ ...base, entity_id: " Acmé—Ünïçødé ", subscription_id: "SUB‑✓‑Ω" }), policy);
+    if (out.kind !== "cycle") throw new Error("expected cycle");
+    expect(out.cycle.entityId).toBe("Acmé—Ünïçødé"); // trimmed, case + Unicode intact
+    expect(out.cycle.cycleId).toBe("SUB‑✓‑Ω");
+  });
 });
