@@ -6,14 +6,18 @@ import { useRecovery } from "../state/RecoveryContext";
 import { outcomesByLeakage } from "../domain/outcomes";
 import { expectedRecoverable } from "../domain/recommendation";
 import { portfolioMetrics } from "../domain/metrics";
+import { provenLedger } from "../domain/provenLedger";
+import { formatMoney } from "../domain/money";
 import { reasonLabel } from "../domain/reasons";
 import { money } from "../lib/format";
 import { Panel, SectionHeader } from "../components/ui";
 
 export function Outcomes() {
-  const { events } = useRecovery();
+  const { events, proofs } = useRecovery();
   const outcomes = outcomesByLeakage(events);
   const m = portfolioMetrics(events);
+  // Portfolio proven/auditable headline comes from approved Proofs (never recomputed from Cases).
+  const pl = provenLedger(proofs, "USD");
   const totalRecoverable = expectedRecoverable(events);
 
   return (
@@ -35,8 +39,8 @@ export function Outcomes() {
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <ChainStat label="Detected" value={money(m.detectedOpportunity)} note="open at risk" tone="detect" />
         <ChainStat label="Expected Recoverable" value={money(totalRecoverable)} note="forecast" tone="forecast" />
-        <ChainStat label="Recovered" value={money(m.recoveredRevenue)} note="proven" tone="proof" />
-        <ChainStat label="CFO-Auditable" value={money(m.auditableRevenue)} note="signed-off" tone="proof" />
+        <ChainStat label="Revenue Returned" value={formatMoney(pl.revenueReturned)} note="proven · from proofs" tone="proof" />
+        <ChainStat label="CFO-Auditable" value={formatMoney(pl.auditableRevenue)} note="proof-derived" tone="proof" />
       </div>
 
       <div className="space-y-3">
@@ -53,8 +57,8 @@ export function Outcomes() {
               <div className="grid grid-cols-4 gap-4 text-right">
                 <Metric label="At risk" value={money(o.atRisk)} sub={`${o.openCount} open`} tone="detect" />
                 <Metric label="Recoverable" value={money(o.recoverable)} sub="forecast" tone="forecast" />
-                <Metric label="Recovered" value={money(o.recovered)} sub={`${o.recoveredCount} proven`} tone="proof" />
-                <Metric label="Auditable" value={money(o.auditable)} sub="CFO" tone="proof" />
+                <Metric label="Recovered" value={money(o.recovered)} sub={`${o.recoveredCount} · operational est.`} tone="neutral" />
+                <Metric label="Auditable" value={money(o.auditable)} sub="operational est." tone="neutral" />
               </div>
             </div>
           </Panel>
@@ -62,20 +66,24 @@ export function Outcomes() {
       </div>
 
       <p className="mt-6 text-[11px] text-slate-500">
-        Recoverable is a forecast (expected value over open events) and is reported on
-        the Revenue Opportunity ledger. It is never added to Recovered or Auditable —
-        those are realized dollars on the Revenue Returned ledger.
+        Recoverable is a forecast (expected value over open events) on the Revenue Opportunity
+        ledger — never added to proven dollars. The portfolio <span className="text-proof-500">Revenue
+        Returned / CFO-Auditable</span> totals above are <span className="text-proof-500">proof-derived</span>
+        (from approved, immutable Proofs). The per-problem <span className="text-slate-300">Recovered /
+        Auditable</span> splits are <span className="text-slate-300">operational estimates</span> (Case-level)
+        for triage — the auditable number of record is the CFO Proof View.
       </p>
     </div>
   );
 }
 
-type Tone = "detect" | "forecast" | "proof";
+type Tone = "detect" | "forecast" | "proof" | "neutral";
 
 const TONE: Record<Tone, string> = {
   detect: "text-detect-500",
   forecast: "text-sky-400",
   proof: "text-proof-500",
+  neutral: "text-slate-300",
 };
 
 function ChainStat({

@@ -80,6 +80,18 @@ export interface RecoveryEvent {
   createdAt: string; // ISO
   updatedAt: string; // ISO
   audit: AuditEntry[];
+  // --- Trust layer links (optional; ids reference the append-only Baseline/Proof/Evidence
+  // stores held alongside events, so RecoveryEvent stays import-free and non-circular). ---
+  /** ISO 4217 for this Case's amounts. Defaults to USD when absent (legacy fixtures). */
+  currency?: string;
+  /** The governed baseline established/locked for this Case (see baseline store). */
+  baselineId?: string | null;
+  /** System-recorded time the recovery action was taken (for baseline temporal validity). */
+  interventionAt?: string | null;
+  /** System-recorded time the money outcome was observed (for baseline temporal validity). */
+  outcomeObservedAt?: string | null;
+  /** The accountable actor id (owner) — distinct from the proof approver. */
+  ownerActorId?: string | null;
 }
 
 // Open (still actionable) statuses vs terminal statuses.

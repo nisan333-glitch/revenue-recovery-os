@@ -146,11 +146,13 @@ Not every recovered dollar is proven with the same rigor. Rather than present on
 blended number, **every claim carries an explicit, *earned* evidence tier.** The tier
 is part of the proof — it tells the CFO exactly how much weight to put on the number.
 **The default is not T2 — the default is `Unproven`.** The system must *earn* the
-right to claim. (In code today, this maps to the confidence model: `isAuditable`
-— `confidence ≥ PROOF_THRESHOLD` + reason + positive uplift — is the **T2 floor**;
-a counted-but-sub-threshold recovery is **T3**; an unclassified one is `Unproven`. The
-literal T1/T2/T3 labels are the proof *model* — **not yet surfaced in the app**, which
-today shows the 0–100 confidence score + an auditable badge.)
+right to claim. (In code today, the **T2 floor is an approved immutable Proof** whose stamped
+`confidenceUsed ≥ proofThresholdUsed`, with reason, positive uplift, **and at least one
+`independent` (non-beneficiary-controlled) evidence reference** — `proofIsAuditable`,
+`src/domain/provenLedger.ts`. A proven-but-sub-threshold Proof is **T3**; a recovered Case with
+no approved Proof is `Unproven`. The literal T1/T2/T3 labels are the proof *model* — **not yet
+surfaced in the app**, which today shows the 0–100 confidence score + an auditable badge sourced
+from the Proof.)
 
 | Tier | Mechanism | Output label | Maps to |
 |---|---|---|---|
@@ -180,6 +182,9 @@ Found↔Returned gap in [`gtm/PITCH_60S.md`](gtm/PITCH_60S.md) and the Reconcili
 view). A CFO trusts the *claimed* number precisely because the system is visibly more
 conservative than it has to be. No exclusion statement → no Proof.
 
-> **In code today** this lives in the **Reconciliation** view (excluded revenue by
-> reason) and the Found↔Returned gap. A *mandatory field on a distinct Proof object* is
-> the model — not yet enforced in code (there is no Proof object yet).
+> **In code today** this **is enforced.** A distinct, immutable Proof object
+> (`src/domain/proof.ts`) exists, and `createApprovedProof` / the approval gate
+> (`src/domain/approval.ts`) **throw unless an explicit exclusion statement is supplied** — zero
+> excluded must be an explicit assertion, never a silent default (Trust Invariant #7). The
+> Reconciliation view (excluded revenue by reason) and the Found↔Returned gap remain the
+> aggregate presentation of the same idea.

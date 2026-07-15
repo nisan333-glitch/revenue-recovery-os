@@ -1,11 +1,16 @@
 import { useRecovery } from "../state/RecoveryContext";
 import { reconcile } from "../domain/reconciliation";
+import { provenLedger } from "../domain/provenLedger";
 import { money } from "../lib/format";
 import { Bar, Panel, SectionHeader } from "../components/ui";
 
 export function Reconciliation() {
-  const { events } = useRecovery();
+  const { events, proofs } = useRecovery();
   const r = reconcile(events);
+  // The CFO-auditable figure is the immutable-proof number, not recomputed from Cases. Shown in
+  // whole dollars to sit alongside the operational (Case-side) waterfall context above it.
+  const auditableRevenue = provenLedger(proofs, "USD").auditableRevenue.minor / 100;
+  const recoveredToAuditableGap = r.countedRecovered - auditableRevenue;
 
   // The waterfall, top to bottom. Each step states what was removed and why.
   const steps = [
@@ -36,15 +41,15 @@ export function Reconciliation() {
     },
     {
       label: "− Missing Proof / Double Claim / Low Confidence",
-      amount: -(r.countedRecovered - r.auditableRevenue),
+      amount: -(r.countedRecovered - auditableRevenue),
       tone: "exclude" as const,
-      note: "Counted, but not yet defensible to a CFO.",
+      note: "Counted, but not yet backed by an approved proof.",
     },
     {
       label: "CFO Auditable Revenue",
-      amount: r.auditableRevenue,
+      amount: auditableRevenue,
       tone: "proof" as const,
-      note: "Every dollar survives an audit. This is the number a CFO signs.",
+      note: "From immutable approved proofs. Every dollar survives an audit. This is the number a CFO signs.",
       strong: true,
     },
   ];
@@ -119,12 +124,12 @@ export function Reconciliation() {
             <tbody>
               <Row label="Detected Opportunity" amount={r.detectedOpportunity} tone="detect" />
               <Row label="Recovered Revenue" amount={r.countedRecovered} />
-              <Row label="CFO Auditable Revenue" amount={r.auditableRevenue} tone="proof" strong />
+              <Row label="CFO Auditable Revenue" amount={auditableRevenue} tone="proof" strong />
               <Row label="Excluded Revenue" amount={r.excludedTotal} tone="exclude" />
               <tr className="border-t border-ink-600/60">
                 <td className="px-4 py-3 text-slate-400">Recovered → Auditable gap</td>
                 <td className="px-4 py-3 text-right tabular-nums text-detect-500">
-                  {money(r.recoveredToAuditableGap)}
+                  {money(recoveredToAuditableGap)}
                 </td>
               </tr>
             </tbody>
