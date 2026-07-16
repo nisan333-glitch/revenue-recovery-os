@@ -92,3 +92,66 @@ export async function verifyAssessmentChain(chain: readonly TamperEvidentRecord[
   }
   return true;
 }
+
+// --- Portability / auditability: a record must survive leaving the process and be re-verifiable later.
+// A record is only "auditable forever" if it can be serialized, stored, reloaded, and independently
+// re-verified. Parsing validates STRUCTURE and a known schema version; it deliberately does NOT trust
+// the hash — integrity is proven separately by verifyAssessmentRecord, never assumed from a well-formed
+// blob. Still infrastructure only: no I/O, no business logic; callers decide where bytes are stored.
+
+/** Schema versions this build can parse. New versions are added here as the record format evolves. */
+export const KNOWN_RECORD_VERSIONS: readonly string[] = [ASSESSMENT_RECORD_VERSION];
+
+export class RecordParseError extends Error {
+  constructor(detail: string) {
+    super(`RecordParseError: ${detail}`);
+    this.name = "RecordParseError";
+  }
+}
+
+/** Deterministic portable form of a record (stable key order). Pairs with `parseAssessmentRecord`. */
+export function serializeAssessmentRecord(record: TamperEvidentRecord): string {
+  return stableStringify(record);
+}
+
+const isHex64 = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+
+/**
+ * Parse + STRUCTURALLY validate a serialized record. Rejects malformed JSON, missing/mistyped fields,
+ * and unknown schema versions with an explicit RecordParseError. Does not verify the hash (call
+ * `verifyAssessmentRecord` for that) — a syntactically valid record may still be tampered.
+ */
+export function parseAssessmentRecord(text: string): TamperEvidentRecord {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    throw new RecordParseError(`invalid JSON (${e instanceof Error ? e.message : String(e)})`);
+  }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new RecordParseError("not an object");
+  const o = raw as Record<string, unknown>;
+
+  if (typeof o["recordVersion"] !== "string") throw new RecordParseError("recordVersion missing");
+  if (!KNOWN_RECORD_VERSIONS.includes(o["recordVersion"])) {
+    throw new RecordParseError(`unknown recordVersion ${JSON.stringify(o["recordVersion"])}`);
+  }
+  if (o["algo"] !== "SHA-256") throw new RecordParseError("algo must be SHA-256");
+  if (typeof o["assessmentId"] !== "string") throw new RecordParseError("assessmentId missing");
+  if (!(o["previousHash"] === null || isHex64(o["previousHash"]))) throw new RecordParseError("previousHash must be null or a 64-hex hash");
+  if (typeof o["canonical"] !== "string") throw new RecordParseError("canonical missing");
+  if (!isHex64(o["recordHash"])) throw new RecordParseError("recordHash must be a 64-hex hash");
+
+  return Object.freeze({
+    recordVersion: o["recordVersion"],
+    algo: "SHA-256" as const,
+    assessmentId: o["assessmentId"],
+    previousHash: (o["previousHash"] as string | null),
+    canonical: o["canonical"],
+    recordHash: o["recordHash"],
+  });
+}
+
+/** Parse a serialized record (throws on malformed/unknown) and verify its integrity. */
+export async function verifySerializedRecord(text: string): Promise<boolean> {
+  return verifyAssessmentRecord(parseAssessmentRecord(text));
+}

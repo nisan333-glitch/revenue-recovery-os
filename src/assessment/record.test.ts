@@ -6,6 +6,10 @@ import {
   verifyAssessmentChain,
   canonicalizeAssessment,
   stableStringify,
+  serializeAssessmentRecord,
+  parseAssessmentRecord,
+  verifySerializedRecord,
+  RecordParseError,
   ASSESSMENT_RECORD_VERSION,
   type TamperEvidentRecord,
 } from "./record";
@@ -93,5 +97,52 @@ describe("chaining", () => {
     const r1 = await buildAssessmentRecord(await sample());
     const r2 = await linkAssessmentRecord(r1, await sample(AT, CSV.replace("10000.00", "20000.00")));
     expect(await verifyAssessmentChain([r2, r1])).toBe(false);
+  });
+});
+
+describe("portability / auditability (serialize ↔ parse ↔ verify)", () => {
+  it("round-trips: a serialized record parses and verifies", async () => {
+    const rec = await buildAssessmentRecord(await sample());
+    const text = serializeAssessmentRecord(rec);
+    const back = parseAssessmentRecord(text);
+    expect(back).toEqual(rec);
+    expect(await verifyAssessmentRecord(back)).toBe(true);
+    expect(await verifySerializedRecord(text)).toBe(true);
+  });
+
+  it("serialization is deterministic", async () => {
+    const rec = await buildAssessmentRecord(await sample());
+    expect(serializeAssessmentRecord(rec)).toBe(serializeAssessmentRecord(rec));
+  });
+
+  it("a serialized-then-tampered blob fails verification (parses fine, hash mismatches)", async () => {
+    const rec = await buildAssessmentRecord(await sample());
+    const tamperedBlob = serializeAssessmentRecord(rec).replace("1000000", "9999999");
+    expect(await verifySerializedRecord(tamperedBlob)).toBe(false); // structurally valid, integrity broken
+  });
+
+  it("rejects malformed JSON", () => {
+    expect(() => parseAssessmentRecord("{not json")).toThrow(RecordParseError);
+  });
+
+  it("rejects an unknown schema version", async () => {
+    const rec = await buildAssessmentRecord(await sample());
+    const bumped = serializeAssessmentRecord({ ...rec, recordVersion: "assessment-record-9999.9" });
+    expect(() => parseAssessmentRecord(bumped)).toThrow(/unknown recordVersion/);
+  });
+
+  it("rejects structurally invalid records", async () => {
+    const rec = await buildAssessmentRecord(await sample());
+    expect(() => parseAssessmentRecord(serializeAssessmentRecord({ ...rec, algo: "MD5" as unknown as "SHA-256" }))).toThrow(/algo/);
+    expect(() => parseAssessmentRecord(serializeAssessmentRecord({ ...rec, recordHash: "xyz" }))).toThrow(/recordHash/);
+    expect(() => parseAssessmentRecord(serializeAssessmentRecord({ ...rec, previousHash: "short" as string }))).toThrow(/previousHash/);
+    expect(() => parseAssessmentRecord('{"recordVersion":"' + ASSESSMENT_RECORD_VERSION + '"}')).toThrow(/algo/);
+  });
+
+  it("a serialized chain re-verifies after a round trip", async () => {
+    const r1 = await buildAssessmentRecord(await sample());
+    const r2 = await linkAssessmentRecord(r1, await sample(AT, CSV.replace("10000.00", "20000.00")));
+    const roundtripped = [r1, r2].map((r) => parseAssessmentRecord(serializeAssessmentRecord(r)));
+    expect(await verifyAssessmentChain(roundtripped)).toBe(true);
   });
 });
