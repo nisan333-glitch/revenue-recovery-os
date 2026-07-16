@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assessCsv } from "./assess";
+import { assessCsv, planColumnMapping } from "./assess";
 import { makePolicy } from "./policy";
 
 const HEADER =
@@ -91,6 +91,24 @@ describe("assess — reproducibility & correctness", () => {
 
   it("throws a clear error when required columns are missing (never a silent zero)", async () => {
     await expect(assessCsv("foo,bar\n1,2", policy(), { createdAt: CREATED })).rejects.toThrow(/missing required column/i);
+  });
+
+  it("rejects a duplicate column header (never silently reads one of two same-named columns)", async () => {
+    const dupHeader =
+      "entity_id,signed_at,next_invoice_due_at,next_invoice_amount,next_invoice_amount,currency\n" +
+      "E1,2026-01-01,2026-02-01,10000.00,5000.00,USD";
+    await expect(assessCsv(dupHeader, policy(), { createdAt: CREATED })).rejects.toThrow(/duplicate column header/i);
+  });
+
+  it("rejects a blank column header", async () => {
+    const blank =
+      "entity_id,signed_at,next_invoice_due_at,next_invoice_amount,,currency\n" +
+      "E1,2026-01-01,2026-02-01,10000.00,x,USD";
+    await expect(assessCsv(blank, policy(), { createdAt: CREATED })).rejects.toThrow(/empty column header/i);
+  });
+
+  it("planColumnMapping fails loudly on a duplicate header too (pre-flight, before the mapping UI)", () => {
+    expect(() => planColumnMapping("id,id\n1,2")).toThrow(/duplicate column header/i);
   });
 
   it("a BOM-prefixed CSV still yields accepted cycles (not silently zero)", async () => {

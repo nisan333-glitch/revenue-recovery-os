@@ -68,6 +68,57 @@ function splitRecords(text: string): string[] {
   return records;
 }
 
+/** A structural problem in the header row: columns that collide or have no name. */
+export interface HeaderInspection {
+  /** Groups of headers that collide case-insensitively (each group has ≥2 members). */
+  readonly duplicates: { readonly key: string; readonly headers: string[] }[];
+  /** 1-based column positions whose header is empty (after trimming). */
+  readonly blankPositions: number[];
+}
+
+/**
+ * Inspect a header row for duplicate (case-insensitive) or blank column names. Duplicates are matched
+ * case-insensitively because column mapping is case-insensitive downstream — so "Amount" and "amount"
+ * would otherwise be silently collapsed to one, exactly the kind of silent selection we must refuse.
+ */
+export function inspectHeaders(headers: readonly string[]): HeaderInspection {
+  const groups = new Map<string, string[]>();
+  const blankPositions: number[] = [];
+  headers.forEach((h, i) => {
+    const norm = h.trim().toLowerCase();
+    if (norm === "") {
+      blankPositions.push(i + 1);
+      return;
+    }
+    const arr = groups.get(norm) ?? [];
+    arr.push(h);
+    groups.set(norm, arr);
+  });
+  const duplicates = [...groups.entries()]
+    .filter(([, arr]) => arr.length > 1)
+    .map(([key, hs]) => ({ key, headers: hs }));
+  return { duplicates, blankPositions };
+}
+
+/**
+ * A human-readable header validation error, or null if the header is clean. The assessment must never
+ * guess which of two same-named columns to read, nor read an unnamed column — a wrong column silently
+ * chosen would corrupt the Observed number (a Trust Invariant breach). So these fail LOUDLY.
+ */
+export function headerValidationError(headers: readonly string[]): string | null {
+  const { duplicates, blankPositions } = inspectHeaders(headers);
+  const parts: string[] = [];
+  if (duplicates.length > 0) {
+    const d = duplicates.map((g) => `${g.headers.map((h) => `"${h}"`).join(" / ")} (appears ${g.headers.length}×)`).join("; ");
+    parts.push(`duplicate column header(s): ${d}`);
+  }
+  if (blankPositions.length > 0) {
+    parts.push(`empty column header(s) at position ${blankPositions.join(", ")}`);
+  }
+  if (parts.length === 0) return null;
+  return `CSV header is invalid — ${parts.join("; ")}. Rename or remove the offending column(s); the assessment will not guess which column to use.`;
+}
+
 export function parseCsv(text: string): ParsedCsv {
   // Strip a leading UTF-8 BOM (﻿). Excel / Google Sheets "Save as CSV UTF-8" prepend one, which
   // would otherwise corrupt the first header cell and silently exclude every row.
@@ -75,6 +126,10 @@ export function parseCsv(text: string): ParsedCsv {
   const records = splitRecords(clean).filter((r, idx) => !(idx > 0 && r.trim() === ""));
   if (records.length === 0) return { headers: [], rows: [] };
   const headers = tokenizeLine(records[0]!).map((h) => h.trim());
+  // Structural guard: duplicate or blank headers make column→cell mapping ambiguous. Fail LOUDLY here
+  // (never silently keep the last duplicate / an unnamed column), before any value is read.
+  const headerError = headerValidationError(headers);
+  if (headerError) throw new Error(headerError);
   const rows: RawRow[] = [];
   for (let i = 1; i < records.length; i++) {
     if (records[i]!.trim() === "") continue;
