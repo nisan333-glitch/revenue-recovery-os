@@ -5,12 +5,15 @@ import type { AssessmentResult, ColumnMapping } from "../../assessment/types";
 import { assessCsv } from "../../assessment/assess";
 import { makePolicy } from "../../assessment/policy";
 import type { DateLocale } from "../../assessment/dateNormalize";
+import type { AmountFormat } from "../../assessment/amountNormalize";
 
 export interface RunParams {
   n: number;
   asOf: string;
   currency: string;
   locale?: DateLocale;
+  /** Amount grouping/decimal interpretation for ambiguous values; else self-disambiguating or rejected. */
+  amountFormat?: AmountFormat;
   /** Optional canonical→source column mapping (from a guided mapping step); else auto-detected. */
   mapping?: ColumnMapping;
 }
@@ -29,6 +32,7 @@ export async function runAssessment(csvText: string, params: RunParams): Promise
     const result = await assessCsv(csvText, policy, {
       createdAt: new Date().toISOString(),
       locale: params.locale,
+      amountFormat: params.amountFormat,
       mapping: params.mapping,
     });
     return { ok: true, result };

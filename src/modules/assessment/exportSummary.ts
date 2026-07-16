@@ -46,6 +46,7 @@ export function buildSummary(result: AssessmentResult): string {
     `- stall threshold N: ${p.stallThresholdDays} days`,
     `- analysis asOf: ${p.asOf}`,
     `- currency: ${p.currency}`,
+    `- amount format: ${result.amountFormat} · date locale: ${result.dateLocale}`,
     `- activation: ${p.activationDefinition}`,
     `- payment: ${p.paymentDefinition}`,
     "",

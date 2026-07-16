@@ -8,6 +8,7 @@ import type { AssessmentPolicy } from "../policy";
 import type { ExclusionRecord, ExpectationCycle, RowOutcome } from "../types";
 import type { RawRow } from "../parse";
 import { normalizeDate, type DateLocale } from "../dateNormalize";
+import { normalizeAmount, type AmountFormat } from "../amountNormalize";
 import { fromDecimal, isNegative, isPositive } from "../../domain/money";
 
 export const SAAS_ADAPTER_ID = "saas-activation";
@@ -15,6 +16,7 @@ export const SAAS_ADAPTER_VERSION = "2026.1";
 
 export interface AdapterOptions {
   readonly locale?: DateLocale; // for ambiguous numeric dates
+  readonly amountFormat?: AmountFormat; // for ambiguous grouping/decimal separators
 }
 
 const REQUIRED = ["entity_id", "signed_at", "next_invoice_due_at", "next_invoice_amount", "currency"] as const;
@@ -125,10 +127,13 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
     observationAt = act.iso;
   }
 
-  // Amount — exact minor units via the governed decimal boundary.
+  // Amount — normalize a possibly-formatted export value ($, thousands separators, etc.) to a plain
+  // decimal, then cross the SINGLE governed decimal boundary (fromDecimal) for exact minor units.
+  const amountNorm = normalizeAmount(c["next_invoice_amount"]!, { format: opts.amountFormat });
+  if (!amountNorm.ok) return exclude(id, amountNorm.reason, `next_invoice_amount: ${amountNorm.detail}`);
   let amount;
   try {
-    amount = fromDecimal(c["next_invoice_amount"]!, currency);
+    amount = fromDecimal(amountNorm.decimal, currency);
   } catch {
     return exclude(id, "invalid_amount", c["next_invoice_amount"]!);
   }
@@ -138,8 +143,10 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
   // Optional settled amount (for partial detection).
   let paidAmount = null;
   if ((c["paid_amount"] ?? "").trim() !== "") {
+    const paidNorm = normalizeAmount(c["paid_amount"]!, { format: opts.amountFormat });
+    if (!paidNorm.ok) return exclude(id, paidNorm.reason, `paid_amount: ${paidNorm.detail}`);
     try {
-      paidAmount = fromDecimal(c["paid_amount"]!, currency);
+      paidAmount = fromDecimal(paidNorm.decimal, currency);
     } catch {
       return exclude(id, "invalid_amount", `paid_amount: ${c["paid_amount"]}`);
     }

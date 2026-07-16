@@ -58,6 +58,7 @@ export type ExclusionReason =
   | "malformed_date"
   | "ambiguous_date"
   | "invalid_amount"
+  | "ambiguous_amount"
   | "zero_amount"
   | "negative_amount"
   | "currency_mismatch"
@@ -115,6 +116,10 @@ export interface AssessmentResult {
   readonly columnMapping: ColumnMapping;
   /** Deterministic, non-secret id of the column mapping (folded into assessmentId). */
   readonly mappingId: string;
+  /** Amount grouping/decimal interpretation used ("US" | "EU" | "auto"). Part of the reproducible record. */
+  readonly amountFormat: string;
+  /** Ambiguous-date interpretation used ("MDY" | "DMY" | "auto"). Part of the reproducible record. */
+  readonly dateLocale: string;
   /** Local one-way hash of the source file. Held in memory only — never logged or transmitted. */
   readonly sourceFingerprint: string;
   readonly fingerprintAlgo: string;

@@ -28,6 +28,8 @@ export interface AssessMeta {
   readonly adapterVersion: string;
   readonly columnMapping: ColumnMapping;
   readonly mappingId: string;
+  readonly amountFormat: string; // "US" | "EU" | "auto"
+  readonly dateLocale: string; // "MDY" | "DMY" | "auto"
 }
 
 /** Reject cycleId collisions: every row sharing a duplicated cycleId is excluded and reported. */
@@ -80,6 +82,8 @@ export function assess(outcomes: readonly RowOutcome[], policy: AssessmentPolicy
         policy.stallThresholdDays,
         policy.calculationMethodVersion,
         meta.mappingId, // same file + policy + mapping ⇒ same id; a different mapping ⇒ a different id
+        meta.amountFormat, // a different amount/date interpretation changes the numbers ⇒ a different id
+        meta.dateLocale,
       ].join("|"),
     );
 
@@ -88,6 +92,8 @@ export function assess(outcomes: readonly RowOutcome[], policy: AssessmentPolicy
     createdAt: meta.createdAt,
     columnMapping: meta.columnMapping,
     mappingId: meta.mappingId,
+    amountFormat: meta.amountFormat,
+    dateLocale: meta.dateLocale,
     sourceFingerprint: meta.fingerprint,
     fingerprintAlgo: meta.fingerprintAlgo,
     adapterId: meta.adapterId,
@@ -162,5 +168,7 @@ export async function assessCsv(
     adapterVersion: SAAS_ADAPTER_VERSION,
     columnMapping: mapping,
     mappingId: mappingId(mapping),
+    amountFormat: opts.amountFormat ?? "auto",
+    dateLocale: opts.locale ?? "auto",
   });
 }

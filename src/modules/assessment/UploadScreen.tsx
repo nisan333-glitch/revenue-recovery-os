@@ -1,4 +1,5 @@
 import type { DateLocale } from "../../assessment/dateNormalize";
+import type { AmountFormat } from "../../assessment/amountNormalize";
 import { SectionHeader, Panel, Pill } from "../../components/ui";
 import { downloadTemplate } from "./exportSummary";
 
@@ -16,6 +17,8 @@ export interface UploadScreenProps {
   setCurrency: (c: string) => void;
   locale: DateLocale | "";
   setLocale: (l: DateLocale | "") => void;
+  amountFormat: AmountFormat | "";
+  setAmountFormat: (f: AmountFormat | "") => void;
   error: string | null;
   onFile: (csvText: string) => void;
   onReject: (message: string) => void;
@@ -71,6 +74,14 @@ export function UploadScreen(props: UploadScreenProps) {
               <option value="">auto (reject ambiguous)</option>
               <option value="MDY">MDY (US)</option>
               <option value="DMY">DMY</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Amount format</span>
+            <select className="num-input w-full" value={props.amountFormat} onChange={(e) => props.setAmountFormat(e.target.value as AmountFormat | "")}>
+              <option value="">auto (reject ambiguous)</option>
+              <option value="US">US (1,234.56)</option>
+              <option value="EU">EU (1.234,56)</option>
             </select>
           </label>
         </div>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { AssessmentResult, ColumnMapping } from "../../assessment/types";
 import type { DateLocale } from "../../assessment/dateNormalize";
+import type { AmountFormat } from "../../assessment/amountNormalize";
 import { runAssessment } from "./runAssessment";
 import { planColumnMapping, type MappingPlan } from "../../assessment/assess";
 import { UploadScreen } from "./UploadScreen";
@@ -18,6 +19,7 @@ export function Assessment() {
   const [asOf, setAsOf] = useState("2026-03-01");
   const [currency, setCurrency] = useState("USD");
   const [locale, setLocale] = useState<DateLocale | "">("");
+  const [amountFormat, setAmountFormat] = useState<AmountFormat | "">("");
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
   const [plan, setPlan] = useState<MappingPlan | null>(null);
@@ -27,7 +29,14 @@ export function Assessment() {
 
   async function run(text: string, useN: number, useMapping: ColumnMapping | undefined): Promise<void> {
     setError(null);
-    const outcome = await runAssessment(text, { n: useN, asOf, currency, locale: locale || undefined, mapping: useMapping });
+    const outcome = await runAssessment(text, {
+      n: useN,
+      asOf,
+      currency,
+      locale: locale || undefined,
+      amountFormat: amountFormat || undefined,
+      mapping: useMapping,
+    });
     if (outcome.ok) {
       setCsvText(text);
       setMapping(useMapping ?? null);
@@ -81,6 +90,8 @@ export function Assessment() {
           setCurrency={setCurrency}
           locale={locale}
           setLocale={setLocale}
+          amountFormat={amountFormat}
+          setAmountFormat={setAmountFormat}
           error={error}
           onFile={onFile}
           onReject={(msg) => setError(msg)}

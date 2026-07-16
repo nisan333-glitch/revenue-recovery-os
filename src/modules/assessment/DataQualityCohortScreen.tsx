@@ -61,7 +61,7 @@ export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, o
             </button>
           </div>
           <div className="mt-3 text-[11px] text-slate-500">
-            asOf {result.policy.asOf} · currency {result.policy.currency} · policy {result.policy.policyId} v{result.policy.policyVersion} · mapping {result.mappingId}
+            asOf {result.policy.asOf} · currency {result.policy.currency} · policy {result.policy.policyId} v{result.policy.policyVersion} · amount {result.amountFormat} · dates {result.dateLocale} · mapping {result.mappingId}
           </div>
           {Object.keys(result.columnMapping).length > 0 && (
             <details className="mt-3">

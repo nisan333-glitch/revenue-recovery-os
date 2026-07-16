@@ -61,7 +61,8 @@ describe("Assessment screens render the critical content", () => {
     const html = renderToStaticMarkup(
       createElement(UploadScreen, {
         n: 30, setN: noop, asOf: "2026-03-01", setAsOf: noop, currency: "USD", setCurrency: noop,
-        locale: "", setLocale: noop, error: "CSV is missing required column(s): entity_id", onFile: noop, onReject: noop,
+        locale: "", setLocale: noop, amountFormat: "", setAmountFormat: noop,
+        error: "CSV is missing required column(s): entity_id", onFile: noop, onReject: noop,
       }),
     );
     expect(html).toContain("never uploaded");
