@@ -2,9 +2,8 @@
 // persisted; refreshing clears it). It does NOT use the Recovery/Proof state — it is fully isolated.
 import { useState } from "react";
 import type { AssessmentResult } from "../../assessment/types";
-import { assessCsv } from "../../assessment/assess";
-import { makePolicy } from "../../assessment/policy";
 import type { DateLocale } from "../../assessment/dateNormalize";
+import { runAssessment } from "./runAssessment";
 import { UploadScreen } from "./UploadScreen";
 import { DataQualityCohortScreen } from "./DataQualityCohortScreen";
 import { ObservedResultsScreen } from "./ObservedResultsScreen";
@@ -23,14 +22,14 @@ export function Assessment() {
 
   async function run(text: string, useN = n): Promise<void> {
     setError(null);
-    try {
-      const policy = makePolicy({ stallThresholdDays: useN, asOf, currency });
-      const r = await assessCsv(text, policy, { createdAt: new Date().toISOString(), locale: locale || undefined });
+    const outcome = await runAssessment(text, { n: useN, asOf, currency, locale: locale || undefined });
+    if (outcome.ok) {
       setCsvText(text);
-      setResult(r);
+      setResult(outcome.result);
       setStep("quality");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    } else {
+      // Keep the prior result visible but surface the error (never a silent stale re-run).
+      setError(outcome.error);
     }
   }
 
