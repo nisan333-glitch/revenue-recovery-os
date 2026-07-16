@@ -12,6 +12,8 @@ import { AttributionEngine } from "./modules/AttributionEngine";
 import { AuditTrail } from "./modules/AuditTrail";
 import { RecoveryReasons } from "./modules/RecoveryReasons";
 import { ConfidencePanel } from "./modules/ConfidencePanel";
+import { Assessment } from "./modules/assessment/Assessment";
+import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 
 type ModuleKey =
   | "loop"
@@ -23,7 +25,8 @@ type ModuleKey =
   | "attribution"
   | "reasons"
   | "confidence"
-  | "audit";
+  | "audit"
+  | "assessment";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "loop", label: "Recovery Loop", group: "Recover" },
@@ -36,6 +39,7 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "reasons", label: "Recovery Reasons", group: "Operate" },
   { key: "confidence", label: "Confidence Score", group: "Trust" },
   { key: "audit", label: "Audit Trail", group: "Trust" },
+  { key: "assessment", label: "Revenue Opportunity Assessment", group: "Assess" },
 ];
 
 export function App() {
@@ -108,6 +112,11 @@ export function App() {
           {active === "reasons" && <RecoveryReasons />}
           {active === "confidence" && <ConfidencePanel />}
           {active === "audit" && <AuditTrail />}
+          {active === "assessment" && (
+            <AssessmentErrorBoundary>
+              <Assessment />
+            </AssessmentErrorBoundary>
+          )}
         </div>
       </main>
     </div>

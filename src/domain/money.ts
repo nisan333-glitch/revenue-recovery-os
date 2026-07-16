@@ -86,16 +86,23 @@ export function eqMoney(a: Money, b: Money): boolean {
 export function formatMoney(m: Money, opts: { exact?: boolean } = {}): string {
   const digits = minorUnitDigits(m.currency); // currency-aware, consistent with fromDecimal
   const major = m.minor / 10 ** digits;
-  return major.toLocaleString("en-US", {
-    style: "currency",
-    currency: m.currency,
-    minimumFractionDigits: opts.exact ? digits : 0,
-    maximumFractionDigits: opts.exact ? digits : 0,
-  });
+  try {
+    return major.toLocaleString("en-US", {
+      style: "currency",
+      currency: m.currency,
+      minimumFractionDigits: opts.exact ? digits : 0,
+      maximumFractionDigits: opts.exact ? digits : 0,
+    });
+  } catch {
+    // DEFENSE-IN-DEPTH: an unsupported/invalid ISO code makes Intl throw a RangeError. Display
+    // must never crash — fall back to a plain, unambiguous rendering. (Policy-level validation is
+    // the primary guard; this is the final containment.)
+    return `${major.toFixed(opts.exact ? digits : 0)} ${m.currency}`;
+  }
 }
 
-// ISO 4217 minor-unit exponents for the currencies the prototype handles. Unknown currencies
-// default to 2 (the common case) rather than silently guessing an exotic precision.
+// ISO 4217 minor-unit exponents for the currencies the prototype supports. This map is also the
+// canonical SUPPORTED-currency list. Unknown currencies default to 2 digits for display only.
 const MINOR_UNIT_DIGITS: Readonly<Record<string, number>> = Object.freeze({
   USD: 2,
   EUR: 2,
@@ -108,6 +115,13 @@ const MINOR_UNIT_DIGITS: Readonly<Record<string, number>> = Object.freeze({
 export function minorUnitDigits(currency: string): number {
   const d = MINOR_UNIT_DIGITS[currency];
   return d === undefined ? 2 : d;
+}
+
+/** The ISO-4217 codes the system supports (the ones whose minor units we know). */
+export const SUPPORTED_CURRENCIES: readonly string[] = Object.freeze(Object.keys(MINOR_UNIT_DIGITS));
+
+export function isSupportedCurrency(code: string): boolean {
+  return Object.prototype.hasOwnProperty.call(MINOR_UNIT_DIGITS, code);
 }
 
 // Normalize a decimal *input representation* to a plain decimal string, or throw. A JS number is
