@@ -30,14 +30,18 @@ function subtle(): SubtleCrypto | null {
   return c && typeof c.subtle?.digest === "function" ? c.subtle : null;
 }
 
-/** The CANONICAL source fingerprint. SHA-256 only; throws explicitly if Web Crypto is unavailable. */
-export async function fingerprintSource(text: string): Promise<Fingerprint> {
+/** SHA-256 of `text` as lowercase hex. Local one-way hash; throws explicitly if Web Crypto is absent. */
+export async function sha256Hex(text: string): Promise<string> {
   const s = subtle();
   if (!s) throw new CanonicalHashUnavailableError();
   const bytes = new TextEncoder().encode(text);
   const digest = await s.digest("SHA-256", bytes);
-  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return { hash, algo: "SHA-256" };
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The CANONICAL source fingerprint. SHA-256 only; throws explicitly if Web Crypto is unavailable. */
+export async function fingerprintSource(text: string): Promise<Fingerprint> {
+  return { hash: await sha256Hex(text), algo: "SHA-256" };
 }
 
 // --- Non-cryptographic helper, for stable IDENTIFIERS only (never the canonical fingerprint) ------
