@@ -1,7 +1,7 @@
 // The Assessment container's run-logic, extracted as a pure async function so the critical flows
 // (valid / BOM / missing-headers / invalid-currency / re-run) are unit-testable at the exact code
 // path the UI uses — without a DOM. The container is a thin wiring layer around this.
-import type { AssessmentResult } from "../../assessment/types";
+import type { AssessmentResult, ColumnMapping } from "../../assessment/types";
 import { assessCsv } from "../../assessment/assess";
 import { makePolicy } from "../../assessment/policy";
 import type { DateLocale } from "../../assessment/dateNormalize";
@@ -11,6 +11,8 @@ export interface RunParams {
   asOf: string;
   currency: string;
   locale?: DateLocale;
+  /** Optional canonical→source column mapping (from a guided mapping step); else auto-detected. */
+  mapping?: ColumnMapping;
 }
 
 export type RunOutcome =
@@ -27,6 +29,7 @@ export async function runAssessment(csvText: string, params: RunParams): Promise
     const result = await assessCsv(csvText, policy, {
       createdAt: new Date().toISOString(),
       locale: params.locale,
+      mapping: params.mapping,
     });
     return { ok: true, result };
   } catch (e) {

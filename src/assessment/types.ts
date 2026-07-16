@@ -101,9 +101,20 @@ export interface ObservedSummary {
 /** The four money states are permanently separated. Estimated and Forecast are absent in the slice. */
 export type NotCalculated = "unavailable_in_validation_slice";
 
+/**
+ * How source columns were interpreted: canonical field name → the source header it was read from.
+ * DOMAIN-NEUTRAL (a plain string map). Stamped into the result so an assessment is reproducible under
+ * the exact column interpretation used — a different mapping is a different assessment.
+ */
+export type ColumnMapping = Readonly<Record<string, string>>;
+
 export interface AssessmentResult {
-  readonly assessmentId: string; // deterministic: derived from fingerprint + policy identity
+  readonly assessmentId: string; // deterministic: derived from fingerprint + policy identity + mapping
   readonly createdAt: string; // caller-supplied (deterministic input; never Date.now inside)
+  /** Canonical field → source header used to read this file. Part of the reproducible record. */
+  readonly columnMapping: ColumnMapping;
+  /** Deterministic, non-secret id of the column mapping (folded into assessmentId). */
+  readonly mappingId: string;
   /** Local one-way hash of the source file. Held in memory only — never logged or transmitted. */
   readonly sourceFingerprint: string;
   readonly fingerprintAlgo: string;

@@ -61,8 +61,23 @@ export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, o
             </button>
           </div>
           <div className="mt-3 text-[11px] text-slate-500">
-            asOf {result.policy.asOf} · currency {result.policy.currency} · policy {result.policy.policyId} v{result.policy.policyVersion}
+            asOf {result.policy.asOf} · currency {result.policy.currency} · policy {result.policy.policyId} v{result.policy.policyVersion} · mapping {result.mappingId}
           </div>
+          {Object.keys(result.columnMapping).length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-[11px] uppercase tracking-wide text-slate-500">Column mapping (canonical ← your column)</summary>
+              <table className="mt-2 w-full text-[12px]">
+                <tbody>
+                  {Object.entries(result.columnMapping).map(([canonical, source]) => (
+                    <tr key={canonical} className="border-b border-ink-700/40 last:border-0">
+                      <td className="py-1 text-slate-300">{canonical}</td>
+                      <td className="py-1 text-right tabular-nums text-slate-400">{source}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
         </Panel>
 
         <Panel className="overflow-hidden">

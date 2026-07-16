@@ -25,6 +25,60 @@ export function missingRequiredColumns(headers: readonly string[]): string[] {
   return REQUIRED.filter((r) => !present.has(r));
 }
 
+// --- Column mapping vocabulary --------------------------------------------------------------------
+// This adapter is the ONLY place that knows what a source header might be called. The generic mapping
+// mechanics (columnMap.ts) stay neutral and receive this as DATA. Real billing/CRM exports (Stripe,
+// Chargebee, NetSuite, Salesforce…) rarely use our canonical names — these synonyms let a Design
+// Partner's own CSV run without hand-editing headers, while the mapping is stamped for reproducibility.
+
+/** Every canonical field `toCycle` can read (required + optional). */
+export const SAAS_CANONICAL_FIELDS: readonly string[] = [
+  "entity_id",
+  "signed_at",
+  "next_invoice_due_at",
+  "next_invoice_amount",
+  "currency",
+  "subscription_id",
+  "cycle_id",
+  "activation_at",
+  "next_invoice_paid_at",
+  "next_invoice_paid",
+  "paid_amount",
+  "status",
+  "is_test",
+  "refunded",
+  "cancelled",
+  "plan",
+  "segment",
+  "product",
+];
+
+/** Required canonicals — re-exported for the mapping spec (single source of truth: REQUIRED). */
+export const SAAS_REQUIRED: readonly string[] = REQUIRED;
+
+/** canonical → common alternative source header names (matched case-insensitively). */
+export const SAAS_SYNONYMS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  entity_id: ["customer_id", "account_id", "customer", "account", "company_id", "org_id"],
+  signed_at: ["contract_signed_at", "signed_date", "signup_date", "created_at", "close_date", "start_date"],
+  next_invoice_due_at: ["invoice_due_date", "due_date", "next_invoice_date", "invoice_date", "billing_date"],
+  next_invoice_amount: ["amount", "invoice_amount", "mrr", "arr", "invoice_total", "billing_amount"],
+  currency: ["ccy", "currency_code", "iso_currency"],
+  subscription_id: ["subscription", "sub_id"],
+  activation_at: ["activated_at", "onboarded_at", "go_live_date", "first_value_at", "activation_date"],
+  next_invoice_paid_at: ["paid_at", "invoice_paid_at", "payment_date", "paid_date"],
+  next_invoice_paid: ["paid", "is_paid"],
+  paid_amount: ["amount_paid", "settled_amount"],
+  status: ["subscription_status", "account_status", "state"],
+  is_test: ["test", "test_account", "is_internal"],
+});
+
+/** The mapping spec the generic detector consumes. Keeps SaaS vocabulary out of the neutral core. */
+export const SAAS_MAPPING_SPEC = Object.freeze({
+  canonicalFields: SAAS_CANONICAL_FIELDS,
+  synonyms: SAAS_SYNONYMS,
+  requiredFields: SAAS_REQUIRED,
+});
+
 function exclude(sourceRowId: string, reason: ExclusionRecord["reason"], detail: string): RowOutcome {
   return { kind: "excluded", exclusion: { sourceRowId, reason, detail } };
 }

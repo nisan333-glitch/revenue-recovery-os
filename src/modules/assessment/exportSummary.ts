@@ -21,6 +21,9 @@ export function buildSummary(result: AssessmentResult): string {
     .filter(([, n]) => n > 0)
     .map(([s, n]) => `  - ${s}: ${n}`)
     .join("\n");
+  const mapping = Object.entries(result.columnMapping)
+    .map(([canonical, source]) => `  - ${canonical} ← ${source}`)
+    .join("\n");
 
   return [
     "# Revenue Opportunity Assessment — Methodology & Result",
@@ -36,6 +39,8 @@ export function buildSummary(result: AssessmentResult): string {
     `- createdAt: ${result.createdAt}`,
     `- source fingerprint: ${result.fingerprintAlgo}:${result.sourceFingerprint}`,
     `- adapter: ${result.adapterId} v${result.adapterVersion} · parser ${result.parserVersion}`,
+    `- column mapping: ${result.mappingId}`,
+    mapping || "  - (canonical headers used as-is)",
     `- policy: ${p.policyId} v${p.policyVersion} · calc ${p.calculationMethodVersion}`,
     `- grain: ${p.grain}`,
     `- stall threshold N: ${p.stallThresholdDays} days`,
