@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vite build && node e2e/smoke.mjs",
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
