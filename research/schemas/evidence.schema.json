@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/evidence.schema.json",
+  "title": "NH-ROP Evidence Item",
+  "description": "A specific finding tied to one claim. Not a URL. See NH-ROP §4.5, §7, §8.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id", "source_id", "claim_id", "exact_finding", "direction",
+    "date_accessed", "applicable_scope", "verification_status", "independence_group"
+  ],
+  "properties": {
+    "evidence_id": { "type": "string", "pattern": "^M[0-9]{3,}-C[0-9]+-E[0-9]+$" },
+    "source_id": { "type": "string", "pattern": "^S[0-9]+$" },
+    "claim_id": { "type": "string", "pattern": "^M[0-9]{3,}-C[0-9]+$" },
+    "exact_finding": { "type": "string", "minLength": 1 },
+    "direction": { "enum": ["Supports", "Contradicts", "Limits", "Contextualizes"] },
+    "evidence_type": { "type": "string" },
+    "extraction_method": { "type": "string" },
+    "quote_or_paraphrase": { "type": "string" },
+    "location": { "type": "string", "description": "page / section / timestamp / data locus" },
+    "date_published": { "type": "string" },
+    "date_accessed": { "type": "string", "format": "date" },
+    "applicable_scope": { "type": "string" },
+    "limitations": { "type": "string" },
+    "independence_group": { "type": "string", "description": "Lineage ID (§8), e.g. L01." },
+    "researcher_notes": { "type": "string" },
+    "verification_status": {
+      "enum": ["Verified", "Partially-Verified", "Unverified", "Vendor-Claim", "Unknown"]
+    },
+    "quality_dimensions": {
+      "type": "object",
+      "description": "0-5 per dimension (§7). Gating: directness, independence, verifiability, scope_specificity.",
+      "additionalProperties": false,
+      "properties": {
+        "directness": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "source_proximity": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "independence": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "method_transparency": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "reproducibility": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "verifiability": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "scope_specificity": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "freshness": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "completeness": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "conflict_of_interest": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "consistency": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "statistical_operational_strength": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    },
+    "strength_category": {
+      "enum": ["Inadmissible", "Weak", "Limited", "Moderate", "Strong", "Very strong"]
+    },
+    "gating_flaw": { "type": "string", "description": "Named fatal flaw if a gating dimension scored 0-1 (§7)." }
+  }
+}

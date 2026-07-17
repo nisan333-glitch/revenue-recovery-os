@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/claim.schema.json",
+  "title": "NH-ROP Claim",
+  "description": "The fundamental unit of research. Atomic: one subject, one predicate, one scope, one time period. See NH-ROP §4.4, §5, §10, §11.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claim_id", "statement", "claim_type", "scope", "materiality",
+    "current_verdict", "confidence", "overturn_conditions"
+  ],
+  "properties": {
+    "claim_id": { "type": "string", "pattern": "^M[0-9]{3,}-C[0-9]+$" },
+    "statement": { "type": "string", "minLength": 1 },
+    "claim_type": {
+      "enum": ["Existence", "Capability", "Performance", "Outcome", "Causal", "Comparative",
+        "Market-size", "Adoption", "Customer", "Technical", "Integration", "Security",
+        "Compliance", "Financial", "Strategic", "Negative", "Universal", "Forecast"]
+    },
+    "scope": { "type": "string" },
+    "subject": { "type": "string" },
+    "predicate": { "type": "string" },
+    "time_period": { "type": "string" },
+    "geography": { "type": "string" },
+    "population_or_market": { "type": "string" },
+    "materiality": { "enum": ["L1", "L2", "L3", "L4"] },
+    "origin": { "type": "string", "description": "Who first asserted the claim." },
+    "related_hypothesis": { "type": "string" },
+    "supporting_evidence": { "type": "array", "items": { "type": "string" } },
+    "contradicting_evidence": { "type": "array", "items": { "type": "string" } },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "current_verdict": {
+      "enum": ["Confirmed", "Supported", "Partially Supported", "Inconclusive",
+        "Unsupported", "Contradicted", "Refuted", "Not Assessable", "Obsolete"]
+    },
+    "confidence": { "enum": ["Very low", "Low", "Moderate", "High", "Very high"] },
+    "confidence_rationale": { "type": "string", "description": "Plain-language reason (§11). Required in practice." },
+    "reviewer": { "type": "string", "description": "Distinct from author for L3/L4 material claims (§17)." },
+    "last_reviewed": { "type": "string", "format": "date" },
+    "overturn_conditions": { "type": "string", "minLength": 1 },
+    "version_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "change"],
+        "properties": {
+          "version": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "change": { "type": "string" },
+          "previous_value": { "type": "string" },
+          "evidence_that_caused_change": { "type": "string" }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "materiality": { "enum": ["L3", "L4"] } } },
+      "then": { "required": ["reviewer", "confidence_rationale", "last_reviewed"] }
+    }
+  ]
+}

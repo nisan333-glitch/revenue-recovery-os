@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/source.schema.json",
+  "title": "NH-ROP Source",
+  "description": "A source and its independence lineage. See NH-ROP §4.6, §6, §8.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_id", "title", "url_or_internal_location", "source_type", "primary_or_secondary", "access_date", "independence_group"],
+  "properties": {
+    "source_id": { "type": "string", "pattern": "^S[0-9]+$" },
+    "title": { "type": "string", "minLength": 1 },
+    "author_or_org": { "type": "string" },
+    "publisher": { "type": "string" },
+    "url_or_internal_location": { "type": "string" },
+    "publication_date": { "type": "string" },
+    "access_date": { "type": "string", "format": "date" },
+    "source_type": {
+      "enum": [
+        "Original-data-or-inspectable-system", "Regulatory-legal-standards", "Peer-reviewed",
+        "Independent-technical-test-or-audit", "Company-documentation", "Company-case-study",
+        "Customer-evidence", "Industry-research", "Journalism", "Expert-interpretation",
+        "Aggregator", "Community-post", "Anonymous", "AI-generated-summary"
+      ]
+    },
+    "primary_or_secondary": { "enum": ["Primary", "Secondary"] },
+    "commercial_interest": { "type": "string", "description": "Does the source benefit from the conclusion?" },
+    "methodology_disclosed": { "enum": ["yes", "no", "partial"] },
+    "data_availability": { "type": "string" },
+    "retraction_or_correction_status": { "type": "string" },
+    "independence_group": { "type": "string", "description": "Lineage ID (§8)." },
+    "reliability_notes": { "type": "string" },
+    "version_or_archive_info": { "type": "string" }
+  }
+}

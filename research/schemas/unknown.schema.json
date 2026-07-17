@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/unknown.schema.json",
+  "title": "NH-ROP Unknown",
+  "description": "A first-class unresolved question. May never silently default to 'no problem'. See NH-ROP §4.8, §14.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["unknown_id", "exact_open_question", "why_it_matters", "materiality", "blocks_decision", "status"],
+  "properties": {
+    "unknown_id": { "type": "string", "pattern": "^M[0-9]{3,}-U[0-9]+$" },
+    "exact_open_question": { "type": "string", "minLength": 1 },
+    "why_it_matters": { "type": "string" },
+    "claims_affected": { "type": "array", "items": { "type": "string" } },
+    "materiality": { "enum": ["L1", "L2", "L3", "L4"] },
+    "search_attempts": { "type": "array", "items": { "type": "string" } },
+    "missing_evidence": { "type": "string" },
+    "blocks_decision": { "type": "boolean" },
+    "recommended_next_action": { "type": "string" },
+    "status": { "enum": ["Open", "Isolated", "Resolved", "Dependency-blocked"] }
+  }
+}

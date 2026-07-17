@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/research-mission.schema.json",
+  "title": "NH-ROP Research Mission",
+  "description": "A bounded investigation. See NH_RESEARCH_OPERATING_PROTOCOL.md §4.1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mission_id", "title", "decision_supported", "research_question", "scope",
+    "materiality_level", "as_of_date", "owner", "status", "completion_status"
+  ],
+  "properties": {
+    "mission_id": { "type": "string", "pattern": "^M[0-9]{3,}$" },
+    "title": { "type": "string", "minLength": 1 },
+    "decision_supported": { "type": "string", "minLength": 1 },
+    "cost_if_wrong": { "type": "string" },
+    "research_question": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "question_type": {
+      "type": "array",
+      "items": {
+        "enum": ["Descriptive", "Comparative", "Causal", "Technical-feasibility",
+          "Market-existence", "Competitive-differentiation", "Legal-regulatory", "Strategic-decision"]
+      }
+    },
+    "scope": { "type": "string", "minLength": 1 },
+    "out_of_scope": { "type": "string" },
+    "definitions": { "type": "object", "additionalProperties": { "type": "string" } },
+    "stakeholders": { "type": "array", "items": { "type": "string" } },
+    "materiality_level": { "enum": ["L1", "L2", "L3", "L4"] },
+    "required_confidence": { "enum": ["Very low", "Low", "Moderate", "High", "Very high"] },
+    "time_sensitivity": { "type": "string" },
+    "geographic_scope": { "type": "string" },
+    "industry_scope": { "type": "string" },
+    "start_date": { "type": "string", "format": "date" },
+    "as_of_date": { "type": "string", "format": "date" },
+    "owner": { "type": "string" },
+    "reviewer": { "type": "string" },
+    "status": { "enum": ["Framing", "Scoping", "Active", "In-Review", "Closed", "Reopened"] },
+    "completion_status": { "enum": ["Open", "Conditions-met", "Closed", "Reopened"] },
+    "pre_research_position": {
+      "type": "object",
+      "description": "Bias firewall (§9 Phase 3), recorded before reviewing evidence.",
+      "properties": {
+        "initial_hypothesis": { "type": "string" },
+        "expected_answer": { "type": "string" },
+        "conflicts_of_interest": { "type": "string" },
+        "evidence_that_would_change_expectation": { "type": "string" }
+      }
+    },
+    "revision_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "change"],
+        "properties": {
+          "version": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "change": { "type": "string" },
+          "author": { "type": "string" }
+        }
+      }
+    }
+  }
+}

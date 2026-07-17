@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/verdict.schema.json",
+  "title": "NH-ROP Verdict",
+  "description": "What the evidence justifies for one claim. Verdict and confidence are separate fields; a verdict must not exceed evidence strength. See NH-ROP §4.10, §10, §11.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claim_id", "verdict_status", "confidence", "confidence_rationale",
+    "scope_of_validity", "overturn_conditions", "review_date", "reviewer"
+  ],
+  "properties": {
+    "claim_id": { "type": "string", "pattern": "^M[0-9]{3,}-C[0-9]+$" },
+    "verdict_revision": { "type": "integer", "minimum": 1, "description": "Increments on supersession (§16). Prior revisions preserved." },
+    "claim_statement": { "type": "string" },
+    "verdict_status": {
+      "enum": ["Confirmed", "Supported", "Partially Supported", "Inconclusive",
+        "Unsupported", "Contradicted", "Refuted", "Not Assessable", "Obsolete"]
+    },
+    "evidence_summary": { "type": "string" },
+    "strongest_support": { "type": "string" },
+    "strongest_contradiction": { "type": "string" },
+    "scope_of_validity": { "type": "string", "minLength": 1 },
+    "confidence": { "enum": ["Very low", "Low", "Moderate", "High", "Very high"] },
+    "confidence_rationale": { "type": "string", "minLength": 1 },
+    "remaining_unknowns": { "type": "array", "items": { "type": "string" } },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "outcome_ladder_classification": {
+      "description": "For outcome/revenue claims only (§12).",
+      "enum": ["Collected", "Prevented-Exposure", "Estimated", "Detected", "Contested", "Proven", "N/A"]
+    },
+    "overturn_conditions": { "type": "string", "minLength": 1 },
+    "review_date": { "type": "string", "format": "date" },
+    "reviewer": { "type": "string" }
+  }
+}

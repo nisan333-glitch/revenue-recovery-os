@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/assumption.schema.json",
+  "title": "NH-ROP Assumption",
+  "description": "A material assumption made visible. See NH-ROP §4.7.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assumption_id", "statement", "why_needed", "risk_if_false", "status"],
+  "properties": {
+    "assumption_id": { "type": "string", "pattern": "^M[0-9]{3,}-A[0-9]+$" },
+    "statement": { "type": "string", "minLength": 1 },
+    "why_needed": { "type": "string" },
+    "claims_affected": { "type": "array", "items": { "type": "string" } },
+    "evidence_status": { "type": "string" },
+    "risk_if_false": { "enum": ["Low", "Moderate", "High", "Fatal"] },
+    "validation_method": { "type": "string" },
+    "owner": { "type": "string" },
+    "status": { "enum": ["Open", "Validated", "Invalidated", "Accepted-risk"] }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/schemas/contradiction.schema.json",
+  "title": "NH-ROP Contradiction",
+  "description": "A material conflict, kept visible until resolved. See NH-ROP §4.9, §9 Phase 8.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contradiction_id", "in_conflict", "nature_of_conflict", "resolution_status"],
+  "properties": {
+    "contradiction_id": { "type": "string", "pattern": "^M[0-9]{3,}-X[0-9]+$" },
+    "in_conflict": { "type": "array", "items": { "type": "string" }, "minItems": 2, "description": "Claim and/or evidence IDs." },
+    "nature_of_conflict": { "type": "string", "minLength": 1 },
+    "possible_explanations": { "type": "array", "items": { "type": "string" } },
+    "scope_differences": { "type": "string" },
+    "date_differences": { "type": "string" },
+    "definition_differences": { "type": "string" },
+    "methodological_differences": { "type": "string" },
+    "resolution_status": {
+      "enum": ["Open", "Resolved", "Scope-qualified", "Time-qualified", "Definition-qualified",
+        "Methodologically-unresolved", "Material-remains"]
+    },
+    "impact_on_verdict": { "type": "string" },
+    "required_follow_up": { "type": "string" }
+  }
+}
