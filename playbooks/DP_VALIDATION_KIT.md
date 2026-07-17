@@ -105,7 +105,25 @@ Reassess H-ATTEST after multiple sessions using the evidence recorded above.
 
 ---
 
+## 6 · What evidence could overturn a deferred customer-facing decision?
+
+Structured triggers for **customer-evidence-gated** items (engineering-only items live in
+`ENGINEERING_REGISTER.md`). Capture matching evidence in the Session Records / Friction Log above.
+
+**Verifiable Assessment Attestation** (customer-facing; foundation exists, unwired):
+- **Triggering evidence:** A CFO/RevOps spontaneously doubts the number's integrity ("how do I know
+  this wasn't fudged / changed?"), or conditions trust / a pilot on being able to verify it.
+- **Evidence source:** Discovery / readout sessions — direct quotes, logged in a Session Record.
+- **Minimum evidence threshold:** **≥2 independent Design Partners** (different org/network/champion).
+- **Decision reopened:** Surface the tamper-evident record (`src/assessment/record.ts`) as a
+  downloadable, independently-verifiable attestation in the export.
+- **Expected business impact if validated:** **High** — could be decisive for CFO trust and pilot
+  conversion (the Trust Invariant made tangible).
+
+---
+
 ## Change log
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-07-16 | Initial kit: session flow, discovery script, Session Record template, Friction Log, Assumption/Hypothesis Tracker, Attestation decision gate. |
+| 0.2 | 2026-07-17 | Added §6 — structured overturn triggers for customer-evidence-gated decisions (Verifiable Attestation). |
