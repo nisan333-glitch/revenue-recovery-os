@@ -41,6 +41,17 @@ describe("classifyPayment — explicit states, strictly as-of asOf", () => {
       classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: "2026-02-05", amount: money(100_00, "USD"), paidAmount: money(40_00, "USD") }), ASOF),
     ).toBe("PartiallyPaid");
   });
+  it("a settled amount WITHOUT a payment date is Unknown, never fully Unpaid (no timing inferred)", () => {
+    // paidAmount > 0 but paidAt == null: the money paid is evidenced, its timing is not — so it must
+    // not inflate the Observed Unpaid headline. Zero-guess ⇒ Unknown (visible bucket).
+    expect(
+      classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: null, amount: money(100_00, "USD"), paidAmount: money(40_00, "USD") }), ASOF),
+    ).toBe("Unknown");
+    // A fully-settled amount without a date is likewise Unknown (timing unprovable), not PaidOnTime.
+    expect(
+      classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: null, amount: money(100_00, "USD"), paidAmount: money(100_00, "USD") }), ASOF),
+    ).toBe("Unknown");
+  });
   it("a payment recorded AFTER asOf is Unpaid at asOf (no future information)", () => {
     expect(classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: "2026-03-15" }), ASOF)).toBe("Unpaid");
   });

@@ -111,6 +111,21 @@ describe("assess — reproducibility & correctness", () => {
     expect(() => planColumnMapping("id,id\n1,2")).toThrow(/duplicate column header/i);
   });
 
+  it("a settled amount without a payment date is NOT counted as Observed Unpaid (surfaced as Unknown)", async () => {
+    // Stalled cycle whose invoice shows paid_amount but no payment date: its full value must not land
+    // in the beneficiary-favorable Observed Unpaid headline (Trust Invariant); it is surfaced as Unknown.
+    const csv =
+      "entity_id,signed_at,activation_at,next_invoice_due_at,next_invoice_amount,currency,paid_amount\n" +
+      "E1,2026-01-01,,2026-02-01,100.00,USD,40.00";
+    const r = await assessCsv(csv, policy(), { createdAt: CREATED });
+    expect(r.acceptedCycleCount).toBe(1);
+    expect(r.stalledCount).toBe(1);
+    expect(r.observed.observedUnpaid.minor).toBe(0);
+    expect(r.observed.unknownValue.minor).toBe(100_00);
+    expect(r.observed.stateCounts.Unknown).toBe(1);
+    expect(r.observed.stateCounts.Unpaid).toBe(0);
+  });
+
   it("a BOM-prefixed CSV still yields accepted cycles (not silently zero)", async () => {
     const r = await assessCsv(String.fromCharCode(0xfeff) + baseCsv, policy(), { createdAt: CREATED });
     expect(r.acceptedCycleCount).toBe(2);

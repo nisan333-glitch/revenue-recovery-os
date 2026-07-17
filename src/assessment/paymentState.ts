@@ -31,7 +31,14 @@ export function classifyPayment(cycle: ExpectationCycle, asOf: string): PaymentS
   if (isAfter(ev.dueAt, asOf)) return "NotYetDue";
 
   const paidAt = effectivePaidAt(cycle, asOf);
-  if (paidAt === null) return "Unpaid"; // due on/before asOf, nothing settled by asOf
+  if (paidAt === null) {
+    // A settled amount is evidenced but its timing cannot be placed as-of (no observable payment date):
+    // it is therefore NOT a confident Unpaid. Surface it as Unknown (visible bucket) rather than count
+    // its full value in the beneficiary-favorable Observed Unpaid headline. Zero-guess: we never infer
+    // when the payment happened. Nothing settled at all ⇒ genuinely Unpaid.
+    if (cycle.monetaryEvent.paidAmount !== null && cycle.monetaryEvent.paidAmount.minor > 0) return "Unknown";
+    return "Unpaid"; // due on/before asOf, nothing settled by asOf
+  }
 
   // A settling payment is observed by asOf.
   if (ev.paidAmount !== null && ev.paidAmount.minor < ev.amount.minor) return "PartiallyPaid";
