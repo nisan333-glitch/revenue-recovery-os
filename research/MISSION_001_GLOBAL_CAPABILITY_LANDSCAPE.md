@@ -2,8 +2,12 @@
 ### Canonical Consolidated Research Report
 
 > **Status:** Closed — Evidence-Complete for Current Research Scope
-> **Research version:** 1.0 · **Closure date:** 2026-07-17
-> **Supersedes:** the Mission #001 and Mission #001A chat outputs (consolidated here into one source of truth).
+> **Research version:** 1.1 · **Closure date:** 2026-07-17 · **Revision date:** 2026-07-17
+> **Supersedes:** Research Version 1.0 (immutably preserved in git at commit `2707d00`), which itself
+> consolidated the Mission #001 and Mission #001A chat outputs. v1.1 is an **evidence-driven revision**,
+> not a rewrite: it applies a corrected evidentiary standard for outcome claims (below) consistently across
+> the report and changes content **only where that standard requires**. All prior provenance is preserved.
+> See the **Research Revision Log (§18a)**.
 > **Reopen conditions:** the overturn evidence in §17 and the residual unknowns in §16.
 > **Confidence:** conclusion-specific (see §2) — no single blanket score.
 > **Scope discipline:** research only. This document does **not** evaluate or compare NH, make product
@@ -13,6 +17,14 @@
 > evidence · **Verified** (primary) · **Partially Verified** · **Vendor Claim** (vendor-reported, independently
 > unverified) · **[A]** assumption · **[H]** hypothesis · **Unknown**. "No credible evidence found in the
 > reviewed sources" is used instead of "does not exist."
+>
+> **Outcome-claim classification standard (v1.1 — applied consistently):** a claim is **Proven Returned
+> Revenue** ONLY with all three of (a) actual **collected returned cash**, (b) **documented methodology**,
+> (c) **independent verification**. Absent all three, an outcome is classified as one of: **Collected —
+> vendor/firm-reported** (money changed hands per the vendor, aggregate not independently verified) ·
+> **Prevented Exposure / Avoided Loss** (a counterfactual — not collected cash) · **Estimated / Quantified
+> Opportunity** · **Detected / Identified** (surfaced, not collected) · **Contested / Unverified vendor
+> claim**. **Under this bar, no vendor in this research reaches "Proven Returned Revenue."**
 
 ---
 
@@ -25,8 +37,10 @@ enterprise suites, ten verticals, non-US markets, and the proof/attribution fron
 the original conclusions; it **strengthened** them and raised confidence.
 
 - **Identify** and **Execute** are mature and crowded. **Prove-returned-revenue** is the scarcest,
-  most-contested capability, and where strongest it is **domain-specific and/or services-led** (proof =
-  actual collected money via dispute/contingency), not a governed causal attribution.
+  most-contested capability, and where strongest it is **domain-specific and/or services-led** (recovery =
+  collected money via dispute/contingency), not a governed causal attribution. **(v1.1 standard: even these
+  strongest cases are "Collected — vendor/firm-reported," not independently verified; no vendor in this
+  research reaches "Proven Returned Revenue.")**
 - **No generic, cross-domain software product** was found that demonstrates **all eight stages
   independently** — in particular no-double-count **Attribution + Proof of returned revenue + tamper-evident
   Audit** — as one traceable recovery loop.
@@ -51,7 +65,11 @@ the original conclusions; it **strengthened** them and raised confidence.
 | C3 | A **near-complete chain is assemblable** from existing systems, but only with substantial **integration, consulting, and manual attribution** effort; the recovery-attribution-proof loop is native nowhere. | Survived / **Strengthened (nuanced)** | **Medium-High** |
 | C4 (supporting) | Software "recovery/savings" numbers routinely **blend Observed / Estimated / Forecast / Proven**. | Strengthened (holdout evidence: 14% actual vs 40% claimed) | **High** |
 
-*These confidence levels are accepted as of v1.0 and are **not permanent**; §16–§17 define what keeps them open.*
+*These confidence levels are accepted as of v1.0 and **carried unchanged into v1.1** — the v1.1 outcome
+reclassification (§18a) **did not change any central conclusion**; it **strengthens C2 and C4** (even the
+money-anchored recovery figures are Collected — vendor/firm-reported, not independently verified; and the
+Observed/Estimated/Forecast/Proven blend is now made explicit as a five-tier standard). They are **not
+permanent**; §16–§17 define what keeps them open.*
 
 ---
 
@@ -145,20 +163,30 @@ counter-examples; near-full-chain within a niche.*
 - **SupplyPike / SPS Revenue Recovery / iNymbus / Genpact** (retail deductions) — **Partially Verified
   (supplypike.com; Arkansas Business; SDCExec):** "recover $1B in invalid retailer deductions," "**attach
   proof documentation** before a single claim is filed," "70% win-rate," "keep all recovered dollars."
-  Proof = actual retailer credit. **Limit:** domain-bound; proof is per-dispute documentation, not a
-  governed attribution ledger; no holdout/no-double-count/immutable-proof.
+  Recovery = actual retailer credit → classified **Collected — vendor-reported (not independently
+  verified)** *(v1.1)*; win-rate **methodology Unknown**. **Limit:** domain-bound; proof is per-dispute
+  documentation, not a governed attribution ledger; no holdout/no-double-count/immutable-proof; **not Proven.**
 - **Machinify / Verisk** (insurance subrogation + healthcare payment integrity) — **Partially Verified:**
   "end-to-end recovery process," **explicitly software + legal/clinical expert services** ("insourced,
-  hybrid, or fully-managed"). Proof = recovered dollars. *Domain + services.*
-- **Waystar / DataRovers / Neuriphy** (healthcare denials/RCM) — **Vendor Claim/Partially Verified:**
-  Waystar "$32M recoupments surfaced" / "$15.5B denials prevented"; DataRovers 76% appeal win; Neuriphy
-  "autonomous revenue cycle." Proof = collected reimbursement. *Near-full-chain within healthcare claims.*
+  hybrid, or fully-managed"). Recovery = **Collected — vendor-reported (not independently verified)** *(v1.1)*;
+  services-essential. *Domain + services; not Proven.*
+- **Waystar / DataRovers / Neuriphy** (healthcare denials/RCM) — **Vendor Claim/Partially Verified.**
+  *(v1.1 reclassification — see §18a.)* Waystar "**$15.5B denials prevented**" = **Prevented Exposure /
+  Avoided Loss (Estimated)** — a counterfactual with no independently verifiable methodology; **not**
+  collected returned revenue, **not** Proven. Waystar "**$32M recoupments surfaced**" = **Detected /
+  Identified** (surfaced for review, not collected). The genuine recovery mechanism is **collected
+  reimbursement**, classified **Collected — vendor-reported (not independently verified)**. DataRovers "76%
+  appeal win" / Neuriphy "autonomous revenue cycle" = **Vendor Claim** ("autonomous" is aspirational).
+  *Near-full-chain within healthcare claims; no outcome reaches Proven.*
 - **Trax / nVision** (freight audit) — **Vendor Claim:** Trax "$24B spend audited," case "$156M annualized,
   10.01% savings." Domain cost recovery.
 - **PRGX / apexanalytix / Big Four** (AP recovery, contract compliance, royalty) — **[F]:** PRGX "$1B+/yr
   recovered"; apex "$9B/yr"; contingency/self-funding (paid a % — commonly 20–30% — of **actual recovered
-  dollars**). **Strongest "prove-returned-money" model found** (payment-on-recovery *is* the independent
-  proof), but **services-led, AP/procurement-domain, consultant-dependent.**
+  dollars**). **Strongest money-anchored *collection* model found** — per-case recovery is client-booked
+  (the client, not the vendor, posts the ERP credit) and the contingency **incentive-aligns** the claim.
+  **v1.1 classification:** the aggregate figures are **Collected — firm-reported (aggregate not
+  independently verified)**; contingency incentive-alignment is *not by itself* an independent audit of the
+  aggregate → **not Proven.** Also **services-led, AP/procurement-domain, consultant-dependent.**
 
 **Multi-stage / detection-led**
 - **HighRadius** (O2C/AR/deductions) — **Verified-capability + Vendor Claim:** agentic AR across credit,
@@ -211,9 +239,12 @@ counter-examples; near-full-chain within a niche.*
 | Trullion/MindBridge (CCM) | 4 | 2 | 2 | 1 | 2 | 1 | 2 | 3(audit-trail) | Point (controls) |
 | xfactrs (QTC RA) | 4(VC) | 2 | 2 | 1 | 1 | 1 | 1 | 1 | Insufficient evidence |
 
-**No row scores ≥3 across all eight stages as *generic cross-domain* software.** Prove-returned 4s are
-**single-domain, money-anchored** (collected credits/reimbursement), not governed causal attribution with
-no-double-count/holdout/immutable proof. **Score explanations (4–5):** Identify-5 (Subex) near-real-time
+**No row scores ≥3 across all eight stages as *generic cross-domain* software.** **Prove-returned 4s
+(v1.1 clarification)** denote **Collected — vendor/firm-reported** revenue (collected credits/reimbursement),
+**not** governed causal attribution and **not "Proven"** under the v1.1 standard (they lack independent
+verification of the aggregate, documented methodology, no-double-count/holdout/immutable proof). **Under the
+v1.1 outcome standard, no entity reaches "Proven Returned Revenue."** The score reflects *demonstrated
+collection capability*, not proven-returned status. **Score explanations (4–5):** Identify-5 (Subex) near-real-time
 end-to-end reconciliation [E]; Execute-4 (Celonis) native Action Flows [F]; Assign/Audit-4 (ServiceNow)
 native case mgmt + automated audit trails [F]; Measure-4 (Slicker/Waystar/SupplyPike) incremental A/B or
 collected-cash [E]; Prove-4 (PRGX/apex/Big Four/Waystar/SupplyPike/Machinify) **actual collected/credited
@@ -304,11 +335,19 @@ Medium-High] Approximately, within a domain — as an integration program, not a
   2024); subscription "3–9% of revenue" by billing model. **Estimates, not proven recovery.** [E, secondary]
 - **Observed/Operational:** DSO reductions (HighRadius ~10%, Tesorio ~33 days [VC]); reconciliation-hours
   saved (Waystar "27,000 hrs" [VC]).
-- **Proven (collected):** recovery-audit recovered dollars (PRGX $1B+/yr; apex $9B/yr — firm-reported);
-  SupplyPike "$1B recovered" [PV]; Waystar "$32M recoupments" [VC].
-- **Blending risk [E]:** vendor "recovered"/"savings" figures frequently merge *detected exposure*,
-  *estimated opportunity*, *expected recovery*, and *actual collected* — the holdout evidence (14% vs 40%)
-  quantifies the gap.
+- **Collected — vendor/firm-reported (v1.1; formerly "Proven (collected)"):** recovery-audit recovered
+  dollars (PRGX $1B+/yr; apex $9B/yr — firm-reported); SupplyPike "$1B recovered" [PV]; Waystar collected
+  reimbursement. Money changed hands per the vendor, **but the aggregate is not independently verified →
+  not Proven** under the v1.1 standard.
+- **Prevented Exposure / Avoided Loss (v1.1):** Waystar "$15.5B denials prevented" [VC] — a counterfactual,
+  **not collected cash**, no independently verifiable methodology → **Estimated**, not recovery.
+- **Detected / Identified (v1.1):** Waystar "$32M recoupments **surfaced**" [VC] — identified for review,
+  **not collected**.
+- **Contested / Unverified (v1.1):** Stripe "55% recovered" — third-party data puts real B2C recovery at
+  25–35%; no published baseline/incrementality (Mission #002 verification).
+- **Blending risk [E]:** vendor "recovered"/"savings" figures frequently merge *prevented exposure*,
+  *estimated opportunity*, *detected/identified*, *expected recovery*, and *actual collected* — the holdout
+  evidence (14% vs 40%) quantifies the gap. **v1.1 makes these five states explicit and mutually exclusive.**
 
 ---
 
@@ -394,6 +433,34 @@ Medium-High] Approximately, within a domain — as an integration program, not a
 - **Downgraded:** none. **Withdrawn:** none.
 - **Confidence:** C1 & C2 raised to **High**; C3 to **Medium-High**; C4 (blending) to **High**.
 - **Unchanged:** the three central conclusions (all survived/strengthened).
+
+---
+
+## 18a · Research Revision Log (v1.0 → v1.1)
+
+**Nature:** evidence-driven revision applying a corrected **outcome-claim classification standard** (header)
+consistently. No new research, no scope change, no unrelated conclusions revisited. v1.0 is preserved
+immutably in git (`2707d00`). Trigger: a corrected evidentiary standard — an outcome is **Proven Returned
+Revenue** only with collected cash + documented methodology + independent verification; otherwise it is
+Collected (vendor/firm-reported) / Prevented Exposure / Estimated / Detected / Contested.
+
+| # | Item | Previous classification (v1.0) | Revised classification (v1.1) | Evidence supporting the revision | Affected sections |
+|---|---|---|---|---|---|
+| R1 | Waystar "$15.5B denials prevented" | listed among vendor outcomes; framed near "prevented" | **Prevented Exposure / Avoided Loss (Estimated)** — not collected, not Proven | Mission #002 verification: aggregate client-base figure, **no independent methodology/audit**; "prevented" is counterfactual (waystar.com/IR/PRNewswire) | §1, §6, §12, §20 |
+| R2 | Waystar "$32M recoupments" | **"Proven (collected)"** (§12) | **Detected / Identified** — "surfaced for review," not collected | Primary wording "recoupments **surfaced**" = identification, not collection | §6, §12 |
+| R3 | PRGX / apexanalytix "$1B+/yr, $9B/yr" | **"Proven (collected)"** (§12); "strongest prove-returned-money model" (§6) | **Collected — firm-reported (aggregate not independently verified); not Proven** | [F] recovery model money-anchored (client-booked credit; contingency incentive-alignment) **but aggregate firm-reported, no independent audit** (prgx.com/apexanalytix.com) | §6, §7, §12 |
+| R4 | SupplyPike "$1B recovered" | "[PV]" under "Proven (collected)" | **Collected — vendor-reported (not independently verified); not Proven**; win-rate methodology **Unknown** | Vendor + press; per-dispute credit, no independent aggregate verification | §6, §7, §12 |
+| R5 | Machinify recovery | "recovered dollars" | **Collected — vendor-reported; services-essential; not Proven** | Software + legal/clinical services; vendor-reported | §6 |
+| R6 | Stripe "55% recovered" | (not in v1.0 outcome buckets) | **Contested / Unverified vendor claim** (third-party 25–35%) | Mission #002: third-party 200+ accounts/$500M+ volume; no published baseline/incrementality | §12 |
+| R7 | Matrix "Prove-returned = 4 (collected)" | implied proof-grade | **Collected — vendor/firm-reported; explicitly NOT "Proven"** | Same as R3–R4; capability = demonstrated collection, not proven-returned | §7 |
+| R8 | Outcome vocabulary | "Proven (collected)" bucket | **Five-tier mutually-exclusive standard** (Collected / Prevented / Estimated / Detected / Contested); **no vendor reaches Proven** | Consistency requirement across the report | header, §1, §7, §11, §12 |
+
+- **Did any central conclusion change?** **No.** C1, C2, C3, C4 are **unchanged**. The revision **strengthens
+  C2** (even money-anchored recovery is Collected — vendor/firm-reported, not independently verified) and
+  **C4** (the Observed/Estimated/Forecast/Proven blend is now an explicit five-tier standard).
+- **Did any confidence level change?** **No.** C1 High · C2 High · C3 Medium-High · C4 High — carried unchanged.
+- **Provenance:** all v1.0 sources, evidence, contradictions, and limitations preserved; only outcome
+  *classifications* were normalized.
 
 ---
 
