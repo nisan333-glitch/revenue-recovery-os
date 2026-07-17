@@ -80,6 +80,18 @@
   - *Decision reopened:* wire record build/verify into that consumer.
   - *Business impact if validated:* Depends on the consumer.
 - **Decision:** Do not implement now. · **Final Outcome:** Pending (open).
+- **Cross-reference:** the Verifiable Attestation decision (this item's primary consumer) is governed by `DP_VALIDATION_KIT.md` §6 + §7. Do not wire until an approved consumer exists.
+
+## DEF-RUNPATH — Run-path build (a DP running their real CSV)
+- **Type:** DEF · **Status:** Deferred candidate · **Owner:** Founder (nisan333@gmail.com)
+- **Date Created:** 2026-07-17 · **Last Reviewed:** 2026-07-17
+- **Reason Deferred:** No qualified DP has reached the CSV-commitment stage, so the run-path is not yet
+  the binding constraint. Building any run-path (hosted URL / offline HTML / …) ahead of that is
+  build-ahead-of-demand.
+- **Governing procedure (NOT duplicated here):** the whether/how decision is the **Run-Path Decision
+  Framework** in `DP_VALIDATION_KIT.md` §7 — gated V0 (business) → V0.5 (scope) → V1–V6 (technical).
+  **Do not select a model or build until V0 is satisfied.**
+- **Decision:** Do not implement now. · **Final Outcome:** Pending (open).
 
 ---
 
@@ -90,3 +102,4 @@ _(Add new entries above using the same structure. Customer-evidence-gated items 
 |---|---|---|
 | 0.1 | 2026-07-17 | Register created; KI-PAIDAMT and H-ENC recorded. |
 | 0.2 | 2026-07-17 | Added structured overturn triggers to all entries; added HYP-LARGECSV, DEF-GOLDEN, DEF-RECWIRE. |
+| 0.3 | 2026-07-17 | Added DEF-RUNPATH (pointer to DP_VALIDATION_KIT §7); cross-referenced DEF-RECWIRE to the kit's Attestation / run-path decision. No framework duplicated. |

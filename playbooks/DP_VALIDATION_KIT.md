@@ -122,8 +122,73 @@ Structured triggers for **customer-evidence-gated** items (engineering-only item
 
 ---
 
+## 7 · Run-Path Decision Framework (V0–V6)
+
+**What this governs:** *whether and how* a Design Partner runs the Assessment on their **real** CSV
+(the run-path). This is an **evidence-gated product decision**, gated **first by business value (V0),
+then by scope (V0.5), then by technical constraints (V1–V6)** — never selected on engineering reasoning
+ahead of a qualified, committed customer. **Default until V0 is satisfied: run session #1 as a
+synthetic demo on our own screen — no build.** Living procedure: it may evolve **only** through real DP
+evidence.
+
+**Run-path models under evaluation:** A = our-machine synthetic demo (discovery) · B = hosted static
+URL · C = single self-contained offline HTML · D = local dist bundle/local server · E = DP sends us the
+file (rejected — breaks privacy).
+
+### V0 — Business Justification (mandatory first gate; internal)
+| Check | Question | Fail → |
+|---|---|---|
+| V0.1 | Is there a **qualified** DP (cleared DP-FIT)? | not qualified → collect evidence, do not build |
+| V0.2 | Has the DP reached the **CSV-commitment stage** (agreed to pull a real export)? | not committed → run-path isn't yet the constraint |
+| V0.3 | Is the **run-path the only remaining blocker** to running their data? | other blockers first → solve those |
+| V0.4 | Would solving it **materially raise** pilot / costly-commitment probability? | no material lift → don't build |
+| V0.5 | **One customer only, or a broader recurring need?** | *scope discriminator — see below* |
+
+**V0 passes = V0.1–V0.4 all affirmative.** Any fail → do not select a model, do not build, collect more
+evidence. **V0.5 sets scope:** one customer → build the **minimum throwaway unblock** for *that* DP,
+never a general model; recurring (**≥2 independent qualified DPs** on the same constraint) → proceed to
+V1–V6 for a **durable** model.
+
+### V1–V6 — Technical selection (only after V0 passes, only for scope = recurring)
+| # | Variable | Gates |
+|---|---|---|
+| V1 | Does the DP need **their own** number to commit, or does synthetic suffice? | no-build if synthetic suffices |
+| V2 | Self-serve, supervised-on-their-machine, or won't-run-at-all? | feasibility of any run |
+| V3 | IT posture on opening an **unknown external web app** + file-picker UI (DLP)? | Model B |
+| V4 | Will they receive/open a **single local HTML file** (attachment/drive policy)? | Model C |
+| V5 | Security's **assurance bar** — live offline+DevTools demo, or a formal process (review / DPA / SOC2 / self-host)? | formal process eliminates B & C |
+| V6 | **Air-gap** mandatory, or client-side-on-a-URL acceptable? | air-gap → C only |
+
+**Questions to ask (discovery / champion + IT):**
+1. "To decide on a pilot, do you need to see the number on **your own** data, or is seeing how it works enough now?" → V1
+2. "When we run it on your data, would you run it yourself, or do it together on your screen?" → V2
+3. "Who approves a browser tool where the file never leaves your machine? What would they need to see?" → V5
+4. "Does IT allow opening an external web app with a file-upload screen — even if nothing is uploaded?" → V3
+5. "Easier to open a **link**, or a **single self-contained file** you run **offline**?" → V4 + V6
+6. "Anything (DPA, security review, running on your own infra) required before any of this?" → V5 (surfaces eliminate-both)
+
+**Answer → branch:**
+- **→ Model B** if V3 permits external app + file-picker **and** V5 = "offline+DevTools demo is enough" **and** V6 = client-side-on-URL acceptable **and** V2 = will self-serve/supervised.
+- **→ Model C** if V4 = will open a local single file **and** (V3 blocks external URLs **or** V6 = offline/air-gap mandatory **or** V5 = "must be one inspectable offline artifact").
+- **→ Eliminate both** if V5 = formal process / self-host-only / vetted-vendor only · **or** V3 **and** V4 both blocked · **or** V2 = won't run anything **and** won't share the file (→ pivot: DP computes the number from a spec we provide, or defer).
+- **→ No build needed** if V1 = synthetic/discovery suffices, or the real run is far downstream.
+
+### Criteria re-validation (before trusting the framework)
+V3–V6 are a **hypothesis** about what decides feasibility. After the first 2–3 CSV-commit-stage
+sessions, check whether they actually determined the outcome or an **unmodeled factor** dominated
+(e.g., mandatory DPA, VPC-only, "no browser tools period"). If a new axis emerges, **add it here before
+selecting a model.**
+
+### Thresholds
+A single DP's hard requirement is a data point, not a general decision — build the **minimum** to unblock
+a strong single commit without generalizing. Generalize a default model only at **≥2 independent
+qualified DPs** clustering on the same constraint.
+
+---
+
 ## Change log
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-07-16 | Initial kit: session flow, discovery script, Session Record template, Friction Log, Assumption/Hypothesis Tracker, Attestation decision gate. |
 | 0.2 | 2026-07-17 | Added §6 — structured overturn triggers for customer-evidence-gated decisions (Verifiable Attestation). |
+| 0.3 | 2026-07-17 | Added §7 — Run-Path Decision Framework (V0 business gate → V0.5 scope → V1–V6 technical), gating whether/how a DP runs the Assessment on real data. |
