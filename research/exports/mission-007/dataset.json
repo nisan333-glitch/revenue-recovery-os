@@ -1,0 +1,165 @@
+{
+  "validator_dataset_version": "1",
+  "mission": {
+    "mission_id": "M007",
+    "title": "Native JSON Authoring Validation (L2) — the spacing effect / distributed practice",
+    "decision_supported": "Whether NH should recommend spaced study/practice in an internal learning-and-onboarding note.",
+    "research_question": ["Does spacing study over time improve long-term retention versus massing, and how far does the evidence generalize?"],
+    "question_type": ["Descriptive", "Causal", "Comparative"],
+    "scope": "Human learning/memory research ~1885-2024; primarily verbal-recall and lab studies + reviews; public sources.",
+    "out_of_scope": "Clinical memory disorders; animal studies; whole-classroom policy design.",
+    "materiality_level": "L2",
+    "required_confidence": "Moderate",
+    "geographic_scope": "global research literature",
+    "industry_scope": "education / cognitive science",
+    "as_of_date": "2026-07-18",
+    "start_date": "2026-07-18",
+    "owner": "Founder (nisan333@gmail.com)",
+    "reviewer": "Founder (author-reviewer; L2 — independent reviewer preferred, not required, per NH-ROP §18)",
+    "status": "Closed",
+    "completion_status": "Conditions-met"
+  },
+  "claims": [
+    {
+      "claim_id": "M007-C1",
+      "statement": "Distributing study over time (spacing) improves long-term retention compared with massing the same study time (the spacing effect).",
+      "claim_type": "Causal",
+      "scope": "Human learning, primarily verbal/lab tasks.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "High",
+      "confidence_rationale": "Large meta-analytic base (Cepeda 2006) plus an independent high-utility rating (Dunlosky 2013); kept at Supported (not Confirmed) because primary access here was secondary.",
+      "overturn_conditions": "A credible meta-analysis showing no or reversed spacing benefit.",
+      "origin": "Initial anchor hypothesis, tested against Cepeda 2006 + Dunlosky 2013.",
+      "supporting_evidence": ["M007-C1-E1", "M007-C1-E2"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M007-C2",
+      "statement": "Cepeda et al. (2006) pooled about 254 studies (>14,000 participants) and found distributed practice reliably outperformed massed practice, with a large rather than marginal advantage.",
+      "claim_type": "Performance",
+      "scope": "The Cepeda et al. 2006 meta-analysis of verbal-recall studies.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Consistently reported meta-analysis scope/result; reached via secondary summaries, not the primary article.",
+      "overturn_conditions": "A corrected reading of the meta-analysis materially changing scope or effect.",
+      "origin": "Cepeda et al. 2006.",
+      "supporting_evidence": ["M007-C2-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M007-C3",
+      "statement": "The optimal inter-study gap grows with the desired retention interval (about 20% of the test delay at a few weeks, falling to about 5% at one year).",
+      "claim_type": "Causal",
+      "scope": "Verbal-recall tasks; Cepeda et al. 2008 modelling.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Reported quantitative relationship from a single lab's modelling study; not independently replicated across labs here.",
+      "overturn_conditions": "Independent work materially contradicting the gap/retention-interval relationship.",
+      "origin": "Cepeda et al. 2008.",
+      "supporting_evidence": ["M007-C3-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M007-C4",
+      "statement": "The spacing effect generalizes equally to all materials, including complex real-world skills and authentic classroom learning.",
+      "claim_type": "Universal",
+      "scope": "All learning materials and settings.",
+      "materiality": "L2",
+      "current_verdict": "Partially Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Robust across many verbal/lab tasks, but most evidence is verbal recall in the lab; complex-skill and authentic-classroom transfer is less established.",
+      "overturn_conditions": "Broad evidence of comparable spacing benefits for complex skills and authentic classroom outcomes.",
+      "origin": "Breadth of lab evidence vs transfer limitation.",
+      "supporting_evidence": ["M007-C4-E1"],
+      "contradicting_evidence": ["M007-C4-E2"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M007-C5",
+      "statement": "Spaced repetition is implemented in widely-used learning software via flashcard scheduling algorithms (e.g., Leitner / SM-2).",
+      "claim_type": "Adoption",
+      "scope": "Consumer/education flashcard software.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Documented in the software's own materials; establishes implementation, not learning-outcome magnitude.",
+      "overturn_conditions": "Evidence that such scheduling is not actually spacing-based.",
+      "origin": "Spaced-repetition software documentation.",
+      "supporting_evidence": ["M007-C5-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M007-C6",
+      "statement": "Rigorous evidence of spacing benefits in authentic classroom/professional settings is more limited than the laboratory verbal-recall evidence base.",
+      "claim_type": "Negative",
+      "scope": "Published spacing-effect evidence to date.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Within the reviewed literature, most evidence is lab/verbal; authentic-setting and complex-skill studies are fewer. This does not prove none exist.",
+      "overturn_conditions": "A substantial body of authentic-setting controlled studies.",
+      "origin": "Lab-vs-classroom evidence-base observation.",
+      "supporting_evidence": ["M007-C6-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M007-C7",
+      "statement": "Spacing improves conceptual understanding and transfer, not merely verbatim recall.",
+      "claim_type": "Causal",
+      "scope": "Conceptual/transfer outcomes (vs recall).",
+      "materiality": "L2",
+      "current_verdict": "Inconclusive",
+      "confidence": "Low",
+      "confidence_rationale": "The strongest evidence concerns recall/retention; transfer-and-understanding effects are less consistently measured in the reviewed scope.",
+      "overturn_conditions": "Consistent controlled evidence of spacing benefits on transfer/understanding measures.",
+      "origin": "Recall-focused evidence vs the transfer question.",
+      "supporting_evidence": [],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    }
+  ],
+  "evidence": [
+    { "evidence_id": "M007-C1-E1", "source_id": "S001", "claim_id": "M007-C1", "exact_finding": "Meta-analysis: distributed practice reliably beat massed practice; advantage large, not marginal.", "direction": "Supports", "evidence_type": "meta-analysis (summary)", "extraction_method": "web search of meta-analysis summaries", "quote_or_paraphrase": "distributed practice reliably beat massed; large advantage", "location": "Cepeda, Pashler, Vul, Wixted & Rohrer (2006), Psychological Bulletin", "date_published": "2006", "date_accessed": "2026-07-18", "applicable_scope": "verbal-recall studies", "limitations": "secondary access; verbal-recall focus", "researcher_notes": "MD trace: RESEARCH_RECORD.md observation O1 / M007-C1-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M007-C1-E2", "source_id": "S003", "claim_id": "M007-C1", "exact_finding": "An independent review rated distributed practice as a high-utility learning technique.", "direction": "Supports", "evidence_type": "systematic review", "extraction_method": "web search", "quote_or_paraphrase": "distributed practice = high utility", "location": "Dunlosky et al. (2013), Psychological Science in the Public Interest", "date_published": "2013", "date_accessed": "2026-07-18", "applicable_scope": "student learning techniques", "limitations": "review; secondary access", "researcher_notes": "MD trace: O2 / M007-C1-E2", "verification_status": "Partially-Verified", "independence_group": "L02", "strength_category": "Strong" },
+    { "evidence_id": "M007-C2-E1", "source_id": "S001", "claim_id": "M007-C2", "exact_finding": "The meta-analysis pooled ~254 studies and >14,000 participants.", "direction": "Supports", "evidence_type": "meta-analysis scope", "extraction_method": "web search", "quote_or_paraphrase": "254 studies, >14,000 participants", "location": "Cepeda et al. (2006)", "date_published": "2006", "date_accessed": "2026-07-18", "applicable_scope": "the meta-analysis", "limitations": "secondary access; some summaries cite 317 experiments / 184 articles", "researcher_notes": "MD trace: O1 / M007-C2-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M007-C3-E1", "source_id": "S002", "claim_id": "M007-C3", "exact_finding": "Optimal inter-study interval was ~20% of the test delay at a few weeks, falling to ~5% at one year.", "direction": "Supports", "evidence_type": "modelling/experiment", "extraction_method": "web search", "quote_or_paraphrase": "optimal gap ~20% (weeks) -> ~5% (one year) of retention interval", "location": "Cepeda et al. (2008), Psychological Science", "date_published": "2008", "date_accessed": "2026-07-18", "applicable_scope": "verbal-recall tasks", "limitations": "single lab; secondary access", "researcher_notes": "MD trace: O3 / M007-C3-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Moderate" },
+    { "evidence_id": "M007-C4-E1", "source_id": "S001", "claim_id": "M007-C4", "exact_finding": "The spacing benefit held across many verbal-learning tasks and conditions.", "direction": "Supports", "evidence_type": "meta-analysis breadth", "extraction_method": "web search", "quote_or_paraphrase": "robust across many tasks/conditions", "location": "Cepeda et al. (2006)", "date_published": "2006", "date_accessed": "2026-07-18", "applicable_scope": "verbal-recall tasks", "limitations": "breadth within verbal/lab domain, not all materials", "researcher_notes": "MD trace: O1 / M007-C4-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Moderate" },
+    { "evidence_id": "M007-C4-E2", "source_id": "S004", "claim_id": "M007-C4", "exact_finding": "Most spacing evidence is verbal recall in the lab; generalization to complex skills and authentic classrooms is less established.", "direction": "Limits", "evidence_type": "scope/limitation review", "extraction_method": "web search of reviews", "quote_or_paraphrase": "lab/verbal skew; transfer to complex/authentic less established", "location": "learning-science reviews on spacing generalization", "date_published": "2013", "date_accessed": "2026-07-18", "applicable_scope": "generalization of the spacing effect", "limitations": "a scope caveat, not a counter-measurement", "researcher_notes": "MD trace: O4 / M007-C4-E2", "verification_status": "Partially-Verified", "independence_group": "L03", "strength_category": "Moderate" },
+    { "evidence_id": "M007-C5-E1", "source_id": "S005", "claim_id": "M007-C5", "exact_finding": "Spaced-repetition flashcard software schedules reviews using Leitner/SM-2-style algorithms.", "direction": "Supports", "evidence_type": "software documentation", "extraction_method": "web search", "quote_or_paraphrase": "flashcard scheduling via SM-2 / Leitner", "location": "spaced-repetition software documentation (e.g., Anki / SuperMemo)", "date_published": "2020", "date_accessed": "2026-07-18", "applicable_scope": "consumer/education flashcard software", "limitations": "documents implementation, not outcome magnitude", "researcher_notes": "MD trace: O5 / M007-C5-E1", "verification_status": "Vendor-Claim", "independence_group": "L04", "strength_category": "Limited" },
+    { "evidence_id": "M007-C6-E1", "source_id": "S004", "claim_id": "M007-C6", "exact_finding": "Authentic classroom/professional controlled studies of spacing are fewer than the lab verbal-recall base.", "direction": "Supports", "evidence_type": "evidence-base observation", "extraction_method": "web search of reviews", "quote_or_paraphrase": "fewer authentic-setting controlled studies", "location": "learning-science reviews", "date_published": "2013", "date_accessed": "2026-07-18", "applicable_scope": "published spacing evidence", "limitations": "absence-in-reviewed-scope, not proof of non-existence", "researcher_notes": "MD trace: O4 / M007-C6-E1", "verification_status": "Partially-Verified", "independence_group": "L03", "strength_category": "Moderate" }
+  ],
+  "sources": [
+    { "source_id": "S001", "title": "Distributed Practice in Verbal Recall Tasks: A Review and Quantitative Synthesis", "author_or_org": "Cepeda, Pashler, Vul, Wixted & Rohrer", "publisher": "Psychological Bulletin", "url_or_internal_location": "https://www.yorku.ca/ncepeda/publications/CPVWR2006.html", "publication_date": "2006", "access_date": "2026-07-18", "source_type": "Peer-reviewed", "primary_or_secondary": "Primary", "commercial_interest": "none (academic)", "methodology_disclosed": "yes", "data_availability": "summary (primary article not fetched)", "retraction_or_correction_status": "none known", "independence_group": "L01", "reliability_notes": "large meta-analysis; the synthesis aggregates many independent studies" },
+    { "source_id": "S002", "title": "Spacing effects in learning: a temporal ridgeline of optimal retention", "author_or_org": "Cepeda, Vul, Rohrer, Wixted & Pashler", "publisher": "Psychological Science", "url_or_internal_location": "https://laplab.ucsd.edu/articles/Cepeda%20et%20al%202008_psychsci.pdf", "publication_date": "2008", "access_date": "2026-07-18", "source_type": "Peer-reviewed", "primary_or_secondary": "Primary", "commercial_interest": "none (academic)", "methodology_disclosed": "yes", "data_availability": "summary", "retraction_or_correction_status": "none known", "independence_group": "L01", "reliability_notes": "same research group as S001 (shared lineage L01)" },
+    { "source_id": "S003", "title": "Improving Students' Learning With Effective Learning Techniques", "author_or_org": "Dunlosky, Rawson, Marsh, Nathan & Willingham", "publisher": "Psychological Science in the Public Interest", "url_or_internal_location": "https://journals.sagepub.com/doi/10.1177/1529100612453266", "publication_date": "2013", "access_date": "2026-07-18", "source_type": "Peer-reviewed", "primary_or_secondary": "Secondary", "commercial_interest": "none (academic)", "methodology_disclosed": "yes", "data_availability": "summary", "retraction_or_correction_status": "none known", "independence_group": "L02", "reliability_notes": "independent review team; rated distributed practice high-utility" },
+    { "source_id": "S004", "title": "Learning-science reviews on the generalization/limits of the spacing effect", "author_or_org": "assorted learning-science reviews", "publisher": "assorted", "url_or_internal_location": "review commentary on spacing generalization (lab vs authentic)", "publication_date": "2013", "access_date": "2026-07-18", "source_type": "Expert-interpretation", "primary_or_secondary": "Secondary", "commercial_interest": "none identified", "methodology_disclosed": "partial", "data_availability": "n/a", "retraction_or_correction_status": "none known", "independence_group": "L03", "reliability_notes": "scope/limitation caveats, partly noted within the reviews themselves" },
+    { "source_id": "S005", "title": "Spaced-repetition flashcard software documentation (Leitner / SM-2 scheduling)", "author_or_org": "Anki / SuperMemo (software)", "publisher": "software vendors/community", "url_or_internal_location": "https://docs.ankiweb.net/", "publication_date": "2020", "access_date": "2026-07-18", "source_type": "Company-documentation", "primary_or_secondary": "Primary", "commercial_interest": "software vendors", "methodology_disclosed": "no", "data_availability": "documentation", "retraction_or_correction_status": "n/a", "independence_group": "L04", "reliability_notes": "documents implementation; not an outcome study" }
+  ],
+  "assumptions": [
+    { "assumption_id": "M007-A1", "statement": "Lab verbal-recall spacing findings generalize to authentic classroom/professional learning and complex skills.", "why_needed": "to move from lab evidence to a workplace-learning recommendation.", "claims_affected": ["M007-C4", "M007-C7"], "evidence_status": "only partially supported (transfer evidence limited)", "risk_if_false": "Moderate", "validation_method": "authentic-setting controlled studies", "owner": "Founder", "status": "Open" }
+  ],
+  "unknowns": [
+    { "unknown_id": "M007-U1", "exact_open_question": "How large is the spacing benefit for complex-skill transfer and multi-year retention in authentic settings?", "why_it_matters": "the universality (C4) and transfer (C7) claims hinge on this.", "claims_affected": ["M007-C4", "M007-C7"], "materiality": "L2", "search_attempts": ["public search of spacing-effect meta-analyses/reviews (2026-07-18)"], "missing_evidence": "authentic-setting, complex-skill, long-horizon controlled studies", "blocks_decision": false, "recommended_next_action": "seek authentic-setting spacing studies", "status": "Isolated" }
+  ],
+  "contradictions": [
+    { "contradiction_id": "M007-X1", "in_conflict": ["M007-C4", "M007-C6"], "nature_of_conflict": "Broad lab robustness of the spacing effect vs the more limited authentic-setting/complex-skill evidence.", "possible_explanations": ["real but domain-limited effect", "under-studied authentic settings"], "scope_differences": "verbal/lab tasks vs authentic classroom/complex skills", "definition_differences": "recall vs transfer/understanding", "methodological_differences": "controlled lab vs field", "resolution_status": "Scope-qualified", "impact_on_verdict": "keeps C4 Partially Supported and supports C6.", "required_follow_up": "authentic-setting studies (see U1)" }
+  ],
+  "verdicts": [
+    { "claim_id": "M007-C1", "verdict_status": "Supported", "confidence": "High", "confidence_rationale": "Large meta-analysis + independent high-utility review; secondary access.", "evidence_summary": "Cepeda 2006 + Dunlosky 2013.", "strongest_support": "M007-C1-E1", "scope_of_validity": "human learning, mainly verbal/lab.", "overturn_conditions": "meta-analysis showing no/reversed effect.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M007-C2", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "Consistently reported scope/result; secondary access.", "evidence_summary": "254 studies / >14,000 participants; large advantage.", "strongest_support": "M007-C2-E1", "scope_of_validity": "the 2006 meta-analysis.", "overturn_conditions": "corrected reading of scope/effect.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M007-C3", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "Single-lab modelling; not independently replicated here.", "evidence_summary": "optimal gap ~20% -> ~5%.", "strongest_support": "M007-C3-E1", "scope_of_validity": "verbal-recall tasks.", "overturn_conditions": "independent contradiction.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M007-C4", "verdict_status": "Partially Supported", "confidence": "Moderate", "confidence_rationale": "Robust in verbal/lab; complex/authentic transfer less established.", "evidence_summary": "lab breadth (Supports) vs transfer limitation (Limits).", "strongest_support": "M007-C4-E1", "strongest_contradiction": "M007-C4-E2", "scope_of_validity": "verbal/lab tasks.", "overturn_conditions": "broad complex-skill/authentic evidence.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M007-C5", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "Documented implementation; not an outcome study.", "evidence_summary": "Leitner/SM-2 scheduling in software.", "strongest_support": "M007-C5-E1", "scope_of_validity": "flashcard software.", "overturn_conditions": "scheduling shown not spacing-based.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M007-C6", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "Reviewed literature skews lab/verbal; not proof none exist.", "evidence_summary": "authentic-setting evidence more limited.", "strongest_support": "M007-C6-E1", "scope_of_validity": "published evidence to date.", "overturn_conditions": "a body of authentic controlled studies.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M007-C7", "verdict_status": "Inconclusive", "confidence": "Low", "confidence_rationale": "Strongest evidence is recall; transfer/understanding less consistently measured.", "evidence_summary": "no consistent transfer evidence located.", "strongest_support": "", "scope_of_validity": "transfer/understanding outcomes.", "overturn_conditions": "consistent transfer evidence.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" }
+  ]
+}
