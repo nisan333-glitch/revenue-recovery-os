@@ -1,0 +1,165 @@
+{
+  "validator_dataset_version": "1",
+  "mission": {
+    "mission_id": "M006",
+    "title": "Generalization Validation (L2) — four-day work week productivity",
+    "decision_supported": "Whether NH should mention the four-day work week as an evidence-supported practice in an internal operations note.",
+    "research_question": ["Does adopting a four-day work week (100-80-100 model) maintain or improve organizational productivity, and how well does the evidence generalize?"],
+    "question_type": ["Descriptive", "Causal", "Comparative"],
+    "scope": "Organized researcher-evaluated four-day-week pilots ~2015-2024; office/knowledge-work firms; public reports.",
+    "out_of_scope": "Mandated whole-economy policy; sectors not covered by the pilots (heavy manufacturing, most healthcare); legal/regulatory analysis.",
+    "materiality_level": "L2",
+    "required_confidence": "Moderate",
+    "geographic_scope": "UK + Iceland pilots; global relevance",
+    "industry_scope": "cross-sector, skewed to office/knowledge work",
+    "as_of_date": "2026-07-18",
+    "start_date": "2026-07-18",
+    "owner": "Founder (nisan333@gmail.com)",
+    "reviewer": "Founder (author-reviewer; L2 — independent reviewer preferred, not required, per NH-ROP §18)",
+    "status": "Closed",
+    "completion_status": "Conditions-met"
+  },
+  "claims": [
+    {
+      "claim_id": "M006-C1",
+      "statement": "Organized, researcher-evaluated four-day-week (100-80-100) trials have been conducted, notably a 61-company UK pilot in 2022.",
+      "claim_type": "Existence",
+      "scope": "Organized volunteer-company four-day-week pilots.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "High",
+      "confidence_rationale": "The UK 2022 pilot is documented across multiple secondary summaries with named academic evaluators; an Iceland public-sector trial is also reported (less independently verified here).",
+      "overturn_conditions": "Evidence that the reported pilots did not occur or were not researcher-evaluated.",
+      "origin": "UK 4 Day Week pilot 2022; Iceland public-sector trials.",
+      "supporting_evidence": ["M006-C1-E1", "M006-C1-E2"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M006-C2",
+      "statement": "In the UK 2022 pilot, about 92% of participating companies (56/61) continued the four-day week immediately after, and about 89% (54/61) one year later.",
+      "claim_type": "Adoption",
+      "scope": "The 61 participating firms of the UK 2022 pilot.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Continuation figures are consistently reported by the pilot organizers and follow-up; population is the self-selected pilot firms, not employers generally.",
+      "overturn_conditions": "A corrected count materially changing the continuation rate.",
+      "origin": "UK 4 Day Week pilot results + one-year follow-up.",
+      "supporting_evidence": ["M006-C2-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M006-C3",
+      "statement": "Adopting a four-day week causes maintained or improved organizational productivity.",
+      "claim_type": "Causal",
+      "scope": "Volunteer-company pilots; office/knowledge work.",
+      "materiality": "L2",
+      "current_verdict": "Inconclusive",
+      "confidence": "Low",
+      "confidence_rationale": "Supporting productivity/revenue signals are largely self-reported and come from self-selected firms; no randomized design with objective output metrics isolates a causal effect.",
+      "overturn_conditions": "A controlled study with objective output measures showing a clear causal effect (either direction).",
+      "origin": "Pilot self-reports vs methodological critique.",
+      "supporting_evidence": ["M006-C3-E1"],
+      "contradicting_evidence": ["M006-C3-E2"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M006-C4",
+      "statement": "Participants in the UK pilot reported large wellbeing gains (e.g., ~71% reduced burnout, ~39% less stressed).",
+      "claim_type": "Customer",
+      "scope": "Self-reported by UK 2022 pilot participants.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Consistently reported wellbeing figures; establishes reported participant experience, not a generalizable causal effect.",
+      "overturn_conditions": "Evidence the wellbeing figures were misreported or reversed after the pilot.",
+      "origin": "UK 4 Day Week pilot wellbeing survey data.",
+      "supporting_evidence": ["M006-C4-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M006-C5",
+      "statement": "The four-day week generalizes to all sectors and organization types.",
+      "claim_type": "Universal",
+      "scope": "All sectors and organization types.",
+      "materiality": "L2",
+      "current_verdict": "Partially Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "It worked for the participating office/knowledge-work firms, but pilots skewed to self-selected white-collar organizations; shift, manufacturing, and most healthcare settings are under-represented.",
+      "overturn_conditions": "Broad multi-sector evidence (incl. shift/manufacturing/healthcare) of comparable results.",
+      "origin": "Pilot success in tested firms vs sector-skew limitation.",
+      "supporting_evidence": ["M006-C5-E1"],
+      "contradicting_evidence": ["M006-C5-E2"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M006-C6",
+      "statement": "Rigorous randomized controlled evidence with objective output metrics isolating the four-day week's causal productivity effect is limited.",
+      "claim_type": "Negative",
+      "scope": "Published four-day-week productivity evidence to date.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Within the reviewed public evidence, pilots are observational, volunteer-based, and rely on self-reported output; no qualifying RCT with objective metrics was identified. This does not prove none exists.",
+      "overturn_conditions": "A randomized controlled four-day-week study with objective output metrics.",
+      "origin": "Methodological critique of the pilot evidence base.",
+      "supporting_evidence": ["M006-C6-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M006-C7",
+      "statement": "Adopting a four-day week reduces a firm's total energy use / carbon footprint.",
+      "claim_type": "Causal",
+      "scope": "Firm-level energy use / carbon footprint under a four-day week.",
+      "materiality": "L2",
+      "current_verdict": "Unsupported",
+      "confidence": "Low",
+      "confidence_rationale": "No evidence measuring the energy/carbon effect of a four-day week was found in the reviewed public scope; the claim is neither supported nor disproved.",
+      "overturn_conditions": "A study measuring firm-level energy use / carbon under a four-day week.",
+      "origin": "Plausible sustainability hypothesis; not evidenced in the reviewed scope.",
+      "supporting_evidence": [],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    }
+  ],
+  "evidence": [
+    { "evidence_id": "M006-C1-E1", "source_id": "S001", "claim_id": "M006-C1", "exact_finding": "A 61-company, ~2,900-worker UK four-day-week pilot ran Jun-Dec 2022, evaluated by Boston College, Cambridge and Autonomy.", "direction": "Supports", "evidence_type": "field-trial evaluation report", "extraction_method": "web search of pilot results summaries", "quote_or_paraphrase": "61 companies, ~2,900 workers, 100-80-100 model, academic evaluation", "location": "UK 4 Day Week pilot results report (Feb 2023)", "date_published": "2023", "date_accessed": "2026-07-18", "applicable_scope": "UK 2022 pilot", "limitations": "reached via secondary summaries; primary report not fetched; advocacy-run pilot", "researcher_notes": "MD trace: RESEARCH_RECORD.md M006-C1-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M006-C1-E2", "source_id": "S002", "claim_id": "M006-C1", "exact_finding": "Iceland ran large public-sector four-day/reduced-hours trials (2015-2019) reported as broadly successful.", "direction": "Supports", "evidence_type": "trial report (recalled)", "extraction_method": "prior knowledge; not re-fetched this session", "quote_or_paraphrase": "Iceland public-sector reduced-hours trials, ~2,500 workers", "location": "Iceland trials report (Autonomy/Alda)", "date_published": "2021", "date_accessed": "2026-07-18", "applicable_scope": "Iceland public sector", "limitations": "not verified this session; included cautiously as a second instance", "researcher_notes": "MD trace: M006-C1-E2", "verification_status": "Unverified", "independence_group": "L02", "strength_category": "Limited" },
+    { "evidence_id": "M006-C2-E1", "source_id": "S001", "claim_id": "M006-C2", "exact_finding": "56 of 61 firms (92%) continued immediately; 54 of 61 (89%) were still operating the policy one year on.", "direction": "Supports", "evidence_type": "field-trial follow-up", "extraction_method": "web search", "quote_or_paraphrase": "56/61 continued; 54/61 one year later", "location": "UK pilot results + 'Making it stick' one-year follow-up (2024)", "date_published": "2024", "date_accessed": "2026-07-18", "applicable_scope": "UK 2022 pilot firms", "limitations": "self-selected firms", "researcher_notes": "MD trace: M006-C2-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M006-C3-E1", "source_id": "S001", "claim_id": "M006-C3", "exact_finding": "Company revenue was reported as broadly stable during the pilot.", "direction": "Supports", "evidence_type": "self-reported outcome", "extraction_method": "web search", "quote_or_paraphrase": "revenue remained broadly stable (self-reported)", "location": "UK pilot results report", "date_published": "2023", "date_accessed": "2026-07-18", "applicable_scope": "UK 2022 pilot firms", "limitations": "self-reported; no objective output metric; self-selected firms", "researcher_notes": "MD trace: M006-C3-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Limited" },
+    { "evidence_id": "M006-C3-E2", "source_id": "S003", "claim_id": "M006-C3", "exact_finding": "Volunteer-firm selection bias plus self-reported productivity/revenue undermine causal inference from the pilots.", "direction": "Contradicts", "evidence_type": "methodological critique", "extraction_method": "documented pilot-design limitations + general critique", "quote_or_paraphrase": "self-selected firms + self-reported metrics != causal proof", "location": "critique of volunteer-based pilots (partly acknowledged in the pilot reports)", "date_published": "2023", "date_accessed": "2026-07-18", "applicable_scope": "four-day-week pilot evidence", "limitations": "a critique of design, not a counter-measurement", "researcher_notes": "MD trace: M006-C3-E2", "verification_status": "Partially-Verified", "independence_group": "L03", "strength_category": "Moderate" },
+    { "evidence_id": "M006-C4-E1", "source_id": "S001", "claim_id": "M006-C4", "exact_finding": "71% of employees reported reduced burnout and 39% reported less stress at the end of the UK pilot.", "direction": "Supports", "evidence_type": "wellbeing survey (self-reported)", "extraction_method": "web search", "quote_or_paraphrase": "71% reduced burnout; 39% less stressed", "location": "UK pilot results report", "date_published": "2023", "date_accessed": "2026-07-18", "applicable_scope": "UK 2022 pilot participants", "limitations": "self-reported wellbeing", "researcher_notes": "MD trace: M006-C4-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Moderate" },
+    { "evidence_id": "M006-C5-E1", "source_id": "S001", "claim_id": "M006-C5", "exact_finding": "The policy worked across the participating firms (high continuation, stable revenue, better wellbeing).", "direction": "Supports", "evidence_type": "field-trial evaluation", "extraction_method": "web search", "quote_or_paraphrase": "worked for the participating firms", "location": "UK pilot results report", "date_published": "2023", "date_accessed": "2026-07-18", "applicable_scope": "participating office/knowledge-work firms", "limitations": "does not establish universality", "researcher_notes": "MD trace: M006-C5-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Moderate" },
+    { "evidence_id": "M006-C5-E2", "source_id": "S003", "claim_id": "M006-C5", "exact_finding": "Pilot participants skewed to self-selected office/knowledge-work firms; shift, manufacturing and most healthcare are under-represented.", "direction": "Limits", "evidence_type": "scope/limitation analysis", "extraction_method": "documented participant profile + critique", "quote_or_paraphrase": "participants skew white-collar/knowledge work", "location": "critique of pilot generalizability", "date_published": "2023", "date_accessed": "2026-07-18", "applicable_scope": "sector coverage of the pilots", "limitations": "limits universal generalization", "researcher_notes": "MD trace: M006-C5-E2", "verification_status": "Partially-Verified", "independence_group": "L03", "strength_category": "Moderate" },
+    { "evidence_id": "M006-C6-E1", "source_id": "S003", "claim_id": "M006-C6", "exact_finding": "No randomized controlled four-day-week study with objective output metrics was identified in the reviewed public evidence.", "direction": "Supports", "evidence_type": "evidence-gap analysis", "extraction_method": "review of available pilot literature", "quote_or_paraphrase": "no qualifying RCT with objective output identified", "location": "critique of the evidence base", "date_published": "2023", "date_accessed": "2026-07-18", "applicable_scope": "published four-day-week productivity evidence", "limitations": "absence in reviewed scope; not proof of non-existence", "researcher_notes": "MD trace: M006-C6-E1", "verification_status": "Partially-Verified", "independence_group": "L03", "strength_category": "Moderate" }
+  ],
+  "sources": [
+    { "source_id": "S001", "title": "The results are in: the UK's four-day week pilot (+ 'Making it stick' one-year follow-up)", "author_or_org": "Autonomy / 4 Day Week Global / Boston College / University of Cambridge", "publisher": "Autonomy Institute", "url_or_internal_location": "https://autonomy.work/portfolio/uk4dwpilotresults/", "publication_date": "2023", "access_date": "2026-07-18", "source_type": "Industry-research", "primary_or_secondary": "Primary", "commercial_interest": "advocacy: 4 Day Week Global / Autonomy promote the policy", "methodology_disclosed": "partial", "data_availability": "summary; primary report not fetched", "retraction_or_correction_status": "none known", "independence_group": "L01", "reliability_notes": "academic co-evaluators (Boston College/Cambridge) lend independence, but advocacy-run pilot and largely self-reported productivity/revenue" },
+    { "source_id": "S002", "title": "Iceland public-sector reduced-hours / four-day trials (2015-2019)", "author_or_org": "Autonomy / Alda", "publisher": "Autonomy Institute", "url_or_internal_location": "https://autonomy.work/ (Iceland trials report)", "publication_date": "2021", "access_date": "2026-07-18", "source_type": "Industry-research", "primary_or_secondary": "Secondary", "commercial_interest": "advocacy", "methodology_disclosed": "partial", "data_availability": "not re-fetched this session", "retraction_or_correction_status": "n/a", "independence_group": "L02", "reliability_notes": "included cautiously as a second trial instance; not verified this session" },
+    { "source_id": "S003", "title": "Methodological critique of volunteer-based four-day-week pilots (selection bias; self-reported output; sector skew)", "author_or_org": "general expert/critical commentary", "publisher": "assorted commentary + pilot-report caveats", "url_or_internal_location": "critique synthesized from pilot-design caveats and public commentary", "publication_date": "2023", "access_date": "2026-07-18", "source_type": "Expert-interpretation", "primary_or_secondary": "Secondary", "commercial_interest": "none identified", "methodology_disclosed": "no", "data_availability": "n/a", "retraction_or_correction_status": "n/a", "independence_group": "L03", "reliability_notes": "limitations are partly acknowledged within the pilot reports themselves (self-selection; self-reported revenue)" }
+  ],
+  "assumptions": [
+    { "assumption_id": "M006-A1", "statement": "Results from self-selected volunteer-firm pilots generalize to mandated adoption and to non-office sectors.", "why_needed": "to move from pilot outcomes to a general recommendation.", "claims_affected": ["M006-C3", "M006-C5"], "evidence_status": "unsupported by the reviewed evidence (selection bias)", "risk_if_false": "High", "validation_method": "multi-sector randomized evaluation", "owner": "Founder", "status": "Open" }
+  ],
+  "unknowns": [
+    { "unknown_id": "M006-U1", "exact_open_question": "What is the four-day week's effect on objective (non-self-reported) productivity output, especially in non-office sectors?", "why_it_matters": "the causal claim (C3) and universality (C5) both hinge on objective, cross-sector output.", "claims_affected": ["M006-C3", "M006-C6"], "materiality": "L2", "search_attempts": ["public search of four-day-week pilot results (2026-07-18)"], "missing_evidence": "randomized controlled study with objective output metrics across sectors", "blocks_decision": false, "recommended_next_action": "seek or commission an objective-output multi-sector study", "status": "Isolated" }
+  ],
+  "contradictions": [
+    { "contradiction_id": "M006-X1", "in_conflict": ["M006-C3", "M006-C6"], "nature_of_conflict": "Self-reported pilot productivity/continuation signals vs the limited rigorous causal evidence base.", "possible_explanations": ["real effect", "selection bias + self-report inflation", "novelty/Hawthorne effects"], "scope_differences": "self-selected office firms vs general economy", "definition_differences": "self-reported revenue vs objective output", "methodological_differences": "observational volunteer pilots vs randomized controlled measurement", "resolution_status": "Methodologically-unresolved", "impact_on_verdict": "keeps C3 at Inconclusive; supports C5 scope-qualification and C6.", "required_follow_up": "objective-output controlled study (see U1)" }
+  ],
+  "verdicts": [
+    { "claim_id": "M006-C1", "verdict_status": "Supported", "confidence": "High", "confidence_rationale": "Multiple secondary summaries + named academic evaluators; second instance less verified.", "evidence_summary": "UK 2022 pilot (Strong) + Iceland trials (Limited/Unverified).", "strongest_support": "M006-C1-E1", "scope_of_validity": "organized volunteer pilots.", "overturn_conditions": "pilots shown not to have occurred/been evaluated.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M006-C2", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "Consistent continuation figures; self-selected population.", "evidence_summary": "56/61 then 54/61.", "strongest_support": "M006-C2-E1", "scope_of_validity": "UK 2022 pilot firms.", "overturn_conditions": "corrected counts.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M006-C3", "verdict_status": "Inconclusive", "confidence": "Low", "confidence_rationale": "Self-reported signals from self-selected firms; no objective causal isolation.", "evidence_summary": "self-reported stable revenue (Supports) vs selection-bias critique (Contradicts).", "strongest_support": "M006-C3-E1", "strongest_contradiction": "M006-C3-E2", "scope_of_validity": "volunteer office-firm pilots.", "overturn_conditions": "controlled objective-output study.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M006-C4", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "Consistently reported wellbeing; reported experience, not causal generalization.", "evidence_summary": "71% reduced burnout; 39% less stressed (self-reported).", "strongest_support": "M006-C4-E1", "scope_of_validity": "UK pilot participants (self-report).", "overturn_conditions": "misreport/reversal.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M006-C5", "verdict_status": "Partially Supported", "confidence": "Moderate", "confidence_rationale": "Works for tested white-collar firms; sector skew limits universality.", "evidence_summary": "worked for participants (Supports) vs sector skew (Limits).", "strongest_support": "M006-C5-E1", "strongest_contradiction": "M006-C5-E2", "scope_of_validity": "office/knowledge-work volunteer firms.", "overturn_conditions": "broad multi-sector comparable results.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M006-C6", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "No qualifying RCT with objective output found in reviewed scope; not proof of non-existence.", "evidence_summary": "evidence-gap analysis.", "strongest_support": "M006-C6-E1", "scope_of_validity": "published evidence to date.", "overturn_conditions": "a qualifying RCT.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M006-C7", "verdict_status": "Unsupported", "confidence": "Low", "confidence_rationale": "No energy/carbon measurement located in the reviewed scope; neither supported nor disproved.", "evidence_summary": "no evidence found.", "strongest_support": "", "scope_of_validity": "firm energy/carbon under a four-day week.", "overturn_conditions": "a study measuring the energy/carbon effect.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" }
+  ]
+}
