@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nh.local/research/validator/dataset.schema.json",
+  "title": "NH Validator Dataset Envelope (Stage A input contract)",
+  "description": "Input contract for the Stage A deterministic validator. It ONLY groups arrays of existing NH-ROP schema-conformant objects plus validator execution metadata. It adds NO business meaning; every element is validated against its existing research/schemas/*.schema.json. This envelope is a validator I/O contract, not an NH research object model. NOTE: the $ref links below are documentation for readers; the Stage A subset-validator does not resolve $ref (unsupported keyword) — it validates each array element against the correspondingly-loaded NH-ROP schema by type.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["validator_dataset_version", "mission"],
+  "properties": {
+    "validator_dataset_version": { "type": "string", "description": "Envelope contract version, e.g. '1'." },
+    "mission": { "$ref": "../schemas/research-mission.schema.json" },
+    "claims": { "type": "array", "items": { "$ref": "../schemas/claim.schema.json" } },
+    "evidence": { "type": "array", "items": { "$ref": "../schemas/evidence.schema.json" } },
+    "sources": { "type": "array", "items": { "$ref": "../schemas/source.schema.json" } },
+    "assumptions": { "type": "array", "items": { "$ref": "../schemas/assumption.schema.json" } },
+    "unknowns": { "type": "array", "items": { "$ref": "../schemas/unknown.schema.json" } },
+    "contradictions": { "type": "array", "items": { "$ref": "../schemas/contradiction.schema.json" } },
+    "verdicts": { "type": "array", "items": { "$ref": "../schemas/verdict.schema.json" } }
+  }
+}

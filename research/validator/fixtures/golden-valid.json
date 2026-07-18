@@ -1,0 +1,65 @@
+{
+  "validator_dataset_version": "1",
+  "mission": {
+    "mission_id": "M900",
+    "title": "Validator golden fixture",
+    "decision_supported": "Exercise Stage A on a fully valid dataset (must yield 0 errors, 0 warnings).",
+    "research_question": ["Does the validator pass clean, well-formed research?"],
+    "scope": "fixture",
+    "materiality_level": "L2",
+    "as_of_date": "2026-07-17",
+    "owner": "founder",
+    "status": "Active",
+    "completion_status": "Open"
+  },
+  "claims": [
+    {
+      "claim_id": "M900-C1",
+      "statement": "A Confirmed claim backed by two independent Strong lineages.",
+      "claim_type": "Capability",
+      "scope": "fixture",
+      "materiality": "L2",
+      "current_verdict": "Confirmed",
+      "confidence": "Moderate",
+      "overturn_conditions": "New disconfirming primary evidence.",
+      "supporting_evidence": ["M900-C1-E1", "M900-C1-E2"]
+    },
+    {
+      "claim_id": "M900-C2",
+      "statement": "An Unsupported claim that correctly has no supporting evidence.",
+      "claim_type": "Existence",
+      "scope": "fixture",
+      "materiality": "L2",
+      "current_verdict": "Unsupported",
+      "confidence": "Low",
+      "overturn_conditions": "Evidence is located."
+    },
+    {
+      "claim_id": "M900-C3",
+      "statement": "A Supported claim with a single lineage and a non-material unresolved contradiction.",
+      "claim_type": "Performance",
+      "scope": "fixture",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "overturn_conditions": "Independent measurement.",
+      "supporting_evidence": ["M900-C3-E1"]
+    }
+  ],
+  "evidence": [
+    { "evidence_id": "M900-C1-E1", "source_id": "S001", "claim_id": "M900-C1", "exact_finding": "f1", "direction": "Supports", "date_accessed": "2026-07-17", "applicable_scope": "fixture", "verification_status": "Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M900-C1-E2", "source_id": "S002", "claim_id": "M900-C1", "exact_finding": "f2", "direction": "Supports", "date_accessed": "2026-07-17", "applicable_scope": "fixture", "verification_status": "Verified", "independence_group": "L02", "strength_category": "Strong" },
+    { "evidence_id": "M900-C3-E1", "source_id": "S003", "claim_id": "M900-C3", "exact_finding": "f3", "direction": "Supports", "date_accessed": "2026-07-17", "applicable_scope": "fixture", "verification_status": "Partially-Verified", "independence_group": "L03", "strength_category": "Moderate" }
+  ],
+  "sources": [
+    { "source_id": "S001", "title": "Src 1", "url_or_internal_location": "https://example.test/1", "source_type": "Independent-technical-test-or-audit", "primary_or_secondary": "Primary", "access_date": "2026-07-17", "independence_group": "L01" },
+    { "source_id": "S002", "title": "Src 2", "url_or_internal_location": "https://example.test/2", "source_type": "Peer-reviewed", "primary_or_secondary": "Primary", "access_date": "2026-07-17", "independence_group": "L02" },
+    { "source_id": "S003", "title": "Src 3", "url_or_internal_location": "https://example.test/3", "source_type": "Company-documentation", "primary_or_secondary": "Primary", "access_date": "2026-07-17", "independence_group": "L03" }
+  ],
+  "assumptions": [],
+  "unknowns": [],
+  "contradictions": [
+    { "contradiction_id": "M900-X1", "in_conflict": ["M900-C3", "M900-C3-E1"], "nature_of_conflict": "definition", "resolution_status": "Scope-qualified" }
+  ],
+  "verdicts": []
+}
