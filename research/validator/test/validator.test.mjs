@@ -187,10 +187,79 @@ test("R-VERDICT-STRENGTH-UNKNOWN: Confirmed without strength_category => advisor
 test("loadDataset throws on malformed JSON (=> CLI exit 2)", () => {
   assert.throws(() => loadDataset(resolve(FIX, "not-json.json")));
 });
-test("malformed-but-parseable: mission wrong type => SCHEMA_INVALID, exit 1", () => {
+test("malformed-but-parseable: mission wrong type => ENVELOPE_INVALID, exit 1", () => {
   const d = clone(golden());
-  d.mission = "oops";
+  d.mission = "oops"; // envelope requires mission to be an object (structural gate)
+  const r = validateDataset(d);
+  assert.equal(r.exit, 1);
+  assert.deepEqual([...new Set(blockingTypes(r))], ["ENVELOPE_INVALID"]);
+});
+
+// ---------- F-1: envelope validation -----------------------------------------
+test("F-1: unknown top-level key => ENVELOPE_INVALID, exit 1, isolated", () => {
+  const d = clone(golden());
+  d.foo = 1;
+  const r = validateDataset(d);
+  assert.equal(r.exit, 1);
+  assert.deepEqual([...new Set(blockingTypes(r))], ["ENVELOPE_INVALID"]);
+});
+test("F-1: misspelled 'claimz' key => ENVELOPE_INVALID (not silently skipped)", () => {
+  const d = clone(golden());
+  d.claimz = d.claims; delete d.claims; // typo: data would otherwise be dropped
+  const r = validateDataset(d);
+  assert.equal(r.exit, 1);
+  assert.ok(types(r).includes("ENVELOPE_INVALID"));
+  assert.deepEqual([...new Set(blockingTypes(r))], ["ENVELOPE_INVALID"]);
+});
+test("F-1: missing required envelope property (mission) => ENVELOPE_INVALID", () => {
+  const d = clone(golden());
+  delete d.mission;
+  const r = validateDataset(d);
+  assert.equal(r.exit, 1);
+  assert.deepEqual([...new Set(blockingTypes(r))], ["ENVELOPE_INVALID"]);
+});
+test("F-1: claims supplied as an object => ENVELOPE_INVALID (no coercion), exit 1", () => {
+  const d = clone(golden());
+  d.claims = { not: "an array" };
+  const r = validateDataset(d);
+  assert.equal(r.exit, 1);
+  assert.deepEqual([...new Set(blockingTypes(r))], ["ENVELOPE_INVALID"]);
+});
+test("F-1: evidence supplied as a string => ENVELOPE_INVALID (no coercion), exit 1", () => {
+  const d = clone(golden());
+  d.evidence = "oops";
+  const r = validateDataset(d);
+  assert.equal(r.exit, 1);
+  assert.deepEqual([...new Set(blockingTypes(r))], ["ENVELOPE_INVALID"]);
+});
+test("F-1: valid dataset with only required props (no optional collections) is valid", () => {
+  const g = golden();
+  const d = { validator_dataset_version: g.validator_dataset_version, mission: g.mission };
+  const r = validateDataset(d);
+  assert.equal(r.exit, 0);
+  assert.equal(r.summary.errors, 0);
+  assert.equal(r.summary.warnings, 0);
+});
+
+// ---------- F-2: controlled failure ------------------------------------------
+test("F-2: nested wrong type (supporting_evidence as string) => SCHEMA_INVALID, exit 1, no throw", () => {
+  const d = clone(golden());
+  d.claims[0].supporting_evidence = "oops"; // schema gate catches; semantic rules never run
   const r = validateDataset(d);
   assert.equal(r.exit, 1);
   assert.ok(blockingTypes(r).includes("SCHEMA_INVALID"));
+  assert.ok(!types(r).includes("VALIDATOR_INTERNAL_ERROR")); // handled cleanly, not a crash
+});
+test("F-2: unexpected internal exception => exit 2 + VALIDATOR_INTERNAL_ERROR", () => {
+  const d = golden();
+  const r = validateDataset(d, { runSemantic: () => { throw new Error("boom"); } });
+  assert.equal(r.exit, 2);
+  assert.deepEqual([...new Set(r.events.map((e) => e.event_type))], ["VALIDATOR_INTERNAL_ERROR"]);
+});
+test("F-2: envelope-contract fail-closed => exit 2 (ENVELOPE_CONTRACT_UNSUPPORTED)", () => {
+  const d = golden();
+  const badContract = { type: "object", additionalProperties: false, required: ["mission"], properties: { mission: { $ref: "x" }, weird: { oneOf: [] } } };
+  const r = validateDataset(d, { envelopeSchema: badContract });
+  assert.equal(r.exit, 2);
+  assert.ok(r.events.some((e) => e.event_type === "ENVELOPE_CONTRACT_UNSUPPORTED"));
 });

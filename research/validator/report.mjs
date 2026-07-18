@@ -32,9 +32,13 @@ export function humanReport(result) {
     }
   }
   lines.push("");
-  lines.push(summary.blocking
-    ? `RESULT: BLOCKED — ${summary.errors} blocking error(s). exit 1.`
-    : `RESULT: PASS (deterministic) — ${summary.warnings} advisory warning(s). exit 0.`);
+  if (result.exit === 2) {
+    lines.push(`RESULT: VALIDATOR ERROR — exit 2 (internal validator failure or unsupported envelope contract). No research verdict was produced; this is a validator defect, not a research violation.`);
+  } else if (summary.blocking) {
+    lines.push(`RESULT: BLOCKED — ${summary.errors} blocking error(s). exit 1.`);
+  } else {
+    lines.push(`RESULT: PASS (deterministic) — ${summary.warnings} advisory warning(s). exit 0.`);
+  }
   lines.push("Reminder: passing means structurally/rule consistent, not that any verdict is true.");
   lines.push("L3 needs an independent Critical Reviewer; L4 needs primary access + independent review.");
   return lines.join("\n");

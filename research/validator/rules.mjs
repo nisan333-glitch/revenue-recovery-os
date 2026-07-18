@@ -356,11 +356,16 @@ export function ruleOrphanSource(norm, idx) {
   return events;
 }
 
-export function runAllRules(norm, schemas) {
+// Schema-conformance gate (fail-closed). Run BEFORE semantic rules so that
+// semantic rules only ever receive schema-valid (structurally safe) input (F-2).
+export function runSchemaRules(norm, schemas) {
+  return ruleSchema(norm, schemas);
+}
+
+// Semantic rules. PRECONDITION: input has passed the envelope + schema gates, so
+// array fields are arrays and enums are valid. No coercion happens here.
+export function runSemanticRules(norm) {
   const events = [];
-  // Schema first (fail-closed). If schema is invalid the semantic rules still run
-  // but may add noise; that is acceptable — every event is independent and typed.
-  events.push(...ruleSchema(norm, schemas));
   const idx = index(norm);
   events.push(...ruleIdUnique(norm));
   events.push(...ruleXref(norm, idx));
@@ -375,4 +380,9 @@ export function runAllRules(norm, schemas) {
   events.push(...ruleRevenueProven(norm));
   events.push(...ruleOrphanSource(norm, idx));
   return events;
+}
+
+// Back-compat convenience (schema gate + semantic rules together).
+export function runAllRules(norm, schemas) {
+  return [...runSchemaRules(norm, schemas), ...runSemanticRules(norm)];
 }
