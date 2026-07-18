@@ -1,0 +1,161 @@
+{
+  "validator_dataset_version": "1",
+  "mission": {
+    "mission_id": "M005",
+    "title": "Native JSON Authoring Pilot — dark mode & smartphone battery",
+    "decision_supported": "Whether NH should mention dark mode as a battery-saving measure in an internal device-usage note.",
+    "research_question": ["Does enabling dark mode meaningfully reduce smartphone battery consumption, and under what conditions?"],
+    "question_type": ["Descriptive", "Comparative"],
+    "scope": "Consumer smartphones; OLED/AMOLED vs LCD; public technical measurements ~2018-2024.",
+    "out_of_scope": "Laptops, desktops, tablets; proprietary battery telemetry; eye-strain/health effects.",
+    "materiality_level": "L2",
+    "required_confidence": "Moderate",
+    "geographic_scope": "global",
+    "industry_scope": "consumer mobile electronics",
+    "as_of_date": "2026-07-18",
+    "start_date": "2026-07-18",
+    "owner": "Founder (nisan333@gmail.com)",
+    "reviewer": "Founder (author-reviewer; L2 — independent reviewer preferred, not required, per NH-ROP §18)",
+    "status": "Closed",
+    "completion_status": "Conditions-met"
+  },
+  "claims": [
+    {
+      "claim_id": "M005-C1",
+      "statement": "On OLED/AMOLED smartphone displays, dark mode reduces display power draw because black pixels emit little to no light.",
+      "claim_type": "Technical",
+      "scope": "OLED/AMOLED smartphone displays.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "High",
+      "confidence_rationale": "Established OLED display physics plus a direct independent measurement study (Purdue 2021); vendor documentation concurs. Verdict kept at Supported (not Confirmed) because primary access was secondary-only.",
+      "overturn_conditions": "A credible measurement showing OLED black pixels draw non-trivial power.",
+      "origin": "Purdue 2021 study; general OLED display physics.",
+      "supporting_evidence": ["M005-C1-E1", "M005-C1-E2"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M005-C2",
+      "statement": "At ~100% screen brightness, switching to dark mode saves roughly 39-47% of OLED display power on the tested phones.",
+      "claim_type": "Performance",
+      "scope": "OLED phones at ~100% brightness; Purdue 2021 test set (Pixel 2, Moto Z3, Pixel 4, Pixel 5).",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Single independent measurement study (Purdue 2021); not yet independently replicated across other vendors/devices.",
+      "overturn_conditions": "An independent measurement materially contradicting the 39-47% range.",
+      "origin": "Purdue 2021 study.",
+      "supporting_evidence": ["M005-C2-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M005-C3",
+      "statement": "At typical indoor brightness (~30-50%), switching to dark mode saves only about 3-9% of OLED display power on the tested phones.",
+      "claim_type": "Performance",
+      "scope": "OLED phones at 30-50% brightness; Purdue 2021 test set.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Single independent measurement study; consistent with the exponential brightness-to-power relationship the same study reports.",
+      "overturn_conditions": "An independent measurement materially contradicting the 3-9% range.",
+      "origin": "Purdue 2021 study.",
+      "supporting_evidence": ["M005-C3-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M005-C4",
+      "statement": "On LCD smartphone displays, dark mode yields negligible battery savings because the backlight stays on regardless of pixel colour.",
+      "claim_type": "Comparative",
+      "scope": "LCD smartphone displays.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Follows from LCD backlight physics and is widely corroborated in technical explainers; no per-device measurement is cited here.",
+      "overturn_conditions": "A measurement showing material dark-mode battery savings on an LCD phone.",
+      "origin": "LCD display physics; technical journalism.",
+      "supporting_evidence": ["M005-C4-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M005-C5",
+      "statement": "The unqualified, condition-independent claim 'dark mode saves battery' is over-general.",
+      "claim_type": "Universal",
+      "scope": "The general/marketing claim across all phones and all conditions.",
+      "materiality": "L2",
+      "current_verdict": "Partially Supported",
+      "confidence": "High",
+      "confidence_rationale": "Savings are demonstrably conditional on OLED hardware and high brightness, so a universal phrasing holds only in part.",
+      "overturn_conditions": "Evidence that dark mode saves material battery across display types and brightness levels.",
+      "origin": "Contrast between popular framing and the Purdue 2021 measurement.",
+      "supporting_evidence": ["M005-C5-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M005-C6",
+      "statement": "Some vendor and popular-tech framing presents dark mode as a broad battery saver without stating the OLED/brightness conditions.",
+      "claim_type": "Adoption",
+      "scope": "Vendor and popular-tech communications about dark mode.",
+      "materiality": "L2",
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Such framing is directly observable in vendor and popular sources; it establishes reported framing, not technical truth.",
+      "overturn_conditions": "Evidence that vendor/popular framing consistently states the OLED/brightness conditions.",
+      "origin": "Vendor and popular-tech communications.",
+      "supporting_evidence": ["M005-C6-E1"],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    },
+    {
+      "claim_id": "M005-C7",
+      "statement": "Dark mode meaningfully extends total device battery runtime (not just display power) under typical mixed use.",
+      "claim_type": "Performance",
+      "scope": "Whole-device battery runtime under typical mixed use.",
+      "materiality": "L2",
+      "current_verdict": "Inconclusive",
+      "confidence": "Low",
+      "confidence_rationale": "Cited sources isolate display power, not whole-device runtime; the typical-brightness display saving (3-9%) is only a fraction of total device draw and was not measured end-to-end.",
+      "overturn_conditions": "A controlled whole-device runtime measurement isolating the dark-mode effect under typical use.",
+      "origin": "Gap between display-power measurements and whole-device runtime.",
+      "supporting_evidence": [],
+      "reviewer": "Founder (L2 author-reviewer)",
+      "last_reviewed": "2026-07-18"
+    }
+  ],
+  "evidence": [
+    { "evidence_id": "M005-C1-E1", "source_id": "S001", "claim_id": "M005-C1", "exact_finding": "On OLED phones, switching to dark mode reduces display power draw; magnitude is brightness-dependent.", "direction": "Supports", "evidence_type": "independent measurement study (summary)", "extraction_method": "web search of Purdue newsroom summary", "quote_or_paraphrase": "dark mode reduces OLED display power; savings depend on brightness", "location": "Purdue University News 2021 (Q3) release", "date_published": "2021", "date_accessed": "2026-07-18", "applicable_scope": "OLED phones (Pixel 2, Moto Z3, Pixel 4, Pixel 5)", "limitations": "reached via secondary summary; primary paper not fetched", "researcher_notes": "MD trace: RESEARCH_RECORD.md Evidence table row M005-C1-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M005-C1-E2", "source_id": "S003", "claim_id": "M005-C1", "exact_finding": "Vendor documentation states dark theme saves power on OLED/AMOLED displays.", "direction": "Supports", "evidence_type": "vendor documentation", "extraction_method": "web search", "quote_or_paraphrase": "dark theme reduces power on OLED", "location": "Android dark-theme guidance", "date_published": "2018", "date_accessed": "2026-07-18", "applicable_scope": "OLED/AMOLED", "limitations": "vendor framing; not independent measurement", "researcher_notes": "MD trace: M005-C1-E2", "verification_status": "Vendor-Claim", "independence_group": "L02", "strength_category": "Moderate" },
+    { "evidence_id": "M005-C2-E1", "source_id": "S001", "claim_id": "M005-C2", "exact_finding": "At ~100% brightness, dark mode saves an average of 39-47% of OLED display power.", "direction": "Supports", "evidence_type": "independent measurement study (summary)", "extraction_method": "web search of Purdue summary", "quote_or_paraphrase": "100% brightness: 39-47% average display-power saving", "location": "Purdue University News 2021 (Q3)", "date_published": "2021", "date_accessed": "2026-07-18", "applicable_scope": "OLED phones at ~100% brightness; Purdue test set", "limitations": "secondary summary; four Pixel/Moto devices", "researcher_notes": "MD trace: M005-C2-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M005-C3-E1", "source_id": "S001", "claim_id": "M005-C3", "exact_finding": "At 30-50% brightness, dark mode saves only ~3-9% of OLED display power on average.", "direction": "Supports", "evidence_type": "independent measurement study (summary)", "extraction_method": "web search of Purdue summary", "quote_or_paraphrase": "30-50% brightness: 3-9% average display-power saving", "location": "Purdue University News 2021 (Q3)", "date_published": "2021", "date_accessed": "2026-07-18", "applicable_scope": "OLED phones at 30-50% brightness; Purdue test set", "limitations": "secondary summary", "researcher_notes": "MD trace: M005-C3-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M005-C4-E1", "source_id": "S004", "claim_id": "M005-C4", "exact_finding": "On LCD, the backlight stays on regardless of pixel colour, so dark mode barely affects battery.", "direction": "Supports", "evidence_type": "technical explainer", "extraction_method": "web search", "quote_or_paraphrase": "LCD backlight always on -> dark mode negligible on LCD", "location": "technical explainer (SamMobile)", "date_published": "2020", "date_accessed": "2026-07-18", "applicable_scope": "LCD smartphone displays", "limitations": "explainer, not a device measurement; corroborated by display physics", "researcher_notes": "MD trace: M005-C4-E1", "verification_status": "Partially-Verified", "independence_group": "L03", "strength_category": "Moderate" },
+    { "evidence_id": "M005-C5-E1", "source_id": "S001", "claim_id": "M005-C5", "exact_finding": "Savings are conditional on OLED hardware and high brightness; at typical brightness they are small.", "direction": "Supports", "evidence_type": "independent measurement study (summary)", "extraction_method": "web search of Purdue summary", "quote_or_paraphrase": "may not save as much as you think; conditional on brightness/hardware", "location": "Purdue University News 2021 (Q3)", "date_published": "2021", "date_accessed": "2026-07-18", "applicable_scope": "OLED phones across brightness levels", "limitations": "secondary summary", "researcher_notes": "MD trace: M005-C5-E1", "verification_status": "Partially-Verified", "independence_group": "L01", "strength_category": "Strong" },
+    { "evidence_id": "M005-C6-E1", "source_id": "S003", "claim_id": "M005-C6", "exact_finding": "Vendor and popular framing presents dark mode as a battery saver, often without stating conditions.", "direction": "Supports", "evidence_type": "vendor/popular framing", "extraction_method": "web search", "quote_or_paraphrase": "dark mode saves battery (conditions often omitted)", "location": "vendor + popular tech communications", "date_published": "2018", "date_accessed": "2026-07-18", "applicable_scope": "vendor/popular communications", "limitations": "establishes framing, not technical truth", "researcher_notes": "MD trace: M005-C6-E1", "verification_status": "Vendor-Claim", "independence_group": "L02", "strength_category": "Limited" }
+  ],
+  "sources": [
+    { "source_id": "S001", "title": "Purdue University — 'Dark mode may not save your phone's battery life as much as you think' (release on the OLED dark-mode measurement study)", "author_or_org": "Purdue University", "publisher": "Purdue University", "url_or_internal_location": "https://www.purdue.edu/newsroom/archive/releases/2021/Q3/dark-mode-may-not-save-your-phones-battery-life-as-much-as-you-think,-but-there-are-a-few-silver-linings.html", "publication_date": "2021", "access_date": "2026-07-18", "source_type": "Independent-technical-test-or-audit", "primary_or_secondary": "Primary", "commercial_interest": "low (academic)", "methodology_disclosed": "partial", "data_availability": "summary only (primary paper not fetched)", "retraction_or_correction_status": "none known", "independence_group": "L01", "reliability_notes": "institutional summary of a peer-reviewed OLED power-measurement study" },
+    { "source_id": "S003", "title": "Google / Android dark-theme power guidance", "author_or_org": "Google", "publisher": "Google", "url_or_internal_location": "https://developer.android.com/develop/ui/views/theming/darktheme", "publication_date": "2018", "access_date": "2026-07-18", "source_type": "Company-documentation", "primary_or_secondary": "Primary", "commercial_interest": "vendor (OS maker)", "methodology_disclosed": "no", "data_availability": "none", "retraction_or_correction_status": "n/a", "independence_group": "L02", "reliability_notes": "vendor framing; establishes documentation, not independent measurement" },
+    { "source_id": "S004", "title": "Technical explainer: LCD backlight vs OLED for dark-mode battery", "author_or_org": "SamMobile / general tech press", "publisher": "SamMobile", "url_or_internal_location": "https://www.sammobile.com/news/what-is-dark-mode-and-does-it-help-battery-life/", "publication_date": "2020", "access_date": "2026-07-18", "source_type": "Journalism", "primary_or_secondary": "Secondary", "commercial_interest": "media", "methodology_disclosed": "no", "data_availability": "none", "retraction_or_correction_status": "n/a", "independence_group": "L03", "reliability_notes": "explains LCD backlight physics; corroborated widely" }
+  ],
+  "assumptions": [
+    { "assumption_id": "M005-A1", "statement": "The 2021 OLED measurements (Purdue Pixel/Moto set) generalize to current mainstream OLED phones.", "why_needed": "to apply 2021 magnitudes to a present-day recommendation.", "claims_affected": ["M005-C2", "M005-C3"], "evidence_status": "not independently re-measured in this pilot", "risk_if_false": "Moderate", "validation_method": "re-measure on current devices", "owner": "Founder", "status": "Accepted-risk" }
+  ],
+  "unknowns": [
+    { "unknown_id": "M005-U1", "exact_open_question": "What is dark mode's effect on whole-device battery runtime (not display-only power) under typical mixed use?", "why_it_matters": "the decision concerns real-world runtime, not display power alone.", "claims_affected": ["M005-C7"], "materiality": "L2", "search_attempts": ["public search of dark-mode battery studies (2026-07-18)"], "missing_evidence": "controlled whole-device runtime measurement isolating the dark-mode effect", "blocks_decision": false, "recommended_next_action": "find or commission a whole-device runtime test", "status": "Isolated" }
+  ],
+  "contradictions": [
+    { "contradiction_id": "M005-X1", "in_conflict": ["M005-C6", "M005-C2"], "nature_of_conflict": "Popular/vendor universal framing (C6) vs measured brightness-conditional magnitude (C2/C3).", "possible_explanations": ["framing omits the OLED/brightness conditions", "different audience/purpose"], "scope_differences": "universal claim vs OLED-at-high-brightness measurement", "resolution_status": "Scope-qualified", "impact_on_verdict": "resolved by qualifying scope to OLED + brightness; supports C5.", "required_follow_up": "none" }
+  ],
+  "verdicts": [
+    { "claim_id": "M005-C1", "verdict_status": "Supported", "confidence": "High", "confidence_rationale": "Established OLED physics + independent measurement (secondary access), vendor concurrence.", "evidence_summary": "Purdue measurement + Google documentation.", "strongest_support": "M005-C1-E1", "scope_of_validity": "OLED/AMOLED phones.", "overturn_conditions": "OLED black pixels shown to draw non-trivial power.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M005-C2", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "One independent study; not replicated.", "evidence_summary": "Purdue 100%-brightness result.", "strongest_support": "M005-C2-E1", "scope_of_validity": "OLED at ~100% brightness; Purdue test set.", "overturn_conditions": "Independent contradiction of 39-47%.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M005-C3", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "One independent study; internally consistent.", "evidence_summary": "Purdue 30-50%-brightness result.", "strongest_support": "M005-C3-E1", "scope_of_validity": "OLED at 30-50% brightness; Purdue test set.", "overturn_conditions": "Independent contradiction of 3-9%.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M005-C4", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "LCD backlight physics; widely corroborated; no device measurement here.", "evidence_summary": "Technical explainer + physics.", "strongest_support": "M005-C4-E1", "scope_of_validity": "LCD phones.", "overturn_conditions": "Material LCD savings measured.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M005-C5", "verdict_status": "Partially Supported", "confidence": "High", "confidence_rationale": "Condition-dependence is well established; the universal phrasing holds only in part.", "evidence_summary": "Purdue condition-dependence.", "strongest_support": "M005-C5-E1", "scope_of_validity": "The universal claim.", "overturn_conditions": "Material savings across display types and brightness.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M005-C6", "verdict_status": "Supported", "confidence": "Moderate", "confidence_rationale": "Framing is directly observable; establishes reported framing only.", "evidence_summary": "Vendor/popular framing.", "strongest_support": "M005-C6-E1", "scope_of_validity": "Vendor/popular communications.", "overturn_conditions": "Framing consistently states conditions.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" },
+    { "claim_id": "M005-C7", "verdict_status": "Inconclusive", "confidence": "Low", "confidence_rationale": "Whole-device runtime not isolated in cited sources.", "evidence_summary": "No whole-device runtime measurement located.", "strongest_support": "", "scope_of_validity": "Whole-device runtime, typical use.", "overturn_conditions": "A controlled whole-device runtime test.", "outcome_ladder_classification": "N/A", "review_date": "2026-07-18", "reviewer": "Founder (L2 author-reviewer)" }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "tool": "nh-research-validator",
+  "stage": "A (deterministic)",
+  "note": "Deterministic layer only. NOT the integrated NH multi-agent validation system. Does not replace the human L3/L4 review gate.",
+  "summary": {
+    "counts": {
+      "mission": 1,
+      "claims": 7,
+      "evidence": 7,
+      "sources": 3,
+      "assumptions": 1,
+      "unknowns": 1,
+      "contradictions": 1,
+      "verdicts": 7
+    },
+    "events_total": 0,
+    "errors": 0,
+    "warnings": 0,
+    "by_rule": {},
+    "blocking": false
+  },
+  "events": [],
+  "exit": 0
+}
