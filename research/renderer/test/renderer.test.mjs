@@ -7,7 +7,15 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import { loadDataset } from "../../validator/load.mjs";
-import { renderResearchRecord, cell, mdEscape, NOT_POPULATED } from "../render.mjs";
+import {
+  renderResearchRecord,
+  renderMissionCharter,
+  renderObservations,
+  renderInferences,
+  cell,
+  mdEscape,
+  NOT_POPULATED,
+} from "../render.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXPORTS = resolve(__dirname, "..", "..", "exports");
@@ -97,4 +105,67 @@ test("fidelity oracle: every claim & source ID in Mission #008 File 3 also appea
   const ids = new Set((oracle.match(/M007-C\d+\b/g) || []).concat(oracle.match(/\bS00\d\b/g) || []));
   assert.ok(ids.size >= 12, "oracle should expose the M007 claim & source IDs");
   for (const id of ids) assert.ok(md.includes(id), `render missing oracle ID ${id}`);
+});
+
+// ---- Increment 2: Charter + §A/§B ----
+
+test("charter: deterministic and field order derived from the mission schema", () => {
+  const a = renderMissionCharter(dataset007());
+  const b = renderMissionCharter(dataset007());
+  assert.equal(a, b); // byte-stable
+  assert.match(a, /# Mission Charter/);
+  // schema property order begins mission_id, title, decision_supported, cost_if_wrong, ...
+  assert.match(a, /\| mission_id \| M007 \|/);
+  assert.match(a, /\| title \| Native JSON Authoring Validation/);
+  assert.ok(a.indexOf("| mission_id |") < a.indexOf("| title |"), "mission_id before title");
+  assert.ok(a.indexOf("| title |") < a.indexOf("| decision_supported |"), "title before decision_supported");
+});
+
+test("charter: fields absent from the M007 mission object render as NOT_POPULATED", () => {
+  const a = renderMissionCharter(dataset007());
+  for (const f of ["cost_if_wrong", "definitions", "stakeholders", "time_sensitivity", "pre_research_position", "revision_history"]) {
+    assert.match(a, new RegExp(`\\| ${f} \\| ${NOT_POPULATED} \\|`), `${f} should be NOT_POPULATED`);
+  }
+});
+
+test("§A observations: O-pointers surfaced from researcher_notes, prose NOT_POPULATED", () => {
+  const a = renderObservations(dataset007());
+  assert.match(a, /## Observations \(§A\)/);
+  for (const p of ["O1", "O2", "O3", "O4", "O5"]) assert.ok(a.includes(`| ${p} |`), `missing pointer ${p}`);
+  // O1 is shared by C1-E1, C2-E1, C4-E1 and maps to S001; prose is not stored.
+  assert.match(a, /\| O1 \| M007-C1-E1; M007-C2-E1; M007-C4-E1 \| S001 \| NOT_POPULATED \|/);
+});
+
+test("§A observations: pointer set matches the committed M007 record used as a read-only oracle", () => {
+  const a = renderObservations(dataset007());
+  // Oracle: the committed Mission #007 research record (read-only comparison, not a template).
+  const oraclePath = resolve(__dirname, "..", "..", "missions", "mission-007", "RESEARCH_RECORD.md");
+  const oracle = readFileSync(oraclePath, "utf8");
+  const ptrs = new Set(oracle.match(/\bO\d+\b/g) || []);
+  assert.ok(ptrs.size >= 5, "oracle should expose O1..O5");
+  for (const p of ptrs) assert.ok(a.includes(`| ${p} |`), `render missing oracle pointer ${p}`);
+});
+
+test("§B inferences: claim origin + confidence_rationale and contradiction reasoning surfaced", () => {
+  const b = renderInferences(dataset007());
+  assert.match(b, /## Inferences \(§B\)/);
+  assert.match(b, /### Per-claim reasoning/);
+  assert.match(b, /\| M007-C1 \| Initial anchor hypothesis, tested against Cepeda 2006 \+ Dunlosky 2013\./);
+  assert.match(b, /### Contradiction reasoning/);
+  assert.match(b, /\| M007-X1 \| real but domain-limited effect; under-studied authentic settings \|/);
+  assert.ok(b.includes(NOT_POPULATED), "inference prose is marked NOT_POPULATED");
+});
+
+test("research record now includes §A and §B ahead of the unchanged §C–§I spine", () => {
+  const md = renderResearchRecord(dataset007());
+  assert.ok(md.indexOf("## Observations (§A)") < md.indexOf("## Claims (7)"), "§A before Claims");
+  assert.ok(md.indexOf("## Inferences (§B)") < md.indexOf("## Claims (7)"), "§B before Claims");
+  // §C–§I spine preserved.
+  assert.match(md, /## Claims \(7\)/);
+  assert.match(md, /## Verdicts \(7\)/);
+});
+
+test("full CLI-composed output (charter + record) is byte-identical across runs", () => {
+  const compose = () => renderMissionCharter(dataset007()) + "\n" + renderResearchRecord(dataset007());
+  assert.equal(compose(), compose());
 });

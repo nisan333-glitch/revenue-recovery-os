@@ -3,7 +3,7 @@
 //   node research/renderer/cli.mjs <dataset.json>
 // exit 0 = rendered · 2 = load/parse failure. Read-only w.r.t. the input.
 import { loadDataset } from "../validator/load.mjs";
-import { renderResearchRecord } from "./render.mjs";
+import { renderMissionCharter, renderResearchRecord } from "./render.mjs";
 
 function main(argv) {
   const args = argv.slice(2);
@@ -19,7 +19,7 @@ function main(argv) {
     process.stderr.write(`load/parse error: ${e.message}\n`);
     return 2;
   }
-  process.stdout.write(renderResearchRecord(dataset));
+  process.stdout.write(renderMissionCharter(dataset) + "\n" + renderResearchRecord(dataset));
   return 0;
 }
 
