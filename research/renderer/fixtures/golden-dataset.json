@@ -1,0 +1,107 @@
+{
+  "validator_dataset_version": "1",
+  "mission": {
+    "mission_id": "M900",
+    "title": "Synthetic Renderer Golden Fixture (fully-populated; not a real research mission)",
+    "decision_supported": "Whether the deterministic renderer emits stable Markdown across the full supported surface.",
+    "cost_if_wrong": "None — synthetic fixture; no real decision depends on it.",
+    "research_question": ["Does the renderer reproduce every object type deterministically and stably?"],
+    "question_type": ["Technical-feasibility"],
+    "scope": "Synthetic objects only; renderer-surface coverage. No real-world claim.",
+    "out_of_scope": "Any real research conclusion; any real entity, product, or study.",
+    "definitions": { "lumen_drift": "a fictional metric used only for fixture content", "Zephyr_coating": "a fictional treatment used only for fixture content" },
+    "stakeholders": ["Renderer maintainer (synthetic)", "Fixture reviewer (synthetic)"],
+    "materiality_level": "L2",
+    "required_confidence": "Moderate",
+    "time_sensitivity": "None (synthetic).",
+    "geographic_scope": "N/A (synthetic)",
+    "industry_scope": "N/A (synthetic)",
+    "start_date": "2026-01-01",
+    "as_of_date": "2026-01-01",
+    "owner": "Fixture Author (synthetic)",
+    "reviewer": "Fixture Reviewer (synthetic)",
+    "status": "Closed",
+    "completion_status": "Conditions-met",
+    "pre_research_position": { "anchor": "synthetic anchor, tested not assumed", "bias_firewall": "no real position is held" }
+  },
+  "claims": [
+    {
+      "claim_id": "M900-C1",
+      "statement": "Applying the fictional Zephyr coating is associated with lower synthetic lumen drift in test panels (fixture claim).",
+      "claim_type": "Causal",
+      "scope": "Synthetic test panels.",
+      "subject": "Zephyr coating (synthetic)",
+      "predicate": "is associated with lower lumen drift (synthetic)",
+      "time_period": "synthetic 2026",
+      "geography": "N/A (synthetic)",
+      "population_or_market": "synthetic test panels",
+      "materiality": "L2",
+      "origin": "Fixture-designed anchor to exercise the §B reasoning surface.",
+      "related_hypothesis": "Synthetic hypothesis H-1.",
+      "supporting_evidence": ["M900-C1-E1", "M900-C1-E2"],
+      "contradicting_evidence": [],
+      "dependencies": [],
+      "assumptions": [],
+      "current_verdict": "Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "Two synthetic cross-lineage items (LG-A, LG-B); kept Moderate by design.",
+      "reviewer": "Fixture Reviewer (synthetic)",
+      "last_reviewed": "2026-01-01",
+      "overturn_conditions": "A synthetic item showing no association."
+    },
+    {
+      "claim_id": "M900-C2",
+      "statement": "The synthetic effect generalizes to all fictional panel types (fixture universal claim).",
+      "claim_type": "Universal",
+      "scope": "All synthetic panel types.",
+      "materiality": "L2",
+      "origin": "Breadth-vs-limitation design, to exercise a contradiction.",
+      "supporting_evidence": ["M900-C2-E1"],
+      "contradicting_evidence": ["M900-C2-E2"],
+      "current_verdict": "Partially Supported",
+      "confidence": "Moderate",
+      "confidence_rationale": "One supporting and one limiting synthetic item.",
+      "reviewer": "Fixture Reviewer (synthetic)",
+      "last_reviewed": "2026-01-01",
+      "overturn_conditions": "Broad synthetic counter-evidence."
+    },
+    {
+      "claim_id": "M900-C3",
+      "statement": "The synthetic effect improves fictional panel understanding beyond drift (fixture inconclusive claim).",
+      "claim_type": "Causal",
+      "scope": "Synthetic understanding outcomes.",
+      "materiality": "L2",
+      "origin": "Drift-vs-understanding analogue, deliberately left without evidence.",
+      "supporting_evidence": [],
+      "current_verdict": "Inconclusive",
+      "confidence": "Low",
+      "confidence_rationale": "No synthetic evidence by design; deliberately Inconclusive.",
+      "overturn_conditions": "Consistent synthetic transfer evidence."
+    }
+  ],
+  "evidence": [
+    { "evidence_id": "M900-C1-E1", "source_id": "S901", "claim_id": "M900-C1", "exact_finding": "Synthetic dataset A: coated panels showed lower lumen drift than uncoated.", "direction": "Supports", "evidence_type": "synthetic-experiment", "extraction_method": "fixture-authored", "quote_or_paraphrase": "coated < uncoated drift (synthetic)", "location": "Synthetic Source 1", "date_published": "2026", "date_accessed": "2026-01-01", "applicable_scope": "synthetic panels", "limitations": "synthetic; illustrative only", "independence_group": "LG-A", "researcher_notes": "fixture trace: O1 / M900-C1-E1", "verification_status": "Partially-Verified", "strength_category": "Strong" },
+    { "evidence_id": "M900-C1-E2", "source_id": "S902", "claim_id": "M900-C1", "exact_finding": "Synthetic review B rated the coating a plausible driver of lower drift.", "direction": "Supports", "evidence_type": "synthetic-review", "extraction_method": "fixture-authored", "quote_or_paraphrase": "plausible driver (synthetic)", "location": "Synthetic Source 2", "date_published": "2026", "date_accessed": "2026-01-01", "applicable_scope": "synthetic panels", "limitations": "synthetic; secondary", "independence_group": "LG-B", "researcher_notes": "fixture trace: O2 / M900-C1-E2", "verification_status": "Partially-Verified", "strength_category": "Moderate" },
+    { "evidence_id": "M900-C2-E1", "source_id": "S903", "claim_id": "M900-C2", "exact_finding": "Synthetic breadth note: the effect held across several synthetic panel types.", "direction": "Supports", "evidence_type": "synthetic-breadth", "extraction_method": "fixture-authored", "quote_or_paraphrase": "held across types (synthetic)", "location": "Synthetic Source 3", "date_published": "2026", "date_accessed": "2026-01-01", "applicable_scope": "synthetic panel types", "limitations": "synthetic; within one lineage", "independence_group": "LG-C", "researcher_notes": "fixture trace: O3 / M900-C2-E1", "verification_status": "Partially-Verified", "strength_category": "Moderate" },
+    { "evidence_id": "M900-C2-E2", "source_id": "S903", "claim_id": "M900-C2", "exact_finding": "Synthetic limitation note: generalization to exotic synthetic panels is untested.", "direction": "Limits", "evidence_type": "synthetic-limitation", "extraction_method": "fixture-authored", "quote_or_paraphrase": "exotic panels untested (synthetic)", "location": "Synthetic Source 3", "date_published": "2026", "date_accessed": "2026-01-01", "applicable_scope": "generalization of the synthetic effect", "limitations": "synthetic; a scope caveat", "independence_group": "LG-C", "researcher_notes": "fixture trace: O4 / M900-C2-E2", "verification_status": "Partially-Verified", "strength_category": "Moderate" }
+  ],
+  "sources": [
+    { "source_id": "S901", "title": "Synthetic Source 1 — coated-panel drift dataset (fictional)", "author_or_org": "Synthetic Lab A", "publisher": "Synthetic Publisher A", "url_or_internal_location": "synthetic://source-1", "publication_date": "2026", "access_date": "2026-01-01", "source_type": "Original-data-or-inspectable-system", "primary_or_secondary": "Primary", "commercial_interest": "none (synthetic)", "methodology_disclosed": "yes", "data_availability": "synthetic dataset", "retraction_or_correction_status": "none (synthetic)", "independence_group": "LG-A", "reliability_notes": "fictional primary dataset", "version_or_archive_info": "synthetic v1 archived" },
+    { "source_id": "S902", "title": "Synthetic Source 2 — coating review (fictional)", "author_or_org": "Synthetic Review Team B", "publisher": "Synthetic Publisher B", "url_or_internal_location": "synthetic://source-2", "publication_date": "2026", "access_date": "2026-01-01", "source_type": "Peer-reviewed", "primary_or_secondary": "Secondary", "commercial_interest": "none (synthetic)", "methodology_disclosed": "yes", "data_availability": "synthetic summary", "retraction_or_correction_status": "none (synthetic)", "independence_group": "LG-B", "reliability_notes": "fictional independent review team" },
+    { "source_id": "S903", "title": "Synthetic Source 3 — generalization commentary (fictional)", "author_or_org": "Synthetic Commentators C", "publisher": "Synthetic Publisher C", "url_or_internal_location": "synthetic://source-3", "publication_date": "2026", "access_date": "2026-01-01", "source_type": "Expert-interpretation", "primary_or_secondary": "Secondary", "commercial_interest": "none (synthetic)", "methodology_disclosed": "partial", "data_availability": "synthetic commentary", "retraction_or_correction_status": "none (synthetic)", "independence_group": "LG-C", "reliability_notes": "fictional scope commentary" }
+  ],
+  "assumptions": [
+    { "assumption_id": "M900-A1", "statement": "Synthetic lab results generalize to all fictional field panels.", "why_needed": "to move the fixture from lab-analogue evidence to a universal-analogue claim.", "claims_affected": ["M900-C2", "M900-C3"], "evidence_status": "only partially supported (synthetic)", "risk_if_false": "Moderate", "validation_method": "synthetic field check", "owner": "Fixture Author (synthetic)", "status": "Open" }
+  ],
+  "unknowns": [
+    { "unknown_id": "M900-U1", "exact_open_question": "How large is the synthetic effect for exotic panels and long-horizon drift?", "why_it_matters": "the universal (M900-C2) and understanding (M900-C3) claims hinge on this.", "claims_affected": ["M900-C3"], "materiality": "L2", "search_attempts": ["synthetic search 2026-01-01"], "missing_evidence": "synthetic exotic-panel, long-horizon data", "blocks_decision": false, "recommended_next_action": "author a synthetic exotic-panel study", "status": "Isolated" }
+  ],
+  "contradictions": [
+    { "contradiction_id": "M900-X1", "in_conflict": ["M900-C1", "M900-C2"], "nature_of_conflict": "Synthetic core support vs synthetic generalization limitation.", "possible_explanations": ["real-but-limited synthetic effect", "under-tested synthetic panel types"], "scope_differences": "core panels vs all panels (synthetic)", "definition_differences": "drift vs understanding (synthetic)", "methodological_differences": "controlled vs field (synthetic)", "resolution_status": "Scope-qualified", "impact_on_verdict": "keeps M900-C2 Partially Supported (synthetic).", "required_follow_up": "synthetic follow-up (see M900-U1)" }
+  ],
+  "verdicts": [
+    { "claim_id": "M900-C1", "verdict_status": "Supported", "evidence_summary": "Two synthetic cross-lineage items.", "strongest_support": "M900-C1-E1", "scope_of_validity": "synthetic panels", "confidence": "Moderate", "confidence_rationale": "cross-lineage synthetic support; secondary access by design.", "outcome_ladder_classification": "N/A", "overturn_conditions": "a synthetic item showing no association.", "review_date": "2026-01-01", "reviewer": "Fixture Reviewer (synthetic)" },
+    { "claim_id": "M900-C2", "verdict_status": "Partially Supported", "evidence_summary": "One supporting, one limiting synthetic item.", "strongest_support": "M900-C2-E1", "strongest_contradiction": "M900-C2-E2", "scope_of_validity": "synthetic panel types", "confidence": "Moderate", "confidence_rationale": "breadth vs limitation, by design.", "outcome_ladder_classification": "N/A", "overturn_conditions": "broad synthetic counter-evidence.", "review_date": "2026-01-01", "reviewer": "Fixture Reviewer (synthetic)" },
+    { "claim_id": "M900-C3", "verdict_status": "Inconclusive", "evidence_summary": "No synthetic evidence by design.", "scope_of_validity": "synthetic understanding", "confidence": "Low", "confidence_rationale": "deliberately without evidence.", "outcome_ladder_classification": "N/A", "overturn_conditions": "consistent synthetic transfer evidence.", "review_date": "2026-01-01", "reviewer": "Fixture Reviewer (synthetic)" }
+  ]
+}
