@@ -1,0 +1,127 @@
+{
+  "report": "Mission #009 Increment 3 — Renderer Fidelity Validation",
+  "canonical": true,
+  "note": "This JSON is the canonical artifact. RENDERER_FIDELITY_REPORT.md is derived from it. The renderer was NOT modified during this validation.",
+  "renderer_frozen_at": "97d0c0bccfad12aa78bb8737a57a7376b1c9b19c",
+  "increment_baselines": {
+    "mission_008": "71ce373b6c525f2f33140c0838f67322b526d124",
+    "increment_1": "932fe9cbc00cd4ed8e7fc8465d1d69f2cc813ceb",
+    "increment_2": "97d0c0bccfad12aa78bb8737a57a7376b1c9b19c"
+  },
+  "classification_vocabulary": [
+    "PERFECT_MATCH",
+    "NARRATIVE_ONLY",
+    "AUTHOR_ONLY_INFORMATION",
+    "SCHEMA_LIMITATION",
+    "RENDERER_DEFECT",
+    "UNEXPECTED_DIFFERENCE"
+  ],
+  "classification_rule": "AUTHOR_ONLY_INFORMATION = the schema HAS a field for it but the dataset left it empty (author wrote it only in Markdown). SCHEMA_LIMITATION = the schema has NO field able to carry it (dataset structurally cannot express it). RENDERER_DEFECT = the renderer drops/mangles/duplicates data that IS in the dataset.",
+  "missions": [
+    {
+      "mission": "M005",
+      "dataset": "research/exports/mission-005/dataset.json",
+      "oracles": ["research/missions/mission-005/MISSION_CHARTER.md", "research/missions/mission-005/RESEARCH_RECORD.md"],
+      "rendered": true,
+      "render_exit": 0,
+      "deterministic": true,
+      "byte_identical_runs": true,
+      "counts": { "mission": 1, "claims": 7, "evidence": 7, "sources": 3, "assumptions": 1, "unknowns": 1, "contradictions": 1, "verdicts": 7 },
+      "ids_preserved": true,
+      "ordering_preserved": true,
+      "structural_equivalence": "FULL — every dataset object ID appears in the render; every claim/evidence/source ID in the committed record appears in the render.",
+      "not_populated_fields": {
+        "mission": ["cost_if_wrong", "definitions", "stakeholders", "time_sensitivity", "pre_research_position", "revision_history"],
+        "claims": ["subject", "predicate", "time_period", "geography", "population_or_market", "related_hypothesis", "contradicting_evidence", "dependencies", "assumptions", "version_history"],
+        "evidence": ["quality_dimensions", "gating_flaw"],
+        "sources": ["version_or_archive_info"],
+        "contradictions": ["date_differences", "definition_differences", "methodological_differences"],
+        "verdicts": ["verdict_revision", "claim_statement", "strongest_contradiction", "remaining_unknowns", "assumptions"]
+      },
+      "differences": [
+        { "area": "Structured spine (claims/evidence/sources/assumptions/unknowns/contradictions/verdicts + charter identity/scope/dates/people fields)", "classification": "PERFECT_MATCH", "detail": "All IDs, counts (1/7/7/3/1/1/1/7), relationships, verdicts, confidence, evidence links and lineage reproduce faithfully." },
+        { "area": "Charter section 'Pre-research position (bias firewall)'", "classification": "AUTHOR_ONLY_INFORMATION", "detail": "Schema field pre_research_position exists but the M005 dataset left it empty; the prose lives only in the committed charter. Renderer correctly shows NOT_POPULATED." },
+        { "area": "Charter section 'Purpose within Mission #005'", "classification": "SCHEMA_LIMITATION", "detail": "No schema field can carry this meta-commentary; the dataset cannot express it." },
+        { "area": "Record section 'Findings (plain language)'", "classification": "SCHEMA_LIMITATION", "detail": "No schema field for a plain-language findings synthesis; recoverable in substance from claims+verdicts but not as stored prose." },
+        { "area": "Section labels and any abbreviated claim phrasing", "classification": "NARRATIVE_ONLY", "detail": "Renderer uses schema-derived headings and full canonical statements; same information, different presentation." }
+      ],
+      "renderer_defects": [],
+      "unexpected_differences": []
+    },
+    {
+      "mission": "M006",
+      "dataset": "research/exports/mission-006/dataset.json",
+      "oracles": ["research/missions/mission-006/MISSION_CHARTER.md", "research/missions/mission-006/RESEARCH_RECORD.md"],
+      "rendered": true,
+      "render_exit": 0,
+      "deterministic": true,
+      "byte_identical_runs": true,
+      "counts": { "mission": 1, "claims": 7, "evidence": 9, "sources": 3, "assumptions": 1, "unknowns": 1, "contradictions": 1, "verdicts": 7 },
+      "ids_preserved": true,
+      "ordering_preserved": true,
+      "structural_equivalence": "FULL — every dataset object ID appears in the render; every claim/evidence/source ID in the committed record appears in the render.",
+      "not_populated_fields": {
+        "mission": ["cost_if_wrong", "definitions", "stakeholders", "time_sensitivity", "pre_research_position", "revision_history"],
+        "claims": ["subject", "predicate", "time_period", "geography", "population_or_market", "related_hypothesis", "dependencies", "assumptions", "version_history"],
+        "evidence": ["quality_dimensions", "gating_flaw"],
+        "sources": ["version_or_archive_info"],
+        "contradictions": ["date_differences"],
+        "verdicts": ["verdict_revision", "claim_statement", "remaining_unknowns", "assumptions"]
+      },
+      "differences": [
+        { "area": "Structured spine (claims/evidence/sources/assumptions/unknowns/contradictions/verdicts + charter identity/scope/dates/people fields)", "classification": "PERFECT_MATCH", "detail": "All IDs, counts (1/7/9/3/1/1/1/7), relationships, verdicts, confidence, evidence links and lineage reproduce faithfully." },
+        { "area": "Charter section 'Why this topic (structural difference from Mission #005)'", "classification": "SCHEMA_LIMITATION", "detail": "No schema field can carry this meta-commentary; the dataset cannot express it." },
+        { "area": "Charter section 'Findings (plain language — pilot record, not an NH position)'", "classification": "SCHEMA_LIMITATION", "detail": "No schema field for a plain-language findings synthesis." },
+        { "area": "Section labels and any abbreviated claim phrasing", "classification": "NARRATIVE_ONLY", "detail": "Renderer uses schema-derived headings and full canonical statements; same information, different presentation." }
+      ],
+      "renderer_defects": [],
+      "unexpected_differences": []
+    },
+    {
+      "mission": "M007",
+      "dataset": "research/exports/mission-007/dataset.json",
+      "oracles": ["research/missions/mission-007/MISSION_CHARTER.md", "research/missions/mission-007/RESEARCH_RECORD.md"],
+      "rendered": true,
+      "render_exit": 0,
+      "deterministic": true,
+      "byte_identical_runs": true,
+      "counts": { "mission": 1, "claims": 7, "evidence": 8, "sources": 5, "assumptions": 1, "unknowns": 1, "contradictions": 1, "verdicts": 7 },
+      "ids_preserved": true,
+      "ordering_preserved": true,
+      "structural_equivalence": "FULL — every dataset object ID appears in the render; every claim/evidence/source ID in the committed record appears in the render; consistent with Mission #008 Files 2–3.",
+      "not_populated_fields": {
+        "mission": ["cost_if_wrong", "definitions", "stakeholders", "time_sensitivity", "pre_research_position", "revision_history"],
+        "claims": ["subject", "predicate", "time_period", "geography", "population_or_market", "related_hypothesis", "dependencies", "assumptions", "version_history"],
+        "evidence": ["quality_dimensions", "gating_flaw"],
+        "sources": ["version_or_archive_info"],
+        "contradictions": ["date_differences"],
+        "verdicts": ["verdict_revision", "claim_statement", "remaining_unknowns", "assumptions"]
+      },
+      "differences": [
+        { "area": "Structured spine (claims/evidence/sources/assumptions/unknowns/contradictions/verdicts + charter identity/scope/dates/people fields)", "classification": "PERFECT_MATCH", "detail": "All IDs, counts (1/7/8/5/1/1/1/7), relationships, verdicts, confidence, evidence links and lineage reproduce faithfully." },
+        { "area": "Charter section 'Pre-research position (bias firewall)'", "classification": "AUTHOR_ONLY_INFORMATION", "detail": "Schema field pre_research_position exists but the M007 dataset left it empty; prose lives only in the committed charter. Renderer correctly shows NOT_POPULATED." },
+        { "area": "Charter section 'Findings (plain language)'", "classification": "SCHEMA_LIMITATION", "detail": "No schema field for a plain-language findings synthesis." },
+        { "area": "Record section 'A · Observations' prose", "classification": "SCHEMA_LIMITATION", "detail": "The dataset stores only O# pointers in evidence.researcher_notes; observation prose has no schema field. Renderer surfaces the pointers and marks prose NOT_POPULATED." },
+        { "area": "Record section 'B · Inferences' prose", "classification": "SCHEMA_LIMITATION", "detail": "No free-form reasoning field; renderer surfaces the structured origin + confidence_rationale + contradiction reasoning and marks prose NOT_POPULATED." },
+        { "area": "Section labels and any abbreviated claim phrasing", "classification": "NARRATIVE_ONLY", "detail": "Renderer uses schema-derived headings and full canonical statements; same information, different presentation." }
+      ],
+      "renderer_defects": [],
+      "unexpected_differences": []
+    }
+  ],
+  "global": {
+    "missions_tested": 3,
+    "rendered": 3,
+    "deterministic": 3,
+    "structural_fidelity_full": 3,
+    "perfect_matches": 3,
+    "narrative_only": 3,
+    "author_only_information": 2,
+    "schema_limitations": 7,
+    "renderer_defects": 0,
+    "unexpected_differences": 0
+  },
+  "decision": "READY_FOR_FULL_MARKDOWN_RENDERING",
+  "decision_rationale": "All three missions rendered successfully, deterministically, with full structural fidelity (every ID, count, relationship, verdict, confidence and lineage preserved) and zero renderer defects. Remaining differences are exclusively AUTHOR_ONLY_INFORMATION (schema field left empty by the author) or SCHEMA_LIMITATION (no schema field for narrative synthesis/observation/inference prose) or NARRATIVE_ONLY (presentation). Because there are no RENDERER_DEFECT and no UNEXPECTED_DIFFERENCE, READY_FOR_FULL_MARKDOWN_RENDERING is permitted.",
+  "caveat": "READY refers to the renderer reproducing the structured content faithfully. A fully human-complete document still requires the narrative layer (findings synthesis, bias-firewall, observation/inference prose). Closing that gap is a separate constitution-level schema decision, explicitly out of scope for the renderer and for this increment."
+}
