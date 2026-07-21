@@ -7,6 +7,7 @@ import { ExecutiveDashboard } from "./modules/ExecutiveDashboard";
 import { RecoveryEventsTable } from "./modules/RecoveryEventsTable";
 import { RecoveryQueue } from "./modules/RecoveryQueue";
 import { CFOProofView } from "./modules/CFOProofView";
+import { EventDetail } from "./components/EventDetail";
 import { Reconciliation } from "./modules/Reconciliation";
 import { AttributionEngine } from "./modules/AttributionEngine";
 import { AuditTrail } from "./modules/AuditTrail";
@@ -15,7 +16,11 @@ import { ConfidencePanel } from "./modules/ConfidencePanel";
 import { Assessment } from "./modules/assessment/Assessment";
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 
+// The single case used by the Guided Demo navigation mode. Only an identifier — no business values here.
+const DEMO_CASE_ID = "RE-1014";
+
 type ModuleKey =
+  | "demo"
   | "loop"
   | "dashboard"
   | "queue"
@@ -29,6 +34,7 @@ type ModuleKey =
   | "assessment";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
+  { key: "demo", label: `Guided Demo — ${DEMO_CASE_ID}`, group: "Demo" },
   { key: "loop", label: "Recovery Loop", group: "Recover" },
   { key: "dashboard", label: "Executive Dashboard", group: "Prove" },
   { key: "cfo", label: "CFO Proof View", group: "Prove" },
@@ -42,10 +48,15 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "assessment", label: "Revenue Opportunity Assessment", group: "Assess" },
 ];
 
-export function App() {
-  const [active, setActive] = useState<ModuleKey>("loop");
+// `initialModule` is a small, optional, additive testability seam (defaults to "loop"); omitting it
+// leaves normal startup and navigation behaviour unchanged. It is not a routing framework.
+export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
+  const [active, setActive] = useState<ModuleKey>(initialModule);
   const { events, resetData } = useRecovery();
   const m = portfolioMetrics(events);
+
+  // Select the demonstration case from the existing events collection (never fabricated).
+  const demoEvent = events.find((e) => e.eventId === DEMO_CASE_ID);
 
   const groups = [...new Set(NAV.map((n) => n.group))];
 
@@ -102,6 +113,53 @@ export function App() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-8 py-8">
+          {active === "demo" &&
+            (demoEvent ? (
+              <section>
+                <header>
+                  <h2 className="text-lg font-semibold text-slate-100">
+                    Guided Demo — one recovered case, end to end
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Follow {demoEvent.eventId} through the whole loop: find the leak, fix it, and prove
+                    exactly how much came back.
+                  </p>
+                  <p className="mt-4 rounded-lg border border-ink-600/50 bg-ink-800/40 px-4 py-3 text-sm text-slate-300">
+                    How to read this: the recommended play is a <strong>forecast — not proven revenue</strong>.
+                    The proven, CFO-auditable <strong>Revenue Returned</strong> is shown separately below and
+                    in the CFO Proof View; the two ledgers are never combined into one &ldquo;recovered&rdquo;
+                    number.
+                  </p>
+                </header>
+
+                {/* Reuse the existing single-case story surface — all amounts/status/owner/approver come
+                    from domain/context data, computed by EventDetail (nothing duplicated or hardcoded). */}
+                <div className="mt-6">
+                  <EventDetail event={demoEvent} onClose={() => setActive("loop")} />
+                </div>
+
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setActive("cfo")}
+                    className="rounded-lg border border-proof-500/50 bg-proof-500/10 px-4 py-2 text-sm font-medium text-proof-500 hover:bg-proof-500/20"
+                  >
+                    Continue to CFO Proof View →
+                  </button>
+                </div>
+              </section>
+            ) : (
+              <section>
+                <h2 className="text-lg font-semibold text-slate-100">Guided Demo — {DEMO_CASE_ID}</h2>
+                <p
+                  role="alert"
+                  className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+                >
+                  The demonstration case <strong>{DEMO_CASE_ID}</strong> is not available in the current data
+                  set. Nothing is shown here — no substitute or sample figures are invented.
+                </p>
+              </section>
+            ))}
           {active === "loop" && <RecoveryLoop onOpen={setActive} />}
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}
