@@ -8,6 +8,21 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RecoveryProvider } from "./state/RecoveryContext";
 import { App } from "./App";
+import { CFOProofView } from "./modules/CFOProofView";
+
+// Render the CFO Proof View in isolation (inside the real provider) with an optional demo-continuity
+// focus, exactly as App passes it — so the marked/unmarked row is observable without a click.
+const renderCfo = (focusCaseId?: string) =>
+  renderToStaticMarkup(
+    createElement(
+      RecoveryProvider,
+      null,
+      focusCaseId ? createElement(CFOProofView, { focusCaseId }) : createElement(CFOProofView),
+    ),
+  );
+
+const DEMO_MARKER = "From your Guided Demo";
+const countOf = (haystack: string, needle: string) => haystack.split(needle).length - 1;
 
 // Render the real App inside the real provider (the provider seeds RE-1014 when storage is absent).
 // `module` selects a view via App's optional, additive initialModule seam.
@@ -79,5 +94,34 @@ describe("Mission #010 · Increment 3 — observable two-ledger guard across the
     const html = render("cfo");
     expect(html).toContain("PF-RE-1014"); // the auditable proof for the case appears in the CFO ledger
     expect(html).not.toMatch(/total recovered/i); // the proof view never merges forecast into recovered
+  });
+});
+
+describe("Mission #010 · Increment 4 — Guided Demo → CFO Proof continuity", () => {
+  it("the Guided Demo names the case and its proven Revenue Returned at the handoff", () => {
+    const html = render("demo");
+    expect(html).toContain("RE-1014"); // the case being handed off is named
+    expect(html).toMatch(/Revenue Returned/i); // its proven figure is named (not the forecast)
+    expect(html).toMatch(/10[,.]?600/); // the proven amount comes from context ($10,600)
+  });
+
+  it("marks exactly one CFO proof row — the one for the demo case — when opened from the demo", () => {
+    const html = renderCfo("RE-1014");
+    expect(html).toContain(DEMO_MARKER); // the demo case's proof row is visibly marked
+    expect(countOf(html, DEMO_MARKER)).toBe(1); // and only that one row is marked, not another
+    expect(html).toContain("PF-RE-1014"); // the marked ledger still shows the case's proof
+  });
+
+  it("shows no demo marker on direct CFO navigation (isolated component)", () => {
+    expect(renderCfo()).not.toContain(DEMO_MARKER);
+  });
+
+  it("shows no demo marker when the CFO view is reached by direct navigation in the app", () => {
+    // initialModule="cfo" is direct navigation (not the demo CTA), so App passes no focus.
+    expect(render("cfo")).not.toContain(DEMO_MARKER);
+  });
+
+  it("marking a proof row never merges forecast into the proven total", () => {
+    expect(renderCfo("RE-1014")).not.toMatch(/total recovered/i);
   });
 });

@@ -15,7 +15,10 @@ import { EventDetail } from "../components/EventDetail";
 
 const CURRENCY = "USD";
 
-export function CFOProofView() {
+// `focusCaseId` is an optional, presentational continuity hint: when the CFO view is opened from the
+// Guided Demo, the proof row for that recovery case is marked so the proven dollar the customer just
+// followed is identifiable in the portfolio. It never changes which proofs are read, counted, or shown.
+export function CFOProofView({ focusCaseId }: { focusCaseId?: string }) {
   const { events, proofs } = useRecovery();
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -137,15 +140,26 @@ export function CFOProofView() {
             </tr>
           </thead>
           <tbody>
-            {ledgerRows.map((p) => (
+            {ledgerRows.map((p) => {
+              // Stable-identifier match (recoveryCaseId) — never displayed text, customer, or money.
+              const isFocused = !!focusCaseId && p.recoveryCaseId === focusCaseId;
+              return (
               <tr
                 key={p.proofId}
                 onClick={() => setOpenId(p.recoveryCaseId)}
-                className="cursor-pointer border-b border-ink-700/40 hover:bg-ink-700/30"
+                aria-current={isFocused ? "true" : undefined}
+                className={`cursor-pointer border-b border-ink-700/40 hover:bg-ink-700/30 ${
+                  isFocused ? "bg-proof-500/10 ring-1 ring-inset ring-proof-500/40" : ""
+                }`}
               >
                 <td className="px-4 py-3">
                   <div className="font-medium text-slate-200">{customerOf(p.recoveryCaseId)}</div>
                   <div className="font-mono text-[11px] text-slate-500">{p.proofId}</div>
+                  {isFocused && (
+                    <div className="mt-1 inline-block rounded bg-proof-500/15 px-1.5 py-0.5 text-[10px] font-medium text-proof-500">
+                      From your Guided Demo
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-slate-300">{reasonLabel(p.recoveryReason)}</td>
                 <td className="px-4 py-3 text-slate-400">{dateShort(p.approvedAt)}</td>
@@ -160,7 +174,8 @@ export function CFOProofView() {
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums text-slate-400">{p.confidenceUsed}</td>
               </tr>
-            ))}
+              );
+            })}
             {ledgerRows.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-slate-500">

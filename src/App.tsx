@@ -52,6 +52,9 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
 // leaves normal startup and navigation behaviour unchanged. It is not a routing framework.
 export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
   const [active, setActive] = useState<ModuleKey>(initialModule);
+  // Continuity hint: set only when the CFO view is opened from the Guided Demo handoff, so its proof
+  // row can be marked. Cleared on any direct navigation. Purely presentational — no business logic.
+  const [focusCaseId, setFocusCaseId] = useState<string | undefined>(undefined);
   const { events, resetData } = useRecovery();
   const m = portfolioMetrics(events);
 
@@ -81,7 +84,10 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
               {NAV.filter((n) => n.group === g).map((n) => (
                 <button
                   key={n.key}
-                  onClick={() => setActive(n.key)}
+                  onClick={() => {
+                    setFocusCaseId(undefined);
+                    setActive(n.key);
+                  }}
                   className={`mb-0.5 block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
                     active === n.key
                       ? "bg-ink-600/70 text-slate-100"
@@ -139,9 +145,18 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
                 </div>
 
                 <div className="mt-6">
+                  <p className="mb-2 text-sm text-slate-400">
+                    {demoEvent.eventId}&rsquo;s proven <strong className="text-slate-200">Revenue Returned</strong>
+                    {" "}
+                    <span className="tabular-nums text-proof-500">{money(demoEvent.revenueReturned)}</span> is
+                    marked for you on its exact proof line in the CFO Proof View.
+                  </p>
                   <button
                     type="button"
-                    onClick={() => setActive("cfo")}
+                    onClick={() => {
+                      setFocusCaseId(demoEvent.eventId);
+                      setActive("cfo");
+                    }}
                     className="rounded-lg border border-proof-500/50 bg-proof-500/10 px-4 py-2 text-sm font-medium text-proof-500 hover:bg-proof-500/20"
                   >
                     Continue to CFO Proof View →
@@ -164,7 +179,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}
           {active === "events" && <RecoveryEventsTable />}
-          {active === "cfo" && <CFOProofView />}
+          {active === "cfo" && <CFOProofView focusCaseId={focusCaseId} />}
           {active === "reconciliation" && <Reconciliation />}
           {active === "attribution" && <AttributionEngine />}
           {active === "reasons" && <RecoveryReasons />}
