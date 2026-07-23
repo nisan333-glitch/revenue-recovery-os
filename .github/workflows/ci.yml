@@ -1,0 +1,41 @@
+name: CI
+
+# EP-0 · Engineering Foundations & Guardrails.
+# Turns the frozen Foundation's invariant tests into an automated, required gate:
+# any change that weakens an invariant fails here before it can be built upon.
+# This job runs the pure-domain unit tests (the encoded Foundation) and the strict
+# build. It enforces guarantees; it never interprets or changes them.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  verify:
+    name: Invariants + strict build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Domain-core purity (Constitution: pure, UI-independent core)
+        run: npm run check:purity
+
+      - name: Foundation guarantees — unit + invariant tests
+        # src/domain/*.test.ts encode the Constitution and Trust Invariants
+        # (forecast != proof, prediction != recovery, recovery != auditable,
+        #  beneficiary never determines the number). A breach turns this red.
+        run: npm run test
+
+      - name: Strict build (type-checked)
+        run: npm run build
