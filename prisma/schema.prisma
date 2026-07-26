@@ -1,0 +1,71 @@
+// EP-2 · PostgreSQL is the authoritative persistence layer for NH recovery proofs.
+//
+// Design intent (consistent with the frozen Foundation, enforced — not decorative):
+//  * Proof rows are IMMUTABLE, APPEND-ONLY snapshots. The numbers they carry
+//    (revenueReturned = collected − baseline, clamped) are computed ONCE by the
+//    domain kernel (`createApprovedProof`) and frozen; the DB never recomputes them.
+//  * A correction/reversal is a NEW linked row (previousProofId + shared chainId +
+//    incremented proofVersion), produced by the kernel's `reviseProof`. The original
+//    is never overwritten.
+//  * UPDATE and DELETE are rejected at the database level by triggers (see the
+//    `ep2_immutability` migration) — direct mutation cannot bypass the kernel.
+//  * Provenance/version fields (policyVersion, baselineVersion, proofVersion,
+//    confidenceMethodologyVersion, approvedBy, createdAt/approvedAt, persistedAt)
+//    are persisted so every counted number stays explainable and reproducible.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Immutable, append-only snapshot of an approved (or revised) recovery proof.
+/// Mirrors the domain `Proof` interface; money is stored in minor units (BigInt).
+model Proof {
+  proofId              String  @id
+  recoveryCaseId       String
+  chainId              String
+  proofVersion         Int
+  previousProofId      String?
+  status               String // Approved | Reversed | Superseded | Corrected (kernel-controlled)
+  currency             String
+  collectedMinor       BigInt
+  baselineMinor        BigInt
+  revenueReturnedMinor BigInt // frozen by the kernel; DB stores, never derives
+  excludedRecoveryMinor BigInt
+  exclusionStatement   String
+  recoveryReason       String
+  attribution          String
+  evidenceRefs         String[]
+  baselineId           String
+  baselineMethodId     String
+  baselineVersion      Int
+  baselineLockPolicy   String
+  policyVersion        String
+  confidenceMethodologyVersion String
+  proofThresholdUsed   Float
+  confidenceUsed       Float
+  approvedBy           String
+  createdAt            DateTime
+  approvedAt           DateTime
+  persistedAt          DateTime @default(now()) // provenance: DB write time
+
+  @@index([chainId])
+  @@index([recoveryCaseId])
+  @@index([previousProofId])
+}
+
+/// Append-only evidence reference record. Immutable at the DB level.
+model EvidenceRecord {
+  evidenceId     String   @id
+  recoveryCaseId String
+  proofId        String?
+  ref            String
+  note           String?
+  persistedAt    DateTime @default(now())
+
+  @@index([recoveryCaseId])
+}

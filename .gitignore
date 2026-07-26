@@ -6,3 +6,7 @@ dist
 coverage
 
 *.tsbuildinfo
+
+# EP-2 local backend — never commit secrets or local env
+.env
+.env.*

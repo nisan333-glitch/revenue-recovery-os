@@ -11,11 +11,14 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:ep2": "vitest run --config vitest.ep2.config.ts",
     "check:purity": "node scripts/check-domain-purity.mjs",
     "test:e2e": "vite build && node e2e/smoke.mjs",
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "fastify": "^5.10.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -26,6 +29,7 @@
     "autoprefixer": "^10.4.20",
     "playwright": "^1.61.0",
     "postcss": "^8.4.49",
+    "prisma": "^6.19.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
