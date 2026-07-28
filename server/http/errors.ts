@@ -11,6 +11,22 @@ export class NotFoundError extends Error {
   }
 }
 
+/** 401 — no valid authenticated identity. Authentication alone never grants access. */
+export class UnauthorizedError extends Error {
+  constructor(message = "authentication required") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** 403 — authenticated but not permitted (least privilege or separation of duties). */
+export class ForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
 interface ValidationDetail {
   instancePath?: string;
   message?: string;
@@ -28,6 +44,12 @@ export function registerErrorHandler(app: FastifyInstance): void {
       });
     }
 
+    if (err instanceof UnauthorizedError) {
+      return reply.code(401).send({ error: "unauthorized", message: err.message });
+    }
+    if (err instanceof ForbiddenError) {
+      return reply.code(403).send({ error: "forbidden", message: err.message });
+    }
     if (err instanceof NotFoundError) {
       return reply.code(404).send({ error: "not_found", message: err.message });
     }

@@ -1,12 +1,15 @@
-// EP-3 · Governed REST API. Route handlers are THIN: they validate (via JSON Schema),
-// delegate to the application service, and shape the response. They contain no
-// recovery/proof/revenue math and never touch Prisma directly. The controlled flow is:
-//   REST route → application service → domain kernel → persistence adapter → PostgreSQL.
+// EP-3/EP-4 · Governed REST API. Routes are THIN: they authenticate (build an actor
+// context), validate (JSON Schema), delegate to the application service, and shape the
+// response. Authorization + separation of duties live in the service layer. Routes
+// never touch Prisma directly. Controlled flow:
+//   authenticated request → actor context → route → application service → authority gate
+//   → domain kernel → persistence adapter → PostgreSQL.
 import Fastify, { type FastifyInstance } from "fastify";
 import * as proofService from "./services/proofService";
 import type { ApproveProofRequest, ReviseProofRequest } from "./services/proofService";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
+import { actorFromRequest } from "./auth/actorContext";
 import {
   approveProofSchema,
   reviseProofSchema,
@@ -20,18 +23,28 @@ export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: false, ajv: { customOptions: { removeAdditional: false } } });
   registerErrorHandler(app);
 
-  // Liveness — the process is up.
+  // Public health probes — no authentication.
   app.get("/health", async () => ({ status: "ok" }));
-
-  // Readiness — reports actual database connectivity.
   app.get("/ready", async (_req, reply) => {
     const up = await isDbReady();
     return reply.code(up ? 200 : 503).send({ db: up ? "up" : "down" });
   });
 
+  // Record a case author/owner (the beneficiary).
+  app.post<{ Params: { caseId: string } }>(
+    "/cases/:caseId/author",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      await proofService.authorCase(actor, req.params.caseId);
+      return reply.code(201).send({ status: "authored" });
+    },
+  );
+
   // Approve a governed proof (the kernel computes the frozen number).
   app.post<{ Body: ApproveProofRequest }>("/proofs", { schema: approveProofSchema }, async (req, reply) => {
-    const proof = await proofService.approve(req.body);
+    const actor = actorFromRequest(req);
+    const proof = await proofService.approve(actor, req.body);
     return reply.code(201).send(proof);
   });
 
@@ -40,25 +53,49 @@ export function buildApp(): FastifyInstance {
     "/proofs/:proofId/revisions",
     { schema: reviseProofSchema },
     async (req, reply) => {
-      const revised = await proofService.revise(req.params.proofId, req.body);
+      const actor = actorFromRequest(req);
+      const revised = await proofService.revise(actor, req.params.proofId, req.body);
       return reply.code(201).send(revised);
     },
   );
 
-  // Read one proof with its full frozen provenance.
+  // Independently verify a proof (governance stamp — never changes the number).
+  app.post<{ Params: { proofId: string } }>(
+    "/proofs/:proofId/verify",
+    { schema: proofIdParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      const proof = await proofService.verifyProof(actor, req.params.proofId);
+      return reply.code(200).send(proof);
+    },
+  );
+
+  // Governance flag — Steward only.
+  app.post<{ Params: { caseId: string } }>(
+    "/cases/:caseId/flag",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      await proofService.flagCase(actor, req.params.caseId);
+      return reply.code(201).send({ status: "flagged" });
+    },
+  );
+
+  // Reads — authentication required (any valid actor), no role restriction.
   app.get<{ Params: { proofId: string } }>(
     "/proofs/:proofId",
     { schema: proofIdParamsSchema },
     async (req, reply) => {
+      actorFromRequest(req);
       return reply.send(await proofService.getProof(req.params.proofId));
     },
   );
 
-  // Read the append-only revision history for a case.
   app.get<{ Params: { caseId: string } }>(
     "/cases/:caseId/proofs",
     { schema: caseParamsSchema },
     async (req, reply) => {
+      actorFromRequest(req);
       return reply.send(await proofService.getCaseChain(req.params.caseId));
     },
   );

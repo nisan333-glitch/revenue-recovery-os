@@ -1,12 +1,12 @@
-// EP-2 · minimal REST-path test (EP-3 unblock check). Uses fastify.inject (no port).
-// Proves the authoritative store is reachable through an API and the number still
-// comes from the kernel. Skips when no DATABASE_URL is configured.
+// EP-2 · minimal REST-path test (EP-3 unblock check), updated for EP-4 authentication.
+// Uses fastify.inject with a dev approver actor header. Skips without DATABASE_URL.
 import { describe, it, expect, afterAll } from "vitest";
 import { buildApp } from "./app";
 import { prisma } from "./db";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const uid = () => Math.random().toString(36).slice(2, 10);
+const APPROVER = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
 
 const approveBody = (caseId: string, proofId: string) => ({
   proofId,
@@ -28,7 +28,6 @@ const approveBody = (caseId: string, proofId: string) => ({
   confidenceMethodologyVersion: "conf-v1",
   proofThresholdUsed: 0.9,
   confidenceUsed: 0.95,
-  approvedBy: "cfo@nh",
 });
 
 describe.skipIf(!HAS_DB)("EP-2 · REST path reaches the authoritative store (EP-3 unblock)", () => {
@@ -41,23 +40,23 @@ describe.skipIf(!HAS_DB)("EP-2 · REST path reaches the authoritative store (EP-
   it("approves via POST /proofs and returns the kernel-computed number", async () => {
     const caseId = `RC-${uid()}`;
     const proofId = `PF-${uid()}`;
-    const res = await app.inject({ method: "POST", url: "/proofs", payload: approveBody(caseId, proofId) });
+    const res = await app.inject({ method: "POST", url: "/proofs", headers: APPROVER, payload: approveBody(caseId, proofId) });
     expect(res.statusCode).toBe(201);
     const proof = res.json();
     expect(proof.proofId).toBe(proofId);
-    expect(proof.revenueReturned.minor).toBe(1_060_000); // collected − baseline, by the kernel
+    expect(proof.revenueReturned.minor).toBe(1_060_000);
 
-    // then a correction via the revisions route creates a linked revision
     const p2Id = `PF-${uid()}`;
     const rev = await app.inject({
       method: "POST",
       url: `/proofs/${proofId}/revisions`,
-      payload: { newProofId: p2Id, status: "Corrected", at: "2026-07-27T00:00:00.000Z", collectedMinor: 1_400_000, approvedBy: "cfo-2@nh" },
+      headers: APPROVER,
+      payload: { newProofId: p2Id, status: "Corrected", at: "2026-07-27T00:00:00.000Z", collectedMinor: 1_400_000 },
     });
     expect(rev.statusCode).toBe(201);
     expect(rev.json().previousProofId).toBe(proofId);
 
-    const list = await app.inject({ method: "GET", url: `/cases/${caseId}/proofs` });
-    expect(list.json()).toHaveLength(2); // full append-only history is returned
+    const list = await app.inject({ method: "GET", url: `/cases/${caseId}/proofs`, headers: APPROVER });
+    expect(list.json()).toHaveLength(2);
   });
 });

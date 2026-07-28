@@ -85,21 +85,54 @@ function rowToProof(r: ProofRow): Proof {
   };
 }
 
-/** Approve a proof: the kernel computes and freezes the number; we persist the snapshot. */
-export async function approveProof(input: ProofApprovalInput): Promise<Proof> {
+/** Authority-ledger payload written atomically with the proof it authorizes. */
+export interface AuthorityWrite {
+  recoveryCaseId: string;
+  actorId: string;
+  role: string;
+  action: string;
+  policyVersion: string;
+}
+
+function authorityRow(a: AuthorityWrite) {
+  return {
+    id: `AE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recoveryCaseId: a.recoveryCaseId,
+    actorId: a.actorId,
+    role: a.role,
+    action: a.action,
+    policyVersion: a.policyVersion,
+  };
+}
+
+/**
+ * Approve a proof: the kernel computes and freezes the number; the proof row AND its
+ * authority-ledger record are written in ONE transaction — both commit or both roll back.
+ */
+export async function approveProof(input: ProofApprovalInput, authority: AuthorityWrite): Promise<Proof> {
   const proof = createApprovedProof(input); // revenueReturned computed ONCE by the kernel
-  await prisma.proof.create({ data: proofToRow(proof) });
+  await prisma.$transaction([
+    prisma.proof.create({ data: proofToRow(proof) }),
+    prisma.authorityEvent.create({ data: authorityRow(authority) }),
+  ]);
   return proof;
 }
 
-/** Correct/reverse a proof: INSERT a new linked revision; the original is never overwritten. */
+/**
+ * Correct/reverse a proof: INSERT a new linked revision plus its authority record in ONE
+ * transaction. The original is never overwritten.
+ */
 export async function reviseExistingProof(
   originalProofId: string,
   change: ReviseChange,
+  authority: AuthorityWrite,
 ): Promise<Proof> {
   const originalRow = await prisma.proof.findUniqueOrThrow({ where: { proofId: originalProofId } });
   const revised = reviseProof(rowToProof(originalRow), change); // kernel builds the linked revision
-  await prisma.proof.create({ data: proofToRow(revised) });
+  await prisma.$transaction([
+    prisma.proof.create({ data: proofToRow(revised) }),
+    prisma.authorityEvent.create({ data: authorityRow(authority) }),
+  ]);
   return revised;
 }
 

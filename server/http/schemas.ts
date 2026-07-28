@@ -29,7 +29,6 @@ export const approveProofSchema = {
       "confidenceMethodologyVersion",
       "proofThresholdUsed",
       "confidenceUsed",
-      "approvedBy",
     ],
     properties: {
       proofId: { type: "string", minLength: 1 },
@@ -51,7 +50,6 @@ export const approveProofSchema = {
       confidenceMethodologyVersion: { type: "string", minLength: 1 },
       proofThresholdUsed: { type: "number" },
       confidenceUsed: { type: "number" },
-      approvedBy: { type: "string", minLength: 1 },
     },
   },
 } as const;
@@ -65,7 +63,7 @@ export const reviseProofSchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["newProofId", "status", "at", "approvedBy"],
+    required: ["newProofId", "status", "at"],
     properties: {
       newProofId: { type: "string", minLength: 1 },
       status: { type: "string", enum: ["Reversed", "Superseded", "Corrected"] },
@@ -74,7 +72,6 @@ export const reviseProofSchema = {
       collectedMinor: { type: "integer", minimum: 0 },
       baselineMinor: { type: "integer", minimum: 0 },
       attribution: { type: "string", minLength: 1 },
-      approvedBy: { type: "string", minLength: 1 },
     },
   },
 } as const;

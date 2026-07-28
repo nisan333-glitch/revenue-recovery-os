@@ -58,6 +58,23 @@ model Proof {
   @@index([previousProofId])
 }
 
+/// Append-only authority ledger (EP-4): who did what, in which role, on which case.
+/// Records every governed action (Author/Approve/Verify/Flag/Halt) with the actor
+/// identity, role, policy version, and timestamp. Separation-of-duty enforcement reads
+/// this ledger; it is immutable at the DB level so authority history stays auditable.
+model AuthorityEvent {
+  id             String   @id
+  recoveryCaseId String
+  actorId        String
+  role           String
+  action         String // Author | Approve | Verify | Flag | Halt
+  policyVersion  String
+  at             DateTime @default(now())
+
+  @@index([recoveryCaseId])
+  @@index([actorId])
+}
+
 /// Append-only evidence reference record. Immutable at the DB level.
 model EvidenceRecord {
   evidenceId     String   @id
