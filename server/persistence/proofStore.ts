@@ -103,6 +103,12 @@ export async function reviseExistingProof(
   return revised;
 }
 
+/** Read a single persisted proof by id, reconstructed with full provenance (or null). */
+export async function getProofById(proofId: string): Promise<Proof | null> {
+  const row = await prisma.proof.findUnique({ where: { proofId } });
+  return row ? rowToProof(row) : null;
+}
+
 /** Read every persisted revision for a recovery case, oldest first. */
 export async function getCaseProofs(recoveryCaseId: string): Promise<Proof[]> {
   const rows = await prisma.proof.findMany({

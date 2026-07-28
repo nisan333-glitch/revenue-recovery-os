@@ -1,99 +1,67 @@
-// EP-2 · Minimal Fastify wiring — the smallest REST surface that proves the
-// authoritative Postgres store is reachable through an API (EP-3 unblock check).
-// It adds NO business logic: every number still comes from the domain kernel via
-// the proof store. Auth/authorization/queues/workers are intentionally absent.
+// EP-3 · Governed REST API. Route handlers are THIN: they validate (via JSON Schema),
+// delegate to the application service, and shape the response. They contain no
+// recovery/proof/revenue math and never touch Prisma directly. The controlled flow is:
+//   REST route → application service → domain kernel → persistence adapter → PostgreSQL.
 import Fastify, { type FastifyInstance } from "fastify";
-import { approveProof, reviseExistingProof, getCaseProofs } from "./persistence/proofStore";
-import { money } from "../src/domain/money";
-import type { ProofApprovalInput } from "../src/domain/proof";
-
-interface ApproveBody {
-  proofId: string;
-  recoveryCaseId: string;
-  approvedAt: string;
-  currency: string;
-  collectedMinor: number;
-  baselineMinor: number;
-  excludedRecoveryMinor: number;
-  exclusionStatement: string;
-  recoveryReason: string;
-  attribution: string;
-  evidenceRefs: string[];
-  baselineId: string;
-  baselineMethodId: string;
-  baselineVersion: number;
-  baselineLockPolicy: string;
-  policyVersion: string;
-  confidenceMethodologyVersion: string;
-  proofThresholdUsed: number;
-  confidenceUsed: number;
-  approvedBy: string;
-}
-
-// Note: the body carries collected/baseline amounts but NEVER revenueReturned —
-// the number is derived by the kernel, so the API cannot be told the answer.
-function toApprovalInput(b: ApproveBody): ProofApprovalInput {
-  return {
-    proofId: b.proofId,
-    recoveryCaseId: b.recoveryCaseId,
-    approvedAt: b.approvedAt,
-    collectedAmount: money(b.collectedMinor, b.currency),
-    baselineAmount: money(b.baselineMinor, b.currency),
-    excludedRecoveryAmount: money(b.excludedRecoveryMinor, b.currency),
-    exclusionStatement: b.exclusionStatement,
-    recoveryReason: b.recoveryReason as ProofApprovalInput["recoveryReason"],
-    attribution: b.attribution,
-    evidenceRefs: b.evidenceRefs,
-    baselineId: b.baselineId,
-    baselineMethodId: b.baselineMethodId,
-    baselineVersion: b.baselineVersion,
-    baselineLockPolicy: b.baselineLockPolicy,
-    policyVersion: b.policyVersion,
-    confidenceMethodologyVersion: b.confidenceMethodologyVersion,
-    proofThresholdUsed: b.proofThresholdUsed,
-    confidenceUsed: b.confidenceUsed,
-    approvedBy: b.approvedBy,
-  };
-}
+import * as proofService from "./services/proofService";
+import type { ApproveProofRequest, ReviseProofRequest } from "./services/proofService";
+import { registerErrorHandler } from "./http/errors";
+import { isDbReady } from "./health";
+import {
+  approveProofSchema,
+  reviseProofSchema,
+  proofIdParamsSchema,
+  caseParamsSchema,
+} from "./http/schemas";
 
 export function buildApp(): FastifyInstance {
-  const app = Fastify({ logger: false });
+  // removeAdditional:false so `additionalProperties:false` REJECTS (400) an injected
+  // field — e.g. a counted `revenueReturned` — instead of silently stripping it.
+  const app = Fastify({ logger: false, ajv: { customOptions: { removeAdditional: false } } });
+  registerErrorHandler(app);
 
-  app.post<{ Body: ApproveBody }>("/proofs", async (req, reply) => {
-    const proof = await approveProof(toApprovalInput(req.body));
-    return reply.code(201).send(proof); // Proof uses plain Money objects — JSON-safe
+  // Liveness — the process is up.
+  app.get("/health", async () => ({ status: "ok" }));
+
+  // Readiness — reports actual database connectivity.
+  app.get("/ready", async (_req, reply) => {
+    const up = await isDbReady();
+    return reply.code(up ? 200 : 503).send({ db: up ? "up" : "down" });
   });
 
-  app.post<{ Params: { proofId: string }; Body: Record<string, unknown> }>(
+  // Approve a governed proof (the kernel computes the frozen number).
+  app.post<{ Body: ApproveProofRequest }>("/proofs", { schema: approveProofSchema }, async (req, reply) => {
+    const proof = await proofService.approve(req.body);
+    return reply.code(201).send(proof);
+  });
+
+  // Create a linked correction/revision (original never overwritten).
+  app.post<{ Params: { proofId: string }; Body: ReviseProofRequest }>(
     "/proofs/:proofId/revisions",
+    { schema: reviseProofSchema },
     async (req, reply) => {
-      const b = req.body as {
-        newProofId: string;
-        status: "Reversed" | "Superseded" | "Corrected";
-        at: string;
-        currency?: string;
-        collectedMinor?: number;
-        baselineMinor?: number;
-        approvedBy: string;
-        attribution?: string;
-      };
-      const cur = b.currency ?? "USD";
-      const revised = await reviseExistingProof(req.params.proofId, {
-        newProofId: b.newProofId,
-        status: b.status,
-        at: b.at,
-        approvedBy: b.approvedBy,
-        attribution: b.attribution,
-        collectedAmount: b.collectedMinor !== undefined ? money(b.collectedMinor, cur) : undefined,
-        baselineAmount: b.baselineMinor !== undefined ? money(b.baselineMinor, cur) : undefined,
-      });
+      const revised = await proofService.revise(req.params.proofId, req.body);
       return reply.code(201).send(revised);
     },
   );
 
-  app.get<{ Params: { caseId: string } }>("/cases/:caseId/proofs", async (req, reply) => {
-    return reply.send(await getCaseProofs(req.params.caseId));
-  });
+  // Read one proof with its full frozen provenance.
+  app.get<{ Params: { proofId: string } }>(
+    "/proofs/:proofId",
+    { schema: proofIdParamsSchema },
+    async (req, reply) => {
+      return reply.send(await proofService.getProof(req.params.proofId));
+    },
+  );
+
+  // Read the append-only revision history for a case.
+  app.get<{ Params: { caseId: string } }>(
+    "/cases/:caseId/proofs",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      return reply.send(await proofService.getCaseChain(req.params.caseId));
+    },
+  );
 
   return app;
 }
