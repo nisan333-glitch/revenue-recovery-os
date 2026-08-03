@@ -8,16 +8,18 @@
 import type { Actor, Role as DomainRole } from "../../src/domain/authority";
 
 export type BackendRole = "author" | "operator" | "approver" | "verifier" | "steward";
-export type GovernedAction = "Author" | "Approve" | "Verify" | "Flag" | "Halt";
+export type GovernedAction = "Author" | "Approve" | "Verify" | "Flag" | "Halt" | "Exclude" | "AuditRead";
 
 // Least-privilege matrix: which role may perform which governed action. There is no
 // "admin"/superuser role — nothing here grants a separation-of-duties bypass.
+// `AuditRead` (EP-8) governs access to provenance / authority history / CFO exports:
+// oversight roles only — beneficiaries (author/operator) are excluded.
 const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
   author: ["Author"],
   operator: ["Author"], // an operator may author/own a case in the product flow
-  approver: ["Approve"],
-  verifier: ["Verify"],
-  steward: ["Flag", "Halt"], // governance: may flag or halt, never author/approve/verify/count
+  approver: ["Approve", "AuditRead"],
+  verifier: ["Verify", "AuditRead"],
+  steward: ["Flag", "Halt", "Exclude", "AuditRead"], // governance: may flag/halt/exclude & audit — never count
 };
 
 export interface ActorContext {

@@ -9,10 +9,11 @@ import {
   reviseExistingProof,
   getCaseProofs,
   getProofById,
+  chainRootExists,
 } from "../persistence/proofStore";
 import { money } from "../../src/domain/money";
 import type { Proof, ProofApprovalInput } from "../../src/domain/proof";
-import { NotFoundError } from "../http/errors";
+import { NotFoundError, ConflictError } from "../http/errors";
 import type { ActorContext } from "../auth/identity";
 import {
   requireCan,
@@ -64,6 +65,10 @@ export async function authorCase(actor: ActorContext, recoveryCaseId: string): P
 export async function approve(actor: ActorContext, req: ApproveProofRequest): Promise<Proof> {
   requireCan(actor, "Approve");
   await enforceSeparation(req.recoveryCaseId, actor, "Approve", req.collectedMinor);
+  // Duplicate-count prevention: one counted proof-chain root per atomic claim (frozen rule).
+  if (await chainRootExists(req.recoveryCaseId)) {
+    throw new ConflictError("duplicate recovery: a counted proof chain already exists for this claim");
+  }
 
   const input: ProofApprovalInput = {
     proofId: req.proofId,
@@ -144,6 +149,21 @@ export async function verifyProof(actor: ActorContext, proofId: string): Promise
 export async function flagCase(actor: ActorContext, recoveryCaseId: string): Promise<void> {
   requireCan(actor, "Flag");
   await recordAuthority(recoveryCaseId, actor, "Flag", AUTHORITY_POLICY_VERSION);
+}
+
+/** Governance halt — Steward may halt a case; it can never count. */
+export async function haltCase(actor: ActorContext, recoveryCaseId: string): Promise<void> {
+  requireCan(actor, "Halt");
+  await recordAuthority(recoveryCaseId, actor, "Halt", AUTHORITY_POLICY_VERSION);
+}
+
+/**
+ * Governance exclude — Steward may exclude a case from the auditable ledger. This is a
+ * governance action that REDUCES/excludes; it never creates, approves, or counts a number.
+ */
+export async function excludeCase(actor: ActorContext, recoveryCaseId: string): Promise<void> {
+  requireCan(actor, "Exclude");
+  await recordAuthority(recoveryCaseId, actor, "Exclude", AUTHORITY_POLICY_VERSION);
 }
 
 /** Read one proof with its full frozen provenance. */

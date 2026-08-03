@@ -27,6 +27,14 @@ export class ForbiddenError extends Error {
   }
 }
 
+/** 409 — the request conflicts with an existing state (e.g. duplicate counted recovery). */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConflictError";
+  }
+}
+
 interface ValidationDetail {
   instancePath?: string;
   message?: string;
@@ -52,6 +60,16 @@ export function registerErrorHandler(app: FastifyInstance): void {
     }
     if (err instanceof NotFoundError) {
       return reply.code(404).send({ error: "not_found", message: err.message });
+    }
+    if (err instanceof ConflictError) {
+      return reply.code(409).send({ error: "conflict", message: err.message });
+    }
+    // Prisma unique-constraint violation (e.g. the one-chain-root-per-case index) → 409.
+    if ((err as unknown as { code?: string }).code === "P2002") {
+      return reply.code(409).send({
+        error: "conflict",
+        message: "duplicate recovery: a counted proof chain already exists for this claim",
+      });
     }
 
     // The database append-only triggers raise a message containing 'append-only'.

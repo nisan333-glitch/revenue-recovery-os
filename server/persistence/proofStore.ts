@@ -136,6 +136,15 @@ export async function reviseExistingProof(
   return revised;
 }
 
+/**
+ * Does a counted proof-chain root already exist for this claim? Enforces the frozen
+ * one-chain-per-recoveryCaseId rule (a chain root has previousProofId = null).
+ */
+export async function chainRootExists(recoveryCaseId: string): Promise<boolean> {
+  const root = await prisma.proof.findFirst({ where: { recoveryCaseId, previousProofId: null } });
+  return root !== null;
+}
+
 /** Read a single persisted proof by id, reconstructed with full provenance (or null). */
 export async function getProofById(proofId: string): Promise<Proof | null> {
   const row = await prisma.proof.findUnique({ where: { proofId } });

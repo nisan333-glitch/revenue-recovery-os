@@ -7,6 +7,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import * as proofService from "./services/proofService";
 import type { ApproveProofRequest, ReviseProofRequest } from "./services/proofService";
+import * as auditService from "./audit/auditService";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
 import { actorFromRequest } from "./auth/actorContext";
@@ -78,6 +79,56 @@ export function buildApp(): FastifyInstance {
       const actor = actorFromRequest(req);
       await proofService.flagCase(actor, req.params.caseId);
       return reply.code(201).send({ status: "flagged" });
+    },
+  );
+
+  // Governance halt — Steward only.
+  app.post<{ Params: { caseId: string } }>(
+    "/cases/:caseId/halt",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      await proofService.haltCase(actor, req.params.caseId);
+      return reply.code(201).send({ status: "halted" });
+    },
+  );
+
+  // Governance exclude — Steward only (reduces/excludes; never counts).
+  app.post<{ Params: { caseId: string } }>(
+    "/cases/:caseId/exclude",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      await proofService.excludeCase(actor, req.params.caseId);
+      return reply.code(201).send({ status: "excluded" });
+    },
+  );
+
+  // Audit reads — authenticated AND authorized (AuditRead) in the service; read-only.
+  app.get<{ Params: { proofId: string } }>(
+    "/audit/proofs/:proofId",
+    { schema: proofIdParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      return reply.send(await auditService.reconstructProof(actor, req.params.proofId));
+    },
+  );
+
+  app.get<{ Params: { caseId: string } }>(
+    "/audit/cases/:caseId",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      return reply.send(await auditService.caseAuditTrail(actor, req.params.caseId));
+    },
+  );
+
+  app.get<{ Params: { caseId: string } }>(
+    "/audit/cases/:caseId/cfo-export",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      return reply.send(await auditService.cfoAuditExport(actor, req.params.caseId));
     },
   );
 
