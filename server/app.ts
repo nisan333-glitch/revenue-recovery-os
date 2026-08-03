@@ -6,7 +6,12 @@
 //   → domain kernel → persistence adapter → PostgreSQL.
 import Fastify, { type FastifyInstance } from "fastify";
 import * as proofService from "./services/proofService";
-import type { ApproveProofRequest, ReviseProofRequest } from "./services/proofService";
+import type {
+  ApproveProofRequest,
+  ReviseProofRequest,
+  EstablishBaselineRequest,
+  IngestEvidenceRequest,
+} from "./services/proofService";
 import * as auditService from "./audit/auditService";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
@@ -16,6 +21,8 @@ import {
   reviseProofSchema,
   proofIdParamsSchema,
   caseParamsSchema,
+  establishBaselineSchema,
+  ingestEvidenceSchema,
 } from "./http/schemas";
 
 export function buildApp(): FastifyInstance {
@@ -39,6 +46,39 @@ export function buildApp(): FastifyInstance {
       const actor = actorFromRequest(req);
       await proofService.authorCase(actor, req.params.caseId);
       return reply.code(201).send({ status: "authored" });
+    },
+  );
+
+  // EP-8.1 · Establish + lock a baseline snapshot (author/operator only; lockedAt server-stamped).
+  app.post<{ Params: { caseId: string }; Body: EstablishBaselineRequest }>(
+    "/cases/:caseId/baseline",
+    { schema: establishBaselineSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      const snapshot = await proofService.establishBaseline(actor, req.params.caseId, req.body);
+      return reply.code(201).send(snapshot);
+    },
+  );
+
+  // EP-8.1 · Record the governed Fix/intervention timing event (author/operator only).
+  app.post<{ Params: { caseId: string } }>(
+    "/cases/:caseId/intervention",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      await proofService.recordIntervention(actor, req.params.caseId);
+      return reply.code(201).send({ status: "intervened" });
+    },
+  );
+
+  // EP-8.1 · Pre-proof evidence ingestion (author/operator only; role/independence derived server-side).
+  app.post<{ Params: { caseId: string }; Body: IngestEvidenceRequest }>(
+    "/cases/:caseId/evidence",
+    { schema: ingestEvidenceSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      const evidence = await proofService.ingestCaseEvidence(actor, req.params.caseId, req.body);
+      return reply.code(201).send(evidence);
     },
   );
 
@@ -132,13 +172,14 @@ export function buildApp(): FastifyInstance {
     },
   );
 
-  // Reads — authentication required (any valid actor), no role restriction.
+  // EP-8.1 · H2: provenance-bearing reads are governed (AuditRead) exactly like `/audit/*` —
+  // a beneficiary (author/operator) may not read frozen proof provenance through this path either.
   app.get<{ Params: { proofId: string } }>(
     "/proofs/:proofId",
     { schema: proofIdParamsSchema },
     async (req, reply) => {
-      actorFromRequest(req);
-      return reply.send(await proofService.getProof(req.params.proofId));
+      const actor = actorFromRequest(req);
+      return reply.send(await proofService.getProof(actor, req.params.proofId));
     },
   );
 
@@ -146,8 +187,8 @@ export function buildApp(): FastifyInstance {
     "/cases/:caseId/proofs",
     { schema: caseParamsSchema },
     async (req, reply) => {
-      actorFromRequest(req);
-      return reply.send(await proofService.getCaseChain(req.params.caseId));
+      const actor = actorFromRequest(req);
+      return reply.send(await proofService.getCaseChain(actor, req.params.caseId));
     },
   );
 

@@ -64,11 +64,12 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (err instanceof ConflictError) {
       return reply.code(409).send({ error: "conflict", message: err.message });
     }
-    // Prisma unique-constraint violation (e.g. the one-chain-root-per-case index) → 409.
+    // Prisma unique-constraint violation — e.g. the one-chain-root-per-case index, the H1
+    // chain-fork guard, or the EP-8.1 single-use-outcome-evidence index → 409, generically.
     if ((err as unknown as { code?: string }).code === "P2002") {
       return reply.code(409).send({
         error: "conflict",
-        message: "duplicate recovery: a counted proof chain already exists for this claim",
+        message: "duplicate: a uniqueness constraint was violated (e.g. a proof-chain fork or reused evidence record).",
       });
     }
 

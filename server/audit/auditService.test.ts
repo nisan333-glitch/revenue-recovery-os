@@ -1,41 +1,14 @@
-// EP-8 · Governance, audit trail & explainability acceptance tests (16).
-// Proves reconstruction, provenance-based exclusion, duplicate-count prevention,
-// governance-without-count, governed audit reads, and a CFO export from persisted data
-// only. Skips without DATABASE_URL.
+// EP-8 · Governance, audit trail & explainability acceptance tests, updated for EP-8.1 trust
+// hardening (governed baseline/intervention/evidence setup precedes approval; two new
+// re-derived trust gaps — interventionUnverified, baselineOrderingViolation — plus the existing
+// field-completeness gaps decide auditable classification). Skips without DATABASE_URL.
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { buildApp } from "../app";
 import { prisma } from "../db";
 import * as auditService from "./auditService";
+import { uid, AUTHOR, APPROVER, VERIFIER, STEWARD, seedAuditableCase, seedBaseline, seedEvidence, approveBody } from "../test/fixtures";
 
 const HAS_DB = !!process.env.DATABASE_URL;
-const uid = () => Math.random().toString(36).slice(2, 10);
-const hdr = (id: string, role: string) => ({ "x-actor-id": id, "x-actor-role": role });
-const APPROVER = hdr("cfo@company", "approver");
-const AUTHOR = hdr("dana@company", "author");
-const VERIFIER = hdr("val@company", "verifier");
-const STEWARD = hdr("gov@company", "steward");
-
-const approveBody = (caseId: string, proofId: string, evidenceRefs: string[] = ["ev-1"]) => ({
-  proofId,
-  recoveryCaseId: caseId,
-  approvedAt: "2026-07-26T00:00:00.000Z",
-  currency: "USD",
-  collectedMinor: 1_320_000,
-  baselineMinor: 260_000,
-  excludedRecoveryMinor: 0,
-  exclusionStatement: "no exclusions asserted",
-  recoveryReason: "UsageActivation",
-  attribution: "ar-system",
-  evidenceRefs,
-  baselineId: "BL-1",
-  baselineMethodId: "method-v1",
-  baselineVersion: 1,
-  baselineLockPolicy: "locked-before-intervention",
-  policyVersion: "policy-v1",
-  confidenceMethodologyVersion: "conf-v1",
-  proofThresholdUsed: 0.9,
-  confidenceUsed: 0.95,
-});
 
 describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () => {
   const app = buildApp();
@@ -47,12 +20,16 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
     await prisma.$disconnect();
   });
 
-  // full author→approve pipeline; returns {caseId, proofId}
-  const seedApproved = async (evidenceRefs?: string[]) => {
-    const caseId = `RC-${uid()}`;
+  // full author→baseline→intervention→evidence→approve pipeline; returns {caseId, proofId}
+  const seedApproved = async () => {
+    const { caseId, baselineId, evidenceId } = await seedAuditableCase(app);
     const proofId = `PF-${uid()}`;
-    await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR });
-    const r = await app.inject({ method: "POST", url: "/proofs", headers: APPROVER, payload: approveBody(caseId, proofId, evidenceRefs) });
+    const r = await app.inject({
+      method: "POST",
+      url: "/proofs",
+      headers: APPROVER,
+      payload: approveBody({ proofId, caseId, baselineId, evidenceIds: [evidenceId] }),
+    });
     expect(r.statusCode).toBe(201);
     return { caseId, proofId };
   };
@@ -64,14 +41,27 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
     const r = res.json();
     expect(r.reconstructionMatches).toBe(true); // recomputed collected−baseline === stored
     expect(r.reconstructedRevenueReturnedMinor).toBe(1_060_000);
-    expect(r.frozenProvenance.policyVersion).toBe("policy-v1");
+    expect(r.frozenProvenance.policyVersion).toBe("policy-2026.1");
     expect(r.auditable).toBe(true);
   });
 
-  it("2 · missing required provenance prevents auditable classification", async () => {
-    const { proofId } = await seedApproved([]); // no evidence references
+  it("2 · unverified intervention timing prevents auditable classification (a gap, never a block)", async () => {
+    const caseId = `RC-${uid()}`;
+    await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR });
+    const baselineId = await seedBaseline(app, caseId);
+    // deliberately no /intervention call — the fix timing stays unknown/unverified
+    const { evidenceId, res: evRes } = await seedEvidence(app, caseId, { amountMinor: 1_320_000, currency: "USD" });
+    expect(evRes.statusCode).toBe(201);
+    const proofId = `PF-${uid()}`;
+    const res = await app.inject({
+      method: "POST",
+      url: "/proofs",
+      headers: APPROVER,
+      payload: approveBody({ proofId, caseId, baselineId, evidenceIds: [evidenceId] }),
+    });
+    expect(res.statusCode).toBe(201); // unknown timing never blocks approval — still Proven
     const r = (await app.inject({ method: "GET", url: `/audit/proofs/${proofId}`, headers: APPROVER })).json();
-    expect(r.provenanceGaps).toContain("evidenceRefs");
+    expect(r.provenanceGaps).toContain("interventionUnverified");
     expect(r.auditable).toBe(false); // incomplete provenance → excluded from auditable
   });
 
@@ -80,13 +70,23 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
     expect((await app.inject({ method: "POST", url: `/cases/${caseId}/flag`, headers: STEWARD })).statusCode).toBe(201);
     expect((await app.inject({ method: "POST", url: `/cases/${caseId}/halt`, headers: STEWARD })).statusCode).toBe(201);
     expect((await app.inject({ method: "POST", url: `/cases/${caseId}/exclude`, headers: STEWARD })).statusCode).toBe(201);
-    const approve = await app.inject({ method: "POST", url: "/proofs", headers: STEWARD, payload: approveBody(caseId, `PF-${uid()}`) });
+    const approve = await app.inject({
+      method: "POST",
+      url: "/proofs",
+      headers: STEWARD,
+      payload: approveBody({ proofId: `PF-${uid()}`, caseId, baselineId: "BL-1", evidenceIds: ["ev-1"] }),
+    });
     expect(approve.statusCode).toBe(403); // steward may never approve/count
   });
 
   it("4 · duplicate recovery counting is rejected", async () => {
     const { caseId } = await seedApproved();
-    const dup = await app.inject({ method: "POST", url: "/proofs", headers: APPROVER, payload: approveBody(caseId, `PF-${uid()}`) });
+    const dup = await app.inject({
+      method: "POST",
+      url: "/proofs",
+      headers: APPROVER,
+      payload: approveBody({ proofId: `PF-${uid()}`, caseId, baselineId: "BL-1", evidenceIds: ["ev-1"] }),
+    });
     expect(dup.statusCode).toBe(409); // a second chain root for the same claim
     expect(dup.json().error).toBe("conflict");
   });
@@ -102,10 +102,10 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
   it("6 · a linked correction preserves the original audit chain", async () => {
     const { caseId, proofId } = await seedApproved();
     const p2 = `PF-${uid()}`;
-    await app.inject({ method: "POST", url: `/proofs/${proofId}/revisions`, headers: APPROVER, payload: { newProofId: p2, status: "Corrected", at: "2026-07-27T00:00:00.000Z", collectedMinor: 1_400_000 } });
+    await app.inject({ method: "POST", url: `/proofs/${proofId}/revisions`, headers: APPROVER, payload: { newProofId: p2, status: "Corrected", collectedMinor: 1_400_000 } });
     const trail = await auditService.caseAuditTrail(APPROVER_CTX, caseId);
     expect(trail.proofs).toHaveLength(2); // original + revision, both preserved
-    expect(trail.authorityTrail.map((e) => e.action)).toEqual(["Author", "Approve", "Approve"]);
+    expect(trail.authorityTrail.map((e) => e.action)).toEqual(["Author", "Intervene", "Approve", "Approve"]);
   });
 
   it("7 · forecast and auditable ledgers cannot blend", async () => {
@@ -118,23 +118,24 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
 
   it("8 · audit endpoints are read-only (no state mutation)", async () => {
     const { caseId, proofId } = await seedApproved();
-    const before = await prisma.authorityEvent.count();
+    // Scoped to this case: the suite runs many test files against the same shared dev
+    // database, so an unscoped global count can pick up unrelated concurrent writes.
+    const before = await prisma.authorityEvent.count({ where: { recoveryCaseId: caseId } });
     await app.inject({ method: "GET", url: `/audit/proofs/${proofId}`, headers: APPROVER });
     await app.inject({ method: "GET", url: `/audit/cases/${caseId}`, headers: APPROVER });
     await app.inject({ method: "GET", url: `/audit/cases/${caseId}/cfo-export`, headers: APPROVER });
-    expect(await prisma.authorityEvent.count()).toBe(before); // reads created nothing
+    expect(await prisma.authorityEvent.count({ where: { recoveryCaseId: caseId } })).toBe(before); // reads created nothing
   });
 
   it("9 · every governed state transition produces an audit event", async () => {
-    const caseId = `RC-${uid()}`;
+    const { caseId, baselineId, evidenceId } = await seedAuditableCase(app);
     const proofId = `PF-${uid()}`;
-    await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR });
-    await app.inject({ method: "POST", url: "/proofs", headers: APPROVER, payload: approveBody(caseId, proofId) });
+    await app.inject({ method: "POST", url: "/proofs", headers: APPROVER, payload: approveBody({ proofId, caseId, baselineId, evidenceIds: [evidenceId] }) });
     await app.inject({ method: "POST", url: `/proofs/${proofId}/verify`, headers: VERIFIER });
     await app.inject({ method: "POST", url: `/cases/${caseId}/flag`, headers: STEWARD });
     await app.inject({ method: "POST", url: `/cases/${caseId}/exclude`, headers: STEWARD });
     const events = await prisma.authorityEvent.findMany({ where: { recoveryCaseId: caseId }, orderBy: { at: "asc" } });
-    expect(events.map((e) => e.action)).toEqual(["Author", "Approve", "Verify", "Flag", "Exclude"]);
+    expect(events.map((e) => e.action)).toEqual(["Author", "Intervene", "Approve", "Verify", "Flag", "Exclude"]);
   });
 
   it("10 · no route or governance service bypasses the kernel/authority gate", async () => {
@@ -142,7 +143,12 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
     const { proofId } = await seedApproved();
     const r = (await app.inject({ method: "GET", url: `/audit/proofs/${proofId}`, headers: APPROVER })).json();
     expect(r.reconstructionMatches).toBe(true);
-    const stewardApprove = await app.inject({ method: "POST", url: "/proofs", headers: STEWARD, payload: approveBody(`RC-${uid()}`, `PF-${uid()}`) });
+    const stewardApprove = await app.inject({
+      method: "POST",
+      url: "/proofs",
+      headers: STEWARD,
+      payload: approveBody({ proofId: `PF-${uid()}`, caseId: `RC-${uid()}`, baselineId: "BL-1", evidenceIds: ["ev-1"] }),
+    });
     expect(stewardApprove.statusCode).toBe(403);
   });
 
@@ -187,12 +193,14 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
   });
 
   it("D · an authorized audit read mutates no state", async () => {
-    const { proofId } = await seedApproved();
-    const proofs = await prisma.proof.count();
-    const events = await prisma.authorityEvent.count();
+    const { caseId, proofId } = await seedApproved();
+    // Scoped to this case — the suite runs many test files against the same shared dev
+    // database, so an unscoped global count can pick up unrelated concurrent writes.
+    const proofs = await prisma.proof.count({ where: { recoveryCaseId: caseId } });
+    const events = await prisma.authorityEvent.count({ where: { recoveryCaseId: caseId } });
     await auditService.reconstructProof(APPROVER_CTX, proofId);
-    expect(await prisma.proof.count()).toBe(proofs);
-    expect(await prisma.authorityEvent.count()).toBe(events);
+    expect(await prisma.proof.count({ where: { recoveryCaseId: caseId } })).toBe(proofs);
+    expect(await prisma.authorityEvent.count({ where: { recoveryCaseId: caseId } })).toBe(events);
   });
 });
 

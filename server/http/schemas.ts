@@ -1,9 +1,23 @@
-// EP-3 · Typed REST contracts (JSON Schema for request validation).
+// EP-3/EP-8.1 · Typed REST contracts (JSON Schema for request validation).
 //
 // `additionalProperties: false` is deliberate and load-bearing: a request may carry
-// collected/baseline amounts but can NEVER supply `revenueReturned` (or any other
-// counted number) — an injected field is rejected with 400 before persistence. The
-// number is derived only by the domain kernel.
+// collected/baseline-reference fields but can NEVER supply a counted number, a policy/
+// threshold/methodology field, a baseline amount, or a server-owned timestamp — those are
+// rejected with 400 before persistence (EP-8.1 C1/baseline hardening). The values that
+// determine whether revenue becomes Auditable are pinned server-side from CURRENT_POLICY
+// and the locked BaselineSnapshot the case references, never accepted from the client.
+
+const RECOVERY_REASONS = [
+  "OnboardingReboot",
+  "MilestoneNudge",
+  "EnablementSession",
+  "CSMOutreach",
+  "ExecBusinessReview",
+  "RenewalOutreach",
+  "UsageActivation",
+] as const;
+
+const SUPPORTED_CURRENCY_CODES = ["USD", "EUR", "GBP", "ILS", "JPY"] as const;
 
 export const approveProofSchema = {
   body: {
@@ -12,43 +26,29 @@ export const approveProofSchema = {
     required: [
       "proofId",
       "recoveryCaseId",
-      "approvedAt",
       "currency",
       "collectedMinor",
-      "baselineMinor",
       "excludedRecoveryMinor",
       "exclusionStatement",
       "recoveryReason",
       "attribution",
-      "evidenceRefs",
+      "evidenceIds",
       "baselineId",
-      "baselineMethodId",
-      "baselineVersion",
-      "baselineLockPolicy",
-      "policyVersion",
-      "confidenceMethodologyVersion",
-      "proofThresholdUsed",
       "confidenceUsed",
     ],
     properties: {
       proofId: { type: "string", minLength: 1 },
       recoveryCaseId: { type: "string", minLength: 1 },
-      approvedAt: { type: "string", minLength: 1 },
-      currency: { type: "string", minLength: 3, maxLength: 3 },
+      currency: { type: "string", enum: SUPPORTED_CURRENCY_CODES },
       collectedMinor: { type: "integer", minimum: 0 },
-      baselineMinor: { type: "integer", minimum: 0 },
       excludedRecoveryMinor: { type: "integer", minimum: 0 },
       exclusionStatement: { type: "string", minLength: 1 },
-      recoveryReason: { type: "string", minLength: 1 },
+      recoveryReason: { type: "string", enum: RECOVERY_REASONS },
       attribution: { type: "string", minLength: 1 },
-      evidenceRefs: { type: "array", items: { type: "string" } },
+      evidenceIds: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 },
+      // References a previously established+locked BaselineSnapshot; the baseline AMOUNT,
+      // method, and version are read from that snapshot, never from this body.
       baselineId: { type: "string", minLength: 1 },
-      baselineMethodId: { type: "string", minLength: 1 },
-      baselineVersion: { type: "integer", minimum: 1 },
-      baselineLockPolicy: { type: "string", minLength: 1 },
-      policyVersion: { type: "string", minLength: 1 },
-      confidenceMethodologyVersion: { type: "string", minLength: 1 },
-      proofThresholdUsed: { type: "number" },
       confidenceUsed: { type: "number" },
     },
   },
@@ -63,14 +63,12 @@ export const reviseProofSchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["newProofId", "status", "at"],
+    required: ["newProofId", "status"],
     properties: {
       newProofId: { type: "string", minLength: 1 },
       status: { type: "string", enum: ["Reversed", "Superseded", "Corrected"] },
-      at: { type: "string", minLength: 1 },
-      currency: { type: "string", minLength: 3, maxLength: 3 },
+      currency: { type: "string", enum: SUPPORTED_CURRENCY_CODES },
       collectedMinor: { type: "integer", minimum: 0 },
-      baselineMinor: { type: "integer", minimum: 0 },
       attribution: { type: "string", minLength: 1 },
     },
   },
@@ -89,5 +87,56 @@ export const caseParamsSchema = {
     type: "object",
     required: ["caseId"],
     properties: { caseId: { type: "string", minLength: 1 } },
+  },
+} as const;
+
+/** EP-8.1 · Establish + lock a baseline snapshot. `lockedAt` is never a client field —
+ * it is always the DB server clock, stamped at insert time. */
+export const establishBaselineSchema = {
+  params: {
+    type: "object",
+    required: ["caseId"],
+    properties: { caseId: { type: "string", minLength: 1 } },
+  },
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["baselineId", "calculatedMinor", "currency", "method", "methodVersion", "sourceRefs", "effectiveAt"],
+    properties: {
+      baselineId: { type: "string", minLength: 1 },
+      calculatedMinor: { type: "integer", minimum: 0 },
+      currency: { type: "string", enum: SUPPORTED_CURRENCY_CODES },
+      method: { type: "string", minLength: 1 },
+      methodVersion: { type: "integer", minimum: 1 },
+      sourceRefs: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 },
+      effectiveAt: { type: "string", minLength: 1 },
+      supersedes: { type: "string", minLength: 1 },
+    },
+  },
+} as const;
+
+/** EP-8.1 · Pre-proof evidence ingestion. `evidenceRole`/`trustClassification` are NEVER
+ * accepted here — they are derived server-side (server/domain/evidenceRole.ts,
+ * src/domain/evidence.ts makeEvidence) and there is deliberately no schema field for them. */
+export const ingestEvidenceSchema = {
+  params: {
+    type: "object",
+    required: ["caseId"],
+    properties: { caseId: { type: "string", minLength: 1 } },
+  },
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["evidenceId", "sourceSystem", "sourceRecordId", "evidenceType", "observedAt"],
+    properties: {
+      evidenceId: { type: "string", minLength: 1 },
+      sourceSystem: { type: "string", minLength: 1 },
+      sourceRecordId: { type: "string", minLength: 1 },
+      evidenceType: { type: "string", minLength: 1 },
+      observedAt: { type: "string", minLength: 1 },
+      amountMinor: { type: "integer", minimum: 0 },
+      currency: { type: "string", enum: SUPPORTED_CURRENCY_CODES },
+      note: { type: "string" },
+    },
   },
 } as const;

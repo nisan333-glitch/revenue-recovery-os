@@ -8,7 +8,8 @@
 // frozen collected/baseline to PROVE reconstruction.
 import { getProofById, getCaseProofs } from "../persistence/proofStore";
 import { authorityFor, type AuthorityRecord } from "../auth/authorityStore";
-import { requireCan } from "../auth/authorityGate";
+import { requireCan, firstInterveneEvent } from "../auth/authorityGate";
+import { getBaselineSnapshot } from "../persistence/baselineStore";
 import type { ActorContext } from "../auth/identity";
 import { NotFoundError } from "../http/errors";
 import { prisma } from "../db";
@@ -37,6 +38,38 @@ export function provenanceGaps(p: Proof): string[] {
   return gaps;
 }
 
+/**
+ * EP-8.1 · Trust gaps re-derived from CURRENT persisted state (the locked BaselineSnapshot +
+ * the case's live authority ledger) — never from the frozen proof alone. A gap here means the
+ * amount stays Proven but is excluded from Auditable; it is never a retroactive block. Approval
+ * already blocked every KNOWN baseline-ordering violation at approval time (see
+ * services/proofService.ts) — this only catches facts that became known LATER, e.g. an
+ * Intervene event recorded for the case after the proof was already approved.
+ */
+async function derivedTrustGaps(p: Proof): Promise<string[]> {
+  const gaps: string[] = [];
+  const snapshot = await getBaselineSnapshot(p.baselineId);
+  if (!snapshot) {
+    // Baselines are immutable/append-only and required at approval time — unreachable in
+    // practice, but an honest gap rather than a silent assumption if it ever were missing.
+    gaps.push("baselineNotLocked");
+    return gaps;
+  }
+  const intervention = await firstInterveneEvent(p.recoveryCaseId);
+  if (!intervention) {
+    // Unknown ≠ positive evidence: no Intervene event recorded is a gap, not a violation.
+    gaps.push("interventionUnverified");
+  } else if (snapshot.lockedAt > intervention.at.toISOString()) {
+    gaps.push("baselineOrderingViolation");
+  }
+  return gaps;
+}
+
+/** All provenance gaps — static field-completeness plus re-derived trust gaps. */
+export async function allProvenanceGaps(p: Proof): Promise<string[]> {
+  return [...provenanceGaps(p), ...(await derivedTrustGaps(p))];
+}
+
 /** Internal helper: has governance excluded this case from the auditable ledger? */
 async function caseIsExcluded(recoveryCaseId: string): Promise<boolean> {
   const n = await prisma.authorityEvent.count({ where: { recoveryCaseId, action: "Exclude" } });
@@ -60,7 +93,7 @@ export interface ProofReconstruction {
 
 async function reconstruct(p: Proof, excluded: boolean): Promise<ProofReconstruction> {
   const reconstructed = clampNonNegative(subMoney(p.collectedAmount, p.baselineAmount));
-  const gaps = provenanceGaps(p);
+  const gaps = await allProvenanceGaps(p);
   return {
     proofId: p.proofId,
     recoveryCaseId: p.recoveryCaseId,
@@ -151,7 +184,7 @@ export async function cfoAuditExport(actor: ActorContext, recoveryCaseId: string
   for (const p of effective) {
     if (p.currency !== (currency ?? p.currency)) continue;
     if (isEffectiveRecovery(p)) proven = addMoney(proven, p.revenueReturned);
-    if (proofIsAuditable(p) && provenanceGaps(p).length === 0 && !excluded) {
+    if (proofIsAuditable(p) && !excluded && (await allProvenanceGaps(p)).length === 0) {
       auditable = addMoney(auditable, p.revenueReturned);
     }
   }

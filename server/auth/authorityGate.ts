@@ -75,4 +75,19 @@ export async function enforceSeparation(
   }
 }
 
+/**
+ * EP-8.1 · The case's first recorded `Intervene` event (the governed Fix-step timing
+ * fact), if any. Used by the approval-time baseline-ordering gate and by audit-time gap
+ * detection — both re-derive this from the SAME persisted authority ledger, never a
+ * separately-invented value.
+ */
+export async function firstInterveneEvent(
+  recoveryCaseId: string,
+): Promise<{ at: Date } | null> {
+  const history = await authorityFor(recoveryCaseId);
+  const interventions = history.filter((h) => h.action === "Intervene");
+  if (interventions.length === 0) return null;
+  return interventions.reduce((earliest, cur) => (cur.at < earliest.at ? cur : earliest));
+}
+
 export { recordAuthority };

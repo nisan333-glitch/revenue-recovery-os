@@ -56,6 +56,13 @@ model Proof {
   @@index([chainId])
   @@index([recoveryCaseId])
   @@index([previousProofId])
+  // EP-8.1 · H1 concurrency backstop: at most one row per (chainId, proofVersion) — the
+  // exact invariant effectiveProofs() (src/domain/proof.ts) already assumes. A second,
+  // complementary partial index UNIQUE(previousProofId) WHERE previousProofId IS NOT NULL
+  // (a proof may be superseded at most once) is added via raw SQL in the
+  // ep8_1_chain_fork_guard migration — Prisma's @@unique cannot express the WHERE clause
+  // NULLs must be exempt from.
+  @@unique([chainId, proofVersion])
 }
 
 /// Append-only authority ledger (EP-4): who did what, in which role, on which case.
@@ -75,14 +82,59 @@ model AuthorityEvent {
   @@index([actorId])
 }
 
-/// Append-only evidence reference record. Immutable at the DB level.
-model EvidenceRecord {
-  evidenceId     String   @id
-  recoveryCaseId String
-  proofId        String?
-  ref            String
-  note           String?
-  persistedAt    DateTime @default(now())
+/// EP-8.1 · Immutable, append-only baseline snapshot. Establish and lock happen as ONE
+/// insert (`lockedAt` is the server clock, never client-suppliable). A proof's baseline
+/// amount/method/version come ONLY from the snapshot a case references, never from the
+/// approval request body. A correction is a NEW row (`supersedes`); the prior snapshot,
+/// and every proof that already stamped it, is never touched.
+model BaselineSnapshot {
+  baselineId        String   @id
+  recoveryCaseId    String
+  calculatedMinor   BigInt
+  currency          String
+  method            String
+  methodVersion     Int
+  sourceRefs        String[]
+  effectiveAt       DateTime
+  establishedBy     String
+  establishedByRole String
+  lockedAt          DateTime @default(now())
+  supersedes        String?
 
   @@index([recoveryCaseId])
+}
+
+/// EP-8.1 · Append-only, pre-proof evidence ingestion. Immutable at the DB level.
+/// `evidenceRole` and `trustClassification`/`beneficiaryControl` are DERIVED server-side at
+/// ingestion (never client-asserted) — see server/domain/evidenceRole.ts and the domain's
+/// `makeEvidence`. `roleMapVersion` freezes which allowlist version produced the
+/// classification, so a future mapping change can never reinterpret historical evidence.
+/// `observedAt` is recorded but is a claimed, non-authoritative fact — see `ingestedAt`
+/// (server clock) for the positive timing signal actually used by the temporal trust gate.
+/// The partial unique index below makes an outcome-role source record single-use across
+/// every recovery, not just within one case.
+model EvidenceRecord {
+  evidenceId          String    @id
+  recoveryCaseId      String
+  proofId             String?
+  sourceSystem        String
+  sourceRecordId      String
+  evidenceType        String
+  observedAt          DateTime
+  amountMinor         BigInt?
+  currency            String?
+  trustClassification String // "independent" | "beneficiary_controlled" — derived, never asserted
+  beneficiaryControl  Boolean
+  evidenceRole        String // "outcome" | "supporting" — derived, never asserted
+  roleMapVersion      String
+  ingestedBy          String
+  ingestedByRole      String
+  ingestedAt          DateTime @default(now()) // authoritative server timestamp
+  note                String?
+
+  @@index([recoveryCaseId])
+  // A partial unique index (sourceSystem, sourceRecordId) WHERE evidenceRole='outcome' is
+  // added via raw SQL in the ep8_1_evidence_hardening migration — Prisma's declarative
+  // @@unique cannot express a WHERE clause, and the constraint must apply to outcome-role
+  // rows only (supporting evidence may legitimately be cited more than once).
 }
