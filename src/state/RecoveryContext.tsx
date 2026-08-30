@@ -59,6 +59,16 @@ import {
   validateApproval,
   type CaseApprovalContext,
 } from "../domain/approval";
+// --- EP-9 · Governed (real backend) trust surface — additive, never replaces anything above ---
+import * as trust from "../data/governedTrustClient";
+import type {
+  BaselineSnapshotDTO,
+  EvidenceRecordDTO,
+  CaseAuditTrailDTO,
+  CfoExportDTO,
+} from "../data/governedTrustClient";
+import { ApiError } from "../data/apiClient";
+import type { DevActor } from "../data/devActor";
 
 // The system-recorded clock for all trust timestamps (approval, lock, ingest). Prototype-grade,
 // but deliberately NOT sourced from user-editable Case fields (Trust Invariant #3).
@@ -110,6 +120,81 @@ export interface ApproveProofInput {
 
 type ApproveResult = { ok: true; proof: Proof } | { ok: false; error: string };
 
+// --- EP-9 · Governed (real backend) trust surface — additive, never replaces anything above ---
+export type GovernedActionResult = { ok: true } | { ok: false; error: string };
+
+export interface CaseTrustState {
+  status: "idle" | "loading" | "loaded" | "error";
+  error?: string;
+  baselines: BaselineSnapshotDTO[];
+  evidence: EvidenceRecordDTO[];
+  auditTrail?: CaseAuditTrailDTO;
+  cfoExport?: CfoExportDTO;
+}
+
+const EMPTY_CASE_TRUST: CaseTrustState = { status: "idle", baselines: [], evidence: [] };
+
+export interface EstablishGovernedBaselineInput {
+  calculatedMinor: number;
+  currency: string;
+  method: string;
+  methodVersion: number;
+  sourceRefs: string[];
+  effectiveAt: string;
+  supersedes?: string;
+}
+
+export interface IngestGovernedEvidenceInput {
+  sourceSystem: string;
+  sourceRecordId: string;
+  evidenceType: string;
+  observedAt: string;
+  amountMinor?: number;
+  currency?: string;
+  note?: string;
+}
+
+export interface ApproveGovernedProofInput {
+  currency: string;
+  collectedMinor: number;
+  excludedRecoveryMinor: number;
+  exclusionStatement: string;
+  recoveryReason: string;
+  attribution: string;
+  evidenceIds: string[];
+  baselineId: string;
+  confidenceUsed: number;
+}
+
+/**
+ * The real, server-authoritative trust surface. Every function takes the acting `DevActor`
+ * explicitly from the caller — there is no internally-fixed identity, so a caller can never
+ * silently write as one actor and read as another. `caseTrust` is a PER-CASE cache (keyed by
+ * caseId, never a global "all cases" collection — no such bulk endpoint exists).
+ */
+export interface GovernedTrust {
+  caseTrust: Record<string, CaseTrustState>;
+  loadCaseTrust: (caseId: string, actor: DevActor) => Promise<void>;
+  authorCase: (caseId: string, actor: DevActor) => Promise<GovernedActionResult>;
+  establishBaseline: (
+    caseId: string,
+    actor: DevActor,
+    input: EstablishGovernedBaselineInput,
+  ) => Promise<{ ok: true; baseline: BaselineSnapshotDTO } | { ok: false; error: string }>;
+  recordIntervention: (caseId: string, actor: DevActor) => Promise<GovernedActionResult>;
+  ingestEvidence: (
+    caseId: string,
+    actor: DevActor,
+    input: IngestGovernedEvidenceInput,
+  ) => Promise<{ ok: true; evidence: EvidenceRecordDTO } | { ok: false; error: string }>;
+  approveProof: (
+    caseId: string,
+    actor: DevActor,
+    proofId: string,
+    input: ApproveGovernedProofInput,
+  ) => Promise<GovernedActionResult>;
+}
+
 interface RecoveryContextValue {
   events: RecoveryEvent[];
   // --- Provisional Case workflow (in-flight; never a source of proven money) ---
@@ -142,6 +227,8 @@ interface RecoveryContextValue {
   approveProof: (caseId: string, input: ApproveProofInput) => ApproveResult;
   /** A refund/chargeback/dispute → a NEW linked record; the original Proof is never touched. */
   reverseProof: (chainId: string, reason: string, approver?: Actor) => ApproveResult;
+  // --- EP-9 · Governed (real backend) trust surface ---
+  governed: GovernedTrust;
 }
 
 const Ctx = createContext<RecoveryContextValue | null>(null);
@@ -555,6 +642,123 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // --- EP-9 · Governed (real backend) trust surface — additive, never touches state above ---
+  const [caseTrust, setCaseTrust] = useState<Record<string, CaseTrustState>>({});
+
+  const loadCaseTrust = useCallback(async (caseId: string, actor: DevActor): Promise<void> => {
+    setCaseTrust((prev) => ({ ...prev, [caseId]: { ...(prev[caseId] ?? EMPTY_CASE_TRUST), status: "loading" } }));
+    try {
+      const [governedBaselines, governedEvidence, auditTrail, cfoExport] = await Promise.all([
+        trust.listBaselines(caseId, actor),
+        trust.listEvidence(caseId, actor),
+        trust.getCaseAuditTrail(caseId, actor),
+        trust.getCfoExport(caseId, actor),
+      ]);
+      setCaseTrust((prev) => ({
+        ...prev,
+        [caseId]: {
+          status: "loaded",
+          baselines: governedBaselines,
+          evidence: governedEvidence,
+          auditTrail,
+          cfoExport,
+        },
+      }));
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to load governed case data.";
+      setCaseTrust((prev) => ({ ...prev, [caseId]: { ...(prev[caseId] ?? EMPTY_CASE_TRUST), status: "error", error: message } }));
+    }
+  }, []);
+
+  const authorCaseGoverned = useCallback(
+    async (caseId: string, actor: DevActor): Promise<GovernedActionResult> => {
+      try {
+        await trust.authorCase(caseId, actor);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof ApiError ? err.message : "Failed to author case." };
+      }
+    },
+    [],
+  );
+
+  const establishBaselineGoverned = useCallback(
+    async (
+      caseId: string,
+      actor: DevActor,
+      input: EstablishGovernedBaselineInput,
+    ): Promise<{ ok: true; baseline: BaselineSnapshotDTO } | { ok: false; error: string }> => {
+      try {
+        const baseline = await trust.establishBaseline(caseId, actor, {
+          baselineId: mkId(`BL-${caseId}`),
+          ...input,
+        });
+        return { ok: true, baseline };
+      } catch (err) {
+        return { ok: false, error: err instanceof ApiError ? err.message : "Failed to establish baseline." };
+      }
+    },
+    [],
+  );
+
+  const recordInterventionGoverned = useCallback(
+    async (caseId: string, actor: DevActor): Promise<GovernedActionResult> => {
+      try {
+        await trust.recordIntervention(caseId, actor);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof ApiError ? err.message : "Failed to record intervention." };
+      }
+    },
+    [],
+  );
+
+  const ingestEvidenceGoverned = useCallback(
+    async (
+      caseId: string,
+      actor: DevActor,
+      input: IngestGovernedEvidenceInput,
+    ): Promise<{ ok: true; evidence: EvidenceRecordDTO } | { ok: false; error: string }> => {
+      try {
+        const evidence = await trust.ingestEvidence(caseId, actor, {
+          evidenceId: mkId(`EV-${caseId}`),
+          ...input,
+        });
+        return { ok: true, evidence };
+      } catch (err) {
+        return { ok: false, error: err instanceof ApiError ? err.message : "Failed to ingest evidence." };
+      }
+    },
+    [],
+  );
+
+  const approveProofGoverned = useCallback(
+    async (
+      caseId: string,
+      actor: DevActor,
+      proofId: string,
+      input: ApproveGovernedProofInput,
+    ): Promise<GovernedActionResult> => {
+      try {
+        await trust.approveProof(actor, { proofId, recoveryCaseId: caseId, ...input });
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof ApiError ? err.message : "Failed to approve proof." };
+      }
+    },
+    [],
+  );
+
+  const governed: GovernedTrust = {
+    caseTrust,
+    loadCaseTrust,
+    authorCase: authorCaseGoverned,
+    establishBaseline: establishBaselineGoverned,
+    recordIntervention: recordInterventionGoverned,
+    ingestEvidence: ingestEvidenceGoverned,
+    approveProof: approveProofGoverned,
+  };
+
   const value: RecoveryContextValue = {
     events,
     assignOwner,
@@ -577,6 +781,7 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
     approvalBlockers,
     approveProof,
     reverseProof,
+    governed,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
