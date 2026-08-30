@@ -236,9 +236,15 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
     await act(async () => {
       nativeSetter.call(actingAsSelect!, "approver");
       actingAsSelect!.dispatchEvent(new Event("change", { bubbles: true }));
-      // Let the effect's async governed.loadCaseTrust (fetch → real server → state update) resolve.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Bounded poll, not a fixed tick count: the effect's async governed.loadCaseTrust fires
+      // four parallel real requests (through the fetch shim -> app.inject() -> Postgres) whose
+      // real I/O latency in CI is not something two fixed setTimeout(…, 0) ticks can guarantee
+      // to outlast. Polls every 25ms up to 5s; if the state never lands, the assertion below
+      // fails with a clear, honest message instead of a flaky pass/fail on timing alone.
+      const deadline = Date.now() + 5000;
+      while (!container.innerHTML.includes(PROOF_ID) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
     });
 
     expect(container.innerHTML).toContain(PROOF_ID); // PF-RE-1014, read from the real audit trail
