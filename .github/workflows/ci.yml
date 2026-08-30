@@ -39,3 +39,57 @@ jobs:
 
       - name: Strict build (type-checked)
         run: npm run build
+
+  postgres-integration:
+    name: EP-9 Postgres-backed verification
+    # EP-9.1 · Runs the real governed-backend suites against an ephemeral, pinned
+    # Postgres service container — the two DB-backed suites otherwise skip themselves
+    # (describe.skipIf(!process.env.DATABASE_URL)) and never actually execute. This job
+    # never touches the `verify` job above or its gates; it only adds a second,
+    # independent gate. Credentials below are runner-local, test-only values fixed in
+    # this file — never a GitHub secret, never anything resembling production access.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # No PostgreSQL version is specified anywhere else in this repository (schema/
+        # migrations/docs); 16 is assumed as a currently-supported, conservative LTS
+        # major version, pinned explicitly (never `latest`).
+        image: postgres:16
+        env:
+          POSTGRES_USER: ep9_test
+          POSTGRES_PASSWORD: ep9_test_only
+          POSTGRES_DB: ep9_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ep9_test:ep9_test_only@localhost:5432/ep9_test?schema=public
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Portable suite with Postgres available (executes the EP-9 governed-path test)
+        # Same command as the `verify` job's test step — with DATABASE_URL now set, the
+        # describe.skipIf(!HAS_DB) block in src/App.guidedDemo.test.ts executes instead
+        # of skipping. No test file, skip condition, or assertion is changed here.
+        run: npm run test
+
+      - name: EP-2/EP-9 persistence suite (test:ep2)
+        run: npm run test:ep2
+
