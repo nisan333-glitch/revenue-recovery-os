@@ -9,7 +9,8 @@
 import { getProofById, getCaseProofs } from "../persistence/proofStore";
 import { authorityFor, type AuthorityRecord } from "../auth/authorityStore";
 import { requireCan, firstInterveneEvent } from "../auth/authorityGate";
-import { getBaselineSnapshot } from "../persistence/baselineStore";
+import { getBaselineSnapshot, getBaselinesForCase, type BaselineSnapshot } from "../persistence/baselineStore";
+import { getEvidenceForCase, type IngestedEvidence } from "../persistence/evidenceStore";
 import type { ActorContext } from "../auth/identity";
 import { NotFoundError } from "../http/errors";
 import { prisma } from "../db";
@@ -199,4 +200,22 @@ export async function cfoAuditExport(actor: ActorContext, recoveryCaseId: string
     authorityTrail: await authorityFor(recoveryCaseId),
     chain: await Promise.all(proofs.map((p) => reconstruct(p, excluded))),
   };
+}
+
+/**
+ * EP-9 · The full, immutable baseline history for a case (governed read — same AuditRead gate
+ * as every other provenance surface). Returns every snapshot ever established, in order,
+ * including superseded ones — the frontend must never be given only "the latest."
+ */
+export async function listCaseBaselines(actor: ActorContext, recoveryCaseId: string): Promise<BaselineSnapshot[]> {
+  requireCan(actor, "AuditRead");
+  return getBaselinesForCase(recoveryCaseId);
+}
+
+/** EP-9 · Every evidence record ingested for a case (governed read, same AuditRead gate). The
+ * classification fields (`evidenceRole`, `trustClassification`) are returned exactly as
+ * derived at ingestion — this function does not and cannot recompute or alter them. */
+export async function listCaseEvidence(actor: ActorContext, recoveryCaseId: string): Promise<IngestedEvidence[]> {
+  requireCan(actor, "AuditRead");
+  return getEvidenceForCase(recoveryCaseId);
 }
