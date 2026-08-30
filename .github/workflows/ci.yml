@@ -28,7 +28,7 @@ jobs:
       - name: Install (locked)
         run: npm ci
 
-      - name: Domain-core purity (Constitution: pure, UI-independent core)
+      - name: "Domain-core purity (Constitution: pure, UI-independent core)"
         run: npm run check:purity
 
       - name: Foundation guarantees — unit + invariant tests
