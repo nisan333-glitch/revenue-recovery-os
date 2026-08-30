@@ -133,16 +133,27 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
       },
     });
     await app.inject({ method: "POST", url: `/cases/${CASE_ID}/intervention`, headers: authorHeaders });
+    // EP-9.1 fix: confidenceUsed (81) is >= CURRENT_POLICY.proofThreshold (80), so this approval
+    // is an auditable-tier claim — the server (server/services/proofService.ts) requires at
+    // least one OUTCOME-role evidence reference substantiating the full collected amount for
+    // that tier, not merely an independent one. Only billing/invoice_paid|payment_received
+    // derive to "outcome" role (server/domain/evidenceRole.ts) — the legacy local seed's
+    // product/usage_activation_event reference was never subject to this real server-side gate,
+    // only the domain kernel's own trustClassification check, which product/usage-activation
+    // still satisfies as "independent". Using the same billing/invoice_paid pattern already
+    // relied on by server/test/fixtures.ts's own seedAuditableCase().
     const evidence = await app.inject({
       method: "POST",
       url: `/cases/${CASE_ID}/evidence`,
       headers: authorHeaders,
       payload: {
         evidenceId: `EV-${CASE_ID}-src`,
-        sourceSystem: "product",
+        sourceSystem: "billing",
         sourceRecordId: "UA-7781",
-        evidenceType: "usage_activation_event",
+        evidenceType: "invoice_paid",
         observedAt: "2026-06-02T09:05:00.000Z",
+        amountMinor: 1_320_000,
+        currency: "USD",
       },
     });
     if (evidence.statusCode !== 201) {
