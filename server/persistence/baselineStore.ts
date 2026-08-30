@@ -80,3 +80,17 @@ export async function getBaselineSnapshot(baselineId: string): Promise<BaselineS
   const row = await prisma.baselineSnapshot.findUnique({ where: { baselineId } });
   return row ? rowToSnapshot(row) : null;
 }
+
+/**
+ * EP-9 · The FULL immutable baseline history for a case, oldest first — every snapshot ever
+ * established, including any later superseded by a correction. Never collapses to "latest
+ * only": a superseded snapshot is exactly as much a part of the provable history as the
+ * current one, and hiding it would misrepresent what a proof was actually approved against.
+ */
+export async function getBaselinesForCase(recoveryCaseId: string): Promise<BaselineSnapshot[]> {
+  const rows = await prisma.baselineSnapshot.findMany({
+    where: { recoveryCaseId },
+    orderBy: { lockedAt: "asc" },
+  });
+  return rows.map(rowToSnapshot);
+}
