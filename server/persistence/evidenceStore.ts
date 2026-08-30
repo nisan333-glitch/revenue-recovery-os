@@ -114,3 +114,14 @@ export async function getEvidenceByIds(
   });
   return rows.map(rowToEvidence);
 }
+
+/** EP-9 · Every evidence record ever ingested for a case, oldest first — for provenance
+ * display (source, role, independence, ingestion actor/time). Read-only; the classification
+ * fields on each record were derived once, at ingestion, and are never recomputed here. */
+export async function getEvidenceForCase(recoveryCaseId: string): Promise<IngestedEvidence[]> {
+  const rows = await prisma.evidenceRecord.findMany({
+    where: { recoveryCaseId },
+    orderBy: { ingestedAt: "asc" },
+  });
+  return rows.map(rowToEvidence);
+}
