@@ -172,6 +172,26 @@ export function buildApp(): FastifyInstance {
     },
   );
 
+  // EP-9 · Full baseline history for a case (governed read; plural — never "latest only").
+  app.get<{ Params: { caseId: string } }>(
+    "/cases/:caseId/baselines",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      return reply.send(await auditService.listCaseBaselines(actor, req.params.caseId));
+    },
+  );
+
+  // EP-9 · Every evidence record ingested for a case (governed read).
+  app.get<{ Params: { caseId: string } }>(
+    "/cases/:caseId/evidence",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = actorFromRequest(req);
+      return reply.send(await auditService.listCaseEvidence(actor, req.params.caseId));
+    },
+  );
+
   // EP-8.1 · H2: provenance-bearing reads are governed (AuditRead) exactly like `/audit/*` —
   // a beneficiary (author/operator) may not read frozen proof provenance through this path either.
   app.get<{ Params: { proofId: string } }>(
