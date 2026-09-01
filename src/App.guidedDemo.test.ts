@@ -214,44 +214,53 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
     await prisma.$disconnect();
   });
 
-  it("switching to the Finance Approver reveals RE-1014's real governed proof (PF-RE-1014)", async () => {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
+  it(
+    "switching to the Finance Approver reveals RE-1014's real governed proof (PF-RE-1014)",
+    async () => {
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
 
-    await act(async () => {
-      root.render(createElement(RecoveryProvider, null, createElement(App, { initialModule: "demo" })));
-    });
+      await act(async () => {
+        root.render(createElement(RecoveryProvider, null, createElement(App, { initialModule: "demo" })));
+      });
 
-    // The "Acting as" selector is the one <select> whose options include "Finance Approver" —
-    // located by visible text, not by internal structure/test ids, matching how a real user
-    // would find it.
-    const selects = Array.from(container.querySelectorAll("select"));
-    const actingAsSelect = selects.find((s) => s.innerHTML.includes("Finance Approver"));
-    expect(actingAsSelect).toBeTruthy();
+      // The "Acting as" selector is the one <select> whose options include "Finance Approver" —
+      // located by visible text, not by internal structure/test ids, matching how a real user
+      // would find it.
+      const selects = Array.from(container.querySelectorAll("select"));
+      const actingAsSelect = selects.find((s) => s.innerHTML.includes("Finance Approver"));
+      expect(actingAsSelect).toBeTruthy();
 
-    // Native-setter + dispatchEvent: the standard way to drive a React-controlled <select> without
-    // a testing-library dependency (React tracks the native value setter, not a raw property set).
-    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")!.set!;
-    await act(async () => {
-      nativeSetter.call(actingAsSelect!, "approver");
-      actingAsSelect!.dispatchEvent(new Event("change", { bubbles: true }));
-      // Bounded poll, not a fixed tick count: the effect's async governed.loadCaseTrust fires
-      // four parallel real requests (through the fetch shim -> app.inject() -> Postgres) whose
-      // real I/O latency in CI is not something two fixed setTimeout(…, 0) ticks can guarantee
-      // to outlast. Polls every 25ms up to 5s; if the state never lands, the assertion below
-      // fails with a clear, honest message instead of a flaky pass/fail on timing alone.
-      const deadline = Date.now() + 5000;
-      while (!container.innerHTML.includes(PROOF_ID) && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-    });
+      // Native-setter + dispatchEvent: the standard way to drive a React-controlled <select> without
+      // a testing-library dependency (React tracks the native value setter, not a raw property set).
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")!.set!;
+      await act(async () => {
+        nativeSetter.call(actingAsSelect!, "approver");
+        actingAsSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+        // Bounded poll, not a fixed tick count: the effect's async governed.loadCaseTrust fires
+        // four parallel real requests (through the fetch shim -> app.inject() -> Postgres) whose
+        // real I/O latency in CI is not something two fixed setTimeout(…, 0) ticks can guarantee
+        // to outlast. Polls every 25ms up to 10s — kept safely under this test's own 15s timeout
+        // (below) so a genuine non-arrival fails with this loop's own clear assertion message,
+        // not a generic "Test timed out" from the harness's default 5000ms racing it.
+        const deadline = Date.now() + 10000;
+        while (!container.innerHTML.includes(PROOF_ID) && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      });
 
-    expect(container.innerHTML).toContain(PROOF_ID); // PF-RE-1014, read from the real audit trail
+      expect(container.innerHTML).toContain(PROOF_ID); // PF-RE-1014, read from the real audit trail
 
-    root.unmount();
-    container.remove();
-  });
+      root.unmount();
+      container.remove();
+    },
+    // `npm run test` has no vitest.config.ts, so it runs on Vitest's bare default test timeout
+    // (5000ms) — too tight for a real Postgres-backed async load in CI. test:ep2 already raises
+    // this to 20000ms (vitest.ep2.config.ts) for the same reason; this single DB-backed test
+    // needs the same headroom, so it gets its own explicit timeout rather than a global one.
+    15000,
+  );
 });
 
 describe("Mission #010 · Increment 3 — observable two-ledger guard across the demo → CFO path", () => {
