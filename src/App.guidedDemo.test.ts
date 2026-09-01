@@ -100,12 +100,19 @@ const HAS_DB = !!process.env.DATABASE_URL;
 describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend)", () => {
   let app: import("fastify").FastifyInstance;
   let originalFetch: typeof fetch;
+  let originalActEnvironment: unknown;
 
   const CASE_ID = "RE-1014";
   const PROOF_ID = `PF-${CASE_ID}`;
   const OWNER = "Dana Levy";
 
   beforeAll(async () => {
+    // Without this, React logs "The current testing environment is not configured to support
+    // act(...)" and does not reliably flush state updates driven by real async I/O (the fetch
+    // shim -> app.inject() -> Postgres round trip below) within act() — restored in afterAll.
+    originalActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }).IS_REACT_ACT_ENVIRONMENT;
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }).IS_REACT_ACT_ENVIRONMENT = true;
+
     const { buildApp } = await import("../server/app");
     app = buildApp();
     await app.ready();
@@ -209,6 +216,7 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
 
   afterAll(async () => {
     globalThis.fetch = originalFetch;
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }).IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
     await app.close();
     const { prisma } = await import("../server/db");
     await prisma.$disconnect();
@@ -234,32 +242,32 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
 
       // Native-setter + dispatchEvent: the standard way to drive a React-controlled <select> without
       // a testing-library dependency (React tracks the native value setter, not a raw property set).
+      // Kept in its own short act() — the async governed.loadCaseTrust load it triggers is polled
+      // for below, outside this act(), so React can flush each round's state update in between.
       const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")!.set!;
       await act(async () => {
         nativeSetter.call(actingAsSelect!, "approver");
         actingAsSelect!.dispatchEvent(new Event("change", { bubbles: true }));
-        // Bounded poll, not a fixed tick count: the effect's async governed.loadCaseTrust fires
-        // four parallel real requests (through the fetch shim -> app.inject() -> Postgres) whose
-        // real I/O latency in CI is not something two fixed setTimeout(…, 0) ticks can guarantee
-        // to outlast. Polls every 25ms up to 10s — kept safely under this test's own 15s timeout
-        // (below) so a genuine non-arrival fails with this loop's own clear assertion message,
-        // not a generic "Test timed out" from the harness's default 5000ms racing it.
-        const deadline = Date.now() + 10000;
-        while (!container.innerHTML.includes(PROOF_ID) && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
       });
+
+      // Bounded poll, not a fixed tick count: the effect's async governed.loadCaseTrust fires
+      // four parallel real requests (through the fetch shim -> app.inject() -> Postgres) whose
+      // real I/O latency in CI is not something a fixed tick count can guarantee to outlast.
+      // Each round is its own act() so React flushes the real fetch's eventual state update
+      // between polls, rather than deferring every update until one enclosing act() resolves.
+      const deadline = Date.now() + 4000;
+      while (!container.innerHTML.includes(PROOF_ID) && Date.now() < deadline) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        });
+      }
 
       expect(container.innerHTML).toContain(PROOF_ID); // PF-RE-1014, read from the real audit trail
 
       root.unmount();
       container.remove();
     },
-    // `npm run test` has no vitest.config.ts, so it runs on Vitest's bare default test timeout
-    // (5000ms) — too tight for a real Postgres-backed async load in CI. test:ep2 already raises
-    // this to 20000ms (vitest.ep2.config.ts) for the same reason; this single DB-backed test
-    // needs the same headroom, so it gets its own explicit timeout rather than a global one.
-    15000,
+    10000,
   );
 });
 
