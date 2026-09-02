@@ -134,7 +134,10 @@ jobs:
         run: |
           set -eu
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/health)
-          test "$code" = "200" || { echo "::error::/health returned $code, expected 200"; exit 1; }
+          if [ "$code" != "200" ]; then
+            echo "::error::/health returned $code, expected 200"
+            exit 1
+          fi
 
       - name: Verify the SPA root is served
         run: |
@@ -142,9 +145,14 @@ jobs:
           resp=$(curl -s -w '\n%{http_code}' http://127.0.0.1:4000/)
           code=$(printf '%s' "$resp" | tail -n1)
           body=$(printf '%s' "$resp" | sed '$d')
-          test "$code" = "200" || { echo "::error::/ returned $code, expected 200"; exit 1; }
-          printf '%s' "$body" | grep -q '<div id="root">' \
-            || { echo "::error::/ did not return the built SPA shell"; exit 1; }
+          if [ "$code" != "200" ]; then
+            echo "::error::/ returned $code, expected 200"
+            exit 1
+          fi
+          if ! printf '%s' "$body" | grep -q '<div id="root">'; then
+            echo "::error::/ did not return the built SPA shell"
+            exit 1
+          fi
 
       - name: Verify an unauthenticated /api/* request reaches Fastify (401)
         # Proves /api/* is routed into the real governed API (actorFromRequest rejects it),
@@ -153,8 +161,10 @@ jobs:
         run: |
           set -eu
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/cases/RE-1014/proofs)
-          test "$code" = "401" \
-            || { echo "::error::unauthenticated /api/* returned $code, expected 401"; exit 1; }
+          if [ "$code" != "401" ]; then
+            echo "::error::unauthenticated /api/* returned $code, expected 401"
+            exit 1
+          fi
 
       - name: Verify an unknown /api/* route returns JSON 404 (never the SPA shell)
         run: |
@@ -162,21 +172,45 @@ jobs:
           resp=$(curl -s -w '\n%{http_code}' http://127.0.0.1:4000/api/this-route-does-not-exist)
           code=$(printf '%s' "$resp" | tail -n1)
           body=$(printf '%s' "$resp" | sed '$d')
-          test "$code" = "404" || { echo "::error::unknown /api/* returned $code, expected 404"; exit 1; }
-          printf '%s' "$body" | grep -qi '<!doctype html' \
-            && { echo "::error::unknown /api/* returned the SPA shell, expected JSON"; exit 1; }
-          printf '%s' "$body" | grep -q '"error"' \
-            || { echo "::error::unknown /api/* body was not the expected JSON error shape"; exit 1; }
+          if [ "$code" != "404" ]; then
+            echo "::error::unknown /api/* returned $code, expected 404"
+            exit 1
+          fi
+          if printf '%s' "$body" | grep -qi '<!doctype html'; then
+            echo "::error::unknown /api/* returned the SPA shell, expected JSON"
+            exit 1
+          fi
+          if ! printf '%s' "$body" | grep -q '"error"'; then
+            echo "::error::unknown /api/* body was not the expected JSON error shape"
+            exit 1
+          fi
 
       - name: Verify a missing static asset returns JSON 404 (never the SPA shell)
+        # NOTE: each condition here uses an explicit if/fi, not `grep ... && { exit 1; }` — under
+        # `set -e`, a `&&`-guarded block as the LAST command of a script is not exempt from -e
+        # just because it is the right-hand side of `&&`: if the left-hand command (grep) is the
+        # one that ends up determining the whole statement's exit status (i.e. it finds no match,
+        # so the right-hand side never runs), and this is the final statement in the script, that
+        # non-zero status aborts the step even though "no match" is the PASSING outcome here. This
+        # bit the first version of this job (CI run 33596662848): this exact check failed with no
+        # output at all, even though the app's behavior was already independently proven correct
+        # both by server/productionServer.test.ts (run against real Postgres in the
+        # postgres-integration job) and by direct manual verification. An `if` condition's test
+        # expression is always exempt from `set -e`, regardless of position, so it doesn't have
+        # this hazard.
         run: |
           set -eu
           resp=$(curl -s -w '\n%{http_code}' http://127.0.0.1:4000/assets/this-file-does-not-exist.js)
           code=$(printf '%s' "$resp" | tail -n1)
           body=$(printf '%s' "$resp" | sed '$d')
-          test "$code" = "404" || { echo "::error::missing static asset returned $code, expected 404"; exit 1; }
-          printf '%s' "$body" | grep -qi '<!doctype html' \
-            && { echo "::error::missing static asset returned the SPA shell, expected JSON"; exit 1; }
+          if [ "$code" != "404" ]; then
+            echo "::error::missing static asset returned $code, expected 404"
+            exit 1
+          fi
+          if printf '%s' "$body" | grep -qi '<!doctype html'; then
+            echo "::error::missing static asset returned the SPA shell, expected JSON"
+            exit 1
+          fi
 
       - name: Verify an unknown UI route returns the SPA shell (client-side route refresh)
         run: |
@@ -184,9 +218,14 @@ jobs:
           resp=$(curl -s -w '\n%{http_code}' http://127.0.0.1:4000/queue/some-case-id)
           code=$(printf '%s' "$resp" | tail -n1)
           body=$(printf '%s' "$resp" | sed '$d')
-          test "$code" = "200" || { echo "::error::unknown UI route returned $code, expected 200"; exit 1; }
-          printf '%s' "$body" | grep -q '<div id="root">' \
-            || { echo "::error::unknown UI route did not return the SPA shell"; exit 1; }
+          if [ "$code" != "200" ]; then
+            echo "::error::unknown UI route returned $code, expected 200"
+            exit 1
+          fi
+          if ! printf '%s' "$body" | grep -q '<div id="root">'; then
+            echo "::error::unknown UI route did not return the SPA shell"
+            exit 1
+          fi
 
       - name: Diagnostics
         if: failure()
