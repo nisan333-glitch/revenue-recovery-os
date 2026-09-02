@@ -1,0 +1,63 @@
+# EP-10 · Private Pilot Runtime — LOCAL / SINGLE SUPERVISED PILOT USE ONLY.
+#
+# The credentials below are fixed, non-secret, local-only placeholders for exactly one
+# supervised pilot deployment. Do NOT reuse this file, or these values, for any
+# internet-facing, multi-tenant, or production environment: there is no authentication in
+# front of the app (EP-10 explicitly does not add one — see server/auth/actorContext.ts),
+# and Postgres here has no TLS and a placeholder password. See the README "Private pilot
+# runtime" section before deploying this anywhere reachable by untrusted users.
+#
+# Network posture: Postgres is never exposed to the host (no `ports:` on `db` — only other
+# containers on this compose network can reach it) and the app is published to the host's
+# loopback interface only (127.0.0.1), never 0.0.0.0 — so nothing outside this machine can
+# reach either service, matching "private pilot," not "public."
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pilot
+      POSTGRES_PASSWORD: pilot_only_change_me
+      POSTGRES_DB: revenue_recovery_pilot
+    volumes:
+      - pilot_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pilot -d revenue_recovery_pilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-off: applies the existing, unmodified Prisma migrations, then exits. `app` below
+  # only starts once this completes successfully — never against an unmigrated database.
+  migrate:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://pilot:pilot_only_change_me@db:5432/revenue_recovery_pilot?schema=public"
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: "postgresql://pilot:pilot_only_change_me@db:5432/revenue_recovery_pilot?schema=public"
+      PORT: "4000"
+      # HOST=0.0.0.0 here binds only inside the container's own isolated network namespace —
+      # it does NOT expose the app beyond this machine. The actual "127.0.0.1 only" guarantee
+      # is the host-side bind below (`127.0.0.1:4000:4000`): Docker's published-port NAT can
+      # only forward to a container's internal 0.0.0.0/interface IP, never to its loopback, so
+      # binding the app itself to 127.0.0.1 here would make it unreachable through the published
+      # port at all (verification below — curl from the host — would fail). The host-side
+      # 127.0.0.1 prefix is the control that actually keeps this off the network.
+      HOST: "0.0.0.0"
+    ports:
+      - "127.0.0.1:4000:4000"
+
+volumes:
+  pilot_db_data:
