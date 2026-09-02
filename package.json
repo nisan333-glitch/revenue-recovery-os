@@ -9,6 +9,7 @@
     "dev": "vite",
     "dev:server": "vite-node server/index.ts",
     "build": "tsc -b && vite build",
+    "build:server": "tsc -p tsconfig.server.json && node scripts/mark-server-commonjs.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -18,8 +19,10 @@
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
+    "@fastify/static": "^8.3.0",
     "@prisma/client": "^6.19.3",
     "fastify": "^5.10.0",
+    "prisma": "^6.19.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -32,7 +35,6 @@
     "jsdom": "^26.1.0",
     "playwright": "^1.61.0",
     "postcss": "^8.4.49",
-    "prisma": "^6.19.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",

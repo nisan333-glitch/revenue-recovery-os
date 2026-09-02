@@ -25,10 +25,31 @@ import {
   ingestEvidenceSchema,
 } from "./http/schemas";
 
+// EP-10 · Requests that arrived with a leading "/api" and were rewritten below — kept so
+// the production server's SPA-fallback handler can tell "an unmatched /api/* call" (must
+// 404 as JSON) apart from "an unmatched UI route" (gets the SPA shell) even though, by the
+// time a not-found handler runs, the URL itself no longer carries the prefix. A WeakSet
+// keyed on the raw request releases each entry once that request is garbage-collected.
+export const apiPrefixedRequests = new WeakSet<object>();
+
 export function buildApp(): FastifyInstance {
   // removeAdditional:false so `additionalProperties:false` REJECTS (400) an injected
   // field — e.g. a counted `revenueReturned` — instead of silently stripping it.
-  const app = Fastify({ logger: false, ajv: { customOptions: { removeAdditional: false } } });
+  const app = Fastify({
+    logger: false,
+    ajv: { customOptions: { removeAdditional: false } },
+    // EP-10 · The frontend's apiClient calls same-origin `/api/...`; every route below is
+    // registered unprefixed (as it always was, and as tests still call it via `.inject()`).
+    // Stripping a leading "/api" here — instead of registering every route twice — is a
+    // no-op for any path that doesn't start with "/api/", so it changes nothing for existing
+    // `.inject()` calls (none of which use that prefix).
+    rewriteUrl(req) {
+      const url = req.url ?? "/";
+      if (!url.startsWith("/api/")) return url;
+      apiPrefixedRequests.add(req);
+      return url.slice(4);
+    },
+  });
   registerErrorHandler(app);
 
   // Public health probes — no authentication.
