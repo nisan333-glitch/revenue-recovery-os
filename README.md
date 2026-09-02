@@ -105,3 +105,49 @@ only then does it appear in the **CFO Proof View**, with a full **Audit Trail**.
 cases already carry approved Proofs. The *expected recoverable* forecast stays separate from the
 proven number throughout. Use **Reset demo data** in the sidebar to restore the seed. State
 persists across refreshes.
+
+## Private pilot runtime
+
+> ⚠️ **Private, supervised pilot use only — not safe for public exposure or multi-tenant
+> production.** This packaging (Docker image + `docker-compose.yml`) runs the real React
+> SPA, the real Fastify API, and real PostgreSQL together as one deployable unit, for a
+> single supervised pilot customer. It does **not** add authentication — identity is still
+> the `x-actor-id` / `x-actor-role` dev-header mechanism in
+> `server/auth/actorContext.ts`, which is explicitly documented there as *not* production
+> authentication. `docker-compose.yml`'s database credentials are fixed, local-only
+> placeholders, clearly labeled as such in that file. Do not point this at the public
+> internet, and do not use it to serve more than one customer's data at a time.
+
+Start the whole stack (SPA + API + PostgreSQL, migrations applied automatically before the
+app starts):
+
+```bash
+docker compose up --build
+```
+
+The app is reachable **only from this machine**, at `http://127.0.0.1:4000` (the compose
+file binds it to the host's loopback interface only — never `0.0.0.0` — and publishes no
+port for PostgreSQL at all). Check it's healthy:
+
+```bash
+curl http://127.0.0.1:4000/health   # -> {"status":"ok"}
+curl http://127.0.0.1:4000/ready    # -> {"db":"up"} once PostgreSQL is ready
+```
+
+Stop and remove the stack:
+
+```bash
+docker compose down
+```
+
+Add `-v` (`docker compose down -v`) if you also want to delete the PostgreSQL data volume
+between pilots.
+
+### How this differs from `npm run dev`
+
+- `npm run dev` (Vite) + `npm run dev:server` (Fastify, separate terminal) is still how you
+  work on the product day to day — Vite's dev server proxies `/api/*` to Fastify
+  (`vite.config.ts`), so both must be running for the governed backend calls to resolve.
+- The Docker/Compose path is the **packaged** equivalent for a pilot: one process
+  (`server/productionServer.ts`, compiled to plain JavaScript — no TypeScript dev runner in
+  the image) serves the built SPA, `/api/*`, and `/health` + `/ready` all from one origin.
