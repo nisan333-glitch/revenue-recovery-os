@@ -2,8 +2,12 @@ import type { CandidateSignal } from "./types";
 
 const CANDIDATE_SIGNAL_KEYS = new Set<keyof CandidateSignal>([
   "signalId",
+  "boundaryId",
   "recoveryType",
   "sourceRef",
+  "sourcePayloadHash",
+  "detectorVersion",
+  "observedAt",
   "amountAtRiskMinor",
   "currency",
   "actionAvailable",
@@ -38,11 +42,29 @@ export function assertCandidateSignal(value: unknown): asserts value is Candidat
     throw new Error(`CandidateSignal contains forbidden fields: ${unknownKeys.sort().join(", ")}`);
   }
 
-  const nonEmptyStrings = ["signalId", "recoveryType", "sourceRef", "expectedProofEvent"] as const;
+  const nonEmptyStrings = [
+    "signalId",
+    "boundaryId",
+    "recoveryType",
+    "sourceRef",
+    "detectorVersion",
+    "expectedProofEvent",
+  ] as const;
   for (const field of nonEmptyStrings) {
     if (typeof candidate[field] !== "string" || !(candidate[field] as string).trim()) {
       throw new Error(`CandidateSignal.${field} must be a non-empty string`);
     }
+  }
+  if (typeof candidate.sourcePayloadHash !== "string" || !/^[a-f0-9]{64}$/.test(candidate.sourcePayloadHash)) {
+    throw new Error("CandidateSignal.sourcePayloadHash must be a lowercase SHA-256 digest");
+  }
+  if (
+    typeof candidate.observedAt !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(candidate.observedAt) ||
+    !Number.isFinite(Date.parse(candidate.observedAt)) ||
+    new Date(candidate.observedAt).toISOString() !== candidate.observedAt
+  ) {
+    throw new Error("CandidateSignal.observedAt must be a valid ISO timestamp");
   }
   if (typeof candidate.currency !== "string" || !/^[A-Z]{3}$/.test(candidate.currency)) {
     throw new Error("CandidateSignal.currency must be a three-letter uppercase currency code");
@@ -66,6 +88,9 @@ export function canBeCase(
 ): AdmissionDecision {
   if (!signal.signalId.trim() || !signal.sourceRef.trim()) {
     return { admitted: false, reason: "stable signal identity and source reference are required" };
+  }
+  if (!signal.boundaryId.trim()) {
+    return { admitted: false, reason: "tenant or workspace boundary is required" };
   }
   if (signal.recoveryType !== policy.recoveryType) {
     return { admitted: false, reason: "signal recovery type does not match the admission policy" };

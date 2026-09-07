@@ -17,7 +17,7 @@ function cycle(expectationAt: string, observationAt: string | null): Expectation
     currency: "USD",
     statusRaw: null,
     attributes: {},
-    monetaryEvent: { dueAt: "2026-02-15", amount: money(100_00, "USD"), paidAt: null, paidAmount: null, refunded: false, cancelled: false },
+    monetaryEvent: { dueAt: "2026-02-15", amount: money(100_00, "USD"), paidAt: null, paidAmount: null, refundedAt: null, cancelledAt: null },
   };
 }
 const policy = (asOf: string, n = 30) => makePolicy({ stallThresholdDays: n, asOf, currency: "USD" });

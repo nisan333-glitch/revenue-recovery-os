@@ -47,6 +47,10 @@ export function makePolicy(input: {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.asOf)) {
     throw new Error(`AssessmentPolicy: asOf must be an ISO date YYYY-MM-DD (got ${JSON.stringify(input.asOf)})`);
   }
+  const asOfDate = new Date(`${input.asOf}T00:00:00.000Z`);
+  if (!Number.isFinite(asOfDate.getTime()) || asOfDate.toISOString().slice(0, 10) !== input.asOf) {
+    throw new Error(`AssessmentPolicy: asOf must be a real calendar date (got ${JSON.stringify(input.asOf)})`);
+  }
   if (!input.currency) throw new Error("AssessmentPolicy: currency is required");
   // Validate + normalize BEFORE the currency can reach any money/formatting logic.
   const currency = input.currency.trim().toUpperCase();

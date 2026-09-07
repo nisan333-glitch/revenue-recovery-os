@@ -11,8 +11,12 @@ export type AgentTaskStatus =
 
 export interface CandidateSignal {
   readonly signalId: string;
+  readonly boundaryId: string;
   readonly recoveryType: string;
   readonly sourceRef: string;
+  readonly sourcePayloadHash: string;
+  readonly detectorVersion: string;
+  readonly observedAt: string;
   readonly amountAtRiskMinor: number;
   readonly currency: string;
   readonly actionAvailable: boolean;
@@ -21,6 +25,7 @@ export interface CandidateSignal {
 
 export interface AgentTask {
   readonly taskId: string;
+  readonly boundaryId: string;
   readonly agentId: string;
   readonly idempotencyKey: string;
   readonly payload: Readonly<Record<string, unknown>>;
@@ -38,7 +43,7 @@ export interface AgentHandler {
   readonly agentId: string;
   run(
     payload: Readonly<Record<string, unknown>>,
-    context: { readonly taskId: string; readonly attempt: number },
+    context: { readonly taskId: string; readonly boundaryId: string; readonly attempt: number },
   ): Promise<readonly CandidateSignal[]>;
 }
 
@@ -57,6 +62,7 @@ export interface AgentPolicyProvider {
 export interface AgentTaskStore {
   enqueueIfAbsent(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
     readonly agentId: string;
     readonly idempotencyKey: string;
     readonly payload: Readonly<Record<string, unknown>>;

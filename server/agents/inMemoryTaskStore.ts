@@ -15,19 +15,21 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
 
   async enqueueIfAbsent(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
     readonly agentId: string;
     readonly idempotencyKey: string;
     readonly payload: Readonly<Record<string, unknown>>;
     readonly now: number;
   }): Promise<{ readonly task: AgentTask; readonly created: boolean }> {
-    const dedupeKey = `${input.agentId}:${input.idempotencyKey}`;
+    const dedupeKey = `${input.boundaryId}:${input.agentId}:${input.idempotencyKey}`;
     const existingId = this.taskByIdempotency.get(dedupeKey);
     if (existingId) return { task: snapshot(this.requireTask(existingId)), created: false };
-    if (!input.taskId.trim() || !input.agentId.trim() || !input.idempotencyKey.trim()) {
-      throw new Error("taskId, agentId and idempotencyKey are required");
+    if (!input.taskId.trim() || !input.boundaryId.trim() || !input.agentId.trim() || !input.idempotencyKey.trim()) {
+      throw new Error("taskId, boundaryId, agentId and idempotencyKey are required");
     }
     const task: MutableTask = {
       taskId: input.taskId,
+      boundaryId: input.boundaryId,
       agentId: input.agentId,
       idempotencyKey: input.idempotencyKey,
       payload: Object.freeze({ ...input.payload }),

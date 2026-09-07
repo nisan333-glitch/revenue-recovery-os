@@ -98,6 +98,30 @@ describe("saasActivation adapter — mapping and exclusions", () => {
     expect(sameActivation.kind).toBe("cycle");
   });
 
+  it("fails closed on unknown boolean values", () => {
+    expect(toCycle(raw({ ...base, next_invoice_paid: "maybe" }), policy))
+      .toMatchObject({ exclusion: { reason: "invalid_boolean" } });
+    expect(toCycle(raw({ ...base, is_test: "unknown" }), policy))
+      .toMatchObject({ exclusion: { reason: "invalid_boolean" } });
+  });
+
+  it("rejects impossible or contradictory payment amounts", () => {
+    expect(toCycle(raw({ ...base, paid_amount: "-1.00" }), policy))
+      .toMatchObject({ exclusion: { reason: "negative_amount" } });
+    expect(toCycle(raw({ ...base, paid_amount: "10000.01" }), policy))
+      .toMatchObject({ exclusion: { reason: "paid_amount_exceeds_obligation" } });
+    expect(toCycle(raw({ ...base, next_invoice_paid_at: "2026-02-01", paid_amount: "0" }), policy))
+      .toMatchObject({ exclusion: { reason: "inconsistent_payment_data" } });
+  });
+
+  it("requires effective dates for refund and cancellation states", () => {
+    expect(toCycle(raw({ ...base, refunded: "true" }), policy))
+      .toMatchObject({ exclusion: { reason: "undated_terminal_state" } });
+    const out = toCycle(raw({ ...base, refunded: "true", refunded_at: "2026-02-15" }), policy);
+    if (out.kind !== "cycle") throw new Error("expected cycle");
+    expect(out.cycle.monetaryEvent.refundedAt).toBe("2026-02-15");
+  });
+
   it("preserves Unicode entity and cycle identifiers", () => {
     const out = toCycle(raw({ ...base, entity_id: " Acmé—Ünïçødé ", subscription_id: "SUB‑✓‑Ω" }), policy);
     if (out.kind !== "cycle") throw new Error("expected cycle");

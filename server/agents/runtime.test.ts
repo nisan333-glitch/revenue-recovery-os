@@ -6,8 +6,12 @@ import type { AgentAuditEvent, AgentHandler, AgentPolicySnapshot, CandidateSigna
 
 const SIGNAL: CandidateSignal = {
   signalId: "sig-1",
+  boundaryId: "tenant-1",
   recoveryType: "ActivationMissed",
   sourceRef: "crm:account-1",
+  sourcePayloadHash: "a".repeat(64),
+  detectorVersion: "activation-detector@1.0.0",
+  observedAt: "2026-09-07T00:00:00.000Z",
   amountAtRiskMinor: 50_000,
   currency: "USD",
   actionAvailable: true,
@@ -42,7 +46,7 @@ function harness() {
 }
 
 async function enqueue(store: InMemoryAgentTaskStore, taskId = "task-1", idempotencyKey = "source-1") {
-  return store.enqueueIfAbsent({ taskId, agentId: "activation-detector", idempotencyKey, payload: { batch: 1 }, now: 1_000 });
+  return store.enqueueIfAbsent({ taskId, boundaryId: "tenant-1", agentId: "activation-detector", idempotencyKey, payload: { batch: 1 }, now: 1_000 });
 }
 
 function handler(run: AgentHandler["run"]): AgentHandler {
@@ -65,6 +69,32 @@ describe("Agent Runtime Foundation v0.1", () => {
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.task.taskId).toBe("task-1");
+  });
+
+  it("does not deduplicate the same source across tenant boundaries", async () => {
+    const h = harness();
+    const first = await enqueue(h.store, "task-1", "same-source");
+    const second = await h.store.enqueueIfAbsent({
+      taskId: "task-2",
+      boundaryId: "tenant-2",
+      agentId: "activation-detector",
+      idempotencyKey: "same-source",
+      payload: { batch: 1 },
+      now: 1_000,
+    });
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(true);
+  });
+
+  it("rejects a signal emitted for a different tenant boundary", async () => {
+    const h = harness();
+    await enqueue(h.store);
+    const result = await h.runtime.runNext(
+      handler(async () => [{ ...SIGNAL, boundaryId: "tenant-2" }]),
+      "worker-a",
+    );
+    expect(result).toMatchObject({ status: "retry_wait", result: null });
+    expect(result?.lastError).toMatch(/boundary/i);
   });
 
   it("stores detector output as CandidateSignals without performing governed actions", async () => {

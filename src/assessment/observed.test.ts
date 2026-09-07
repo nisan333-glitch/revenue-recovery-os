@@ -26,8 +26,8 @@ function stalledCycle(
       amount: money(amountMinor, currency),
       paidAt: ev.paidAt ?? null,
       paidAmount: ev.paidAmount ?? null,
-      refunded: ev.refunded ?? false,
-      cancelled: ev.cancelled ?? false,
+      refundedAt: ev.refundedAt ?? null,
+      cancelledAt: ev.cancelledAt ?? null,
     },
   };
 }
@@ -54,8 +54,8 @@ describe("observedSummary — only eligible Unpaid enters the headline; buckets 
       [
         stalledCycle("u1", 100_00), // Unpaid → headline
         stalledCycle("pp", 100_00, { paidAt: "2026-02-05", paidAmount: money(40_00, "USD") }), // Partial
-        stalledCycle("rf", 80_00, { paidAt: "2026-02-05", refunded: true }), // Refunded
-        stalledCycle("cx", 70_00, { cancelled: true }), // Cancelled
+        stalledCycle("rf", 80_00, { paidAt: "2026-02-05", refundedAt: "2026-02-10" }), // Refunded
+        stalledCycle("cx", 70_00, { cancelledAt: "2026-02-10" }), // Cancelled
         stalledCycle("uk", 0), // Unknown (non-positive)
       ],
       policy,

@@ -43,9 +43,18 @@ export class AgentRuntime {
     });
 
     try {
-      const signals = await handler.run(task.payload, { taskId: task.taskId, attempt: task.attempt });
+      const signals = await handler.run(task.payload, {
+        taskId: task.taskId,
+        boundaryId: task.boundaryId,
+        attempt: task.attempt,
+      });
       if (!Array.isArray(signals)) throw new Error("agent output must be an array of CandidateSignals");
-      for (const signal of signals) assertCandidateSignal(signal);
+      for (const signal of signals) {
+        assertCandidateSignal(signal);
+        if (signal.boundaryId !== task.boundaryId) {
+          throw new Error("CandidateSignal boundary does not match the claimed task boundary");
+        }
+      }
       const afterRun = this.deps.policy.current();
       const stoppedAfterRun = this.stopReason(handler.agentId, afterRun);
       if (stoppedAfterRun) {
