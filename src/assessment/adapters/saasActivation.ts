@@ -7,7 +7,7 @@
 import type { AssessmentPolicy } from "../policy";
 import type { ExclusionRecord, ExpectationCycle, RowOutcome } from "../types";
 import type { RawRow } from "../parse";
-import { normalizeDate, type DateLocale } from "../dateNormalize";
+import { normalizeDate, isAfter, type DateLocale } from "../dateNormalize";
 import { normalizeAmount, type AmountFormat } from "../amountNormalize";
 import { fromDecimal, isNegative, isPositive } from "../../domain/money";
 
@@ -119,11 +119,21 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
   if (!signed.ok) return exclude(id, signed.reason, `signed_at: ${signed.detail}`);
   const due = normalizeDate(c["next_invoice_due_at"]!, { locale: opts.locale });
   if (!due.ok) return exclude(id, due.reason, `next_invoice_due_at: ${due.detail}`);
+  // An invoice due date cannot precede the contract that creates the obligation to invoice it —
+  // this is a real-world impossibility (data error), never a legitimate cycle. Equal dates are
+  // allowed (same-day signature and first invoice is a real, if tight, pattern).
+  if (isAfter(signed.iso, due.iso)) {
+    return exclude(id, "impossible_date_sequence", `next_invoice_due_at (${due.iso}) precedes signed_at (${signed.iso})`);
+  }
 
   let observationAt: string | null = null;
   if ((c["activation_at"] ?? "").trim() !== "") {
     const act = normalizeDate(c["activation_at"]!, { locale: opts.locale });
     if (!act.ok) return exclude(id, act.reason, `activation_at: ${act.detail}`);
+    // Same reasoning: a customer cannot activate before signing.
+    if (isAfter(signed.iso, act.iso)) {
+      return exclude(id, "impossible_date_sequence", `activation_at (${act.iso}) precedes signed_at (${signed.iso})`);
+    }
     observationAt = act.iso;
   }
 

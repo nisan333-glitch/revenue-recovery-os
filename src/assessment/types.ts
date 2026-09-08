@@ -57,6 +57,7 @@ export type ExclusionReason =
   | "missing_required_field"
   | "malformed_date"
   | "ambiguous_date"
+  | "impossible_date_sequence"
   | "invalid_amount"
   | "ambiguous_amount"
   | "zero_amount"

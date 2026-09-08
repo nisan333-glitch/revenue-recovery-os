@@ -63,7 +63,9 @@ describe("saasActivation adapter — mapping and exclusions", () => {
 
   it("rejects ambiguous dates without a locale, accepts with one", () => {
     expect(toCycle(raw({ ...base, signed_at: "02/03/2026" }), policy)).toMatchObject({ exclusion: { reason: "ambiguous_date" } });
-    const ok = toCycle(raw({ ...base, signed_at: "02/03/2026" }), policy, { locale: "DMY" });
+    // DMY resolves signed_at to 2026-03-02 — past base's 2026-02-01 due date, so the due date is
+    // pushed out here too (independent of the ambiguity being tested).
+    const ok = toCycle(raw({ ...base, signed_at: "02/03/2026", next_invoice_due_at: "2026-04-01" }), policy, { locale: "DMY" });
     expect(ok.kind).toBe("cycle");
   });
 
@@ -77,6 +79,23 @@ describe("saasActivation adapter — mapping and exclusions", () => {
   it("excludes zero and negative amounts explicitly", () => {
     expect(toCycle(raw({ ...base, next_invoice_amount: "0.00" }), policy)).toMatchObject({ exclusion: { reason: "zero_amount" } });
     expect(toCycle(raw({ ...base, next_invoice_amount: "-5.00" }), policy)).toMatchObject({ exclusion: { reason: "negative_amount" } });
+  });
+
+  it("excludes an impossible date sequence: invoice due before the contract was signed", () => {
+    const out = toCycle(raw({ ...base, signed_at: "2026-02-01", next_invoice_due_at: "2026-01-01" }), policy);
+    expect(out).toMatchObject({ kind: "excluded", exclusion: { reason: "impossible_date_sequence" } });
+  });
+
+  it("excludes an impossible date sequence: activation before the contract was signed", () => {
+    const out = toCycle(raw({ ...base, signed_at: "2026-01-15", activation_at: "2026-01-01" }), policy);
+    expect(out).toMatchObject({ kind: "excluded", exclusion: { reason: "impossible_date_sequence" } });
+  });
+
+  it("allows same-day signature and due date / activation (not an impossibility)", () => {
+    const sameDue = toCycle(raw({ ...base, signed_at: "2026-01-01", next_invoice_due_at: "2026-01-01" }), policy);
+    expect(sameDue.kind).toBe("cycle");
+    const sameActivation = toCycle(raw({ ...base, signed_at: "2026-01-01", activation_at: "2026-01-01" }), policy);
+    expect(sameActivation.kind).toBe("cycle");
   });
 
   it("preserves Unicode entity and cycle identifiers", () => {
