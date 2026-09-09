@@ -5,7 +5,7 @@
 // request body directly. Immutable at the DB level (append-only triggers). A correction
 // is a NEW row (`supersedes`) — the prior snapshot, and every proof that already stamped
 // it, is never touched or reinterpreted.
-import { prisma } from "../db";
+import { prisma, type DbClient } from "../db";
 
 export interface EstablishBaselineInput {
   baselineId: string;
@@ -55,9 +55,16 @@ function rowToSnapshot(r: Row): BaselineSnapshot {
   };
 }
 
-/** Establish and lock a baseline snapshot in a single insert (the DB clock stamps lockedAt). */
-export async function establishAndLockBaseline(input: EstablishBaselineInput): Promise<BaselineSnapshot> {
-  const row = await prisma.baselineSnapshot.create({
+/**
+ * Establish and lock a baseline snapshot in a single insert (the DB clock stamps lockedAt).
+ * EP-11 · `client` carries the halt gate's open transaction so this INSERT and the "case is not
+ * halted" test are one atomic unit (services/caseGuard.ts).
+ */
+export async function establishAndLockBaseline(
+  input: EstablishBaselineInput,
+  client: DbClient = prisma,
+): Promise<BaselineSnapshot> {
+  const row = await client.baselineSnapshot.create({
     data: {
       baselineId: input.baselineId,
       recoveryCaseId: input.recoveryCaseId,

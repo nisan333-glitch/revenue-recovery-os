@@ -6,7 +6,7 @@
 //    (server/domain/evidenceRole.ts), a server-only concept beside the domain's.
 // `observedAt` is recorded (falsifiable against sourceRecordId) but is a CLAIMED fact —
 // it is never used as the positive timing signal. `ingestedAt` (the DB clock) is.
-import { prisma } from "../db";
+import { prisma, type DbClient } from "../db";
 import { makeEvidence } from "../../src/domain/evidence";
 import { deriveEvidenceRole, ROLE_MAP_VERSION } from "../domain/evidenceRole";
 
@@ -68,7 +68,11 @@ function rowToEvidence(r: Row): IngestedEvidence {
  * Ingest one evidence item. Independence and outcome-role are both DERIVED server-side —
  * the caller supplies only raw, falsifiable facts (source system/record/type/amount).
  */
-export async function ingestEvidence(input: IngestEvidenceInput): Promise<IngestedEvidence> {
+export async function ingestEvidence(
+  input: IngestEvidenceInput,
+  // EP-11 · the halt gate's open transaction, so ingestion and the halt test are atomic.
+  client: DbClient = prisma,
+): Promise<IngestedEvidence> {
   const derived = makeEvidence({
     evidenceId: input.evidenceId,
     evidenceType: input.evidenceType,
@@ -81,7 +85,7 @@ export async function ingestEvidence(input: IngestEvidenceInput): Promise<Ingest
   });
   const role = deriveEvidenceRole(input.sourceSystem, input.evidenceType);
 
-  const row = await prisma.evidenceRecord.create({
+  const row = await client.evidenceRecord.create({
     data: {
       evidenceId: input.evidenceId,
       recoveryCaseId: input.recoveryCaseId,

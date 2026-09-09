@@ -1,6 +1,6 @@
 // EP-4 · Authority ledger persistence. Append-only (enforced by DB triggers); it is
 // the audit record of who did what, in which role, on which case, under which policy.
-import { prisma } from "../db";
+import { prisma, type DbClient } from "../db";
 import type { ActorContext, GovernedAction } from "./identity";
 
 export interface AuthorityRecord {
@@ -11,13 +11,19 @@ export interface AuthorityRecord {
   at: Date;
 }
 
+/**
+ * EP-11 · `client` lets the caller write this ledger row inside an OPEN transaction — the halt
+ * gate (services/caseGuard.ts) passes its transaction so the "case is not halted" test and this
+ * INSERT commit or roll back together. Defaults to the singleton for ungoverned callers.
+ */
 export async function recordAuthority(
   recoveryCaseId: string,
   actor: ActorContext,
   action: GovernedAction,
   policyVersion: string,
+  client: DbClient = prisma,
 ): Promise<void> {
-  await prisma.authorityEvent.create({
+  await client.authorityEvent.create({
     data: {
       id: `AE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       recoveryCaseId,

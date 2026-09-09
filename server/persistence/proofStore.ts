@@ -8,7 +8,7 @@
 //  * Writes are INSERT-only. There is no update path. A correction INSERTs a new
 //    linked revision; the original row is never touched. The DB triggers reject any
 //    UPDATE/DELETE that tries to bypass this.
-import { prisma } from "../db";
+import { prisma, type DbClient } from "../db";
 import {
   createApprovedProof,
   reviseProof,
@@ -108,32 +108,49 @@ function authorityRow(a: AuthorityWrite) {
 /**
  * Approve a proof: the kernel computes and freezes the number; the proof row AND its
  * authority-ledger record are written in ONE transaction — both commit or both roll back.
+ *
+ * EP-11 · When `client` is supplied it is an ALREADY-OPEN transaction (the halt gate's — see
+ * services/caseGuard.ts) and the two INSERTs join it, so the "case is not halted" test, the proof
+ * row and the authority row are one atomic unit. With no client, this opens its own transaction
+ * exactly as before — atomicity is never reduced, only widened to include the halt test.
  */
-export async function approveProof(input: ProofApprovalInput, authority: AuthorityWrite): Promise<Proof> {
+export async function approveProof(
+  input: ProofApprovalInput,
+  authority: AuthorityWrite,
+  client?: DbClient,
+): Promise<Proof> {
   const proof = createApprovedProof(input); // revenueReturned computed ONCE by the kernel
-  await prisma.$transaction([
-    prisma.proof.create({ data: proofToRow(proof) }),
-    prisma.authorityEvent.create({ data: authorityRow(authority) }),
-  ]);
+  const write = async (db: DbClient) => {
+    await db.proof.create({ data: proofToRow(proof) });
+    await db.authorityEvent.create({ data: authorityRow(authority) });
+  };
+  if (client) await write(client);
+  else await prisma.$transaction((tx) => write(tx));
   return proof;
 }
 
 /**
  * Correct/reverse a proof: INSERT a new linked revision plus its authority record in ONE
  * transaction. The original is never overwritten.
+ *
+ * EP-11 · `client`, when supplied, is the halt gate's open transaction — the original is then
+ * re-read and the revision written inside it, so a Halt cannot commit between the read and the
+ * INSERT.
  */
 export async function reviseExistingProof(
   originalProofId: string,
   change: ReviseChange,
   authority: AuthorityWrite,
+  client?: DbClient,
 ): Promise<Proof> {
-  const originalRow = await prisma.proof.findUniqueOrThrow({ where: { proofId: originalProofId } });
-  const revised = reviseProof(rowToProof(originalRow), change); // kernel builds the linked revision
-  await prisma.$transaction([
-    prisma.proof.create({ data: proofToRow(revised) }),
-    prisma.authorityEvent.create({ data: authorityRow(authority) }),
-  ]);
-  return revised;
+  const write = async (db: DbClient): Promise<Proof> => {
+    const originalRow = await db.proof.findUniqueOrThrow({ where: { proofId: originalProofId } });
+    const revised = reviseProof(rowToProof(originalRow), change); // kernel builds the linked revision
+    await db.proof.create({ data: proofToRow(revised) });
+    await db.authorityEvent.create({ data: authorityRow(authority) });
+    return revised;
+  };
+  return client ? write(client) : prisma.$transaction((tx) => write(tx));
 }
 
 /**

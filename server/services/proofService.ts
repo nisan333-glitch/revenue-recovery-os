@@ -37,6 +37,7 @@ import {
   AUTHORITY_POLICY_VERSION,
 } from "../auth/authorityGate";
 import { authorityFor } from "../auth/authorityStore";
+import { assertCaseNotHalted, withCaseHalt, withGovernedCaseMutation } from "./caseGuard";
 
 export interface ApproveProofRequest {
   proofId: string;
@@ -84,11 +85,20 @@ export interface IngestEvidenceRequest {
   note?: string;
 }
 
-/** Record a case's author/owner (the beneficiary). Requires the Author permission. */
+/**
+ * Record a case's author/owner (the beneficiary). Requires the Author permission.
+ *
+ * EP-11 · Gate order is deliberate and is the same in every governed mutation below:
+ * least privilege (`requireCan`) → separation of duties → the halt gate. Role denial must
+ * still answer 403 even on a halted case — a Steward attempting to approve is refused because
+ * they may never count, not because the case happens to be halted.
+ */
 export async function authorCase(actor: ActorContext, recoveryCaseId: string): Promise<void> {
   requireCan(actor, "Author");
   await enforceSeparation(recoveryCaseId, actor, "Author");
-  await recordAuthority(recoveryCaseId, actor, "Author", AUTHORITY_POLICY_VERSION);
+  await withGovernedCaseMutation(recoveryCaseId, "Author", (tx) =>
+    recordAuthority(recoveryCaseId, actor, "Author", AUTHORITY_POLICY_VERSION, tx),
+  );
 }
 
 /**
@@ -101,19 +111,24 @@ export async function establishBaseline(
   req: EstablishBaselineRequest,
 ) {
   requireCan(actor, "EstablishBaseline");
-  return establishAndLockBaseline({
-    baselineId: req.baselineId,
-    recoveryCaseId,
-    calculatedMinor: req.calculatedMinor,
-    currency: req.currency,
-    method: req.method,
-    methodVersion: req.methodVersion,
-    sourceRefs: req.sourceRefs,
-    effectiveAt: req.effectiveAt,
-    establishedBy: actor.actorId,
-    establishedByRole: actor.role,
-    supersedes: req.supersedes,
-  });
+  return withGovernedCaseMutation(recoveryCaseId, "EstablishBaseline", (tx) =>
+    establishAndLockBaseline(
+      {
+        baselineId: req.baselineId,
+        recoveryCaseId,
+        calculatedMinor: req.calculatedMinor,
+        currency: req.currency,
+        method: req.method,
+        methodVersion: req.methodVersion,
+        sourceRefs: req.sourceRefs,
+        effectiveAt: req.effectiveAt,
+        establishedBy: actor.actorId,
+        establishedByRole: actor.role,
+        supersedes: req.supersedes,
+      },
+      tx,
+    ),
+  );
 }
 
 /**
@@ -123,7 +138,9 @@ export async function establishBaseline(
  */
 export async function recordIntervention(actor: ActorContext, recoveryCaseId: string): Promise<void> {
   requireCan(actor, "Intervene");
-  await recordAuthority(recoveryCaseId, actor, "Intervene", AUTHORITY_POLICY_VERSION);
+  await withGovernedCaseMutation(recoveryCaseId, "Intervene", (tx) =>
+    recordAuthority(recoveryCaseId, actor, "Intervene", AUTHORITY_POLICY_VERSION, tx),
+  );
 }
 
 /**
@@ -136,24 +153,33 @@ export async function ingestCaseEvidence(
   req: IngestEvidenceRequest,
 ): Promise<IngestedEvidence> {
   requireCan(actor, "IngestEvidence");
-  return ingestEvidence({
-    evidenceId: req.evidenceId,
-    recoveryCaseId,
-    sourceSystem: req.sourceSystem,
-    sourceRecordId: req.sourceRecordId,
-    evidenceType: req.evidenceType,
-    observedAt: req.observedAt,
-    amountMinor: req.amountMinor,
-    currency: req.currency,
-    ingestedBy: actor.actorId,
-    ingestedByRole: actor.role,
-    note: req.note,
-  });
+  return withGovernedCaseMutation(recoveryCaseId, "IngestEvidence", (tx) =>
+    ingestEvidence(
+      {
+        evidenceId: req.evidenceId,
+        recoveryCaseId,
+        sourceSystem: req.sourceSystem,
+        sourceRecordId: req.sourceRecordId,
+        evidenceType: req.evidenceType,
+        observedAt: req.observedAt,
+        amountMinor: req.amountMinor,
+        currency: req.currency,
+        ingestedBy: actor.actorId,
+        ingestedByRole: actor.role,
+        note: req.note,
+      },
+      tx,
+    ),
+  );
 }
 
 /** Approve a governed proof. Authorization + separation + trust gates run before the kernel. */
 export async function approve(actor: ActorContext, req: ApproveProofRequest): Promise<Proof> {
   requireCan(actor, "Approve");
+
+  // EP-11 · Halted cases are refused before the (expensive) trust-gate chain runs. This is the
+  // fast path only — the binding check runs inside the write transaction at the end.
+  await assertCaseNotHalted(req.recoveryCaseId, "Approve");
 
   // C2 · fail closed: an unowned case (no Author event ever recorded) can never be approved.
   // `ownerId === null` must never be silently treated as "no separation conflict."
@@ -277,15 +303,23 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
     confidenceUsed: req.confidenceUsed, // kept, but never alone sufficient — see the gate above
     approvedBy: actor.actorId, // identity from authentication, never from the body
   };
-  // proof row + authority record are written atomically in one transaction.
-  const proof = await approveProof(input, {
-    recoveryCaseId: req.recoveryCaseId,
-    actorId: actor.actorId,
-    role: actor.role,
-    action: "Approve",
-    policyVersion: AUTHORITY_POLICY_VERSION,
-  });
-  return proof;
+  // EP-11 · halt re-check + proof row + authority record are written atomically in ONE
+  // transaction, under the per-case lock. A Halt committed before this point rejects the
+  // approval and leaves NO row behind; a Halt arriving after it commits does not reach back
+  // into an approved proof (immutability).
+  return withGovernedCaseMutation(req.recoveryCaseId, "Approve", (tx) =>
+    approveProof(
+      input,
+      {
+        recoveryCaseId: req.recoveryCaseId,
+        actorId: actor.actorId,
+        role: actor.role,
+        action: "Approve",
+        policyVersion: AUTHORITY_POLICY_VERSION,
+      },
+      tx,
+    ),
+  );
 }
 
 /** Create a linked correction/revision (an approver action; original never overwritten). */
@@ -297,27 +331,32 @@ export async function revise(
   requireCan(actor, "Approve");
   const existing = await getProofById(originalProofId);
   if (!existing) throw new NotFoundError(`proof ${originalProofId} not found`);
+  // EP-11 · a revision is a governed mutation of the case's counted history — a halted case
+  // accepts none. Fast path here; binding re-check inside the transaction below.
+  await assertCaseNotHalted(existing.recoveryCaseId, "Revise");
   await enforceSeparation(existing.recoveryCaseId, actor, "Approve", existing.collectedAmount.minor);
   const currency = req.currency ?? existing.currency;
-  const revised = await reviseExistingProof(
-    originalProofId,
-    {
-      newProofId: req.newProofId,
-      status: req.status,
-      at: new Date().toISOString(), // server-pinned, never client-suppliable
-      approvedBy: actor.actorId,
-      attribution: req.attribution,
-      collectedAmount: req.collectedMinor !== undefined ? money(req.collectedMinor, currency) : undefined,
-    },
-    {
-      recoveryCaseId: existing.recoveryCaseId,
-      actorId: actor.actorId,
-      role: actor.role,
-      action: "Approve",
-      policyVersion: AUTHORITY_POLICY_VERSION,
-    },
+  return withGovernedCaseMutation(existing.recoveryCaseId, "Revise", (tx) =>
+    reviseExistingProof(
+      originalProofId,
+      {
+        newProofId: req.newProofId,
+        status: req.status,
+        at: new Date().toISOString(), // server-pinned, never client-suppliable
+        approvedBy: actor.actorId,
+        attribution: req.attribution,
+        collectedAmount: req.collectedMinor !== undefined ? money(req.collectedMinor, currency) : undefined,
+      },
+      {
+        recoveryCaseId: existing.recoveryCaseId,
+        actorId: actor.actorId,
+        role: actor.role,
+        action: "Approve",
+        policyVersion: AUTHORITY_POLICY_VERSION,
+      },
+      tx,
+    ),
   );
-  return revised;
 }
 
 /** Independently verify a proof (a governance stamp — never changes the counted number). */
@@ -330,16 +369,31 @@ export async function verifyProof(actor: ActorContext, proofId: string): Promise
   return proof;
 }
 
-/** Governance flag — Steward may flag/halt a case; it can never count. */
+/**
+ * Governance flag — Steward may flag/halt a case; it can never count.
+ *
+ * EP-11 · Deliberately NOT halt-gated. Flag/Halt/Exclude and the Verify stamp are oversight
+ * actions that never create or change a counted number; blocking them on a halted case would
+ * strand it — a Steward could halt a case and then be unable to exclude or annotate it.
+ */
 export async function flagCase(actor: ActorContext, recoveryCaseId: string): Promise<void> {
   requireCan(actor, "Flag");
   await recordAuthority(recoveryCaseId, actor, "Flag", AUTHORITY_POLICY_VERSION);
 }
 
-/** Governance halt — Steward may halt a case; it can never count. */
+/**
+ * Governance halt — Steward may halt a case; it can never count.
+ *
+ * EP-11 · Recorded under the SAME per-case advisory lock every governed mutation takes, so
+ * Halt-vs-mutation is serialized rather than racing: see services/caseGuard.ts. Re-halting an
+ * already-halted case is intentionally allowed (idempotent) — the ledger is append-only, and a
+ * second Steward's halt is itself an audit fact worth recording.
+ */
 export async function haltCase(actor: ActorContext, recoveryCaseId: string): Promise<void> {
   requireCan(actor, "Halt");
-  await recordAuthority(recoveryCaseId, actor, "Halt", AUTHORITY_POLICY_VERSION);
+  await withCaseHalt(recoveryCaseId, (tx) =>
+    recordAuthority(recoveryCaseId, actor, "Halt", AUTHORITY_POLICY_VERSION, tx),
+  );
 }
 
 /**
