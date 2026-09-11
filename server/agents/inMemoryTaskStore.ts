@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { assertCandidateSignal } from "./admission";
 import type { AgentTask, AgentTaskStore, CandidateSignal } from "./types";
 
 type MutableTask = {
@@ -6,7 +7,11 @@ type MutableTask = {
 };
 
 function snapshot(task: MutableTask): AgentTask {
-  return Object.freeze({ ...task, payload: Object.freeze({ ...task.payload }), result: task.result ? Object.freeze([...task.result]) : null });
+  return Object.freeze({
+    ...task,
+    payload: Object.freeze({ ...task.payload }),
+    result: task.result ? freezeSignals(task.result) : null,
+  });
 }
 
 export class InMemoryAgentTaskStore implements AgentTaskStore {
@@ -21,12 +26,15 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
     readonly payload: Readonly<Record<string, unknown>>;
     readonly now: number;
   }): Promise<{ readonly task: AgentTask; readonly created: boolean }> {
-    const dedupeKey = `${input.boundaryId}:${input.agentId}:${input.idempotencyKey}`;
+    requireNonBlank("taskId", input.taskId);
+    requireNonBlank("boundaryId", input.boundaryId);
+    requireNonBlank("agentId", input.agentId);
+    requireNonBlank("idempotencyKey", input.idempotencyKey);
+    requireFiniteTime("now", input.now);
+    const dedupeKey = JSON.stringify([input.boundaryId, input.agentId, input.idempotencyKey]);
     const existingId = this.taskByIdempotency.get(dedupeKey);
     if (existingId) return { task: snapshot(this.requireTask(existingId)), created: false };
-    if (!input.taskId.trim() || !input.boundaryId.trim() || !input.agentId.trim() || !input.idempotencyKey.trim()) {
-      throw new Error("taskId, boundaryId, agentId and idempotencyKey are required");
-    }
+    if (this.tasks.has(input.taskId)) throw new Error(`agent task '${input.taskId}' already exists`);
     const task: MutableTask = {
       taskId: input.taskId,
       boundaryId: input.boundaryId,
@@ -35,6 +43,7 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
       payload: Object.freeze({ ...input.payload }),
       status: "queued",
       attempt: 0,
+      fencingEpoch: 0,
       notBefore: input.now,
       leaseOwner: null,
       leaseToken: null,
@@ -48,13 +57,38 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
   }
 
   async claimDue(input: {
+    readonly boundaryId: string;
     readonly agentId: string;
     readonly workerId: string;
     readonly now: number;
     readonly leaseMs: number;
+    readonly maxAttempts: number;
   }): Promise<AgentTask | null> {
+    requireNonBlank("boundaryId", input.boundaryId);
+    requireNonBlank("agentId", input.agentId);
+    requireNonBlank("workerId", input.workerId);
+    requireFiniteTime("now", input.now);
+    requirePositiveInteger("leaseMs", input.leaseMs);
+    requirePositiveInteger("maxAttempts", input.maxAttempts);
+    for (const task of this.tasks.values()) {
+      if (
+        task.boundaryId === input.boundaryId &&
+        task.agentId === input.agentId &&
+        task.attempt >= input.maxAttempts &&
+        (task.status === "retry_wait" ||
+          (task.status === "leased" && task.leaseExpiresAt !== null && task.leaseExpiresAt <= input.now))
+      ) {
+        task.status = "dead_lettered";
+        task.lastError ??= "attempt ceiling reached after lease expiry";
+        task.leaseOwner = null;
+        task.leaseToken = null;
+        task.leaseExpiresAt = null;
+      }
+    }
     const due = [...this.tasks.values()].find((task) =>
+      task.boundaryId === input.boundaryId &&
       task.agentId === input.agentId &&
+      task.attempt < input.maxAttempts &&
       task.notBefore <= input.now &&
       (task.status === "queued" || task.status === "retry_wait" ||
         (task.status === "leased" && task.leaseExpiresAt !== null && task.leaseExpiresAt <= input.now)),
@@ -62,20 +96,31 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
     if (!due) return null;
     due.status = "leased";
     due.attempt += 1;
+    due.fencingEpoch += 1;
     due.leaseOwner = input.workerId;
-    due.leaseToken = randomUUID();
+    due.leaseToken = `${due.fencingEpoch}:${randomUUID()}`;
     due.leaseExpiresAt = input.now + input.leaseMs;
     return snapshot(due);
   }
 
   async succeed(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
+    readonly now: number;
     readonly result: readonly CandidateSignal[];
   }): Promise<AgentTask> {
-    const task = this.requireLease(input.taskId, input.leaseToken);
+    requireFiniteTime("now", input.now);
+    for (const signal of input.result) {
+      assertCandidateSignal(signal);
+      if (signal.boundaryId !== input.boundaryId) {
+        throw new Error("CandidateSignal boundary does not match the task boundary");
+      }
+    }
+    const task = this.requireLease(input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.now);
     task.status = "succeeded";
-    task.result = Object.freeze([...input.result]);
+    task.result = freezeSignals(input.result);
     task.leaseOwner = null;
     task.leaseToken = null;
     task.leaseExpiresAt = null;
@@ -84,13 +129,18 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
 
   async fail(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
     readonly error: string;
     readonly now: number;
     readonly maxAttempts: number;
     readonly retryDelayMs: number;
   }): Promise<AgentTask> {
-    const task = this.requireLease(input.taskId, input.leaseToken);
+    requireFiniteTime("now", input.now);
+    requirePositiveInteger("maxAttempts", input.maxAttempts);
+    requireNonNegativeInteger("retryDelayMs", input.retryDelayMs);
+    const task = this.requireLease(input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.now);
     const terminal = task.attempt >= input.maxAttempts;
     task.status = terminal ? "dead_lettered" : "retry_wait";
     task.notBefore = terminal ? task.notBefore : input.now + input.retryDelayMs;
@@ -103,17 +153,37 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
 
   async release(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
     readonly reason: string;
-    readonly notBefore: number;
+    readonly now: number;
+    readonly retryDelayMs: number;
   }): Promise<AgentTask> {
-    const task = this.requireLease(input.taskId, input.leaseToken);
+    requireFiniteTime("now", input.now);
+    requireNonNegativeInteger("retryDelayMs", input.retryDelayMs);
+    const task = this.requireLease(input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.now);
     task.status = "retry_wait";
-    task.notBefore = input.notBefore;
+    task.notBefore = input.now + input.retryDelayMs;
     task.lastError = input.reason;
     task.leaseOwner = null;
     task.leaseToken = null;
     task.leaseExpiresAt = null;
+    return snapshot(task);
+  }
+
+  async renewLease(input: {
+    readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
+    readonly leaseToken: string;
+    readonly now: number;
+    readonly leaseMs: number;
+  }): Promise<AgentTask> {
+    requireFiniteTime("now", input.now);
+    requirePositiveInteger("leaseMs", input.leaseMs);
+    const task = this.requireLease(input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.now);
+    task.leaseExpiresAt = input.now + input.leaseMs;
     return snapshot(task);
   }
 
@@ -128,11 +198,48 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
     return task;
   }
 
-  private requireLease(taskId: string, leaseToken: string): MutableTask {
+  private requireLease(
+    taskId: string,
+    boundaryId: string,
+    workerId: string,
+    leaseToken: string,
+    now: number,
+  ): MutableTask {
     const task = this.requireTask(taskId);
-    if (task.status !== "leased" || task.leaseToken !== leaseToken) {
-      throw new Error("stale or invalid task lease");
+    if (
+      task.boundaryId !== boundaryId ||
+      task.status !== "leased" ||
+      task.leaseOwner !== workerId ||
+      task.leaseToken !== leaseToken ||
+      task.leaseExpiresAt === null ||
+      task.leaseExpiresAt <= now
+    ) {
+      throw new Error("stale, expired, cross-boundary, or invalid task lease");
     }
     return task;
+  }
+}
+
+function freezeSignals(signals: readonly CandidateSignal[]): readonly CandidateSignal[] {
+  return Object.freeze(signals.map((signal) => Object.freeze({ ...signal })));
+}
+
+function requireNonBlank(name: string, value: string): void {
+  if (!value.trim()) throw new Error(`${name} is required`);
+}
+
+function requireFiniteTime(name: string, value: number): void {
+  if (!Number.isFinite(value)) throw new Error(`${name} must be finite`);
+}
+
+function requirePositiveInteger(name: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive safe integer`);
+  }
+}
+
+function requireNonNegativeInteger(name: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
   }
 }

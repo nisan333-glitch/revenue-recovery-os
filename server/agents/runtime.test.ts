@@ -92,6 +92,7 @@ describe("Agent Runtime Foundation v0.1", () => {
     const result = await h.runtime.runNext(
       handler(async () => [{ ...SIGNAL, boundaryId: "tenant-2" }]),
       "worker-a",
+      "tenant-1",
     );
     expect(result).toMatchObject({ status: "retry_wait", result: null });
     expect(result?.lastError).toMatch(/boundary/i);
@@ -100,7 +101,7 @@ describe("Agent Runtime Foundation v0.1", () => {
   it("stores detector output as CandidateSignals without performing governed actions", async () => {
     const h = harness();
     await enqueue(h.store);
-    const result = await h.runtime.runNext(handler(async () => [SIGNAL]), "worker-a");
+    const result = await h.runtime.runNext(handler(async () => [SIGNAL]), "worker-a", "tenant-1");
     expect(result?.status).toBe("succeeded");
     expect(result?.result).toEqual([SIGNAL]);
     expect(h.events.map((event) => event.kind)).toEqual(["task.claimed", "task.succeeded"]);
@@ -111,7 +112,7 @@ describe("Agent Runtime Foundation v0.1", () => {
     await enqueue(h.store);
     const poisoned = { ...SIGNAL, revenueReturnedMinor: 50_000 } as CandidateSignal;
     expect(() => assertCandidateSignal(poisoned)).toThrow(/forbidden fields/i);
-    const result = await h.runtime.runNext(handler(async () => [poisoned]), "worker-a");
+    const result = await h.runtime.runNext(handler(async () => [poisoned]), "worker-a", "tenant-1");
     expect(result?.status).toBe("retry_wait");
     expect(result?.result).toBeNull();
     expect(result?.lastError).toMatch(/revenueReturnedMinor/);
@@ -121,34 +122,34 @@ describe("Agent Runtime Foundation v0.1", () => {
     const h = harness();
     await enqueue(h.store);
     const failing = handler(async () => { throw new Error("source unavailable"); });
-    expect((await h.runtime.runNext(failing, "worker-a"))?.status).toBe("retry_wait");
-    expect(await h.runtime.runNext(failing, "worker-a")).toBeNull();
+    expect((await h.runtime.runNext(failing, "worker-a", "tenant-1"))?.status).toBe("retry_wait");
+    expect(await h.runtime.runNext(failing, "worker-a", "tenant-1")).toBeNull();
     h.advance(10);
-    expect((await h.runtime.runNext(failing, "worker-a"))?.status).toBe("retry_wait");
+    expect((await h.runtime.runNext(failing, "worker-a", "tenant-1"))?.status).toBe("retry_wait");
     h.advance(20);
-    expect((await h.runtime.runNext(failing, "worker-a"))?.status).toBe("dead_lettered");
+    expect((await h.runtime.runNext(failing, "worker-a", "tenant-1"))?.status).toBe("dead_lettered");
     expect(h.store.get("task-1")?.attempt).toBe(3);
   });
 
   it("reclaims an expired lease and rejects stale-worker completion", async () => {
     const h = harness();
     await enqueue(h.store);
-    const first = await h.store.claimDue({ agentId: "activation-detector", workerId: "worker-a", now: 1_000, leaseMs: 100 });
+    const first = await h.store.claimDue({ boundaryId: "tenant-1", agentId: "activation-detector", workerId: "worker-a", now: 1_000, leaseMs: 100, maxAttempts: 3 });
     expect(first?.status).toBe("leased");
-    const second = await h.store.claimDue({ agentId: "activation-detector", workerId: "worker-b", now: 1_101, leaseMs: 100 });
+    const second = await h.store.claimDue({ boundaryId: "tenant-1", agentId: "activation-detector", workerId: "worker-b", now: 1_101, leaseMs: 100, maxAttempts: 3 });
     expect(second?.attempt).toBe(2);
-    await expect(h.store.succeed({ taskId: "task-1", leaseToken: first!.leaseToken!, result: [] })).rejects.toThrow(/stale/i);
-    await expect(h.store.succeed({ taskId: "task-1", leaseToken: second!.leaseToken!, result: [] })).resolves.toMatchObject({ status: "succeeded" });
+    await expect(h.store.succeed({ taskId: "task-1", boundaryId: "tenant-1", workerId: "worker-a", leaseToken: first!.leaseToken!, now: 1_101, result: [] })).rejects.toThrow(/stale/i);
+    await expect(h.store.succeed({ taskId: "task-1", boundaryId: "tenant-1", workerId: "worker-b", leaseToken: second!.leaseToken!, now: 1_101, result: [] })).resolves.toMatchObject({ status: "succeeded" });
   });
 
   it("global and per-agent kill switches prevent claims", async () => {
     const h = harness();
     await enqueue(h.store);
     h.setPolicy({ ...h.getPolicy(), globalEnabled: false });
-    expect(await h.runtime.runNext(handler(async () => [SIGNAL]), "worker-a")).toBeNull();
+    expect(await h.runtime.runNext(handler(async () => [SIGNAL]), "worker-a", "tenant-1")).toBeNull();
     expect(h.store.get("task-1")?.attempt).toBe(0);
     h.setPolicy({ ...h.getPolicy(), globalEnabled: true, disabledAgents: new Set(["activation-detector"]) });
-    expect(await h.runtime.runNext(handler(async () => [SIGNAL]), "worker-a")).toBeNull();
+    expect(await h.runtime.runNext(handler(async () => [SIGNAL]), "worker-a", "tenant-1")).toBeNull();
     expect(h.store.get("task-1")?.attempt).toBe(0);
   });
 
@@ -158,7 +159,7 @@ describe("Agent Runtime Foundation v0.1", () => {
     const result = await h.runtime.runNext(handler(async () => {
       h.setPolicy({ ...h.getPolicy(), globalEnabled: false });
       return [SIGNAL];
-    }), "worker-a");
+    }), "worker-a", "tenant-1");
     expect(result?.status).toBe("retry_wait");
     expect(result?.result).toBeNull();
     expect(h.events.at(-1)?.kind).toBe("task.released");

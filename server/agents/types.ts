@@ -31,6 +31,7 @@ export interface AgentTask {
   readonly payload: Readonly<Record<string, unknown>>;
   readonly status: AgentTaskStatus;
   readonly attempt: number;
+  readonly fencingEpoch: number;
   readonly notBefore: number;
   readonly leaseOwner: string | null;
   readonly leaseToken: string | null;
@@ -70,20 +71,27 @@ export interface AgentTaskStore {
   }): Promise<{ readonly task: AgentTask; readonly created: boolean }>;
 
   claimDue(input: {
+    readonly boundaryId: string;
     readonly agentId: string;
     readonly workerId: string;
     readonly now: number;
     readonly leaseMs: number;
+    readonly maxAttempts: number;
   }): Promise<AgentTask | null>;
 
   succeed(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
+    readonly now: number;
     readonly result: readonly CandidateSignal[];
   }): Promise<AgentTask>;
 
   fail(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
     readonly error: string;
     readonly now: number;
@@ -93,18 +101,30 @@ export interface AgentTaskStore {
 
   release(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
     readonly reason: string;
-    readonly notBefore: number;
+    readonly now: number;
+    readonly retryDelayMs: number;
+  }): Promise<AgentTask>;
+
+  renewLease(input: {
+    readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
+    readonly leaseToken: string;
+    readonly now: number;
+    readonly leaseMs: number;
   }): Promise<AgentTask>;
 }
 
 export type AgentAuditEvent =
-  | { readonly kind: "agent.skipped"; readonly agentId: string; readonly reason: string; readonly at: number }
-  | { readonly kind: "task.claimed"; readonly agentId: string; readonly taskId: string; readonly attempt: number; readonly at: number }
-  | { readonly kind: "task.succeeded"; readonly agentId: string; readonly taskId: string; readonly signalCount: number; readonly at: number }
-  | { readonly kind: "task.failed"; readonly agentId: string; readonly taskId: string; readonly terminal: boolean; readonly at: number }
-  | { readonly kind: "task.released"; readonly agentId: string; readonly taskId: string; readonly reason: string; readonly at: number };
+  | { readonly kind: "agent.skipped"; readonly boundaryId: string; readonly agentId: string; readonly reason: string; readonly at: number }
+  | { readonly kind: "task.claimed"; readonly boundaryId: string; readonly agentId: string; readonly taskId: string; readonly workerId: string; readonly attempt: number; readonly fencingEpoch: number; readonly at: number }
+  | { readonly kind: "task.succeeded"; readonly boundaryId: string; readonly agentId: string; readonly taskId: string; readonly workerId: string; readonly signalCount: number; readonly fencingEpoch: number; readonly at: number }
+  | { readonly kind: "task.failed"; readonly boundaryId: string; readonly agentId: string; readonly taskId: string; readonly workerId: string; readonly terminal: boolean; readonly fencingEpoch: number; readonly at: number }
+  | { readonly kind: "task.released"; readonly boundaryId: string; readonly agentId: string; readonly taskId: string; readonly workerId: string; readonly reason: string; readonly fencingEpoch: number; readonly at: number };
 
 export interface AgentAuditSink {
   append(event: AgentAuditEvent): Promise<void>;

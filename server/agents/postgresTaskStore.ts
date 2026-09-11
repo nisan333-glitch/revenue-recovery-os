@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AgentTask, AgentTaskStore, AgentTaskStatus, CandidateSignal } from "./types";
 import { assertCandidateSignal } from "./admission";
+import type { AgentTask, AgentTaskStatus, AgentTaskStore, CandidateSignal } from "./types";
 
 export interface AgentTaskQueryResult<Row> {
   readonly rows: readonly Row[];
@@ -26,13 +26,23 @@ interface TaskRow extends Record<string, unknown> {
   payload: unknown;
   status: string;
   attempt: number;
-  not_before_ms: string | number;
+  fencing_epoch: string | number | bigint;
+  not_before_ms: string | number | bigint;
   lease_owner: string | null;
   lease_token: string | null;
-  lease_expires_at_ms: string | number | null;
+  lease_expires_at_ms: string | number | bigint | null;
   result: unknown;
   last_error: string | null;
 }
+
+type DurableTaskEventKind =
+  | "task.enqueued"
+  | "task.claimed"
+  | "task.lease_renewed"
+  | "task.succeeded"
+  | "task.retry_scheduled"
+  | "task.released"
+  | "task.dead_lettered";
 
 function taskColumns(alias: string): string {
   return `
@@ -43,6 +53,7 @@ function taskColumns(alias: string): string {
     ${alias}.payload,
     ${alias}.status,
     ${alias}.attempt,
+    ${alias}.fencing_epoch,
     floor(extract(epoch FROM ${alias}.not_before) * 1000)::bigint AS not_before_ms,
     ${alias}.lease_owner,
     ${alias}.lease_token,
@@ -62,11 +73,12 @@ const VALID_STATUSES = new Set<AgentTaskStatus>([
 ]);
 
 /**
- * Durable AgentTaskStore backed by PostgreSQL.
+ * Durable, boundary-scoped AgentTaskStore backed by PostgreSQL.
  *
- * The database adapter deliberately exposes only parameterized queries and an
- * explicit transaction boundary. A pg/Prisma-specific adapter can implement
- * these two small interfaces without coupling the runtime contract to a driver.
+ * Every state transition and its audit event share one database transaction. PostgreSQL's
+ * clock is authoritative for due checks, leases, heartbeat renewal and retry scheduling;
+ * worker clock skew cannot create an already-expired lease. Fencing uses both the monotonic
+ * epoch embedded in the capability token and the worker/boundary identity.
  */
 export class PostgresAgentTaskStore implements AgentTaskStore {
   constructor(private readonly database: AgentTaskSqlDatabase) {}
@@ -91,15 +103,16 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
            task_id, boundary_id, agent_id, idempotency_key, payload, status, attempt,
            not_before, fencing_epoch, created_at, updated_at
          ) VALUES ($1, $2, $3, $4, $5::jsonb, 'queued', 0,
-                   to_timestamp($6::double precision / 1000.0), 0,
-                   clock_timestamp(), clock_timestamp())
+                   clock_timestamp(), 0, clock_timestamp(), clock_timestamp())
          ON CONFLICT (boundary_id, agent_id, idempotency_key) DO NOTHING
          RETURNING ${taskColumns("task")}`,
-        [input.taskId, input.boundaryId, input.agentId, input.idempotencyKey, JSON.stringify(input.payload), input.now],
+        [input.taskId, input.boundaryId, input.agentId, input.idempotencyKey, JSON.stringify(input.payload)],
       );
 
       if (inserted.rowCount === 1) {
-        return { task: mapTask(oneRow(inserted, "enqueue insert")), created: true };
+        const row = oneRow(inserted, "enqueue insert");
+        await appendTaskEvent(client, row, "task.enqueued", null, {});
+        return { task: mapTask(row), created: true };
       }
 
       const existing = await client.query<TaskRow>(
@@ -114,29 +127,62 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
   }
 
   async claimDue(input: {
+    readonly boundaryId: string;
     readonly agentId: string;
     readonly workerId: string;
     readonly now: number;
     readonly leaseMs: number;
+    readonly maxAttempts: number;
   }): Promise<AgentTask | null> {
+    requireNonBlank("boundaryId", input.boundaryId);
     requireNonBlank("agentId", input.agentId);
     requireNonBlank("workerId", input.workerId);
     requireFiniteTime("now", input.now);
-    if (!Number.isSafeInteger(input.leaseMs) || input.leaseMs <= 0) {
-      throw new Error("leaseMs must be a positive safe integer");
-    }
+    requirePositiveInteger("leaseMs", input.leaseMs);
+    requirePositiveInteger("maxAttempts", input.maxAttempts);
 
-    const leaseToken = randomUUID();
+    const tokenId = randomUUID();
     return this.database.transaction(async (client) => {
+      // A worker may crash on its final attempt without ever calling `fail`. Expired work at
+      // the ceiling is terminalized here before any new claim, preventing infinite reclaim.
+      const exhausted = await client.query<TaskRow>(
+        `WITH exhausted_candidate AS (
+           SELECT task_id
+             FROM agent_tasks
+            WHERE boundary_id = $1 AND agent_id = $2 AND attempt >= $3
+              AND (status = 'retry_wait'
+                   OR (status = 'leased' AND lease_expires_at <= clock_timestamp()))
+            ORDER BY updated_at ASC, task_id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 50
+         )
+         UPDATE agent_tasks AS task
+            SET status = 'dead_lettered',
+                last_error = COALESCE(last_error, 'attempt ceiling reached after lease expiry'),
+                lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+                updated_at = clock_timestamp()
+           FROM exhausted_candidate
+          WHERE task.task_id = exhausted_candidate.task_id
+        RETURNING ${taskColumns("task")}`,
+        [input.boundaryId, input.agentId, input.maxAttempts],
+      );
+      for (const row of exhausted.rows) {
+        await appendTaskEvent(client, row, "task.dead_lettered", null, {
+          reason: "attempt ceiling reached during lease recovery",
+        });
+      }
+
       const claimed = await client.query<TaskRow>(
         `WITH candidate AS (
            SELECT task_id
              FROM agent_tasks
-            WHERE agent_id = $1
-              AND not_before <= to_timestamp($3::double precision / 1000.0)
+            WHERE boundary_id = $1
+              AND agent_id = $2
+              AND attempt < $6
+              AND not_before <= clock_timestamp()
               AND (
                 status IN ('queued', 'retry_wait')
-                OR (status = 'leased' AND lease_expires_at <= to_timestamp($3::double precision / 1000.0))
+                OR (status = 'leased' AND lease_expires_at <= clock_timestamp())
               )
             ORDER BY not_before ASC, created_at ASC, task_id ASC
             FOR UPDATE SKIP LOCKED
@@ -145,42 +191,61 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
          UPDATE agent_tasks AS task
             SET status = 'leased',
                 attempt = task.attempt + 1,
-                lease_owner = $2,
+                lease_owner = $3,
                 lease_token = (task.fencing_epoch + 1)::text || ':' || $5,
-                lease_expires_at = to_timestamp(($3::double precision + $4::double precision) / 1000.0),
+                lease_expires_at = clock_timestamp() + ($4::double precision * interval '1 millisecond'),
                 fencing_epoch = task.fencing_epoch + 1,
+                last_error = NULL,
                 updated_at = clock_timestamp()
            FROM candidate
           WHERE task.task_id = candidate.task_id
          RETURNING ${taskColumns("task")}`,
-        [input.agentId, input.workerId, input.now, input.leaseMs, leaseToken],
+        [input.boundaryId, input.agentId, input.workerId, input.leaseMs, tokenId, input.maxAttempts],
       );
       if (claimed.rowCount === 0) return null;
-      return mapTask(oneRow(claimed, "claim"));
+      const row = oneRow(claimed, "claim");
+      await appendTaskEvent(client, row, "task.claimed", input.workerId, {});
+      return mapTask(row);
     });
   }
 
   async succeed(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
+    readonly now: number;
     readonly result: readonly CandidateSignal[];
   }): Promise<AgentTask> {
+    requireFiniteTime("now", input.now);
+    for (const signal of input.result) {
+      assertCandidateSignal(signal);
+      if (signal.boundaryId !== input.boundaryId) {
+        throw new Error("CandidateSignal boundary does not match the task boundary");
+      }
+    }
     return this.mutateLeased(
       `UPDATE agent_tasks AS task
-          SET status = 'succeeded', result = $3::jsonb, last_error = NULL,
+          SET status = 'succeeded', result = $5::jsonb, last_error = NULL,
               lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
               updated_at = clock_timestamp()
-        WHERE task_id = $1 AND lease_token = $2 AND status = 'leased'
-          AND fencing_epoch = split_part($2, ':', 1)::bigint
+        WHERE task_id = $1 AND boundary_id = $2 AND lease_owner = $3
+          AND lease_token = $4 AND status = 'leased'
+          AND fencing_epoch = split_part($4, ':', 1)::bigint
           AND lease_expires_at > clock_timestamp()
       RETURNING ${taskColumns("task")}`,
-      [input.taskId, input.leaseToken, JSON.stringify(input.result)],
+      [input.taskId, input.boundaryId, input.workerId, input.leaseToken, JSON.stringify(input.result)],
       "succeed",
+      "task.succeeded",
+      input.workerId,
+      { signalCount: input.result.length },
     );
   }
 
   async fail(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
     readonly error: string;
     readonly now: number;
@@ -188,49 +253,84 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
     readonly retryDelayMs: number;
   }): Promise<AgentTask> {
     requireFiniteTime("now", input.now);
-    if (!Number.isSafeInteger(input.maxAttempts) || input.maxAttempts <= 0) {
-      throw new Error("maxAttempts must be a positive safe integer");
-    }
-    if (!Number.isSafeInteger(input.retryDelayMs) || input.retryDelayMs < 0) {
-      throw new Error("retryDelayMs must be a non-negative safe integer");
-    }
+    requirePositiveInteger("maxAttempts", input.maxAttempts);
+    requireNonNegativeInteger("retryDelayMs", input.retryDelayMs);
     return this.mutateLeased(
       `UPDATE agent_tasks AS task
-          SET status = CASE WHEN attempt >= $4 THEN 'dead_lettered' ELSE 'retry_wait' END,
-              not_before = CASE WHEN attempt >= $4 THEN not_before
-                                ELSE to_timestamp(($5::double precision + $6::double precision) / 1000.0) END,
-              last_error = $3,
+          SET status = CASE WHEN attempt >= $6 THEN 'dead_lettered' ELSE 'retry_wait' END,
+              not_before = CASE WHEN attempt >= $6 THEN not_before
+                                ELSE clock_timestamp() + ($7::double precision * interval '1 millisecond') END,
+              last_error = $5,
               lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
               updated_at = clock_timestamp()
-        WHERE task_id = $1 AND lease_token = $2 AND status = 'leased'
-          AND fencing_epoch = split_part($2, ':', 1)::bigint
+        WHERE task_id = $1 AND boundary_id = $2 AND lease_owner = $3
+          AND lease_token = $4 AND status = 'leased'
+          AND fencing_epoch = split_part($4, ':', 1)::bigint
           AND lease_expires_at > clock_timestamp()
       RETURNING ${taskColumns("task")}`,
-      [input.taskId, input.leaseToken, input.error, input.maxAttempts, input.now, input.retryDelayMs],
+      [input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.error, input.maxAttempts, input.retryDelayMs],
       "fail",
+      null,
+      input.workerId,
+      { error: input.error },
     );
   }
 
   async release(input: {
     readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
     readonly leaseToken: string;
     readonly reason: string;
-    readonly notBefore: number;
+    readonly now: number;
+    readonly retryDelayMs: number;
   }): Promise<AgentTask> {
-    requireFiniteTime("notBefore", input.notBefore);
+    requireFiniteTime("now", input.now);
+    requireNonNegativeInteger("retryDelayMs", input.retryDelayMs);
     return this.mutateLeased(
       `UPDATE agent_tasks AS task
           SET status = 'retry_wait',
-              not_before = to_timestamp($4::double precision / 1000.0),
-              last_error = $3,
+              not_before = clock_timestamp() + ($6::double precision * interval '1 millisecond'),
+              last_error = $5,
               lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
               updated_at = clock_timestamp()
-        WHERE task_id = $1 AND lease_token = $2 AND status = 'leased'
-          AND fencing_epoch = split_part($2, ':', 1)::bigint
+        WHERE task_id = $1 AND boundary_id = $2 AND lease_owner = $3
+          AND lease_token = $4 AND status = 'leased'
+          AND fencing_epoch = split_part($4, ':', 1)::bigint
           AND lease_expires_at > clock_timestamp()
       RETURNING ${taskColumns("task")}`,
-      [input.taskId, input.leaseToken, input.reason, input.notBefore],
+      [input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.reason, input.retryDelayMs],
       "release",
+      "task.released",
+      input.workerId,
+      { reason: input.reason },
+    );
+  }
+
+  async renewLease(input: {
+    readonly taskId: string;
+    readonly boundaryId: string;
+    readonly workerId: string;
+    readonly leaseToken: string;
+    readonly now: number;
+    readonly leaseMs: number;
+  }): Promise<AgentTask> {
+    requireFiniteTime("now", input.now);
+    requirePositiveInteger("leaseMs", input.leaseMs);
+    return this.mutateLeased(
+      `UPDATE agent_tasks AS task
+          SET lease_expires_at = clock_timestamp() + ($5::double precision * interval '1 millisecond'),
+              updated_at = clock_timestamp()
+        WHERE task_id = $1 AND boundary_id = $2 AND lease_owner = $3
+          AND lease_token = $4 AND status = 'leased'
+          AND fencing_epoch = split_part($4, ':', 1)::bigint
+          AND lease_expires_at > clock_timestamp()
+      RETURNING ${taskColumns("task")}`,
+      [input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.leaseMs],
+      "renew lease",
+      "task.lease_renewed",
+      input.workerId,
+      {},
     );
   }
 
@@ -238,17 +338,53 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
     sql: string,
     values: readonly unknown[],
     operation: string,
+    eventKind: DurableTaskEventKind | null,
+    workerId: string,
+    metadata: Readonly<Record<string, unknown>>,
   ): Promise<AgentTask> {
     requireNonBlank("taskId", String(values[0] ?? ""));
-    requireLeaseToken(String(values[1] ?? ""));
+    requireNonBlank("boundaryId", String(values[1] ?? ""));
+    requireNonBlank("workerId", workerId);
+    requireLeaseToken(String(values[3] ?? ""));
     return this.database.transaction(async (client) => {
       const result = await client.query<TaskRow>(sql, values);
       if (result.rowCount !== 1) {
-        throw new Error(`stale, expired, or invalid task lease during ${operation}`);
+        throw new Error(`stale, expired, cross-boundary, or invalid task lease during ${operation}`);
       }
-      return mapTask(oneRow(result, operation));
+      const row = oneRow(result, operation);
+      const kind = eventKind ?? (row.status === "dead_lettered" ? "task.dead_lettered" : "task.retry_scheduled");
+      await appendTaskEvent(client, row, kind, workerId, metadata);
+      return mapTask(row);
     });
   }
+}
+
+async function appendTaskEvent(
+  client: AgentTaskSqlClient,
+  row: TaskRow,
+  kind: DurableTaskEventKind,
+  workerId: string | null,
+  metadata: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  const inserted = await client.query<{ event_id: string }>(
+    `INSERT INTO agent_task_events (
+       event_id, task_id, boundary_id, agent_id, worker_id, fencing_epoch,
+       attempt, kind, metadata, created_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, clock_timestamp())
+     RETURNING event_id`,
+    [
+      randomUUID(),
+      row.task_id,
+      row.boundary_id,
+      row.agent_id,
+      workerId,
+      Number(row.fencing_epoch),
+      Number(row.attempt),
+      kind,
+      JSON.stringify(metadata),
+    ],
+  );
+  oneRow(inserted, `${kind} audit insert`);
 }
 
 function mapTask(row: TaskRow): AgentTask {
@@ -265,6 +401,7 @@ function mapTask(row: TaskRow): AgentTask {
     payload: Object.freeze({ ...payload }),
     status: row.status as AgentTaskStatus,
     attempt: Number(row.attempt),
+    fencingEpoch: Number(row.fencing_epoch),
     notBefore: Number(row.not_before_ms),
     leaseOwner: row.lease_owner,
     leaseToken: row.lease_token,
@@ -276,10 +413,12 @@ function mapTask(row: TaskRow): AgentTask {
 
 function requireSignalArray(value: unknown): readonly CandidateSignal[] {
   if (!Array.isArray(value)) throw new Error("invalid persisted agent result");
-  return Object.freeze(value.map((signal) => {
-    assertCandidateSignal(signal);
-    return Object.freeze({ ...signal });
-  }));
+  return Object.freeze(
+    value.map((signal) => {
+      assertCandidateSignal(signal);
+      return Object.freeze({ ...signal });
+    }),
+  );
 }
 
 function requireObject(value: unknown, name: string): Record<string, unknown> {
@@ -303,6 +442,14 @@ function requireNonBlank(name: string, value: string): void {
 
 function requireFiniteTime(name: string, value: number): void {
   if (!Number.isFinite(value)) throw new Error(`${name} must be finite`);
+}
+
+function requirePositiveInteger(name: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive safe integer`);
+}
+
+function requireNonNegativeInteger(name: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${name} must be a non-negative safe integer`);
 }
 
 function requireLeaseToken(value: string): void {
