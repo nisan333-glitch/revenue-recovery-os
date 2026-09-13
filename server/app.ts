@@ -24,6 +24,7 @@ import {
   establishBaselineSchema,
   ingestEvidenceSchema,
 } from "./http/schemas";
+import type { AgentWorkerReadiness } from "./agents/worker";
 
 // EP-10 · Requests that arrived with a leading "/api" and were rewritten below — kept so
 // the production server's SPA-fallback handler can tell "an unmatched /api/* call" (must
@@ -32,7 +33,11 @@ import {
 // keyed on the raw request releases each entry once that request is garbage-collected.
 export const apiPrefixedRequests = new WeakSet<object>();
 
-export function buildApp(): FastifyInstance {
+export interface BuildAppOptions {
+  readonly agentReadiness?: () => AgentWorkerReadiness;
+}
+
+export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // removeAdditional:false so `additionalProperties:false` REJECTS (400) an injected
   // field — e.g. a counted `revenueReturned` — instead of silently stripping it.
   const app = Fastify({
@@ -56,7 +61,13 @@ export function buildApp(): FastifyInstance {
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async (_req, reply) => {
     const up = await isDbReady();
-    return reply.code(up ? 200 : 503).send({ db: up ? "up" : "down" });
+    const agents = options.agentReadiness?.() ?? {
+      status: "disabled" as const,
+      configured: 0,
+      running: 0,
+    };
+    const ready = up && agents.status !== "down";
+    return reply.code(ready ? 200 : 503).send({ db: up ? "up" : "down", agents });
   });
 
   // Record a case author/owner (the beneficiary).

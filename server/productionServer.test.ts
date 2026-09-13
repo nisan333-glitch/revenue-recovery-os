@@ -32,6 +32,7 @@ describe("EP-10 · production runtime — /api reaches Fastify, health/ready are
     const res = await app.inject({ method: "GET", url: "/ready" });
     expect([200, 503]).toContain(res.statusCode);
     expect(res.json()).toHaveProperty("db");
+    expect(res.json().agents).toEqual({ status: "disabled", configured: 0, running: 0 });
   });
 
   it("an unauthenticated /api/* call reaches the real governed route (401, not a 404 or html)", async () => {
