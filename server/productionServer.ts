@@ -12,7 +12,10 @@
 import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
-import { buildApp, apiPrefixedRequests } from "./app";
+import { buildApp, apiPrefixedRequests, type BuildAppOptions } from "./app";
+import { createAgentProcessFromEnvironment } from "./agents/bootstrap";
+import type { AgentHandler } from "./agents/types";
+import { closeInOrder, installGracefulShutdown } from "./processLifecycle";
 
 // Resolved from the process's working directory, not `__dirname` — the compiled artifact
 // (dist-server/server/productionServer.js) and the raw TS source (as Vitest runs it,
@@ -23,8 +26,8 @@ import { buildApp, apiPrefixedRequests } from "./app";
 const SPA_DIST = join(process.cwd(), "dist");
 const ASSET_PREFIX = "/assets/";
 
-export function buildProductionApp(): FastifyInstance {
-  const app = buildApp();
+export function buildProductionApp(options: BuildAppOptions = {}): FastifyInstance {
+  const app = buildApp(options);
 
   app.register(fastifyStatic, {
     root: SPA_DIST,
@@ -56,15 +59,25 @@ export function buildProductionApp(): FastifyInstance {
 if (require.main === module) {
   const port = Number(process.env.PORT ?? 4000);
   const host = process.env.HOST ?? "127.0.0.1";
+  // No detector is promoted implicitly. A production handler must be explicitly registered here
+  // after its source contract and CandidateSignal admission tests are approved.
+  const handlers: readonly AgentHandler[] = [];
+  const agents = createAgentProcessFromEnvironment(process.env, handlers);
+  const app = buildProductionApp({ agentReadiness: () => agents.readiness() });
+  const removeShutdownHandlers = installGracefulShutdown(app, agents);
 
-  buildProductionApp()
-    .listen({ port, host })
-    .then((address) => {
-      // PRIVATE PILOT ONLY — see README "Private pilot runtime" for the public-exposure warning.
-      console.log(`revenue-recovery-os PRIVATE PILOT server listening on ${address}`);
-    })
-    .catch((err) => {
-      console.error(err);
-      process.exit(1);
-    });
+  void app.listen({ port, host }).then((address) => {
+    agents.start();
+    // PRIVATE PILOT ONLY — see README "Private pilot runtime" for the public-exposure warning.
+    console.log(`revenue-recovery-os PRIVATE PILOT server listening on ${address}`);
+  }).catch(async (error) => {
+    removeShutdownHandlers();
+    try {
+      await closeInOrder(app, agents);
+    } catch (closeError) {
+      console.error(closeError);
+    }
+    console.error(error);
+    process.exit(1);
+  });
 }

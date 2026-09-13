@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentWorker, summarizeWorkerReadiness, workersReady } from "./worker";
+import {
+  AgentWorker,
+  AgentWorkerSupervisor,
+  summarizeWorkerReadiness,
+  workersReady,
+} from "./worker";
 import type { AgentHandler, AgentTask } from "./types";
 
 const handler: AgentHandler = { agentId: "detector", run: async () => [] };
@@ -116,5 +121,15 @@ describe("AgentWorker lifecycle", () => {
       state: "stopped", active: false, lastPollAt: null, lastHealthyPollAt: null,
       consecutiveErrors: 0, lastError: null,
     }])).toEqual({ status: "down", configured: 1, running: 0 });
+  });
+
+  it("keeps disabled supervisors inert and rejects enabled empty supervisors", () => {
+    const disabled = new AgentWorkerSupervisor(false, []);
+    disabled.start();
+    expect(disabled.readiness()).toEqual({ status: "disabled", configured: 0, running: 0 });
+
+    const invalid = new AgentWorkerSupervisor(true, []);
+    expect(() => invalid.start()).toThrow(/no workers/i);
+    expect(invalid.readiness().status).toBe("down");
   });
 });

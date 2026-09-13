@@ -130,6 +130,39 @@ export class AgentWorker {
   }
 }
 
+export class AgentWorkerSupervisor {
+  private started = false;
+
+  constructor(
+    private readonly enabled: boolean,
+    private readonly workers: readonly AgentWorker[],
+  ) {}
+
+  start(): void {
+    if (this.started) throw new Error("agent worker supervisor is already started");
+    if (!this.enabled) {
+      this.started = true;
+      return;
+    }
+    if (this.workers.length === 0) {
+      throw new Error("agents are enabled but no workers are configured");
+    }
+    for (const worker of this.workers) worker.start();
+    this.started = true;
+  }
+
+  async stop(): Promise<void> {
+    await Promise.all(this.workers.map((worker) => worker.stop()));
+  }
+
+  readiness(): AgentWorkerReadiness {
+    return summarizeWorkerReadiness(
+      this.enabled,
+      this.workers.map((worker) => worker.snapshot()),
+    );
+  }
+}
+
 export function workersReady(workers: readonly AgentWorkerSnapshot[]): boolean {
   return workers.length > 0 && workers.every((worker) => worker.state === "running");
 }

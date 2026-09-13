@@ -131,8 +131,13 @@ port for PostgreSQL at all). Check it's healthy:
 
 ```bash
 curl http://127.0.0.1:4000/health   # -> {"status":"ok"}
-curl http://127.0.0.1:4000/ready    # -> {"db":"up"} once PostgreSQL is ready
+curl http://127.0.0.1:4000/ready    # -> {"db":"up","agents":{"status":"disabled",...}}
 ```
+
+Agent execution is deliberately disabled by default. Setting `NH_AGENTS_ENABLED=true`
+without both an explicit `NH_AGENT_BOUNDARIES` list and a reviewed production handler makes
+startup fail closed. The worker lifecycle, leasing and readiness plumbing exist; no detector is
+silently promoted into a continuously running process.
 
 Stop and remove the stack:
 

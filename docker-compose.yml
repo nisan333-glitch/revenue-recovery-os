@@ -48,6 +48,8 @@ services:
     environment:
       DATABASE_URL: "postgresql://pilot:pilot_only_change_me@db:5432/revenue_recovery_pilot?schema=public"
       PORT: "4000"
+      # Agent workers remain fail-closed until a reviewed production detector is registered.
+      NH_AGENTS_ENABLED: "false"
       # HOST=0.0.0.0 here binds only inside the container's own isolated network namespace —
       # it does NOT expose the app beyond this machine. The actual "127.0.0.1 only" guarantee
       # is the host-side bind below (`127.0.0.1:4000:4000`): Docker's published-port NAT can
