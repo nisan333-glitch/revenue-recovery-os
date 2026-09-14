@@ -9,6 +9,7 @@
     "dev": "vite",
     "dev:server": "vite-node server/index.ts",
     "ingest:csv": "npm run build:server && node dist-server/server/agents/secureCsvIngestionCli.js",
+    "fixture:activation": "vite-node scripts/write-synthetic-activation-fixture.ts",
     "build": "tsc -b && vite build",
     "build:server": "tsc -p tsconfig.server.json && node scripts/mark-server-commonjs.mjs",
     "preview": "vite preview",

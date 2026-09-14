@@ -1,0 +1,13 @@
+{
+  "fixture": "activation.synthetic.csv",
+  "syntheticOnly": true,
+  "policy": { "recoveryType": "ActivationMissed", "economicThresholdMinor": 10000 },
+  "rows": [
+    { "rows": "1-70", "classification": "admissible", "reason": "meets threshold and has an action", "becomesCandidate": true, "rejected": false, "deduplicated": false },
+    { "rows": "71-85", "classification": "below_threshold", "reason": "amount is below the admission threshold", "becomesCandidate": false, "rejected": true, "deduplicated": false },
+    { "rows": "86-90", "classification": "no_action", "reason": "actionAvailable is false", "becomesCandidate": false, "rejected": true, "deduplicated": false },
+    { "rows": "91-95", "classification": "duplicate", "reason": "same composite candidate identity as an admissible row", "becomesCandidate": false, "rejected": false, "deduplicated": true },
+    { "rows": "96-100", "classification": "malformed", "reason": "malformed or incomplete CSV fields fail closed", "becomesCandidate": false, "rejected": true, "deduplicated": false }
+  ],
+  "note": "Ranges expand to one expected result per row; no real customer data is present."
+}

@@ -138,6 +138,24 @@ without both an explicit `NH_AGENT_BOUNDARIES` list and a reviewed production ha
 startup fail closed. The worker lifecycle, leasing and readiness plumbing exist; no detector is
 silently promoted into a continuously running process.
 
+Generate and ingest the deterministic synthetic Activation fixture only in a local or staging
+database. It is test data, not customer evidence:
+
+```bash
+npm run fixture:activation
+export DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB"
+export NH_INGEST_BOUNDARY_ID="synthetic-tenant"
+export NH_INGEST_AGENT_ID="activation-missed-csv"
+export NH_INGEST_DETECTOR_VERSION="synthetic-v1"
+export NH_INGEST_SOURCE_REF_KEY="replace-with-at-least-32-secret-bytes"
+export NH_AGENT_ADMISSION_POLICIES="ActivationMissed:10000"
+npx prisma migrate deploy
+npm run ingest:csv -- "$PWD/server/agents/fixtures/activation.synthetic.csv"
+```
+
+The generator creates the CSV with owner-only permissions. The importer validates the entire
+file before its first write, pseudonymizes source identity, and fails closed on malformed rows.
+
 Stop and remove the stack:
 
 ```bash

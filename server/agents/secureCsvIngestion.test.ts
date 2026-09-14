@@ -4,6 +4,8 @@ import { ingestSecureCsv } from "./secureCsvIngestion";
 import { InMemoryCandidateReviewStore, CandidateReviewService } from "./candidateReview";
 import { CandidatePromotionService } from "./recoveryCase";
 import type { CaseCandidate, CaseCandidateStore } from "./caseAdmission";
+import { syntheticCsv, syntheticRows } from "./fixtures/activation.synthetic";
+import expectedResults from "./fixtures/activation.synthetic.expected-results.json";
 
 const CSV = [
   "sourceIdentity,recoveryType,observedAt,amountAtRiskMinor,currency,actionAvailable,expectedProofEvent",
@@ -59,6 +61,56 @@ describe("secure CSV candidate ingestion", () => {
     const result = await promotion.promote({ actorId: "operator-1", role: "operator" }, candidates[0]!.candidateId, "tenant-1");
     expect(promoted).toBe(true);
     expect(result.created).toBe(true);
+  });
+
+  it("keeps the deterministic fixture balanced and explicitly synthetic", () => {
+    const rows = syntheticRows();
+    expect(rows).toHaveLength(100);
+    expect(rows.filter((r) => r.classification === "admissible")).toHaveLength(70);
+    expect(rows.filter((r) => r.classification === "below_threshold")).toHaveLength(15);
+    expect(rows.filter((r) => r.classification === "no_action")).toHaveLength(5);
+    expect(rows.filter((r) => r.classification === "duplicate")).toHaveLength(5);
+    expect(rows.filter((r) => r.classification === "malformed")).toHaveLength(5);
+    expect(rows.every((r) => r.rowNumber > 0)).toBe(true);
+  });
+
+  it("ingests the non-malformed fixture rows without mutating input and deduplicates", async () => {
+    const input = syntheticCsv();
+    const nonMalformed = `${input.split("\n").slice(0, 96).join("\n")}\n`;
+    const before = nonMalformed;
+    const result = await ingestSecureCsv(nonMalformed, new InMemoryCaseCandidateStore(), options);
+    expect(result).toMatchObject({ rowsRead: 95, admitted: 75, created: 70, filtered: 20 });
+    expect(nonMalformed).toBe(before);
+    expect(input).toContain("synthetic-account-");
+    expect(input).toContain('"Activation completed, cohort 1"');
+  });
+
+  it("fails closed on the fixture's malformed rows", async () => {
+    const lines = syntheticCsv().split("\n");
+    const malformed = `${lines[0]}\n${lines.slice(96, 101).join("\n")}\n`;
+    let writes = 0;
+    const store: CaseCandidateStore = { async createIfAbsent(candidate) { writes += 1; return { candidate, created: true }; } };
+    await expect(ingestSecureCsv(malformed, store, options))
+      .rejects.toThrow(/amountAtRiskMinor|observedAt/);
+    expect(writes).toBe(0);
+  });
+
+  it("performs no partial writes when a malformed row follows valid rows", async () => {
+    let writes = 0;
+    const store: CaseCandidateStore = { async createIfAbsent(candidate) { writes += 1; return { candidate, created: true }; } };
+    await expect(ingestSecureCsv(syntheticCsv(), store, options)).rejects.toThrow();
+    expect(writes).toBe(0);
+  });
+
+  it("covers every fixture row in expected-results", () => {
+    const covered = new Set<number>();
+    for (const entry of expectedResults.rows) {
+      const [start, end] = entry.rows.split("-").map(Number);
+      for (let row = start; row <= (end ?? start); row += 1) covered.add(row);
+    }
+    expect(covered.size).toBe(100);
+    expect(Math.min(...covered)).toBe(1);
+    expect(Math.max(...covered)).toBe(100);
   });
 
   it("requires explicit confirmation for synonym mappings", async () => {

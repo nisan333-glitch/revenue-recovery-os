@@ -1,0 +1,101 @@
+sourceIdentity,recoveryType,observedAt,amountAtRiskMinor,currency,actionAvailable,expectedProofEvent
+synthetic-account-0001,ActivationMissed,2026-01-02T12:00:00.000Z,10002,EUR,true,"Activation completed, cohort 1"
+synthetic-account-0002,ActivationMissed,2026-01-03T12:00:00.000Z,10003,GBP,true,"Activation completed, cohort 2"
+synthetic-account-0003,ActivationMissed,2026-01-04T12:00:00.000Z,10004,ILS,true,"Activation completed, cohort 3"
+synthetic-account-0004,ActivationMissed,2026-01-05T12:00:00.000Z,10005,USD,true,"Activation completed, cohort 4"
+synthetic-account-0005,ActivationMissed,2026-01-06T12:00:00.000Z,10006,EUR,true,"Activation completed, cohort 5"
+synthetic-account-0006,ActivationMissed,2026-01-07T12:00:00.000Z,10007,GBP,true,"Activation completed, cohort 6"
+synthetic-account-0007,ActivationMissed,2026-01-08T12:00:00.000Z,10008,ILS,true,"Activation completed, cohort 7"
+synthetic-account-0008,ActivationMissed,2026-01-09T12:00:00.000Z,10009,USD,true,"Activation completed, cohort 8"
+synthetic-account-0009,ActivationMissed,2026-01-10T12:00:00.000Z,10010,EUR,true,"Activation completed, cohort 9"
+synthetic-account-0010,ActivationMissed,2026-01-11T12:00:00.000Z,10011,GBP,true,"Activation completed, cohort 10"
+synthetic-account-0011,ActivationMissed,2026-01-12T12:00:00.000Z,10012,ILS,true,"Activation completed, cohort 11"
+synthetic-account-0012,ActivationMissed,2026-01-13T12:00:00.000Z,10013,USD,true,"Activation completed, cohort 12"
+synthetic-account-0013,ActivationMissed,2026-01-14T12:00:00.000Z,10014,EUR,true,"Activation completed, cohort 13"
+synthetic-account-0014,ActivationMissed,2026-01-15T12:00:00.000Z,10015,GBP,true,"Activation completed, cohort 14"
+synthetic-account-0015,ActivationMissed,2026-01-16T12:00:00.000Z,10016,ILS,true,"Activation completed, cohort 15"
+synthetic-account-0016,ActivationMissed,2026-01-17T12:00:00.000Z,10017,USD,true,"Activation completed, cohort 16"
+synthetic-account-0017,ActivationMissed,2026-01-18T12:00:00.000Z,10018,EUR,true,"Activation completed, cohort 17"
+synthetic-account-0018,ActivationMissed,2026-01-19T12:00:00.000Z,10019,GBP,true,"Activation completed, cohort 18"
+synthetic-account-0019,ActivationMissed,2026-01-20T12:00:00.000Z,10020,ILS,true,"Activation completed, cohort 19"
+synthetic-account-0020,ActivationMissed,2026-01-21T12:00:00.000Z,10021,USD,true,"Activation completed, cohort 20"
+synthetic-account-0021,ActivationMissed,2026-01-22T12:00:00.000Z,10022,EUR,true,"Activation completed, cohort 21"
+synthetic-account-0022,ActivationMissed,2026-01-23T12:00:00.000Z,10023,GBP,true,"Activation completed, cohort 22"
+synthetic-account-0023,ActivationMissed,2026-01-24T12:00:00.000Z,10024,ILS,true,"Activation completed, cohort 23"
+synthetic-account-0024,ActivationMissed,2026-01-25T12:00:00.000Z,10025,USD,true,"Activation completed, cohort 24"
+synthetic-account-0025,ActivationMissed,2026-01-26T12:00:00.000Z,10026,EUR,true,"Activation completed, cohort 25"
+synthetic-account-0026,ActivationMissed,2026-01-27T12:00:00.000Z,10027,GBP,true,"Activation completed, cohort 26"
+synthetic-account-0027,ActivationMissed,2026-01-28T12:00:00.000Z,10028,ILS,true,"Activation completed, cohort 27"
+synthetic-account-0028,ActivationMissed,2026-01-01T12:00:00.000Z,10029,USD,true,"Activation completed, cohort 28"
+synthetic-account-0029,ActivationMissed,2026-01-02T12:00:00.000Z,10030,EUR,true,"Activation completed, cohort 29"
+synthetic-account-0030,ActivationMissed,2026-01-03T12:00:00.000Z,10031,GBP,true,"Activation completed, cohort 30"
+synthetic-account-0031,ActivationMissed,2026-01-04T12:00:00.000Z,10032,ILS,true,"Activation completed, cohort 31"
+synthetic-account-0032,ActivationMissed,2026-01-05T12:00:00.000Z,10033,USD,true,"Activation completed, cohort 32"
+synthetic-account-0033,ActivationMissed,2026-01-06T12:00:00.000Z,10034,EUR,true,"Activation completed, cohort 33"
+synthetic-account-0034,ActivationMissed,2026-01-07T12:00:00.000Z,10035,GBP,true,"Activation completed, cohort 34"
+synthetic-account-0035,ActivationMissed,2026-01-08T12:00:00.000Z,10036,ILS,true,"Activation completed, cohort 35"
+synthetic-account-0036,ActivationMissed,2026-01-09T12:00:00.000Z,10037,USD,true,"Activation completed, cohort 36"
+synthetic-account-0037,ActivationMissed,2026-01-10T12:00:00.000Z,10038,EUR,true,"Activation completed, cohort 37"
+synthetic-account-0038,ActivationMissed,2026-01-11T12:00:00.000Z,10039,GBP,true,"Activation completed, cohort 38"
+synthetic-account-0039,ActivationMissed,2026-01-12T12:00:00.000Z,10040,ILS,true,"Activation completed, cohort 39"
+synthetic-account-0040,ActivationMissed,2026-01-13T12:00:00.000Z,10041,USD,true,"Activation completed, cohort 40"
+synthetic-account-0041,ActivationMissed,2026-01-14T12:00:00.000Z,10042,EUR,true,"Activation completed, cohort 41"
+synthetic-account-0042,ActivationMissed,2026-01-15T12:00:00.000Z,10043,GBP,true,"Activation completed, cohort 42"
+synthetic-account-0043,ActivationMissed,2026-01-16T12:00:00.000Z,10044,ILS,true,"Activation completed, cohort 43"
+synthetic-account-0044,ActivationMissed,2026-01-17T12:00:00.000Z,10045,USD,true,"Activation completed, cohort 44"
+synthetic-account-0045,ActivationMissed,2026-01-18T12:00:00.000Z,10046,EUR,true,"Activation completed, cohort 45"
+synthetic-account-0046,ActivationMissed,2026-01-19T12:00:00.000Z,10047,GBP,true,"Activation completed, cohort 46"
+synthetic-account-0047,ActivationMissed,2026-01-20T12:00:00.000Z,10048,ILS,true,"Activation completed, cohort 47"
+synthetic-account-0048,ActivationMissed,2026-01-21T12:00:00.000Z,10049,USD,true,"Activation completed, cohort 48"
+synthetic-account-0049,ActivationMissed,2026-01-22T12:00:00.000Z,10050,EUR,true,"Activation completed, cohort 49"
+synthetic-account-0050,ActivationMissed,2026-01-23T12:00:00.000Z,10051,GBP,true,"Activation completed, cohort 50"
+synthetic-account-0051,ActivationMissed,2026-01-24T12:00:00.000Z,10052,ILS,true,"Activation completed, cohort 51"
+synthetic-account-0052,ActivationMissed,2026-01-25T12:00:00.000Z,10053,USD,true,"Activation completed, cohort 52"
+synthetic-account-0053,ActivationMissed,2026-01-26T12:00:00.000Z,10054,EUR,true,"Activation completed, cohort 53"
+synthetic-account-0054,ActivationMissed,2026-01-27T12:00:00.000Z,10055,GBP,true,"Activation completed, cohort 54"
+synthetic-account-0055,ActivationMissed,2026-01-28T12:00:00.000Z,10056,ILS,true,"Activation completed, cohort 55"
+synthetic-account-0056,ActivationMissed,2026-01-01T12:00:00.000Z,10057,USD,true,"Activation completed, cohort 56"
+synthetic-account-0057,ActivationMissed,2026-01-02T12:00:00.000Z,10058,EUR,true,"Activation completed, cohort 57"
+synthetic-account-0058,ActivationMissed,2026-01-03T12:00:00.000Z,10059,GBP,true,"Activation completed, cohort 58"
+synthetic-account-0059,ActivationMissed,2026-01-04T12:00:00.000Z,10060,ILS,true,"Activation completed, cohort 59"
+synthetic-account-0060,ActivationMissed,2026-01-05T12:00:00.000Z,10061,USD,true,"Activation completed, cohort 60"
+synthetic-account-0061,ActivationMissed,2026-01-06T12:00:00.000Z,10062,EUR,true,"Activation completed, cohort 61"
+synthetic-account-0062,ActivationMissed,2026-01-07T12:00:00.000Z,10063,GBP,true,"Activation completed, cohort 62"
+synthetic-account-0063,ActivationMissed,2026-01-08T12:00:00.000Z,10064,ILS,true,"Activation completed, cohort 63"
+synthetic-account-0064,ActivationMissed,2026-01-09T12:00:00.000Z,10065,USD,true,"Activation completed, cohort 64"
+synthetic-account-0065,ActivationMissed,2026-01-10T12:00:00.000Z,10066,EUR,true,"Activation completed, cohort 65"
+synthetic-account-0066,ActivationMissed,2026-01-11T12:00:00.000Z,10067,GBP,true,"Activation completed, cohort 66"
+synthetic-account-0067,ActivationMissed,2026-01-12T12:00:00.000Z,10068,ILS,true,"Activation completed, cohort 67"
+synthetic-account-0068,ActivationMissed,2026-01-13T12:00:00.000Z,10069,USD,true,"Activation completed, cohort 68"
+synthetic-account-0069,ActivationMissed,2026-01-14T12:00:00.000Z,10070,EUR,true,"Activation completed, cohort 69"
+synthetic-account-0070,ActivationMissed,2026-01-15T12:00:00.000Z,10071,GBP,true,"Activation completed, cohort 70"
+synthetic-account-0001,ActivationMissed,2026-02-16T12:00:00.000Z,9999,USD,true,Activation completed
+synthetic-account-0002,ActivationMissed,2026-02-17T12:00:00.000Z,9998,USD,true,Activation completed
+synthetic-account-0003,ActivationMissed,2026-02-18T12:00:00.000Z,9997,USD,true,Activation completed
+synthetic-account-0004,ActivationMissed,2026-02-19T12:00:00.000Z,9996,USD,true,Activation completed
+synthetic-account-0005,ActivationMissed,2026-02-20T12:00:00.000Z,9995,USD,true,Activation completed
+synthetic-account-0006,ActivationMissed,2026-02-21T12:00:00.000Z,9994,USD,true,Activation completed
+synthetic-account-0007,ActivationMissed,2026-02-22T12:00:00.000Z,9993,USD,true,Activation completed
+synthetic-account-0008,ActivationMissed,2026-02-23T12:00:00.000Z,9992,USD,true,Activation completed
+synthetic-account-0009,ActivationMissed,2026-02-24T12:00:00.000Z,9991,USD,true,Activation completed
+synthetic-account-0010,ActivationMissed,2026-02-25T12:00:00.000Z,9990,USD,true,Activation completed
+synthetic-account-0011,ActivationMissed,2026-02-26T12:00:00.000Z,9989,USD,true,Activation completed
+synthetic-account-0012,ActivationMissed,2026-02-27T12:00:00.000Z,9988,USD,true,Activation completed
+synthetic-account-0013,ActivationMissed,2026-02-28T12:00:00.000Z,9987,USD,true,Activation completed
+synthetic-account-0014,ActivationMissed,2026-02-01T12:00:00.000Z,9986,USD,true,Activation completed
+synthetic-account-0015,ActivationMissed,2026-02-02T12:00:00.000Z,9985,USD,true,Activation completed
+synthetic-account-0016,ActivationMissed,2026-03-01T12:00:00.000Z,20000,EUR,false,Activation completed
+synthetic-account-0017,ActivationMissed,2026-03-02T12:00:00.000Z,20000,EUR,false,Activation completed
+synthetic-account-0018,ActivationMissed,2026-03-03T12:00:00.000Z,20000,EUR,false,Activation completed
+synthetic-account-0019,ActivationMissed,2026-03-04T12:00:00.000Z,20000,EUR,false,Activation completed
+synthetic-account-0020,ActivationMissed,2026-03-05T12:00:00.000Z,20000,EUR,false,Activation completed
+synthetic-account-0001,ActivationMissed,2026-01-02T12:00:00.000Z,10002,EUR,true,"Activation completed, cohort 1"
+synthetic-account-0002,ActivationMissed,2026-01-03T12:00:00.000Z,10003,GBP,true,"Activation completed, cohort 2"
+synthetic-account-0003,ActivationMissed,2026-01-04T12:00:00.000Z,10004,ILS,true,"Activation completed, cohort 3"
+synthetic-account-0004,ActivationMissed,2026-01-05T12:00:00.000Z,10005,USD,true,"Activation completed, cohort 4"
+synthetic-account-0005,ActivationMissed,2026-01-06T12:00:00.000Z,10006,EUR,true,"Activation completed, cohort 5"
+synthetic-account-0026,ActivationMissed,not-a-timestamp,,USD,true,Activation completed
+synthetic-account-0027,ActivationMissed,not-a-timestamp,,USD,true,Activation completed
+synthetic-account-0028,ActivationMissed,not-a-timestamp,,USD,true,Activation completed
+synthetic-account-0029,ActivationMissed,not-a-timestamp,,USD,true,Activation completed
+synthetic-account-0030,ActivationMissed,not-a-timestamp,,USD,true,Activation completed

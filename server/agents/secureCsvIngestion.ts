@@ -1,6 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import { CaseAdmissionService, type CaseCandidateStore } from "./caseAdmission";
-import type { RecoveryTypeAdmissionPolicy } from "./admission";
+import { assertCandidateSignal, type RecoveryTypeAdmissionPolicy } from "./admission";
 import type { CandidateSignal } from "./types";
 
 export const SECURE_CSV_LIMITS = Object.freeze({ maxBytes: 5_000_000, maxRows: 10_000, maxColumns: 20 });
@@ -49,8 +49,10 @@ export async function ingestSecureCsv(
   const headerMap = resolveHeaderMap(headers, options);
   const indexes = new Map(FIELDS.map((field) => [field, headers.indexOf(headerMap[field])]));
   const admission = new CaseAdmissionService(store, options.now ?? (() => new Date()));
-  let admitted = 0;
-  let created = 0;
+  const prepared: { signal: CandidateSignal; policy: RecoveryTypeAdmissionPolicy }[] = [];
+
+  // Parse and validate the complete file before the first persistence call. A
+  // malformed trailing row must never leave a partially ingested batch.
   for (let rowNumber = 1; rowNumber < records.length; rowNumber += 1) {
     const row = records[rowNumber]!;
     if (row.length !== headers.length) throw new Error(`CSV row ${rowNumber + 1} has the wrong number of columns`);
@@ -69,18 +71,18 @@ export async function ingestSecureCsv(
     const canonical = JSON.stringify(Object.fromEntries(FIELDS.map((field) => [field, value(field)])));
     const digest = createHash("sha256").update(canonical).digest("hex");
     const signal: CandidateSignal = {
-      signalId: `CSV-${digest.slice(0, 32)}`,
-      boundaryId: options.boundaryId,
-      recoveryType,
-      sourceRef,
-      sourcePayloadHash: digest,
-      detectorVersion: options.detectorVersion,
-      observedAt: value("observedAt"),
-      amountAtRiskMinor,
-      currency: value("currency"),
-      actionAvailable: actionText === "true",
+      signalId: `CSV-${digest.slice(0, 32)}`, boundaryId: options.boundaryId, recoveryType, sourceRef,
+      sourcePayloadHash: digest, detectorVersion: options.detectorVersion, observedAt: value("observedAt"),
+      amountAtRiskMinor, currency: value("currency"), actionAvailable: actionText === "true",
       expectedProofEvent: value("expectedProofEvent"),
     };
+    assertCandidateSignal(signal);
+    prepared.push({ signal, policy });
+  }
+
+  let admitted = 0;
+  let created = 0;
+  for (const { signal, policy } of prepared) {
     const result = await admission.submit(options.agentId, signal, policy);
     if (result.admitted) {
       admitted += 1;
