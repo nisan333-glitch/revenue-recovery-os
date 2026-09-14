@@ -1,4 +1,5 @@
 import type { AgentPolicyProvider, AgentPolicySnapshot } from "./types";
+import type { RecoveryTypeAdmissionPolicy } from "./admission";
 
 export interface AgentProcessConfig {
   readonly enabled: boolean;
@@ -9,6 +10,7 @@ export interface AgentProcessConfig {
   readonly leaseMs: number;
   readonly retryBaseMs: number;
   readonly retryCapMs: number;
+  readonly admissionPolicies: ReadonlyMap<string, RecoveryTypeAdmissionPolicy>;
 }
 
 export function parseAgentProcessConfig(
@@ -22,6 +24,7 @@ export function parseAgentProcessConfig(
   const leaseMs = parseInteger("NH_AGENT_LEASE_MS", env.NH_AGENT_LEASE_MS, 30_000, 3_000, 300_000);
   const retryBaseMs = parseInteger("NH_AGENT_RETRY_BASE_MS", env.NH_AGENT_RETRY_BASE_MS, 1_000, 1, 300_000);
   const retryCapMs = parseInteger("NH_AGENT_RETRY_CAP_MS", env.NH_AGENT_RETRY_CAP_MS, 60_000, 1, 3_600_000);
+  const admissionPolicies = parseAdmissionPolicies(env.NH_AGENT_ADMISSION_POLICIES);
 
   if (retryCapMs < retryBaseMs) {
     throw new Error("NH_AGENT_RETRY_CAP_MS must be greater than or equal to NH_AGENT_RETRY_BASE_MS");
@@ -39,7 +42,27 @@ export function parseAgentProcessConfig(
     leaseMs,
     retryBaseMs,
     retryCapMs,
+    admissionPolicies,
   });
+}
+
+function parseAdmissionPolicies(raw: string | undefined): ReadonlyMap<string, RecoveryTypeAdmissionPolicy> {
+  if (!raw?.trim()) return new Map();
+  const policies = new Map<string, RecoveryTypeAdmissionPolicy>();
+  for (const entry of raw.split(",")) {
+    const parts = entry.split(":");
+    if (parts.length !== 2) throw new Error("NH_AGENT_ADMISSION_POLICIES must use RecoveryType:threshold entries");
+    const recoveryType = parts[0]!.trim();
+    const thresholdText = parts[1]!.trim();
+    if (!recoveryType || !/^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(recoveryType) || !/^\d+$/.test(thresholdText)) {
+      throw new Error("NH_AGENT_ADMISSION_POLICIES contains an invalid entry");
+    }
+    const economicThresholdMinor = Number(thresholdText);
+    if (!Number.isSafeInteger(economicThresholdMinor)) throw new Error("admission threshold must be a safe integer");
+    if (policies.has(recoveryType)) throw new Error("NH_AGENT_ADMISSION_POLICIES cannot contain duplicate recovery types");
+    policies.set(recoveryType, Object.freeze({ recoveryType, economicThresholdMinor }));
+  }
+  return policies;
 }
 
 export class ConfiguredAgentPolicyProvider implements AgentPolicyProvider {

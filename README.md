@@ -111,10 +111,9 @@ persists across refreshes.
 > ⚠️ **Private, supervised pilot use only — not safe for public exposure or multi-tenant
 > production.** This packaging (Docker image + `docker-compose.yml`) runs the real React
 > SPA, the real Fastify API, and real PostgreSQL together as one deployable unit, for a
-> single supervised pilot customer. It does **not** add authentication — identity is still
-> the `x-actor-id` / `x-actor-role` dev-header mechanism in
-> `server/auth/actorContext.ts`, which is explicitly documented there as *not* production
-> authentication. `docker-compose.yml`'s database credentials are fixed, local-only
+> single supervised pilot customer. Production mode requires verified OIDC/JWKS bearer
+> identity and rejects browser-supplied actor headers; dev headers are available only for
+> an explicitly isolated private pilot. `docker-compose.yml`'s database credentials are fixed, local-only
 > placeholders, clearly labeled as such in that file. Do not point this at the public
 > internet, and do not use it to serve more than one customer's data at a time.
 

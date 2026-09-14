@@ -74,6 +74,9 @@ export async function ingestEvidence(
   // EP-11 · the halt gate's open transaction, so ingestion and the halt test are atomic.
   client: DbClient = prisma,
 ): Promise<IngestedEvidence> {
+  if ((input.amountMinor === undefined) !== (input.currency === undefined)) {
+    throw new Error("evidence amount and currency must be supplied together");
+  }
   await assertRecoveryCaseRootIfRequired(input.recoveryCaseId, client);
   const derived = makeEvidence({
     evidenceId: input.evidenceId,

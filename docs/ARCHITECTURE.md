@@ -348,10 +348,12 @@ and are the honestly-deferred trust boundary, not a design flaw in the domain co
 
 ## Deliberately deferred
 
-No backend, no auth, no graph database, no agents, no live integrations. These are
-**Phase 2+** and intentionally out of scope: the MVP's job is to make one number —
-**auditable recovered revenue** — trustworthy. Everything else is added on top of a
-number people already trust.
+The domain-core MVP remains intentionally free of infrastructure concerns, but the
+repository now includes a guarded Fastify/PostgreSQL service boundary: verified OIDC
+identity, append-only authority/proof persistence, candidate review and RecoveryCase
+promotion, and a leased worker lifecycle. Live detector integrations and continuous
+24/7 operation remain staged until a real source adapter, issuer/JWKS configuration,
+and a reviewed admission policy are supplied.
 
 ## Testing
 

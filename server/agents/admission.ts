@@ -3,6 +3,8 @@ import { isSupportedCurrency } from "../../src/domain/money";
 
 const MAX_IDENTITY_LENGTH = 256;
 const MAX_SOURCE_REF_LENGTH = 2048;
+export const MAX_SIGNALS_PER_TASK = 1_000;
+export const MAX_SIGNAL_BATCH_BYTES = 1_048_576;
 
 const CANDIDATE_SIGNAL_KEYS = new Set<keyof CandidateSignal>([
   "signalId",
@@ -80,6 +82,27 @@ export function assertCandidateSignal(value: unknown): asserts value is Candidat
   }
   if (typeof candidate.actionAvailable !== "boolean") {
     throw new Error("CandidateSignal.actionAvailable must be boolean");
+  }
+}
+
+export function assertCandidateSignalBatch(
+  value: unknown,
+  boundaryId?: string,
+): asserts value is readonly CandidateSignal[] {
+  if (!Array.isArray(value)) {
+    throw new Error("agent output must be an array of CandidateSignals");
+  }
+  if (value.length > MAX_SIGNALS_PER_TASK) {
+    throw new Error(`agent output must contain at most ${MAX_SIGNALS_PER_TASK} CandidateSignals`);
+  }
+  if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_SIGNAL_BATCH_BYTES) {
+    throw new Error("agent output exceeds the CandidateSignal batch size limit");
+  }
+  for (const signal of value) {
+    assertCandidateSignal(signal);
+    if (boundaryId !== undefined && signal.boundaryId !== boundaryId) {
+      throw new Error("CandidateSignal boundary does not match the task boundary");
+    }
   }
 }
 

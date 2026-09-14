@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { assertCandidateSignal } from "./admission";
+import { assertCandidateSignal, assertCandidateSignalBatch } from "./admission";
 import type { AgentTask, AgentTaskStatus, AgentTaskStore, CandidateSignal } from "./types";
 
 export interface AgentTaskQueryResult<Row> {
@@ -16,6 +16,24 @@ export interface AgentTaskSqlClient {
 
 export interface AgentTaskSqlDatabase {
   transaction<T>(work: (client: AgentTaskSqlClient) => Promise<T>): Promise<T>;
+}
+
+export interface AgentTaskSuccessMetadata extends Readonly<Record<string, unknown>> {
+  readonly admittedCount: number;
+  readonly createdCount: number;
+  readonly filteredCount: number;
+}
+
+export interface AgentTaskSuccessSink {
+  writeWithin(
+    client: AgentTaskSqlClient,
+    input: {
+      readonly taskId: string;
+      readonly boundaryId: string;
+      readonly agentId: string;
+      readonly signals: readonly CandidateSignal[];
+    },
+  ): Promise<AgentTaskSuccessMetadata>;
 }
 
 interface TaskRow extends Record<string, unknown> {
@@ -81,7 +99,10 @@ const VALID_STATUSES = new Set<AgentTaskStatus>([
  * epoch embedded in the capability token and the worker/boundary identity.
  */
 export class PostgresAgentTaskStore implements AgentTaskStore {
-  constructor(private readonly database: AgentTaskSqlDatabase) {}
+  constructor(
+    private readonly database: AgentTaskSqlDatabase,
+    private readonly successSink?: AgentTaskSuccessSink,
+  ) {}
 
   async enqueueIfAbsent(input: {
     readonly taskId: string;
@@ -218,12 +239,7 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
     readonly result: readonly CandidateSignal[];
   }): Promise<AgentTask> {
     requireFiniteTime("now", input.now);
-    for (const signal of input.result) {
-      assertCandidateSignal(signal);
-      if (signal.boundaryId !== input.boundaryId) {
-        throw new Error("CandidateSignal boundary does not match the task boundary");
-      }
-    }
+    assertCandidateSignalBatch(input.result, input.boundaryId);
     return this.mutateLeased(
       `UPDATE agent_tasks AS task
           SET status = 'succeeded', result = $5::jsonb, last_error = NULL,
@@ -239,6 +255,12 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
       "task.succeeded",
       input.workerId,
       { signalCount: input.result.length },
+      async (client, row) => this.successSink?.writeWithin(client, {
+        taskId: row.task_id,
+        boundaryId: row.boundary_id,
+        agentId: row.agent_id,
+        signals: input.result,
+      }),
     );
   }
 
@@ -341,6 +363,10 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
     eventKind: DurableTaskEventKind | null,
     workerId: string,
     metadata: Readonly<Record<string, unknown>>,
+    afterUpdate?: (
+      client: AgentTaskSqlClient,
+      row: TaskRow,
+    ) => Promise<Readonly<Record<string, unknown>> | undefined>,
   ): Promise<AgentTask> {
     requireNonBlank("taskId", String(values[0] ?? ""));
     requireNonBlank("boundaryId", String(values[1] ?? ""));
@@ -352,8 +378,9 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
         throw new Error(`stale, expired, cross-boundary, or invalid task lease during ${operation}`);
       }
       const row = oneRow(result, operation);
+      const additionalMetadata = await afterUpdate?.(client, row);
       const kind = eventKind ?? (row.status === "dead_lettered" ? "task.dead_lettered" : "task.retry_scheduled");
-      await appendTaskEvent(client, row, kind, workerId, metadata);
+      await appendTaskEvent(client, row, kind, workerId, { ...metadata, ...additionalMetadata });
       return mapTask(row);
     });
   }

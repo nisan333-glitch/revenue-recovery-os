@@ -5,6 +5,7 @@ import {
   type AgentTaskQueryResult,
   type AgentTaskSqlClient,
   type AgentTaskSqlDatabase,
+  type AgentTaskSuccessSink,
 } from "./postgresTaskStore";
 
 class PrismaAgentTaskSqlClient implements AgentTaskSqlClient {
@@ -36,6 +37,7 @@ export class PrismaAgentTaskSqlDatabase implements AgentTaskSqlDatabase {
 
 export function createPostgresAgentTaskStore(
   client: PrismaClient = prisma,
+  successSink?: AgentTaskSuccessSink,
 ): PostgresAgentTaskStore {
-  return new PostgresAgentTaskStore(new PrismaAgentTaskSqlDatabase(client));
+  return new PostgresAgentTaskStore(new PrismaAgentTaskSqlDatabase(client), successSink);
 }

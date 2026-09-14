@@ -7,7 +7,7 @@ import type {
   AgentTaskStore,
   CandidateSignal,
 } from "./types";
-import { assertCandidateSignal } from "./admission";
+import { assertCandidateSignalBatch } from "./admission";
 
 export interface AgentRuntimeDependencies {
   readonly store: AgentTaskStore;
@@ -67,14 +67,8 @@ export class AgentRuntime {
 
     let signals: readonly CandidateSignal[];
     try {
-      if (!Array.isArray(rawSignals)) throw new Error("agent output must be an array of CandidateSignals");
+      assertCandidateSignalBatch(rawSignals, task.boundaryId);
       signals = rawSignals;
-      for (const signal of signals) {
-        assertCandidateSignal(signal);
-        if (signal.boundaryId !== task.boundaryId) {
-          throw new Error("CandidateSignal boundary does not match the claimed task boundary");
-        }
-      }
     } catch (error) {
       await this.stopAndRefreshLease(heartbeat, task, workerId, beforeClaim.leaseMs);
       return this.failClaim(task, handler.agentId, workerId, error);

@@ -10,6 +10,7 @@ describe("agent process configuration", () => {
       idleDelayMs: 1_000,
       maxAttempts: 3,
       leaseMs: 30_000,
+      admissionPolicies: new Map(),
     });
   });
 
@@ -39,5 +40,22 @@ describe("agent process configuration", () => {
     expect(policy.globalEnabled).toBe(true);
     expect(policy.disabledAgents.has("renewal-detector")).toBe(true);
     expect([1, 2, 3, 4].map(policy.retryDelayMs)).toEqual([100, 200, 250, 250]);
+  });
+
+  it("parses explicit per-recovery admission thresholds", () => {
+    const config = parseAgentProcessConfig({
+      NH_AGENT_ADMISSION_POLICIES: "ActivationMissed:10000,RenewalAtRisk:50000",
+    });
+    expect([...config.admissionPolicies.entries()]).toEqual([
+      ["ActivationMissed", { recoveryType: "ActivationMissed", economicThresholdMinor: 10_000 }],
+      ["RenewalAtRisk", { recoveryType: "RenewalAtRisk", economicThresholdMinor: 50_000 }],
+    ]);
+  });
+
+  it("rejects malformed or duplicate admission policies", () => {
+    expect(() => parseAgentProcessConfig({ NH_AGENT_ADMISSION_POLICIES: "ActivationMissed" })).toThrow(/format|entries/);
+    expect(() => parseAgentProcessConfig({ NH_AGENT_ADMISSION_POLICIES: "ActivationMissed:-1" })).toThrow(/invalid/);
+    expect(() => parseAgentProcessConfig({ NH_AGENT_ADMISSION_POLICIES: "ActivationMissed:1,ActivationMissed:2" }))
+      .toThrow(/duplicate/);
   });
 });

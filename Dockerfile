@@ -2,8 +2,8 @@
 #
 # PRIVATE PILOT ONLY — this image and the docker-compose.yml beside it are for a single,
 # supervised pilot deployment. They are NOT hardened for public exposure or multi-tenant
-# production: there is no authentication in front of the app (see
-# server/auth/actorContext.ts), and docker-compose.yml's database credentials are fixed,
+# production: production mode requires verified OIDC/JWKS identity (see
+# server/auth/verifiedIdentity.ts), and docker-compose.yml's database credentials are fixed,
 # local-only placeholders. See the README "Private pilot runtime" section before deploying
 # this anywhere reachable by untrusted users.
 #

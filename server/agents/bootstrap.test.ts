@@ -18,6 +18,13 @@ describe("agent process bootstrap", () => {
     }, [])).toThrow(/no production agent handlers/i);
   });
 
+  it("refuses an enabled handler set without an admission policy registry", () => {
+    expect(() => createAgentProcessFromEnvironment({
+      NH_AGENTS_ENABLED: "true",
+      NH_AGENT_BOUNDARIES: "tenant-1",
+    }, [handler])).toThrow(/admission policies/i);
+  });
+
   it("constructs one scoped serial worker per handler and boundary", async () => {
     const runNext = vi.fn(async () => null);
     const process = createAgentProcess({

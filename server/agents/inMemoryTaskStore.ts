@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { assertCandidateSignal } from "./admission";
+import { assertCandidateSignalBatch } from "./admission";
 import type { AgentTask, AgentTaskStore, CandidateSignal } from "./types";
 
 type MutableTask = {
@@ -112,12 +112,7 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
     readonly result: readonly CandidateSignal[];
   }): Promise<AgentTask> {
     requireFiniteTime("now", input.now);
-    for (const signal of input.result) {
-      assertCandidateSignal(signal);
-      if (signal.boundaryId !== input.boundaryId) {
-        throw new Error("CandidateSignal boundary does not match the task boundary");
-      }
-    }
+    assertCandidateSignalBatch(input.result, input.boundaryId);
     const task = this.requireLease(input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.now);
     task.status = "succeeded";
     task.result = freezeSignals(input.result);

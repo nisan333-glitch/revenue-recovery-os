@@ -80,7 +80,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     reply.header("x-content-type-options", "nosniff");
     reply.header("x-frame-options", "DENY");
     reply.header("referrer-policy", "no-referrer");
-    reply.header("content-security-policy", "default-src 'none'; frame-ancestors 'none'");
+    reply.header(
+      "content-security-policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
+    );
     reply.header("cache-control", "no-store");
     return payload;
   });

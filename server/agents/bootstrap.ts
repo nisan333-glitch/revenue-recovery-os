@@ -5,6 +5,7 @@ import { AgentRuntime } from "./runtime";
 import { ConfiguredAgentPolicyProvider, parseAgentProcessConfig } from "./config";
 import { AgentWorker, AgentWorkerSupervisor, type AgentTaskRunner } from "./worker";
 import type { AgentAuditSink, AgentHandler } from "./types";
+import { PostgresCandidateSignalWriter } from "./postgresCandidateSignalWriter";
 
 export interface AgentProcess {
   start(): void;
@@ -20,11 +21,17 @@ export function createAgentProcessFromEnvironment(
   if (config.enabled && handlers.length === 0) {
     throw new Error("agents are enabled but no production agent handlers are registered");
   }
+  if (config.enabled && config.admissionPolicies.size === 0) {
+    throw new Error("agents are enabled but no candidate admission policies are configured");
+  }
   assertUniqueAgentIds(handlers);
 
   const policy = new ConfiguredAgentPolicyProvider(config);
   const runtime = new AgentRuntime({
-    store: createPostgresAgentTaskStore(),
+    store: createPostgresAgentTaskStore(
+      undefined,
+      config.enabled ? new PostgresCandidateSignalWriter(config.admissionPolicies) : undefined,
+    ),
     policy,
     audit: NOOP_AUDIT,
     now: Date.now,
