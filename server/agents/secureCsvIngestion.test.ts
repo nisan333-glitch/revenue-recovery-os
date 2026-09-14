@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryCaseCandidateStore } from "./caseAdmission";
 import { ingestSecureCsv } from "./secureCsvIngestion";
+import { InMemoryCandidateReviewStore, CandidateReviewService } from "./candidateReview";
+import { CandidatePromotionService } from "./recoveryCase";
+import type { CaseCandidate, CaseCandidateStore } from "./caseAdmission";
 
 const CSV = [
   "sourceIdentity,recoveryType,observedAt,amountAtRiskMinor,currency,actionAvailable,expectedProofEvent",
@@ -18,6 +21,44 @@ describe("secure CSV candidate ingestion", () => {
     const result = await ingestSecureCsv(CSV, new InMemoryCaseCandidateStore(), options);
     expect(result).toEqual({ rowsRead: 1, admitted: 1, created: 1, filtered: 0, rawCsvPersisted: false });
     expect(JSON.stringify(result)).not.toContain("account@example.com");
+  });
+
+  it("keeps the synthetic pilot path candidate-first through review and promotion", async () => {
+    const candidates: CaseCandidate[] = [];
+    const store: CaseCandidateStore = {
+      async createIfAbsent(candidate) {
+        candidates.push(candidate);
+        return { candidate, created: true };
+      },
+    };
+    await ingestSecureCsv(CSV, store, options);
+    expect(candidates).toHaveLength(1);
+
+    const reviews = new InMemoryCandidateReviewStore();
+    reviews.seed(candidates[0]!);
+    const review = await new CandidateReviewService(reviews, options.now).decide(
+      { actorId: "operator-1", role: "operator" },
+      { candidateId: candidates[0]!.candidateId, boundaryId: "tenant-1", decision: "accepted", reason: "synthetic fixture review" },
+    );
+    expect(review.decision).toBe("accepted");
+
+    let promoted = false;
+    const promotion = new CandidatePromotionService({
+      async promote(input) {
+        promoted = input.candidateId === candidates[0]!.candidateId;
+        return { created: promoted, recoveryCase: {
+          recoveryCaseId: input.recoveryCaseId, boundaryId: input.boundaryId,
+          sourceCandidateId: input.candidateId, recoveryType: candidates[0]!.signal.recoveryType,
+          sourceRef: candidates[0]!.signal.sourceRef, amountAtRiskMinor: candidates[0]!.signal.amountAtRiskMinor,
+          currency: candidates[0]!.signal.currency, detectorVersion: candidates[0]!.signal.detectorVersion,
+          openedByActorId: input.actorId, openedByRole: "operator", policyVersion: input.policyVersion,
+          openedAt: options.now().toISOString(),
+        } };
+      },
+    });
+    const result = await promotion.promote({ actorId: "operator-1", role: "operator" }, candidates[0]!.candidateId, "tenant-1");
+    expect(promoted).toBe(true);
+    expect(result.created).toBe(true);
   });
 
   it("requires explicit confirmation for synonym mappings", async () => {
