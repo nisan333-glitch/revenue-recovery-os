@@ -5,6 +5,7 @@ import { buildApp } from "./app";
 import { createAgentProcessFromEnvironment } from "./agents/bootstrap";
 import type { AgentHandler } from "./agents/types";
 import { closeInOrder, installGracefulShutdown } from "./processLifecycle";
+import { createIdentityResolverFromEnvironment } from "./auth/verifiedIdentity";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
@@ -13,7 +14,8 @@ const host = process.env.HOST ?? "127.0.0.1";
 // only when a real detector/source adapter exists; NH_AGENTS_ENABLED=true fails until then.
 const handlers: readonly AgentHandler[] = [];
 const agents = createAgentProcessFromEnvironment(process.env, handlers);
-const app = buildApp({ agentReadiness: () => agents.readiness() });
+const identityResolver = createIdentityResolverFromEnvironment(process.env);
+const app = buildApp({ agentReadiness: () => agents.readiness(), identityResolver });
 const removeShutdownHandlers = installGracefulShutdown(app, agents);
 
 app

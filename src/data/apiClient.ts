@@ -64,12 +64,18 @@ export async function apiRequest<T>(
 ): Promise<T> {
   let res: Response;
   try {
+    let bearer: string | null = null;
+    try { bearer = sessionStorage.getItem("nh_access_token"); } catch { bearer = null; }
+    const identityHeaders: Record<string, string> = bearer
+      ? { authorization: `Bearer ${bearer}` }
+      : Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)
+        ? { "x-actor-id": actor.actorId, "x-actor-role": actor.role }
+        : {};
     res = await fetch(`/api${path}`, {
       method,
       headers: {
         "content-type": "application/json",
-        "x-actor-id": actor.actorId,
-        "x-actor-role": actor.role,
+        ...identityHeaders,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

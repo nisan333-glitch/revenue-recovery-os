@@ -8,6 +8,7 @@
 //  * Writes are INSERT-only. There is no update path. A correction INSERTs a new
 //    linked revision; the original row is never touched. The DB triggers reject any
 //    UPDATE/DELETE that tries to bypass this.
+import { randomUUID } from "node:crypto";
 import { prisma, type DbClient } from "../db";
 import { assertRecoveryCaseRootIfRequired } from "./recoveryCaseStore";
 import {
@@ -97,7 +98,7 @@ export interface AuthorityWrite {
 
 function authorityRow(a: AuthorityWrite) {
   return {
-    id: `AE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `AE-${randomUUID()}`,
     recoveryCaseId: a.recoveryCaseId,
     actorId: a.actorId,
     role: a.role,

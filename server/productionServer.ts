@@ -16,6 +16,7 @@ import { buildApp, apiPrefixedRequests, type BuildAppOptions } from "./app";
 import { createAgentProcessFromEnvironment } from "./agents/bootstrap";
 import type { AgentHandler } from "./agents/types";
 import { closeInOrder, installGracefulShutdown } from "./processLifecycle";
+import { createIdentityResolverFromEnvironment } from "./auth/verifiedIdentity";
 
 // Resolved from the process's working directory, not `__dirname` — the compiled artifact
 // (dist-server/server/productionServer.js) and the raw TS source (as Vitest runs it,
@@ -63,7 +64,8 @@ if (require.main === module) {
   // after its source contract and CandidateSignal admission tests are approved.
   const handlers: readonly AgentHandler[] = [];
   const agents = createAgentProcessFromEnvironment(process.env, handlers);
-  const app = buildProductionApp({ agentReadiness: () => agents.readiness() });
+  const identityResolver = createIdentityResolverFromEnvironment(process.env);
+  const app = buildProductionApp({ agentReadiness: () => agents.readiness(), identityResolver });
   const removeShutdownHandlers = installGracefulShutdown(app, agents);
 
   void app.listen({ port, host }).then((address) => {
