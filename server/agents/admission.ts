@@ -1,4 +1,8 @@
 import type { CandidateSignal } from "./types";
+import { isSupportedCurrency } from "../../src/domain/money";
+
+const MAX_IDENTITY_LENGTH = 256;
+const MAX_SOURCE_REF_LENGTH = 2048;
 
 const CANDIDATE_SIGNAL_KEYS = new Set<keyof CandidateSignal>([
   "signalId",
@@ -51,7 +55,9 @@ export function assertCandidateSignal(value: unknown): asserts value is Candidat
     "expectedProofEvent",
   ] as const;
   for (const field of nonEmptyStrings) {
-    if (typeof candidate[field] !== "string" || !(candidate[field] as string).trim()) {
+    const value = candidate[field];
+    const maxLength = field === "sourceRef" ? MAX_SOURCE_REF_LENGTH : MAX_IDENTITY_LENGTH;
+    if (typeof value !== "string" || !value.trim() || value !== value.trim() || value.length > maxLength) {
       throw new Error(`CandidateSignal.${field} must be a non-empty string`);
     }
   }
@@ -66,8 +72,8 @@ export function assertCandidateSignal(value: unknown): asserts value is Candidat
   ) {
     throw new Error("CandidateSignal.observedAt must be a valid ISO timestamp");
   }
-  if (typeof candidate.currency !== "string" || !/^[A-Z]{3}$/.test(candidate.currency)) {
-    throw new Error("CandidateSignal.currency must be a three-letter uppercase currency code");
+  if (typeof candidate.currency !== "string" || !isSupportedCurrency(candidate.currency)) {
+    throw new Error("CandidateSignal.currency must be a supported currency code");
   }
   if (!Number.isSafeInteger(candidate.amountAtRiskMinor) || (candidate.amountAtRiskMinor as number) < 0) {
     throw new Error("CandidateSignal.amountAtRiskMinor must be a non-negative safe integer");

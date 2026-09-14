@@ -140,3 +140,44 @@ export const ingestEvidenceSchema = {
     },
   },
 } as const;
+
+export const candidateQueueSchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId"],
+    properties: { boundaryId: { type: "string", minLength: 1, maxLength: 256 } },
+  },
+} as const;
+
+export const candidateReviewSchema = {
+  params: {
+    type: "object",
+    required: ["candidateId"],
+    properties: { candidateId: { type: "string", minLength: 1, maxLength: 256 } },
+  },
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "decision", "reason"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      decision: { type: "string", enum: ["accepted", "rejected"] },
+      reason: { type: "string", minLength: 1, maxLength: 2000 },
+    },
+  },
+} as const;
+
+export const candidatePromotionSchema = {
+  params: {
+    type: "object",
+    required: ["candidateId"],
+    properties: { candidateId: { type: "string", minLength: 1, maxLength: 256 } },
+  },
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId"],
+    properties: { boundaryId: { type: "string", minLength: 1, maxLength: 256 } },
+  },
+} as const;

@@ -44,13 +44,9 @@ export class CaseAdmissionService {
     const decision = canBeCase(signalValue, policy);
     if (!decision.admitted) return decision;
 
-    const dedupeKey = digest([
-      signalValue.boundaryId,
-      signalValue.recoveryType,
-      signalValue.sourceRef,
-    ]);
+    const dedupeKey = caseCandidateDedupeKey(signalValue);
     const candidate: CaseCandidate = Object.freeze({
-      candidateId: `CC-${dedupeKey.slice(0, 24)}`,
+      candidateId: caseCandidateId(dedupeKey),
       dedupeKey,
       boundaryId: signalValue.boundaryId,
       agentId,
@@ -70,10 +66,31 @@ export class InMemoryCaseCandidateStore implements CaseCandidateStore {
     readonly candidate: CaseCandidate;
     readonly created: boolean;
   }> {
+    assertCaseCandidateIdentity(candidate);
     const existing = this.byDedupeKey.get(candidate.dedupeKey);
     if (existing) return { candidate: existing, created: false };
     this.byDedupeKey.set(candidate.dedupeKey, candidate);
     return { candidate, created: true };
+  }
+}
+
+export function caseCandidateDedupeKey(signal: CandidateSignal): string {
+  return digest([signal.boundaryId, signal.recoveryType, signal.sourceRef]);
+}
+
+export function caseCandidateId(dedupeKey: string): string {
+  if (!/^[a-f0-9]{64}$/.test(dedupeKey)) throw new Error("candidate dedupe key must be a SHA-256 digest");
+  return `CC-${dedupeKey.slice(0, 24)}`;
+}
+
+export function assertCaseCandidateIdentity(candidate: CaseCandidate): void {
+  assertCandidateSignal(candidate.signal);
+  const expectedDedupe = caseCandidateDedupeKey(candidate.signal);
+  if (candidate.dedupeKey !== expectedDedupe || candidate.candidateId !== caseCandidateId(expectedDedupe)) {
+    throw new Error("candidate identity does not match its immutable source signal");
+  }
+  if (candidate.boundaryId !== candidate.signal.boundaryId) {
+    throw new Error("candidate boundary does not match its source signal");
   }
 }
 

@@ -186,3 +186,59 @@ model AgentTaskEventRecord {
   @@index([boundaryId, agentId, sequence], map: "agent_task_events_boundary_agent_sequence_idx")
   @@map("agent_task_events")
 }
+
+/// EP-12B · A detector result that crossed the universal admission gate. It remains a
+/// hypothesis until a human operator accepts it and explicitly promotes it to a RecoveryCase.
+model AgentCaseCandidateRecord {
+  candidateId String   @id(map: "agent_case_candidates_pkey") @map("candidate_id")
+  dedupeKey   String   @unique(map: "agent_case_candidates_dedupe_key_key") @map("dedupe_key")
+  boundaryId  String   @map("boundary_id")
+  agentId     String   @map("agent_id")
+  signal      Json
+  status      String   @default("pending_review")
+  submittedAt DateTime @map("submitted_at") @db.Timestamptz(3)
+  persistedAt DateTime @default(now()) @map("persisted_at") @db.Timestamptz(3)
+
+  @@unique([candidateId, boundaryId], map: "agent_case_candidates_identity_boundary_unique")
+  @@index([boundaryId, status, submittedAt], map: "agent_case_candidates_review_queue_idx")
+  @@map("agent_case_candidates")
+}
+
+/// Immutable human decision on a candidate. One candidate can be reviewed once; an accepted
+/// decision stays visible until the candidate has a durable RecoveryCase root.
+model AgentCaseCandidateReviewRecord {
+  reviewId      String   @id(map: "agent_case_candidate_reviews_pkey") @map("review_id")
+  candidateId   String   @unique(map: "agent_case_candidate_reviews_candidate_key") @map("candidate_id")
+  boundaryId    String   @map("boundary_id")
+  decision      String
+  reason        String
+  actorId       String   @map("actor_id")
+  actorRole     String   @map("actor_role")
+  policyVersion String   @map("policy_version")
+  decidedAt     DateTime @default(now()) @map("decided_at") @db.Timestamptz(3)
+
+  @@index([boundaryId, decidedAt], map: "agent_case_candidate_reviews_boundary_idx")
+  @@map("agent_case_candidate_reviews")
+}
+
+/// EP-12E · Authoritative root of every governed recovery workflow. No baseline, evidence,
+/// proof or authority mutation is valid in production without this row.
+model RecoveryCaseRecord {
+  recoveryCaseId    String   @id(map: "recovery_cases_pkey") @map("recovery_case_id")
+  boundaryId        String   @map("boundary_id")
+  sourceCandidateId String   @unique(map: "recovery_cases_source_candidate_key") @map("source_candidate_id")
+  recoveryType      String   @map("recovery_type")
+  sourceRef         String   @map("source_ref")
+  amountAtRiskMinor BigInt   @map("amount_at_risk_minor")
+  currency          String
+  detectorVersion   String   @map("detector_version")
+  openedByActorId   String   @map("opened_by_actor_id")
+  openedByRole      String   @map("opened_by_role")
+  policyVersion     String   @map("policy_version")
+  openedAt          DateTime @map("opened_at") @db.Timestamptz(3)
+  persistedAt       DateTime @default(now()) @map("persisted_at") @db.Timestamptz(3)
+
+  @@unique([sourceCandidateId, boundaryId], map: "recovery_cases_candidate_boundary_unique")
+  @@index([boundaryId, openedAt], map: "recovery_cases_boundary_opened_idx")
+  @@map("recovery_cases")
+}

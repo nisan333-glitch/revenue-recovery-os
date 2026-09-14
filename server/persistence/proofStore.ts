@@ -9,6 +9,7 @@
 //    linked revision; the original row is never touched. The DB triggers reject any
 //    UPDATE/DELETE that tries to bypass this.
 import { prisma, type DbClient } from "../db";
+import { assertRecoveryCaseRootIfRequired } from "./recoveryCaseStore";
 import {
   createApprovedProof,
   reviseProof,
@@ -121,6 +122,7 @@ export async function approveProof(
 ): Promise<Proof> {
   const proof = createApprovedProof(input); // revenueReturned computed ONCE by the kernel
   const write = async (db: DbClient) => {
+    await assertRecoveryCaseRootIfRequired(input.recoveryCaseId, db);
     await db.proof.create({ data: proofToRow(proof) });
     await db.authorityEvent.create({ data: authorityRow(authority) });
   };
@@ -158,6 +160,7 @@ export async function reviseExistingProof(
  * one-chain-per-recoveryCaseId rule (a chain root has previousProofId = null).
  */
 export async function chainRootExists(recoveryCaseId: string): Promise<boolean> {
+  await assertRecoveryCaseRootIfRequired(recoveryCaseId);
   const root = await prisma.proof.findFirst({ where: { recoveryCaseId, previousProofId: null } });
   return root !== null;
 }
@@ -170,6 +173,7 @@ export async function getProofById(proofId: string): Promise<Proof | null> {
 
 /** Read every persisted revision for a recovery case, oldest first. */
 export async function getCaseProofs(recoveryCaseId: string): Promise<Proof[]> {
+  await assertRecoveryCaseRootIfRequired(recoveryCaseId);
   const rows = await prisma.proof.findMany({
     where: { recoveryCaseId },
     orderBy: { proofVersion: "asc" },

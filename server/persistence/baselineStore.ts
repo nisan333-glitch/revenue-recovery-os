@@ -6,6 +6,7 @@
 // is a NEW row (`supersedes`) — the prior snapshot, and every proof that already stamped
 // it, is never touched or reinterpreted.
 import { prisma, type DbClient } from "../db";
+import { assertRecoveryCaseRootIfRequired } from "./recoveryCaseStore";
 
 export interface EstablishBaselineInput {
   baselineId: string;
@@ -64,6 +65,7 @@ export async function establishAndLockBaseline(
   input: EstablishBaselineInput,
   client: DbClient = prisma,
 ): Promise<BaselineSnapshot> {
+  await assertRecoveryCaseRootIfRequired(input.recoveryCaseId, client);
   const row = await client.baselineSnapshot.create({
     data: {
       baselineId: input.baselineId,
@@ -95,6 +97,7 @@ export async function getBaselineSnapshot(baselineId: string): Promise<BaselineS
  * current one, and hiding it would misrepresent what a proof was actually approved against.
  */
 export async function getBaselinesForCase(recoveryCaseId: string): Promise<BaselineSnapshot[]> {
+  await assertRecoveryCaseRootIfRequired(recoveryCaseId);
   const rows = await prisma.baselineSnapshot.findMany({
     where: { recoveryCaseId },
     orderBy: { lockedAt: "asc" },

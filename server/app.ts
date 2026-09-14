@@ -23,8 +23,14 @@ import {
   caseParamsSchema,
   establishBaselineSchema,
   ingestEvidenceSchema,
+  candidateQueueSchema,
+  candidateReviewSchema,
+  candidatePromotionSchema,
 } from "./http/schemas";
 import type { AgentWorkerReadiness } from "./agents/worker";
+import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
+import { CandidatePromotionService } from "./agents/recoveryCase";
+import { PostgresCandidateReviewStore } from "./agents/postgresCandidateReviewStore";
 
 // EP-10 · Requests that arrived with a leading "/api" and were rewritten below — kept so
 // the production server's SPA-fallback handler can tell "an unmatched /api/* call" (must
@@ -35,9 +41,14 @@ export const apiPrefixedRequests = new WeakSet<object>();
 
 export interface BuildAppOptions {
   readonly agentReadiness?: () => AgentWorkerReadiness;
+  readonly candidateReviewService?: CandidateReviewService;
+  readonly candidatePromotionService?: CandidatePromotionService;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
+  const candidateStore = new PostgresCandidateReviewStore();
+  const candidateReview = options.candidateReviewService ?? new CandidateReviewService(candidateStore);
+  const candidatePromotion = options.candidatePromotionService ?? new CandidatePromotionService(candidateStore);
   // removeAdditional:false so `additionalProperties:false` REJECTS (400) an injected
   // field — e.g. a counted `revenueReturned` — instead of silently stripping it.
   const app = Fastify({
@@ -69,6 +80,36 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     const ready = up && agents.status !== "down";
     return reply.code(ready ? 200 : 503).send({ db: up ? "up" : "down", agents });
   });
+
+  app.get<{ Querystring: { boundaryId: string } }>(
+    "/agent-candidates",
+    { schema: candidateQueueSchema },
+    async (req, reply) => reply.send(await candidateReview.list(actorFromRequest(req), req.query.boundaryId)),
+  );
+
+  app.post<{
+    Params: { candidateId: string };
+    Body: { boundaryId: string; decision: CandidateReviewDecision; reason: string };
+  }>("/agent-candidates/:candidateId/review", { schema: candidateReviewSchema }, async (req, reply) => {
+    const review = await candidateReview.decide(actorFromRequest(req), {
+      candidateId: req.params.candidateId,
+      ...req.body,
+    });
+    return reply.code(201).send(review);
+  });
+
+  app.post<{ Params: { candidateId: string }; Body: { boundaryId: string } }>(
+    "/agent-candidates/:candidateId/promote",
+    { schema: candidatePromotionSchema },
+    async (req, reply) => {
+      const result = await candidatePromotion.promote(
+        actorFromRequest(req),
+        req.params.candidateId,
+        req.body.boundaryId,
+      );
+      return reply.code(result.created ? 201 : 200).send(result);
+    },
+  );
 
   // Record a case author/owner (the beneficiary).
   app.post<{ Params: { caseId: string } }>(
