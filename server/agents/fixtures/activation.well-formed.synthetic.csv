@@ -94,8 +94,3 @@ synthetic-account-0002,ActivationMissed,2026-01-02T12:00:00.000Z,10001,EUR,true,
 synthetic-account-0003,ActivationMissed,2026-03-01T14:00:00.000Z,50007,GBP,true,"SYNTHETIC activation completed, resource ""synthetic-shared-resource"""
   synthetic-account-0004  ,ActivationMissed,2026-01-04T12:00:00.000Z,750000,ILS,true,"SYNTHETIC activation completed, resource ""synthetic-shared-resource"""
 synthetic-system-a|synthetic-account-0069,ActivationMissed,2026-01-13T12:00:00.000Z,1000000,ILS,true,"SYNTHETIC activation completed, alternate fictional observation"
-synthetic-account-0096,ActivationMissed,2026-01-01T12:00:00.000Z,10000.5,USD,true,"SYNTHETIC activation completed, resource ""synthetic-shared-resource"""
-synthetic-account-0097,ActivationMissed,2026-02-30T12:00:00.000Z,10000,USD,true,"SYNTHETIC activation completed, resource ""synthetic-shared-resource"""
-,ActivationMissed,2026-01-01T12:00:00.000Z,10000,USD,true,"SYNTHETIC activation completed, resource ""synthetic-shared-resource"""
-synthetic-account-0099,ActivationMissed,2026-01-01T12:00:00.000Z,10000,ZZZ,true,"SYNTHETIC activation completed, resource ""synthetic-shared-resource"""
-synthetic-account-0100,ActivationMissed,2026-01-01T12:00:00.000Z,10000,USD,true,

@@ -112,18 +112,26 @@ function parseCsv(text: string): string[][] {
   let row: string[] = [];
   let field = "";
   let quoted = false;
+  let closedQuote = false;
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i]!;
     if (quoted) {
       if (char === '"' && text[i + 1] === '"') { field += '"'; i += 1; }
-      else if (char === '"') quoted = false;
+      else if (char === '"') { quoted = false; closedQuote = true; }
       else field += char;
-    } else if (char === '"' && field === "") quoted = true;
-    else if (char === ",") { row.push(field); field = ""; }
-    else if (char === "\n") { row.push(field.replace(/\r$/, "")); rows.push(row); row = []; field = ""; }
-    else field += char;
+    } else if (char === ",") {
+      row.push(field); field = ""; closedQuote = false;
+    } else if (char === "\n" || (char === "\r" && text[i + 1] === "\n")) {
+      if (char === "\r") i += 1;
+      row.push(field); rows.push(row); row = []; field = ""; closedQuote = false;
+    } else if (closedQuote) {
+      throw new Error("CSV has unexpected text after a closing quote");
+    } else if (char === '"') {
+      if (field !== "") throw new Error("CSV has a quote inside an unquoted field");
+      quoted = true;
+    } else field += char;
   }
   if (quoted) throw new Error("CSV has an unterminated quoted field");
-  if (field !== "" || row.length > 0) { row.push(field.replace(/\r$/, "")); rows.push(row); }
+  if (field !== "" || row.length > 0 || closedQuote) { row.push(field); rows.push(row); }
   return rows.filter((values, index) => index === 0 || values.some((value) => value !== ""));
 }

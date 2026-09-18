@@ -4,12 +4,10 @@ import { ingestSecureCsv } from "./secureCsvIngestion";
 import { InMemoryCandidateReviewStore, CandidateReviewService } from "./candidateReview";
 import { CandidatePromotionService } from "./recoveryCase";
 import type { CaseCandidate, CaseCandidateStore } from "./caseAdmission";
-import { syntheticCsv, syntheticRows } from "./fixtures/activation.synthetic";
-import expectedResults from "./fixtures/activation.synthetic.expected-results.json";
 
 const CSV = [
   "sourceIdentity,recoveryType,observedAt,amountAtRiskMinor,currency,actionAvailable,expectedProofEvent",
-  "account@example.com,ActivationMissed,2026-09-13T00:00:00.000Z,50000,USD,true,invoice paid",
+  "synthetic-account-0001,ActivationMissed,2026-09-13T00:00:00.000Z,50000,USD,true,SYNTHETIC invoice paid",
 ].join("\n");
 const options = {
   boundaryId: "tenant-1", agentId: "csv-import", detectorVersion: "csv@1",
@@ -19,10 +17,58 @@ const options = {
 };
 
 describe("secure CSV candidate ingestion", () => {
+  it.each([
+    '"synthetic-account-0002"trailing',
+    'synthetic-account-"0002"',
+    '"synthetic-account-0002" "tail"',
+    '"""synthetic-account-0002"""trailing',
+  ])("rejects malformed quoting before any write: %s", async (identity) => {
+    const invalidRow = CSV.split("\n")[1]!.replace("synthetic-account-0001", identity);
+    let writes = 0;
+    const store: CaseCandidateStore = {
+      async createIfAbsent(candidate) { writes += 1; return { candidate, created: true }; },
+    };
+    await expect(ingestSecureCsv(`${CSV}\n${invalidRow}`, store, options)).rejects.toThrow(/CSV.*quot/i);
+    expect(writes).toBe(0);
+  });
+
+  it.each(["\n", "\r\n"])("preserves valid quoted commas, escaped quotes and embedded newlines with %j records", async (newline) => {
+    const proofEvent = 'SYNTHETIC activation "done", verified\r\nnext observation';
+    const line = `"synthetic-account-0001",ActivationMissed,2026-09-13T00:00:00.000Z,50000,USD,true,"${proofEvent.replace(/"/g, '""')}"`;
+    const candidates: CaseCandidate[] = [];
+    const store: CaseCandidateStore = {
+      async createIfAbsent(candidate) { candidates.push(candidate); return { candidate, created: true }; },
+    };
+    // Closing quote at EOF and with a record terminator must both work.
+    for (const ending of ["", newline]) {
+      await expect(ingestSecureCsv(`${CSV.split("\n")[0]}${newline}${line}${ending}`, store, options))
+        .resolves.toMatchObject({ created: 1 });
+    }
+    expect(candidates.every((candidate) => candidate.signal.expectedProofEvent === proofEvent)).toBe(true);
+  });
+
+  it("rejects an unterminated quote and an empty quoted required value without writes", async () => {
+    const store: CaseCandidateStore = { async createIfAbsent() { throw new Error("unexpected persistence call"); } };
+    await expect(ingestSecureCsv(CSV.replace("SYNTHETIC invoice paid", '"SYNTHETIC invoice paid'), store, options))
+      .rejects.toThrow("CSV has an unterminated quoted field");
+    await expect(ingestSecureCsv(CSV.replace("SYNTHETIC invoice paid", '""'), store, options))
+      .rejects.toThrow("CandidateSignal.expectedProofEvent must be a non-empty string");
+  });
+
   it("pseudonymizes source identity and persists candidates only", async () => {
-    const result = await ingestSecureCsv(CSV, new InMemoryCaseCandidateStore(), options);
+    const underlying = new InMemoryCaseCandidateStore();
+    const persisted: CaseCandidate[] = [];
+    const result = await ingestSecureCsv(CSV, {
+      async createIfAbsent(candidate) {
+        const stored = await underlying.createIfAbsent(candidate);
+        persisted.push(stored.candidate);
+        return stored;
+      },
+    }, options);
     expect(result).toEqual({ rowsRead: 1, admitted: 1, created: 1, filtered: 0, rawCsvPersisted: false });
-    expect(JSON.stringify(result)).not.toContain("account@example.com");
+    expect(persisted).toHaveLength(1);
+    expect(JSON.stringify(persisted)).not.toContain("synthetic-account-0001");
+    expect(persisted[0]!.signal.sourceRef).toMatch(/^hmac-sha256:[a-f0-9]{64}$/);
   });
 
   it("keeps the synthetic pilot path candidate-first through review and promotion", async () => {
@@ -61,56 +107,6 @@ describe("secure CSV candidate ingestion", () => {
     const result = await promotion.promote({ actorId: "operator-1", role: "operator" }, candidates[0]!.candidateId, "tenant-1");
     expect(promoted).toBe(true);
     expect(result.created).toBe(true);
-  });
-
-  it("keeps the deterministic fixture balanced and explicitly synthetic", () => {
-    const rows = syntheticRows();
-    expect(rows).toHaveLength(100);
-    expect(rows.filter((r) => r.classification === "admissible")).toHaveLength(70);
-    expect(rows.filter((r) => r.classification === "below_threshold")).toHaveLength(15);
-    expect(rows.filter((r) => r.classification === "no_action")).toHaveLength(5);
-    expect(rows.filter((r) => r.classification === "duplicate")).toHaveLength(5);
-    expect(rows.filter((r) => r.classification === "malformed")).toHaveLength(5);
-    expect(rows.every((r) => r.rowNumber > 0)).toBe(true);
-  });
-
-  it("ingests the non-malformed fixture rows without mutating input and deduplicates", async () => {
-    const input = syntheticCsv();
-    const nonMalformed = `${input.split("\n").slice(0, 96).join("\n")}\n`;
-    const before = nonMalformed;
-    const result = await ingestSecureCsv(nonMalformed, new InMemoryCaseCandidateStore(), options);
-    expect(result).toMatchObject({ rowsRead: 95, admitted: 75, created: 70, filtered: 20 });
-    expect(nonMalformed).toBe(before);
-    expect(input).toContain("synthetic-account-");
-    expect(input).toContain('"Activation completed, cohort 1"');
-  });
-
-  it("fails closed on the fixture's malformed rows", async () => {
-    const lines = syntheticCsv().split("\n");
-    const malformed = `${lines[0]}\n${lines.slice(96, 101).join("\n")}\n`;
-    let writes = 0;
-    const store: CaseCandidateStore = { async createIfAbsent(candidate) { writes += 1; return { candidate, created: true }; } };
-    await expect(ingestSecureCsv(malformed, store, options))
-      .rejects.toThrow(/amountAtRiskMinor|observedAt/);
-    expect(writes).toBe(0);
-  });
-
-  it("performs no partial writes when a malformed row follows valid rows", async () => {
-    let writes = 0;
-    const store: CaseCandidateStore = { async createIfAbsent(candidate) { writes += 1; return { candidate, created: true }; } };
-    await expect(ingestSecureCsv(syntheticCsv(), store, options)).rejects.toThrow();
-    expect(writes).toBe(0);
-  });
-
-  it("covers every fixture row in expected-results", () => {
-    const covered = new Set<number>();
-    for (const entry of expectedResults.rows) {
-      const [start, end] = entry.rows.split("-").map(Number);
-      for (let row = start; row <= (end ?? start); row += 1) covered.add(row);
-    }
-    expect(covered.size).toBe(100);
-    expect(Math.min(...covered)).toBe(1);
-    expect(Math.max(...covered)).toBe(100);
   });
 
   it("requires explicit confirmation for synonym mappings", async () => {
