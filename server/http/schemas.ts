@@ -128,6 +128,10 @@ export const ingestEvidenceSchema = {
     type: "object",
     additionalProperties: false,
     required: ["evidenceId", "sourceSystem", "sourceRecordId", "evidenceType", "observedAt"],
+    dependencies: {
+      amountMinor: ["currency"],
+      currency: ["amountMinor"],
+    },
     properties: {
       evidenceId: { type: "string", minLength: 1 },
       sourceSystem: { type: "string", minLength: 1 },
