@@ -73,8 +73,8 @@ export interface ObservedRevenueEvent {
    * conclusions must fail closed when this is false.
    */
   readonly timingKnown: boolean;
-  readonly refunded: boolean;
-  readonly cancelled: boolean;
+  readonly refundedAt: string | null;
+  readonly cancelledAt: string | null;
 }
 
 /**
@@ -164,8 +164,8 @@ export function deriveObservedEvent(cycle: ExpectationCycle): ObservedRevenueEve
     observedAt: m.paidAt,
     observedAmount: m.paidAmount,
     timingKnown: cycle.attributes["paid_timing"] !== UNKNOWN_TIMING_MARKER,
-    refunded: m.refunded,
-    cancelled: m.cancelled,
+    refundedAt: m.refundedAt,
+    cancelledAt: m.cancelledAt,
   });
 }
 
@@ -204,8 +204,12 @@ export function detectDiscrepancy(
   }
   // A cancelled or refunded obligation may have been legitimately voided or reversed. Whether it
   // still stands is a contractual judgement this module cannot make from the data available.
-  if (observed.cancelled) return unknown(id, src, "obligation cancelled — cannot establish it still stands");
-  if (observed.refunded) return unknown(id, src, "obligation refunded/reversed — cannot establish net position");
+  if (observed.cancelledAt !== null && !isAfter(observed.cancelledAt, policy.asOf)) {
+    return unknown(id, src, "obligation cancelled — cannot establish it still stands");
+  }
+  if (observed.refundedAt !== null && !isAfter(observed.refundedAt, policy.asOf)) {
+    return unknown(id, src, "obligation refunded/reversed — cannot establish net position");
+  }
 
   // Not yet due: the expectation window is still open. Silence is not a discrepancy.
   if (isAfter(expected.expectedAt, policy.asOf)) {

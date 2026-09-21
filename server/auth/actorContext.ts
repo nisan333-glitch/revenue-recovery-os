@@ -9,11 +9,22 @@ import type { FastifyRequest } from "fastify";
 import { UnauthorizedError } from "../http/errors";
 import { type ActorContext, isBackendRole } from "./identity";
 
+export type IdentityResolver = (request: FastifyRequest) => Promise<ActorContext>;
+
 export function actorFromRequest(req: FastifyRequest): ActorContext {
   const id = req.headers["x-actor-id"];
   const role = req.headers["x-actor-role"];
   if (typeof id !== "string" || !id.trim() || !isBackendRole(role)) {
     throw new UnauthorizedError("missing or invalid actor credentials");
   }
-  return { actorId: id, role };
+  const actorId = id.trim();
+  if (actorId !== id || actorId.length > 256) throw new UnauthorizedError("missing or invalid actor credentials");
+  return { actorId, role };
+}
+
+export async function resolveActor(
+  request: FastifyRequest,
+  resolver?: IdentityResolver,
+): Promise<ActorContext> {
+  return resolver ? resolver(request) : actorFromRequest(request);
 }

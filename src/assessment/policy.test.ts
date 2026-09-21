@@ -24,5 +24,6 @@ describe("makePolicy — currency validation (before any formatting logic)", () 
   it("still validates N and asOf", () => {
     expect(() => makePolicy({ stallThresholdDays: -1, asOf: "2026-03-01", currency: "USD" })).toThrow(/stallThresholdDays/);
     expect(() => makePolicy({ stallThresholdDays: 30, asOf: "03/01/2026", currency: "USD" })).toThrow(/asOf/);
+    expect(() => makePolicy({ stallThresholdDays: 30, asOf: "2026-02-30", currency: "USD" })).toThrow(/real calendar date/);
   });
 });

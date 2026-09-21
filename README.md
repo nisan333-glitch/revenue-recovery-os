@@ -111,10 +111,9 @@ persists across refreshes.
 > ⚠️ **Private, supervised pilot use only — not safe for public exposure or multi-tenant
 > production.** This packaging (Docker image + `docker-compose.yml`) runs the real React
 > SPA, the real Fastify API, and real PostgreSQL together as one deployable unit, for a
-> single supervised pilot customer. It does **not** add authentication — identity is still
-> the `x-actor-id` / `x-actor-role` dev-header mechanism in
-> `server/auth/actorContext.ts`, which is explicitly documented there as *not* production
-> authentication. `docker-compose.yml`'s database credentials are fixed, local-only
+> single supervised pilot customer. Production mode requires verified OIDC/JWKS bearer
+> identity and rejects browser-supplied actor headers; dev headers are available only for
+> an explicitly isolated private pilot. `docker-compose.yml`'s database credentials are fixed, local-only
 > placeholders, clearly labeled as such in that file. Do not point this at the public
 > internet, and do not use it to serve more than one customer's data at a time.
 
@@ -131,8 +130,46 @@ port for PostgreSQL at all). Check it's healthy:
 
 ```bash
 curl http://127.0.0.1:4000/health   # -> {"status":"ok"}
-curl http://127.0.0.1:4000/ready    # -> {"db":"up"} once PostgreSQL is ready
+curl http://127.0.0.1:4000/ready    # -> {"db":"up","agents":{"status":"disabled",...}}
 ```
+
+Agent execution is deliberately disabled by default. Setting `NH_AGENTS_ENABLED=true`
+without both an explicit `NH_AGENT_BOUNDARIES` list and a reviewed production handler makes
+startup fail closed. The worker lifecycle, leasing and readiness plumbing exist; no detector is
+silently promoted into a continuously running process.
+
+Generate the deterministic **SYNTHETIC** ActivationMissed fixtures. These are fictional test
+inputs, not customer evidence. The 100-row mixed fixture contains 70 admissible rows, 15 below
+threshold, 5 without an action, 5 duplicates and 5 malformed rows. Importing that complete file
+must reject the batch before any persistence call. For the successful local test path, use the
+separate 95-row well-formed subset shown below:
+
+```bash
+npm run fixture:activation
+export DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB"
+export NH_INGEST_BOUNDARY_ID="synthetic-tenant"
+export NH_INGEST_AGENT_ID="SYNTHETIC-activation-missed-csv"
+export NH_INGEST_DETECTOR_VERSION="SYNTHETIC-v2"
+export NH_INGEST_SOURCE_REF_KEY="replace-with-at-least-32-secret-bytes"
+export NH_AGENT_ADMISSION_POLICIES="ActivationMissed:10000"
+npx prisma migrate deploy
+npm run ingest:csv -- "$PWD/server/agents/fixtures/activation.well-formed.synthetic.csv"
+```
+
+The generator writes both CSVs and `activation.synthetic.expected-results.json` with owner-only
+permissions. The JSON contains 100 individual row outcomes measured from the existing code,
+plus separate whole-file expectations. Per-row evaluation imports one row at a time in order
+into an initially empty candidate store. The well-formed batch admits 75 observations, creates
+70 pending candidates, deduplicates 5 and filters 20. Repeating that batch creates no additional
+candidates. The configured threshold is 10,000 minor units, inclusive, in each supported
+currency; it does not imply FX equivalence or a universal business threshold.
+
+The importer validates the entire file before its first persistence call and pseudonymizes
+source identity. This does not establish atomicity across later database failures. Synthetic
+labels in the fixture, boundary, agent and detector version must remain visible. No result
+establishes ROI, precision, recall, causality, recovered revenue, customer behavior or production
+readiness. Supplied composite identities are tested; the upstream `ENTITY_DEFINING_CONTEXT`
+and `sufficient=True` rule is not implemented or validated by this seven-column CSV interface.
 
 Stop and remove the stack:
 

@@ -19,9 +19,9 @@ function effectivePaidAt(cycle: ExpectationCycle, asOf: string): string | null {
 export function classifyPayment(cycle: ExpectationCycle, asOf: string): PaymentState {
   const ev = cycle.monetaryEvent;
 
-  // Terminal states independent of timing.
-  if (ev.cancelled) return "Cancelled";
-  if (ev.refunded) return "Refunded";
+  // Terminal states apply only when their effective date is visible at the cut-off.
+  if (ev.cancelledAt !== null && !isAfter(ev.cancelledAt, asOf)) return "Cancelled";
+  if (ev.refundedAt !== null && !isAfter(ev.refundedAt, asOf)) return "Refunded";
 
   // A non-positive obligation cannot be an "unpaid" amount — surfaced separately as Unknown here;
   // zero/negative amounts are excluded upstream at the adapter, so this is a defensive fallback.

@@ -25,37 +25,34 @@ datasource db {
 /// Immutable, append-only snapshot of an approved (or revised) recovery proof.
 /// Mirrors the domain `Proof` interface; money is stored in minor units (BigInt).
 model Proof {
-  proofId              String  @id
-  recoveryCaseId       String
-  chainId              String
-  proofVersion         Int
-  previousProofId      String?
-  status               String // Approved | Reversed | Superseded | Corrected (kernel-controlled)
-  currency             String
-  collectedMinor       BigInt
-  baselineMinor        BigInt
-  revenueReturnedMinor BigInt // frozen by the kernel; DB stores, never derives
-  excludedRecoveryMinor BigInt
-  exclusionStatement   String
-  recoveryReason       String
-  attribution          String
-  evidenceRefs         String[]
-  baselineId           String
-  baselineMethodId     String
-  baselineVersion      Int
-  baselineLockPolicy   String
-  policyVersion        String
+  proofId                      String   @id
+  recoveryCaseId               String
+  chainId                      String
+  proofVersion                 Int
+  previousProofId              String?
+  status                       String // Approved | Reversed | Superseded | Corrected (kernel-controlled)
+  currency                     String
+  collectedMinor               BigInt
+  baselineMinor                BigInt
+  revenueReturnedMinor         BigInt // frozen by the kernel; DB stores, never derives
+  excludedRecoveryMinor        BigInt
+  exclusionStatement           String
+  recoveryReason               String
+  attribution                  String
+  evidenceRefs                 String[]
+  baselineId                   String
+  baselineMethodId             String
+  baselineVersion              Int
+  baselineLockPolicy           String
+  policyVersion                String
   confidenceMethodologyVersion String
-  proofThresholdUsed   Float
-  confidenceUsed       Float
-  approvedBy           String
-  createdAt            DateTime
-  approvedAt           DateTime
-  persistedAt          DateTime @default(now()) // provenance: DB write time
+  proofThresholdUsed           Float
+  confidenceUsed               Float
+  approvedBy                   String
+  createdAt                    DateTime
+  approvedAt                   DateTime
+  persistedAt                  DateTime @default(now()) // provenance: DB write time
 
-  @@index([chainId])
-  @@index([recoveryCaseId])
-  @@index([previousProofId])
   // EP-8.1 · H1 concurrency backstop: at most one row per (chainId, proofVersion) — the
   // exact invariant effectiveProofs() (src/domain/proof.ts) already assumes. A second,
   // complementary partial index UNIQUE(previousProofId) WHERE previousProofId IS NOT NULL
@@ -63,6 +60,9 @@ model Proof {
   // ep8_1_chain_fork_guard migration — Prisma's @@unique cannot express the WHERE clause
   // NULLs must be exempt from.
   @@unique([chainId, proofVersion])
+  @@index([chainId])
+  @@index([recoveryCaseId])
+  @@index([previousProofId])
 }
 
 /// Append-only authority ledger (EP-4): who did what, in which role, on which case.
@@ -114,7 +114,7 @@ model BaselineSnapshot {
 /// The partial unique index below makes an outcome-role source record single-use across
 /// every recovery, not just within one case.
 model EvidenceRecord {
-  evidenceId          String    @id
+  evidenceId          String   @id
   recoveryCaseId      String
   proofId             String?
   sourceSystem        String
@@ -131,10 +131,114 @@ model EvidenceRecord {
   ingestedByRole      String
   ingestedAt          DateTime @default(now()) // authoritative server timestamp
   note                String?
-
-  @@index([recoveryCaseId])
   // A partial unique index (sourceSystem, sourceRecordId) WHERE evidenceRole='outcome' is
   // added via raw SQL in the ep8_1_evidence_hardening migration — Prisma's declarative
   // @@unique cannot express a WHERE clause, and the constraint must apply to outcome-role
   // rows only (supporting evidence may legitimately be cited more than once).
+
+  @@index([recoveryCaseId])
+}
+
+/// EP-12A · Durable execution state for observation-only agents. A task is always scoped to
+/// one boundary; its result may contain CandidateSignals only and grants no case/proof authority.
+/// Runtime transitions use raw SQL for SKIP LOCKED claiming and fenced lease predicates.
+model AgentTaskRecord {
+  taskId         String                 @id(map: "agent_tasks_pkey") @map("task_id")
+  boundaryId     String                 @map("boundary_id")
+  agentId        String                 @map("agent_id")
+  idempotencyKey String                 @map("idempotency_key")
+  payload        Json
+  status         String
+  attempt        Int                    @default(0)
+  notBefore      DateTime               @map("not_before") @db.Timestamptz(3)
+  leaseOwner     String?                @map("lease_owner")
+  leaseToken     String?                @map("lease_token")
+  leaseExpiresAt DateTime?              @map("lease_expires_at") @db.Timestamptz(3)
+  fencingEpoch   BigInt                 @default(0) @map("fencing_epoch")
+  result         Json?
+  lastError      String?                @map("last_error")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime               @default(now()) @map("updated_at") @db.Timestamptz(3)
+  events         AgentTaskEventRecord[]
+
+  @@unique([boundaryId, agentId, idempotencyKey], map: "agent_tasks_boundary_agent_idempotency_unique")
+  @@unique([taskId, boundaryId, agentId], map: "agent_tasks_identity_boundary_unique")
+  @@map("agent_tasks")
+}
+
+/// Append-only audit history for every durable AgentTask transition. State and event are written
+/// in the same PostgreSQL transaction; UPDATE/DELETE/TRUNCATE are rejected by DB triggers.
+model AgentTaskEventRecord {
+  eventId      String          @id(map: "agent_task_events_pkey") @map("event_id")
+  sequence     BigInt          @unique(map: "agent_task_events_sequence_key") @default(autoincrement()) @map("event_sequence")
+  taskId       String          @map("task_id")
+  boundaryId   String          @map("boundary_id")
+  agentId      String          @map("agent_id")
+  workerId     String?         @map("worker_id")
+  fencingEpoch BigInt          @map("fencing_epoch")
+  attempt      Int
+  kind         String
+  metadata     Json
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  task         AgentTaskRecord @relation(fields: [taskId, boundaryId, agentId], references: [taskId, boundaryId, agentId], onDelete: Restrict, onUpdate: Restrict, map: "agent_task_events_task_boundary_agent_fkey")
+
+  @@index([taskId, sequence], map: "agent_task_events_task_sequence_idx")
+  @@index([boundaryId, agentId, sequence], map: "agent_task_events_boundary_agent_sequence_idx")
+  @@map("agent_task_events")
+}
+
+/// EP-12B · A detector result that crossed the universal admission gate. It remains a
+/// hypothesis until a human operator accepts it and explicitly promotes it to a RecoveryCase.
+model AgentCaseCandidateRecord {
+  candidateId String   @id(map: "agent_case_candidates_pkey") @map("candidate_id")
+  dedupeKey   String   @unique(map: "agent_case_candidates_dedupe_key_key") @map("dedupe_key")
+  boundaryId  String   @map("boundary_id")
+  agentId     String   @map("agent_id")
+  signal      Json
+  status      String   @default("pending_review")
+  submittedAt DateTime @map("submitted_at") @db.Timestamptz(3)
+  persistedAt DateTime @default(now()) @map("persisted_at") @db.Timestamptz(3)
+
+  @@unique([candidateId, boundaryId], map: "agent_case_candidates_identity_boundary_unique")
+  @@index([boundaryId, status, submittedAt], map: "agent_case_candidates_review_queue_idx")
+  @@map("agent_case_candidates")
+}
+
+/// Immutable human decision on a candidate. One candidate can be reviewed once; an accepted
+/// decision stays visible until the candidate has a durable RecoveryCase root.
+model AgentCaseCandidateReviewRecord {
+  reviewId      String   @id(map: "agent_case_candidate_reviews_pkey") @map("review_id")
+  candidateId   String   @unique(map: "agent_case_candidate_reviews_candidate_key") @map("candidate_id")
+  boundaryId    String   @map("boundary_id")
+  decision      String
+  reason        String
+  actorId       String   @map("actor_id")
+  actorRole     String   @map("actor_role")
+  policyVersion String   @map("policy_version")
+  decidedAt     DateTime @default(now()) @map("decided_at") @db.Timestamptz(3)
+
+  @@index([boundaryId, decidedAt], map: "agent_case_candidate_reviews_boundary_idx")
+  @@map("agent_case_candidate_reviews")
+}
+
+/// EP-12E · Authoritative root of every governed recovery workflow. No baseline, evidence,
+/// proof or authority mutation is valid in production without this row.
+model RecoveryCaseRecord {
+  recoveryCaseId    String   @id(map: "recovery_cases_pkey") @map("recovery_case_id")
+  boundaryId        String   @map("boundary_id")
+  sourceCandidateId String   @unique(map: "recovery_cases_source_candidate_key") @map("source_candidate_id")
+  recoveryType      String   @map("recovery_type")
+  sourceRef         String   @map("source_ref")
+  amountAtRiskMinor BigInt   @map("amount_at_risk_minor")
+  currency          String
+  detectorVersion   String   @map("detector_version")
+  openedByActorId   String   @map("opened_by_actor_id")
+  openedByRole      String   @map("opened_by_role")
+  policyVersion     String   @map("policy_version")
+  openedAt          DateTime @map("opened_at") @db.Timestamptz(3)
+  persistedAt       DateTime @default(now()) @map("persisted_at") @db.Timestamptz(3)
+
+  @@unique([sourceCandidateId, boundaryId], map: "recovery_cases_candidate_boundary_unique")
+  @@index([boundaryId, openedAt], map: "recovery_cases_boundary_opened_idx")
+  @@map("recovery_cases")
 }

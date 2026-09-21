@@ -18,8 +18,8 @@ function cycle(over: Partial<ExpectationCycle["monetaryEvent"]> & { dueAt?: stri
       amount: over.amount ?? money(100_00, "USD"),
       paidAt: over.paidAt ?? null,
       paidAmount: over.paidAmount ?? null,
-      refunded: over.refunded ?? false,
-      cancelled: over.cancelled ?? false,
+      refundedAt: over.refundedAt ?? null,
+      cancelledAt: over.cancelledAt ?? null,
     },
   };
 }
@@ -55,8 +55,10 @@ describe("classifyPayment — explicit states, strictly as-of asOf", () => {
   it("a payment recorded AFTER asOf is Unpaid at asOf (no future information)", () => {
     expect(classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: "2026-03-15" }), ASOF)).toBe("Unpaid");
   });
-  it("refunded and cancelled are terminal and separate", () => {
-    expect(classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: "2026-02-01", refunded: true }), ASOF)).toBe("Refunded");
-    expect(classifyPayment(cycle({ dueAt: "2026-02-01", cancelled: true }), ASOF)).toBe("Cancelled");
+  it("refunded and cancelled apply only from their effective dates", () => {
+    expect(classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: "2026-02-01", refundedAt: "2026-02-15" }), ASOF)).toBe("Refunded");
+    expect(classifyPayment(cycle({ dueAt: "2026-02-01", cancelledAt: "2026-02-15" }), ASOF)).toBe("Cancelled");
+    expect(classifyPayment(cycle({ dueAt: "2026-02-01", paidAt: "2026-02-01", refundedAt: "2026-03-15" }), ASOF)).toBe("PaidOnTime");
+    expect(classifyPayment(cycle({ dueAt: "2026-02-01", cancelledAt: "2026-03-15" }), ASOF)).toBe("Unpaid");
   });
 });

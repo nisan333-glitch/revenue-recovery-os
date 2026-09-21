@@ -7,6 +7,7 @@
 // `observedAt` is recorded (falsifiable against sourceRecordId) but is a CLAIMED fact —
 // it is never used as the positive timing signal. `ingestedAt` (the DB clock) is.
 import { prisma, type DbClient } from "../db";
+import { assertRecoveryCaseRootIfRequired } from "./recoveryCaseStore";
 import { makeEvidence } from "../../src/domain/evidence";
 import { deriveEvidenceRole, ROLE_MAP_VERSION } from "../domain/evidenceRole";
 
@@ -73,6 +74,10 @@ export async function ingestEvidence(
   // EP-11 · the halt gate's open transaction, so ingestion and the halt test are atomic.
   client: DbClient = prisma,
 ): Promise<IngestedEvidence> {
+  if ((input.amountMinor === undefined) !== (input.currency === undefined)) {
+    throw new Error("evidence amount and currency must be supplied together");
+  }
+  await assertRecoveryCaseRootIfRequired(input.recoveryCaseId, client);
   const derived = makeEvidence({
     evidenceId: input.evidenceId,
     evidenceType: input.evidenceType,
@@ -113,6 +118,7 @@ export async function getEvidenceByIds(
   recoveryCaseId: string,
   evidenceIds: string[],
 ): Promise<IngestedEvidence[]> {
+  await assertRecoveryCaseRootIfRequired(recoveryCaseId);
   const rows = await prisma.evidenceRecord.findMany({
     where: { evidenceId: { in: evidenceIds }, recoveryCaseId },
   });
@@ -123,6 +129,7 @@ export async function getEvidenceByIds(
  * display (source, role, independence, ingestion actor/time). Read-only; the classification
  * fields on each record were derived once, at ingestion, and are never recomputed here. */
 export async function getEvidenceForCase(recoveryCaseId: string): Promise<IngestedEvidence[]> {
+  await assertRecoveryCaseRootIfRequired(recoveryCaseId);
   const rows = await prisma.evidenceRecord.findMany({
     where: { recoveryCaseId },
     orderBy: { ingestedAt: "asc" },

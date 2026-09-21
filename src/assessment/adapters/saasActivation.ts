@@ -49,7 +49,10 @@ export const SAAS_CANONICAL_FIELDS: readonly string[] = [
   "status",
   "is_test",
   "refunded",
+  "refunded_at",
   "cancelled",
+  "cancelled_at",
+  "status_effective_at",
   "plan",
   "segment",
   "product",
@@ -72,6 +75,9 @@ export const SAAS_SYNONYMS: Readonly<Record<string, readonly string[]>> = Object
   paid_amount: ["amount_paid", "settled_amount"],
   status: ["subscription_status", "account_status", "state"],
   is_test: ["test", "test_account", "is_internal"],
+  refunded_at: ["refund_date", "refunded_date", "credit_at"],
+  cancelled_at: ["canceled_at", "cancellation_date", "cancelled_date"],
+  status_effective_at: ["status_changed_at", "state_effective_at"],
 });
 
 /** The mapping spec the generic detector consumes. Keeps SaaS vocabulary out of the neutral core. */
@@ -109,6 +115,12 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
 
   // Test/internal + excluded statuses.
   const statusRaw = (c["status"] ?? "").trim() || null;
+  for (const field of ["is_test", "next_invoice_paid", "refunded", "cancelled"] as const) {
+    const raw = c[field] ?? "";
+    if (raw.trim() !== "" && parseBool(raw) === undefined) {
+      return exclude(id, "invalid_boolean", `${field}: ${raw}`);
+    }
+  }
   if (parseBool(c["is_test"] ?? "") === true) return exclude(id, "internal_or_test_account", "is_test");
   if (statusRaw && policy.excludedStatuses.some((s) => s.toLowerCase() === statusRaw.toLowerCase())) {
     return exclude(id, "excluded_status", statusRaw);
@@ -160,6 +172,10 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
     } catch {
       return exclude(id, "invalid_amount", `paid_amount: ${c["paid_amount"]}`);
     }
+    if (isNegative(paidAmount)) return exclude(id, "negative_amount", `paid_amount: ${c["paid_amount"]}`);
+    if (paidAmount.minor > amount.minor) {
+      return exclude(id, "paid_amount_exceeds_obligation", `paid_amount exceeds next_invoice_amount`);
+    }
   }
 
   // Payment timing: prefer an observed timestamp; a bare boolean is a documented compatibility input.
@@ -176,8 +192,32 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
     if (paidBool === true) paidAt = due.iso;
   }
 
-  const refunded = parseBool(c["refunded"] ?? "") === true || statusRaw?.toLowerCase() === "refunded";
-  const cancelled = parseBool(c["cancelled"] ?? "") === true || statusRaw?.toLowerCase() === "cancelled";
+  const paidFlag = parseBool(c["next_invoice_paid"] ?? "");
+  if ((c["next_invoice_paid"] ?? "").trim() !== "" && paidFlag === false && paidAt !== null) {
+    return exclude(id, "inconsistent_payment_data", "next_invoice_paid=false conflicts with next_invoice_paid_at");
+  }
+  if (paidAt !== null && paidAmount !== null && paidAmount.minor === 0) {
+    return exclude(id, "inconsistent_payment_data", "paid_at conflicts with zero paid_amount");
+  }
+
+  const terminalDate = (field: "refunded_at" | "cancelled_at" | "status_effective_at"): RowOutcome | string | null => {
+    const raw = c[field] ?? "";
+    if (!raw.trim()) return null;
+    const parsed = normalizeDate(raw, { locale: opts.locale });
+    return parsed.ok ? parsed.iso : exclude(id, parsed.reason, `${field}: ${parsed.detail}`);
+  };
+  const refundFlag = parseBool(c["refunded"] ?? "") === true || statusRaw?.toLowerCase() === "refunded";
+  const cancelFlag = parseBool(c["cancelled"] ?? "") === true || statusRaw?.toLowerCase() === "cancelled";
+  const refundDate = terminalDate("refunded_at");
+  if (typeof refundDate === "object" && refundDate !== null) return refundDate;
+  const cancelDate = terminalDate("cancelled_at");
+  if (typeof cancelDate === "object" && cancelDate !== null) return cancelDate;
+  const statusDate = terminalDate("status_effective_at");
+  if (typeof statusDate === "object" && statusDate !== null) return statusDate;
+  const refundedAt = (refundDate ?? (statusRaw?.toLowerCase() === "refunded" ? statusDate : null)) as string | null;
+  const cancelledAt = (cancelDate ?? (statusRaw?.toLowerCase() === "cancelled" ? statusDate : null)) as string | null;
+  if (refundFlag && refundedAt === null) return exclude(id, "undated_terminal_state", "refund state has no effective date");
+  if (cancelFlag && cancelledAt === null) return exclude(id, "undated_terminal_state", "cancellation state has no effective date");
 
   // cycleId — prefer an explicit id; else a deterministic composite (collision-tested in assess).
   const explicitCycle = (c["subscription_id"] ?? c["cycle_id"] ?? "").trim();
@@ -203,8 +243,8 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
       amount,
       paidAt,
       paidAmount,
-      refunded,
-      cancelled,
+      refundedAt,
+      cancelledAt,
     }),
     currency,
     statusRaw,

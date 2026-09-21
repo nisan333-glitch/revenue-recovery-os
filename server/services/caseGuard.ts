@@ -36,6 +36,7 @@
 //    `HALTED_MUTATIONS` — the ones that author, establish, intervene, ingest, approve or revise —
 //    are stopped.
 import { prisma, type DbClient } from "../db";
+import { assertRecoveryCaseRootIfRequired } from "../persistence/recoveryCaseStore";
 import { ConflictError } from "../http/errors";
 
 /**
@@ -140,6 +141,7 @@ export async function withGovernedCaseMutation<T>(
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
     await lockCase(recoveryCaseId, tx);
+    await assertRecoveryCaseRootIfRequired(recoveryCaseId, tx);
     if (await isCaseHalted(recoveryCaseId, tx)) {
       throw new CaseHaltedError(recoveryCaseId, mutation);
     }
@@ -158,6 +160,7 @@ export async function withGovernedCaseMutation<T>(
 export async function withCaseHalt<T>(recoveryCaseId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> {
   return prisma.$transaction(async (tx) => {
     await lockCase(recoveryCaseId, tx);
+    await assertRecoveryCaseRootIfRequired(recoveryCaseId, tx);
     return fn(tx);
   });
 }

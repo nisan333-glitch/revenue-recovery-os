@@ -1,5 +1,6 @@
 // EP-4 · Authority ledger persistence. Append-only (enforced by DB triggers); it is
 // the audit record of who did what, in which role, on which case, under which policy.
+import { randomUUID } from "node:crypto";
 import { prisma, type DbClient } from "../db";
 import type { ActorContext, GovernedAction } from "./identity";
 
@@ -25,7 +26,7 @@ export async function recordAuthority(
 ): Promise<void> {
   await client.authorityEvent.create({
     data: {
-      id: `AE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `AE-${randomUUID()}`,
       recoveryCaseId,
       actorId: actor.actorId,
       role: actor.role,

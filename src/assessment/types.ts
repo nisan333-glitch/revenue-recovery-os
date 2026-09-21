@@ -28,8 +28,9 @@ export interface MonetaryEvent {
   readonly paidAt: string | null; // ISO date | null
   /** Observed settled amount when known (for partial detection). null = unknown. */
   readonly paidAmount: Money | null;
-  readonly refunded: boolean;
-  readonly cancelled: boolean;
+  /** Effective dates are required for point-in-time classification. */
+  readonly refundedAt: string | null;
+  readonly cancelledAt: string | null;
 }
 
 export interface ExpectationCycle {
@@ -62,6 +63,10 @@ export type ExclusionReason =
   | "ambiguous_amount"
   | "zero_amount"
   | "negative_amount"
+  | "invalid_boolean"
+  | "inconsistent_payment_data"
+  | "paid_amount_exceeds_obligation"
+  | "undated_terminal_state"
   | "currency_mismatch"
   | "duplicate_cycle_id"
   | "excluded_status"

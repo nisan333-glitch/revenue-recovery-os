@@ -30,8 +30,8 @@ function cycle(over: Partial<ExpectationCycle> = {}, monetary: Partial<Expectati
       amount: money(10_000_00, "USD"),
       paidAt: null,
       paidAmount: null,
-      refunded: false,
-      cancelled: false,
+      refundedAt: null,
+      cancelledAt: null,
       ...monetary,
     },
     currency: "USD",
@@ -134,8 +134,8 @@ describe("Revenue Event — discrepancy detection", () => {
   });
 
   it("8 · UNKNOWN never becomes company-recoverable", () => {
-    const cancelled = detect(cycle({}, { cancelled: true }));
-    const refunded = detect(cycle({}, { refunded: true }));
+    const cancelled = detect(cycle({}, { cancelledAt: "2026-02-15" }));
+    const refunded = detect(cycle({}, { refundedAt: "2026-02-15" }));
     const boolTiming = detect(
       cycle({ attributes: { paid_timing: "unknown_from_bool" } }, { paidAt: "2026-02-01", paidAmount: null }),
     );
@@ -144,6 +144,13 @@ describe("Revenue Event — discrepancy detection", () => {
       expect(d.companyRecoverableCandidate).toBe(false);
       expect(d.delta).toBeNull();
     }
+  });
+
+  it("a terminal state after asOf cannot rewrite the historical discrepancy", () => {
+    const cancelledLater = detect(cycle({}, { cancelledAt: "2026-03-15" }));
+    const refundedLater = detect(cycle({}, { refundedAt: "2026-03-15" }));
+    expect(cancelledLater.kind).toBe("MISSING");
+    expect(refundedLater.kind).toBe("MISSING");
   });
 
   it("identity mismatch between expectation and observation fails closed", () => {

@@ -80,7 +80,7 @@ export async function seedEvidence(
       evidenceType: opts.evidenceType ?? "invoice_paid",
       observedAt: opts.observedAt ?? "2026-07-25T00:00:00.000Z",
       amountMinor: opts.amountMinor,
-      currency: opts.currency,
+      currency: opts.amountMinor === undefined ? opts.currency : (opts.currency ?? "USD"),
     },
   });
   return { evidenceId, res };

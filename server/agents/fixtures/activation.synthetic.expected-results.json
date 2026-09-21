@@ -1,0 +1,1032 @@
+{
+  "label": "SYNTHETIC",
+  "syntheticOnly": true,
+  "containsRealCustomerData": false,
+  "fixture": "activation.synthetic.csv",
+  "wellFormedFixture": "activation.well-formed.synthetic.csv",
+  "policy": {
+    "recoveryType": "ActivationMissed",
+    "economicThresholdMinor": 10000
+  },
+  "policyScope": "Explicit test configuration, not a universal or FX-adjusted business threshold",
+  "rowNumbering": "rowNumber counts data rows; csvLine includes the header",
+  "evaluationMode": "Each row imported separately, in order, with one initially empty candidate store. Error row numbers refer to that one-row CSV.",
+  "identityScope": "Supplied fictional composite source identity plus boundaryId and recoveryType. Shared event/resource labels are not identity keys. ENTITY_DEFINING_CONTEXT and sufficient=True belong upstream and are not evaluated or claimed by this CSV pipeline.",
+  "claimLimits": "SYNTHETIC behavior tests only. No ROI, precision, recall, causality, recovered revenue, customer behavior or production readiness claims.",
+  "rows": [
+    {
+      "rowNumber": 1,
+      "csvLine": 2,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 2,
+      "csvLine": 3,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 3,
+      "csvLine": 4,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 4,
+      "csvLine": 5,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 5,
+      "csvLine": 6,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 6,
+      "csvLine": 7,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 7,
+      "csvLine": 8,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 8,
+      "csvLine": 9,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 9,
+      "csvLine": 10,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 10,
+      "csvLine": 11,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 11,
+      "csvLine": 12,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 12,
+      "csvLine": 13,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 13,
+      "csvLine": 14,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 14,
+      "csvLine": 15,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 15,
+      "csvLine": 16,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 16,
+      "csvLine": 17,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 17,
+      "csvLine": 18,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 18,
+      "csvLine": 19,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 19,
+      "csvLine": 20,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 20,
+      "csvLine": 21,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 21,
+      "csvLine": 22,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 22,
+      "csvLine": 23,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 23,
+      "csvLine": 24,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 24,
+      "csvLine": 25,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 25,
+      "csvLine": 26,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 26,
+      "csvLine": 27,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 27,
+      "csvLine": 28,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 28,
+      "csvLine": 29,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 29,
+      "csvLine": 30,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 30,
+      "csvLine": 31,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 31,
+      "csvLine": 32,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 32,
+      "csvLine": 33,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 33,
+      "csvLine": 34,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 34,
+      "csvLine": 35,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 35,
+      "csvLine": 36,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 36,
+      "csvLine": 37,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 37,
+      "csvLine": 38,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 38,
+      "csvLine": 39,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 39,
+      "csvLine": 40,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 40,
+      "csvLine": 41,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 41,
+      "csvLine": 42,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 42,
+      "csvLine": 43,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 43,
+      "csvLine": 44,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 44,
+      "csvLine": 45,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 45,
+      "csvLine": 46,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 46,
+      "csvLine": 47,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 47,
+      "csvLine": 48,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 48,
+      "csvLine": 49,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 49,
+      "csvLine": 50,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 50,
+      "csvLine": 51,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 51,
+      "csvLine": 52,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 52,
+      "csvLine": 53,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 53,
+      "csvLine": 54,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 54,
+      "csvLine": 55,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 55,
+      "csvLine": 56,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 56,
+      "csvLine": 57,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 57,
+      "csvLine": 58,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 58,
+      "csvLine": 59,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 59,
+      "csvLine": 60,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 60,
+      "csvLine": 61,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 61,
+      "csvLine": 62,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 62,
+      "csvLine": 63,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 63,
+      "csvLine": 64,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 64,
+      "csvLine": 65,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 65,
+      "csvLine": 66,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 66,
+      "csvLine": 67,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 67,
+      "csvLine": 68,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 68,
+      "csvLine": 69,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 69,
+      "csvLine": 70,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 70,
+      "csvLine": 71,
+      "classification": "admissible",
+      "reason": "existing admission policy accepted; new pending_review Candidate",
+      "becomesCandidate": true,
+      "rejected": false,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 71,
+      "csvLine": 72,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 72,
+      "csvLine": 73,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 73,
+      "csvLine": 74,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 74,
+      "csvLine": 75,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 75,
+      "csvLine": 76,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 76,
+      "csvLine": 77,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 77,
+      "csvLine": 78,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 78,
+      "csvLine": 79,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 79,
+      "csvLine": 80,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 80,
+      "csvLine": 81,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 81,
+      "csvLine": 82,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 82,
+      "csvLine": 83,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 83,
+      "csvLine": 84,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 84,
+      "csvLine": 85,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 85,
+      "csvLine": 86,
+      "classification": "below_threshold",
+      "reason": "material revenue at risk is below the governed threshold",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 86,
+      "csvLine": 87,
+      "classification": "no_action",
+      "reason": "no plausible recovery action is available",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 87,
+      "csvLine": 88,
+      "classification": "no_action",
+      "reason": "no plausible recovery action is available",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 88,
+      "csvLine": 89,
+      "classification": "no_action",
+      "reason": "no plausible recovery action is available",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 89,
+      "csvLine": 90,
+      "classification": "no_action",
+      "reason": "no plausible recovery action is available",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 90,
+      "csvLine": 91,
+      "classification": "no_action",
+      "reason": "no plausible recovery action is available",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 91,
+      "csvLine": 92,
+      "classification": "duplicate",
+      "reason": "existing composite candidate identity matches row 1",
+      "becomesCandidate": false,
+      "rejected": false,
+      "deduplicated": true,
+      "duplicateOfRow": 1
+    },
+    {
+      "rowNumber": 92,
+      "csvLine": 93,
+      "classification": "duplicate",
+      "reason": "existing composite candidate identity matches row 2",
+      "becomesCandidate": false,
+      "rejected": false,
+      "deduplicated": true,
+      "duplicateOfRow": 2
+    },
+    {
+      "rowNumber": 93,
+      "csvLine": 94,
+      "classification": "duplicate",
+      "reason": "existing composite candidate identity matches row 3",
+      "becomesCandidate": false,
+      "rejected": false,
+      "deduplicated": true,
+      "duplicateOfRow": 3
+    },
+    {
+      "rowNumber": 94,
+      "csvLine": 95,
+      "classification": "duplicate",
+      "reason": "existing composite candidate identity matches row 4",
+      "becomesCandidate": false,
+      "rejected": false,
+      "deduplicated": true,
+      "duplicateOfRow": 4
+    },
+    {
+      "rowNumber": 95,
+      "csvLine": 96,
+      "classification": "duplicate",
+      "reason": "existing composite candidate identity matches row 69",
+      "becomesCandidate": false,
+      "rejected": false,
+      "deduplicated": true,
+      "duplicateOfRow": 69
+    },
+    {
+      "rowNumber": 96,
+      "csvLine": 97,
+      "classification": "malformed",
+      "reason": "CSV row 2 amountAtRiskMinor is invalid",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 97,
+      "csvLine": 98,
+      "classification": "malformed",
+      "reason": "CandidateSignal.observedAt must be a valid ISO timestamp",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 98,
+      "csvLine": 99,
+      "classification": "malformed",
+      "reason": "CSV row 2 sourceIdentity is required",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 99,
+      "csvLine": 100,
+      "classification": "malformed",
+      "reason": "CandidateSignal.currency must be a supported currency code",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    },
+    {
+      "rowNumber": 100,
+      "csvLine": 101,
+      "classification": "malformed",
+      "reason": "CandidateSignal.expectedProofEvent must be a non-empty string",
+      "becomesCandidate": false,
+      "rejected": true,
+      "deduplicated": false,
+      "duplicateOfRow": null
+    }
+  ],
+  "batches": {
+    "fullFixture": {
+      "rejected": true,
+      "reason": "CSV row 97 amountAtRiskMinor is invalid",
+      "candidatesCreated": 0
+    },
+    "wellFormedFixture": {
+      "rowsRead": 95,
+      "admitted": 75,
+      "created": 70,
+      "filtered": 20,
+      "rawCsvPersisted": false
+    }
+  }
+}
