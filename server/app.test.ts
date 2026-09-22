@@ -5,11 +5,12 @@ import { describe, it, expect, afterAll } from "vitest";
 import { buildApp } from "./app";
 import { prisma } from "./db";
 import { uid, APPROVER, seedAuditableCase, approveBody } from "./test/fixtures";
+import { fixtureVerifier } from "./test/sourceFixture";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
 describe.skipIf(!HAS_DB)("EP-2 · REST path reaches the authoritative store (EP-3 unblock)", () => {
-  const app = buildApp();
+  const app = buildApp({ sourceVerifier: fixtureVerifier });
   afterAll(async () => {
     await app.close();
     await prisma.$disconnect();

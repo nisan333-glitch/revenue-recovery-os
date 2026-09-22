@@ -35,6 +35,11 @@ must never be installed as production trust anchors.
 `publicKey` is a PEM Ed25519 public key. No configured key means no independent
 evidence admission. Existing proof snapshots are untouched; new auditable approvals
 reject evidence without a verification receipt, including old unsigned evidence.
+Read-only audits expose `sourceAuthenticityUnverified` for unverified outcomes and
+exclude them from the auditable total without rewriting any historical proof.
+Receipts preserve the exact signed bytes, signature and public key, so verification
+can be reproduced after key rotation. The key's authorization at ingestion is a
+deployment trust decision, not something the caller may assert.
 
 The evidence request may carry `sourceAttestation: {keyId, issuedAt, signature}`.
 The source signs UTF-8 JSON of this ordered tuple with Ed25519 (base64 signature):

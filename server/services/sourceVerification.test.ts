@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from "node:crypto";
+import { generateKeyPairSync, sign, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { SourceVerifier, sourceSigningPayload, sourceVerifierFromEnvironment } from "./sourceVerification";
 
@@ -13,6 +13,8 @@ const attestation = { keyId: key.keyId, issuedAt, signature: sign(null, sourceSi
 describe("independent source attestations", () => {
   it("accepts an authentic case-bound envelope and records its digest", () => {
     expect(verifier.verify("case-1", claim, attestation)).toMatchObject({ method: "ed25519-v1", keyId: key.keyId, verifiedAt: issuedAt });
+    const receipt = verifier.verify("case-1", claim, attestation)!;
+    expect(verify(null, Buffer.from(receipt.signedPayload), receipt.publicKeyPem, Buffer.from(receipt.signature, "base64"))).toBe(true);
   });
   it("never grants independence to unsigned input", () => {
     expect(verifier.verify("case-1", claim)).toBeUndefined();

@@ -8,6 +8,7 @@ export interface EvidenceClaim {
 }
 export interface SourceReceipt {
   method: string; keyId: string; issuedAt: string; verifiedAt: string; payloadSha256: string;
+  signedPayload: string; signature: string; publicKeyPem: string;
 }
 export interface SourceTrustKey { keyId: string; sourceSystem: string; publicKey: string }
 
@@ -44,7 +45,9 @@ export class SourceVerifier {
       throw new ForbiddenError("source attestation is invalid or expired");
     }
     return { method: "ed25519-v1", keyId: attestation.keyId, issuedAt: attestation.issuedAt,
-      verifiedAt: new Date(now).toISOString(), payloadSha256: createHash("sha256").update(payload).digest("hex") };
+      verifiedAt: new Date(now).toISOString(), payloadSha256: createHash("sha256").update(payload).digest("hex"),
+      signedPayload: payload.toString("utf8"), signature: attestation.signature,
+      publicKeyPem: trusted.key.export({ type: "spki", format: "pem" }).toString() };
   }
 }
 

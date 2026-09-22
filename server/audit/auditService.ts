@@ -49,6 +49,13 @@ export function provenanceGaps(p: Proof): string[] {
  */
 async function derivedTrustGaps(p: Proof): Promise<string[]> {
   const gaps: string[] = [];
+  const evidence = await getEvidenceForCase(p.recoveryCaseId);
+  const referenced = evidence.filter((item) => p.evidenceRefs.includes(item.evidenceId));
+  const outcomes = referenced.filter((item) => item.evidenceRole === "outcome");
+  if (referenced.length !== p.evidenceRefs.length || outcomes.length === 0
+    || outcomes.some((item) => !item.sourceVerification || item.beneficiaryControl || item.trustClassification !== "independent")) {
+    gaps.push("sourceAuthenticityUnverified");
+  }
   const snapshot = await getBaselineSnapshot(p.baselineId);
   if (!snapshot) {
     // Baselines are immutable/append-only and required at approval time — unreachable in
