@@ -93,6 +93,11 @@ jobs:
       - name: EP-2/EP-9 persistence suite (test:ep2)
         run: npm run test:ep2
 
+      - name: Synthetic Identify-Fix-Prove pilot
+        env:
+          NH_SYNTHETIC_PILOT: "true"
+        run: npm run pilot:synthetic
+
   docker-pilot-smoke:
     name: EP-10 Docker pilot smoke test
     # EP-10 · Real containerized verification that the sandbox this branch was developed in
