@@ -38,6 +38,7 @@ import {
 } from "../auth/authorityGate";
 import { authorityFor } from "../auth/authorityStore";
 import { assertCaseNotHalted, withCaseHalt, withGovernedCaseMutation } from "./caseGuard";
+import { SourceVerifier, type SourceAttestation } from "./sourceVerification";
 
 export interface ApproveProofRequest {
   proofId: string;
@@ -75,6 +76,7 @@ export interface EstablishBaselineRequest {
 }
 
 export interface IngestEvidenceRequest {
+  sourceAttestation?: SourceAttestation;
   evidenceId: string;
   sourceSystem: string;
   sourceRecordId: string;
@@ -151,8 +153,10 @@ export async function ingestCaseEvidence(
   actor: ActorContext,
   recoveryCaseId: string,
   req: IngestEvidenceRequest,
+  sourceVerifier: SourceVerifier = new SourceVerifier([]),
 ): Promise<IngestedEvidence> {
   requireCan(actor, "IngestEvidence");
+  const sourceVerification = sourceVerifier.verify(recoveryCaseId, req, req.sourceAttestation);
   return withGovernedCaseMutation(recoveryCaseId, "IngestEvidence", (tx) =>
     ingestEvidence(
       {
@@ -167,6 +171,7 @@ export async function ingestCaseEvidence(
         ingestedBy: actor.actorId,
         ingestedByRole: actor.role,
         note: req.note,
+        sourceVerification,
       },
       tx,
     ),
@@ -261,9 +266,9 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
       sourceRecordId: e.sourceRecordId,
       observedAt: e.observedAt,
       ingestedAt: e.ingestedAt,
-      trustClassification: e.trustClassification,
+      trustClassification: e.sourceVerification ? e.trustClassification : "beneficiary_controlled",
       suppliedBy: e.ingestedBy,
-      beneficiaryControl: e.beneficiaryControl,
+      beneficiaryControl: !e.sourceVerification || e.beneficiaryControl,
     }));
     if (!hasIndependentEvidence(evidenceForGate)) {
       throw new ForbiddenError(
@@ -272,6 +277,9 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
     }
     if (outcomeItems.length === 0) {
       throw new ForbiddenError("auditable claim requires at least one outcome-role evidence reference");
+    }
+    if (outcomeItems.some((e) => !e.sourceVerification || e.beneficiaryControl || e.trustClassification !== "independent")) {
+      throw new ForbiddenError("auditable claim requires authenticated independent outcome evidence");
     }
     if (outcomeItems.some((e) => e.currency !== req.currency)) {
       throw new ForbiddenError("outcome evidence currency does not match the proof currency");

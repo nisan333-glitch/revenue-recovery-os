@@ -4,6 +4,7 @@
 // field-completeness gaps decide auditable classification). Skips without DATABASE_URL.
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { buildApp } from "../app";
+import { fixtureVerifier } from "../test/sourceFixture";
 import { prisma } from "../db";
 import * as auditService from "./auditService";
 import { uid, AUTHOR, APPROVER, VERIFIER, STEWARD, seedAuditableCase, seedBaseline, seedEvidence, approveBody } from "../test/fixtures";
@@ -11,7 +12,7 @@ import { uid, AUTHOR, APPROVER, VERIFIER, STEWARD, seedAuditableCase, seedBaseli
 const HAS_DB = !!process.env.DATABASE_URL;
 
 describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () => {
-  const app = buildApp();
+  const app = buildApp({ sourceVerifier: fixtureVerifier });
   beforeAll(async () => {
     await app.ready();
   });

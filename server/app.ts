@@ -32,6 +32,7 @@ import type { AgentWorkerReadiness } from "./agents/worker";
 import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
 import { CandidatePromotionService } from "./agents/recoveryCase";
 import { PostgresCandidateReviewStore } from "./agents/postgresCandidateReviewStore";
+import { sourceVerifierFromEnvironment, type SourceVerifier } from "./services/sourceVerification";
 
 // EP-10 · Requests that arrived with a leading "/api" and were rewritten below — kept so
 // the production server's SPA-fallback handler can tell "an unmatched /api/* call" (must
@@ -41,6 +42,7 @@ import { PostgresCandidateReviewStore } from "./agents/postgresCandidateReviewSt
 export const apiPrefixedRequests = new WeakSet<object>();
 
 export interface BuildAppOptions {
+  readonly sourceVerifier?: SourceVerifier;
   readonly agentReadiness?: () => AgentWorkerReadiness;
   readonly candidateReviewService?: CandidateReviewService;
   readonly candidatePromotionService?: CandidatePromotionService;
@@ -48,6 +50,7 @@ export interface BuildAppOptions {
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
+  const sourceVerifier = options.sourceVerifier ?? sourceVerifierFromEnvironment(process.env);
   assertProductionDatabaseConfiguration(process.env);
   if (process.env.NODE_ENV === "production" && !options.identityResolver) {
     throw new Error("a verified production identity resolver is required");
@@ -170,7 +173,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     { schema: ingestEvidenceSchema },
     async (req, reply) => {
       const actor = await resolveActor(req, options.identityResolver);
-      const evidence = await proofService.ingestCaseEvidence(actor, req.params.caseId, req.body);
+      const evidence = await proofService.ingestCaseEvidence(actor, req.params.caseId, req.body, sourceVerifier);
       return reply.code(201).send(evidence);
     },
   );

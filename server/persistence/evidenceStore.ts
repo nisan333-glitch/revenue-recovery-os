@@ -10,8 +10,10 @@ import { prisma, type DbClient } from "../db";
 import { assertRecoveryCaseRootIfRequired } from "./recoveryCaseStore";
 import { makeEvidence } from "../../src/domain/evidence";
 import { deriveEvidenceRole, ROLE_MAP_VERSION } from "../domain/evidenceRole";
+import type { SourceReceipt } from "../services/sourceVerification";
 
 export interface IngestEvidenceInput {
+  sourceVerification?: SourceReceipt;
   evidenceId: string;
   recoveryCaseId: string;
   sourceSystem: string;
@@ -26,6 +28,7 @@ export interface IngestEvidenceInput {
 }
 
 export interface IngestedEvidence {
+  sourceVerification: unknown;
   evidenceId: string;
   recoveryCaseId: string;
   sourceSystem: string;
@@ -47,6 +50,7 @@ type Row = Awaited<ReturnType<typeof prisma.evidenceRecord.findFirstOrThrow>>;
 
 function rowToEvidence(r: Row): IngestedEvidence {
   return {
+    sourceVerification: r.sourceVerification,
     evidenceId: r.evidenceId,
     recoveryCaseId: r.recoveryCaseId,
     sourceSystem: r.sourceSystem,
@@ -85,7 +89,7 @@ export async function ingestEvidence(
     sourceRecordId: input.sourceRecordId,
     observedAt: input.observedAt,
     ingestedAt: new Date().toISOString(), // not persisted from this — the DB clock is authoritative
-    trustClassification: "independent", // a claim; makeEvidence forces it to the true value
+    trustClassification: input.sourceVerification ? "independent" : "beneficiary_controlled",
     suppliedBy: input.ingestedBy,
   });
   const role = deriveEvidenceRole(input.sourceSystem, input.evidenceType);
@@ -107,6 +111,7 @@ export async function ingestEvidence(
       ingestedBy: input.ingestedBy,
       ingestedByRole: input.ingestedByRole,
       note: input.note ?? null,
+      sourceVerification: input.sourceVerification ? { ...input.sourceVerification } : undefined,
     },
   });
   return rowToEvidence(row);

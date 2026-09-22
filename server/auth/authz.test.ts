@@ -6,6 +6,7 @@
 // use the shared `seedAuditableCase` fixture.
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { buildApp } from "../app";
+import { fixtureVerifier } from "../test/sourceFixture";
 import { prisma } from "../db";
 import * as proofService from "../services/proofService";
 import { uid, hdr, seedAuditableCase, approveBody } from "../test/fixtures";
@@ -16,7 +17,7 @@ const placeholderApproveBody = (caseId: string, proofId: string) =>
   approveBody({ proofId, caseId, baselineId: "BL-1", evidenceIds: ["ev-1"] });
 
 describe.skipIf(!HAS_DB)("EP-4 · authentication, authorization & separation of duties", () => {
-  const app = buildApp();
+  const app = buildApp({ sourceVerifier: fixtureVerifier });
   beforeAll(async () => {
     await app.ready();
   });

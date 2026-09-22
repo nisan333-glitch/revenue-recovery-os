@@ -130,6 +130,7 @@ model EvidenceRecord {
   ingestedBy          String
   ingestedByRole      String
   ingestedAt          DateTime @default(now()) // authoritative server timestamp
+  sourceVerification  Json?
   note                String?
   // A partial unique index (sourceSystem, sourceRecordId) WHERE evidenceRole='outcome' is
   // added via raw SQL in the ep8_1_evidence_hardening migration — Prisma's declarative

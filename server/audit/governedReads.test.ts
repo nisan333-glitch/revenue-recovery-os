@@ -4,13 +4,14 @@
 // without DATABASE_URL.
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { buildApp } from "../app";
+import { fixtureVerifier } from "../test/sourceFixture";
 import { prisma } from "../db";
 import { uid, AUTHOR, APPROVER, VERIFIER, STEWARD, seedBaseline, seedEvidence } from "../test/fixtures";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
 describe.skipIf(!HAS_DB)("EP-9 · governed reads: baselines/evidence history", () => {
-  const app = buildApp();
+  const app = buildApp({ sourceVerifier: fixtureVerifier });
   beforeAll(async () => {
     await app.ready();
   });

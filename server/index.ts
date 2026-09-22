@@ -3,16 +3,15 @@
 // is the one place that actually listens, so the frontend has something real to call.
 import { buildApp } from "./app";
 import { createAgentProcessFromEnvironment } from "./agents/bootstrap";
-import type { AgentHandler } from "./agents/types";
+import { configuredAgentHandlers } from "./agents/activationDetector";
 import { closeInOrder, installGracefulShutdown } from "./processLifecycle";
 import { createIdentityResolverFromEnvironment } from "./auth/verifiedIdentity";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
 
-// Development has the same fail-closed lifecycle as the packaged server. Handlers are registered
-// only when a real detector/source adapter exists; NH_AGENTS_ENABLED=true fails until then.
-const handlers: readonly AgentHandler[] = [];
+// Development and the packaged server share the explicit detector opt-in registry.
+const handlers = configuredAgentHandlers(process.env);
 const agents = createAgentProcessFromEnvironment(process.env, handlers);
 const identityResolver = createIdentityResolverFromEnvironment(process.env);
 const app = buildApp({ agentReadiness: () => agents.readiness(), identityResolver });

@@ -30,7 +30,7 @@ describe("Evidence amount and currency request boundary", () => {
         headers: { "x-actor-id": "author@test", "x-actor-role": "author" },
         payload: { ...payload, ...money } });
       expect(response.statusCode).toBe(201);
-      expect(ingest).toHaveBeenCalledWith(expect.anything(), "RC-validation", { ...payload, ...money });
+      expect(ingest).toHaveBeenCalledWith(expect.anything(), "RC-validation", { ...payload, ...money }, expect.anything());
     },
   );
 });
