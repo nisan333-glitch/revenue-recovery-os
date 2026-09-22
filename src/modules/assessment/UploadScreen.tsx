@@ -1,7 +1,7 @@
 import type { DateLocale } from "../../assessment/dateNormalize";
 import type { AmountFormat } from "../../assessment/amountNormalize";
 import { SectionHeader, Panel, Pill } from "../../components/ui";
-import { downloadTemplate } from "./exportSummary";
+import { downloadDataRequestGuide, downloadTemplate } from "./exportSummary";
 
 // v1 CSV size cap. Rationale: parsing + SHA-256 run synchronously on the main thread (no workers/
 // streaming in this slice). 10 MB (~50k–100k rows) is generous for a historical export while keeping
@@ -94,6 +94,10 @@ export function UploadScreen(props: UploadScreenProps) {
           <button onClick={downloadTemplate}
             className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">
             Download template
+          </button>
+          <button onClick={downloadDataRequestGuide}
+            className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">
+            Download data request
           </button>
         </div>
         <p className="mt-2 text-[11px] text-slate-500">

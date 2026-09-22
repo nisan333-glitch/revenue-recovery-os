@@ -10,6 +10,8 @@ import { makePolicy } from "../../assessment/policy";
 import { DataQualityCohortScreen } from "./DataQualityCohortScreen";
 import { ObservedResultsScreen } from "./ObservedResultsScreen";
 import { UploadScreen } from "./UploadScreen";
+import { PilotReadinessScreen } from "./PilotReadinessScreen";
+import { EMPTY_PILOT_DECLARATIONS } from "../../assessment/intakeKit";
 
 const noop = () => {};
 
@@ -67,5 +69,22 @@ describe("Assessment screens render the critical content", () => {
     );
     expect(html).toContain("never uploaded");
     expect(html).toContain("missing required column");
+    expect(html).toContain("Download data request");
+  });
+
+  it("Pilot readiness is conservative and exposes the claim boundary", async () => {
+    const r = await sample();
+    const html = renderToStaticMarkup(
+      createElement(PilotReadinessScreen, {
+        result: r,
+        declarations: EMPTY_PILOT_DECLARATIONS,
+        onChangeDeclarations: noop,
+        onBack: noop,
+        onNext: noop,
+      }),
+    );
+    expect(html).toContain("CONDITIONAL");
+    expect(html).toContain("Claim boundary");
+    expect(html).toContain("0/7");
   });
 });

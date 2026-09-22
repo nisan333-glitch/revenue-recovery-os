@@ -24,7 +24,7 @@ export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, o
         right={
           <div className="flex gap-2">
             <button onClick={onBack} className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">← Upload</button>
-            <button onClick={onNext} className="rounded-lg border border-proof-600/40 bg-proof-600/10 px-3 py-1.5 text-sm text-proof-500 hover:bg-proof-600/20">Observed result →</button>
+            <button onClick={onNext} className="rounded-lg border border-proof-600/40 bg-proof-600/10 px-3 py-1.5 text-sm text-proof-500 hover:bg-proof-600/20">Pilot readiness →</button>
           </div>
         }
       />

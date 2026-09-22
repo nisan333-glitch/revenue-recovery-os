@@ -10,8 +10,10 @@ import { UploadScreen } from "./UploadScreen";
 import { ColumnMappingScreen } from "./ColumnMappingScreen";
 import { DataQualityCohortScreen } from "./DataQualityCohortScreen";
 import { ObservedResultsScreen } from "./ObservedResultsScreen";
+import { PilotReadinessScreen } from "./PilotReadinessScreen";
+import { EMPTY_PILOT_DECLARATIONS, type PilotDeclarations } from "../../assessment/intakeKit";
 
-type Step = "upload" | "mapping" | "quality" | "observed";
+type Step = "upload" | "mapping" | "quality" | "readiness" | "observed";
 
 export function Assessment() {
   const [csvText, setCsvText] = useState<string | null>(null);
@@ -26,6 +28,7 @@ export function Assessment() {
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("upload");
+  const [declarations, setDeclarations] = useState<PilotDeclarations>(EMPTY_PILOT_DECLARATIONS);
 
   async function run(text: string, useN: number, useMapping: ColumnMapping | undefined): Promise<void> {
     setError(null);
@@ -41,6 +44,9 @@ export function Assessment() {
       setCsvText(text);
       setMapping(useMapping ?? null);
       setResult(outcome.result);
+      // Intake declarations belong to one exact assessment. A new file, mapping or policy result
+      // must be confirmed again; carrying old confirmations forward would create false readiness.
+      setDeclarations(EMPTY_PILOT_DECLARATIONS);
       setStep("quality");
     } else {
       // Keep the prior result visible but surface the error (never a silent stale re-run).
@@ -115,11 +121,20 @@ export function Assessment() {
           error={error}
           onChangeN={(newN) => void changeN(newN)}
           onBack={() => setStep("upload")}
+          onNext={() => setStep("readiness")}
+        />
+      )}
+      {step === "readiness" && result && (
+        <PilotReadinessScreen
+          result={result}
+          declarations={declarations}
+          onChangeDeclarations={setDeclarations}
+          onBack={() => setStep("quality")}
           onNext={() => setStep("observed")}
         />
       )}
       {step === "observed" && result && (
-        <ObservedResultsScreen result={result} onBack={() => setStep("quality")} />
+        <ObservedResultsScreen result={result} onBack={() => setStep("readiness")} />
       )}
     </div>
   );
