@@ -3,6 +3,12 @@
 import type { AssessmentResult } from "../../assessment/types";
 import { summarizeExclusions } from "../../assessment/summarize";
 import { formatMoney } from "../../domain/money";
+import {
+  buildDataRequestGuide,
+  buildIntakeManifest,
+  serializeIntakeManifest,
+  type PilotDeclarations,
+} from "../../assessment/intakeKit";
 
 /** A minimal CSV template a Design Partner can populate (one row = one expectation cycle). */
 export const CSV_TEMPLATE =
@@ -91,4 +97,15 @@ export function downloadSummary(result: AssessmentResult): void {
 
 export function downloadTemplate(): void {
   downloadText("assessment-template.csv", CSV_TEMPLATE);
+}
+
+export function downloadDataRequestGuide(): void {
+  downloadText("nh-pilot-data-request-v1.md", buildDataRequestGuide());
+}
+
+export function downloadIntakeManifest(result: AssessmentResult, declarations: PilotDeclarations): void {
+  downloadText(
+    `pilot-intake-${result.assessmentId}.json`,
+    serializeIntakeManifest(buildIntakeManifest(result, declarations)),
+  );
 }
