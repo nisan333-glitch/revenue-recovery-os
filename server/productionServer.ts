@@ -14,7 +14,7 @@ import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
 import { buildApp, apiPrefixedRequests, type BuildAppOptions } from "./app";
 import { createAgentProcessFromEnvironment } from "./agents/bootstrap";
-import type { AgentHandler } from "./agents/types";
+import { configuredAgentHandlers } from "./agents/activationDetector";
 import { closeInOrder, installGracefulShutdown } from "./processLifecycle";
 import { createIdentityResolverFromEnvironment } from "./auth/verifiedIdentity";
 
@@ -60,9 +60,8 @@ export function buildProductionApp(options: BuildAppOptions = {}): FastifyInstan
 if (require.main === module) {
   const port = Number(process.env.PORT ?? 4000);
   const host = process.env.HOST ?? "127.0.0.1";
-  // No detector is promoted implicitly. A production handler must be explicitly registered here
-  // after its source contract and CandidateSignal admission tests are approved.
-  const handlers: readonly AgentHandler[] = [];
+  // Detectors are opt-in; their output remains pending human review.
+  const handlers = configuredAgentHandlers(process.env);
   const agents = createAgentProcessFromEnvironment(process.env, handlers);
   const identityResolver = createIdentityResolverFromEnvironment(process.env);
   const app = buildProductionApp({ agentReadiness: () => agents.readiness(), identityResolver });

@@ -9,6 +9,7 @@
 // Skips without DATABASE_URL (same gate as the rest of the server suite).
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { buildApp } from "../app";
+import { fixtureVerifier } from "../test/sourceFixture";
 import { prisma } from "../db";
 import { HALTED_MUTATIONS } from "./caseGuard";
 import {
@@ -36,7 +37,7 @@ async function caseRowCounts(caseId: string) {
 }
 
 describe.skipIf(!HAS_DB)("EP-11 · a halted case rejects every governed mutation", () => {
-  const app = buildApp();
+  const app = buildApp({ sourceVerifier: fixtureVerifier });
   beforeAll(async () => {
     await app.ready();
   });

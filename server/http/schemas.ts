@@ -133,6 +133,14 @@ export const ingestEvidenceSchema = {
       currency: ["amountMinor"],
     },
     properties: {
+      sourceAttestation: {
+        type: "object", additionalProperties: false, required: ["keyId", "issuedAt", "signature"],
+        properties: {
+          keyId: { type: "string", minLength: 1, maxLength: 256 },
+          issuedAt: { type: "string", minLength: 1, maxLength: 32 },
+          signature: { type: "string", minLength: 88, maxLength: 88 },
+        },
+      },
       evidenceId: { type: "string", minLength: 1 },
       sourceSystem: { type: "string", minLength: 1 },
       sourceRecordId: { type: "string", minLength: 1 },

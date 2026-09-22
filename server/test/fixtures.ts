@@ -6,6 +6,7 @@
 // setup (author → baseline → intervention → evidence) once, so acceptance tests across
 // EP-2/3/4/8/8.1 do not each re-invent it.
 import type { FastifyInstance } from "fastify";
+import { attestFixture } from "./sourceFixture";
 
 export const uid = (): string => Math.random().toString(36).slice(2, 10);
 export const hdr = (id: string, role: string) => ({ "x-actor-id": id, "x-actor-role": role });
@@ -73,7 +74,7 @@ export async function seedEvidence(
     method: "POST",
     url: `/cases/${caseId}/evidence`,
     headers: opts.actor ?? AUTHOR,
-    payload: {
+    payload: attestFixture(caseId, {
       evidenceId,
       sourceSystem: opts.sourceSystem ?? "billing",
       sourceRecordId: opts.sourceRecordId ?? `inv-${uid()}`,
@@ -81,7 +82,7 @@ export async function seedEvidence(
       observedAt: opts.observedAt ?? "2026-07-25T00:00:00.000Z",
       amountMinor: opts.amountMinor,
       currency: opts.amountMinor === undefined ? opts.currency : (opts.currency ?? "USD"),
-    },
+    }),
   });
   return { evidenceId, res };
 }

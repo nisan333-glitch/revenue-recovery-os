@@ -6,13 +6,14 @@ import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { buildApp } from "../app";
+import { fixtureVerifier } from "../test/sourceFixture";
 import { prisma } from "../db";
 import { uid, APPROVER, seedAuditableCase, approveBody } from "../test/fixtures";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
 describe.skipIf(!HAS_DB)("EP-3 · governed REST API", () => {
-  const app = buildApp();
+  const app = buildApp({ sourceVerifier: fixtureVerifier });
   beforeAll(async () => {
     await app.ready();
   });

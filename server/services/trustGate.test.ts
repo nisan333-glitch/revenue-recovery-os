@@ -14,6 +14,7 @@
 // Skips without DATABASE_URL.
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { buildApp } from "../app";
+import { fixtureVerifier } from "../test/sourceFixture";
 import { prisma } from "../db";
 import {
   uid,
@@ -31,7 +32,7 @@ import {
 const HAS_DB = !!process.env.DATABASE_URL;
 
 describe.skipIf(!HAS_DB)("EP-8.1 · trust gate hardening (adversarial regressions)", () => {
-  const app = buildApp();
+  const app = buildApp({ sourceVerifier: fixtureVerifier });
   beforeAll(async () => {
     await app.ready();
   });

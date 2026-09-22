@@ -114,7 +114,8 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }).IS_REACT_ACT_ENVIRONMENT = true;
 
     const { buildApp } = await import("../server/app");
-    app = buildApp();
+    const { fixtureVerifier } = await import("../server/test/sourceFixture");
+    app = buildApp({ sourceVerifier: fixtureVerifier });
     await app.ready();
 
     const author = operatorActorFor(OWNER); // role "operator" — same write permissions as "author"
@@ -149,11 +150,13 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
     // only the domain kernel's own trustClassification check, which product/usage-activation
     // still satisfies as "independent". Using the same billing/invoice_paid pattern already
     // relied on by server/test/fixtures.ts's own seedAuditableCase().
+    const { attestFixture } = await import("../server/test/sourceFixture");
     const evidence = await app.inject({
       method: "POST",
       url: `/cases/${CASE_ID}/evidence`,
       headers: authorHeaders,
       payload: {
+        ...attestFixture(CASE_ID, {
         evidenceId: `EV-${CASE_ID}-src`,
         sourceSystem: "billing",
         sourceRecordId: "UA-7781",
@@ -161,6 +164,7 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
         observedAt: "2026-06-02T09:05:00.000Z",
         amountMinor: 1_320_000,
         currency: "USD",
+        }),
       },
     });
     if (evidence.statusCode !== 201) {
