@@ -15,6 +15,7 @@ import { RecoveryReasons } from "./modules/RecoveryReasons";
 import { ConfidencePanel } from "./modules/ConfidencePanel";
 import { Assessment } from "./modules/assessment/Assessment";
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
+import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
 
 // The single case used by the Guided Demo navigation mode. Only an identifier — no business values here.
 const DEMO_CASE_ID = "RE-1014";
@@ -31,10 +32,12 @@ type ModuleKey =
   | "reasons"
   | "confidence"
   | "audit"
-  | "assessment";
+  | "assessment"
+  | "synthetic-pilot";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "demo", label: `Guided Demo — ${DEMO_CASE_ID}`, group: "Demo" },
+  { key: "synthetic-pilot", label: "Synthetic Pilot v2", group: "Demo" },
   { key: "loop", label: "Recovery Loop", group: "Recover" },
   { key: "dashboard", label: "Executive Dashboard", group: "Prove" },
   { key: "cfo", label: "CFO Proof View", group: "Prove" },
@@ -175,6 +178,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
                 </p>
               </section>
             ))}
+          {active === "synthetic-pilot" && <SyntheticPilotV2 />}
           {active === "loop" && <RecoveryLoop onOpen={setActive} />}
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}
