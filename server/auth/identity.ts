@@ -6,6 +6,7 @@
 // the governance (Steward) role required by the Mission #012 architecture — without
 // changing any Foundation file. Steward may flag/halt but can NEVER count.
 import type { Actor, Role as DomainRole } from "../../src/domain/authority";
+import { ForbiddenError } from "../http/errors";
 
 export type BackendRole = "author" | "operator" | "approver" | "verifier" | "steward";
 export type GovernedAction =
@@ -39,6 +40,8 @@ const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
 export interface ActorContext {
   readonly actorId: string;
   readonly role: BackendRole;
+  /** Verified customer/pilot boundaries. `*` is reserved for isolated dev/synthetic paths. */
+  readonly boundaryIds?: readonly string[];
 }
 
 const ALL_ROLES: BackendRole[] = ["author", "operator", "approver", "verifier", "steward"];
@@ -49,6 +52,13 @@ export function isBackendRole(x: unknown): x is BackendRole {
 
 export function roleCan(role: BackendRole, action: GovernedAction): boolean {
   return PERMISSIONS[role].includes(action);
+}
+
+export function requireBoundaryAccess(actor: ActorContext, boundaryId: string): void {
+  const requested = boundaryId.trim();
+  if (!requested || !actor.boundaryIds || (!actor.boundaryIds.includes("*") && !actor.boundaryIds.includes(requested))) {
+    throw new ForbiddenError("actor is not authorized for this boundary");
+  }
 }
 
 /** Project a backend actor onto a domain Actor for the kernel's separation gate. */

@@ -25,7 +25,11 @@ describe("candidate promotion service", () => {
       },
     };
     const service = new CandidatePromotionService(store);
-    const result = await service.promote({ actorId: "operator-1", role: "operator" }, "CC-1", "tenant-1");
+    const result = await service.promote(
+      { actorId: "operator-1", role: "operator", boundaryIds: ["tenant-1"] },
+      "CC-1",
+      "tenant-1",
+    );
     expect(result.recoveryCase.recoveryCaseId).toMatch(/^RC-[0-9a-f-]{36}$/);
     expect(captured).toMatchObject({ candidateId: "CC-1", boundaryId: "tenant-1", actorId: "operator-1" });
   });
@@ -34,5 +38,14 @@ describe("candidate promotion service", () => {
     const service = new CandidatePromotionService({ promote: async () => { throw new Error("unreachable"); } });
     expect(() => service.promote({ actorId: "steward-1", role: "steward" }, "CC-1", "tenant-1"))
       .toThrow(/operator/);
+  });
+
+  it("denies an operator outside the candidate boundary", async () => {
+    const service = new CandidatePromotionService({ promote: async () => { throw new Error("unreachable"); } });
+    expect(() => service.promote(
+      { actorId: "operator-1", role: "operator", boundaryIds: ["tenant-2"] },
+      "CC-1",
+      "tenant-1",
+    )).toThrow(/not authorized for this boundary/);
   });
 });

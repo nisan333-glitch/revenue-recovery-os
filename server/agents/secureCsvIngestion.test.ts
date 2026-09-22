@@ -85,7 +85,7 @@ describe("secure CSV candidate ingestion", () => {
     const reviews = new InMemoryCandidateReviewStore();
     reviews.seed(candidates[0]!);
     const review = await new CandidateReviewService(reviews, options.now).decide(
-      { actorId: "operator-1", role: "operator" },
+      { actorId: "operator-1", role: "operator", boundaryIds: ["tenant-1"] },
       { candidateId: candidates[0]!.candidateId, boundaryId: "tenant-1", decision: "accepted", reason: "synthetic fixture review" },
     );
     expect(review.decision).toBe("accepted");
@@ -104,7 +104,11 @@ describe("secure CSV candidate ingestion", () => {
         } };
       },
     });
-    const result = await promotion.promote({ actorId: "operator-1", role: "operator" }, candidates[0]!.candidateId, "tenant-1");
+    const result = await promotion.promote(
+      { actorId: "operator-1", role: "operator", boundaryIds: ["tenant-1"] },
+      candidates[0]!.candidateId,
+      "tenant-1",
+    );
     expect(promoted).toBe(true);
     expect(result.created).toBe(true);
   });

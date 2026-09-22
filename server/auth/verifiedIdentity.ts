@@ -14,6 +14,7 @@ interface OidcConfig {
   audience: string;
   jwksUri: string;
   roleClaim: string;
+  boundaryClaim?: string;
   clockSkewSeconds: number;
   cacheTtlMs: number;
   timeoutMs: number;
@@ -120,7 +121,8 @@ export function createOidcIdentityResolver(config: OidcConfig, fetchImpl: typeof
     const actorId = claims.sub as string;
     const role = claims[config.roleClaim];
     if (!isBackendRole(role)) throw new UnauthorizedError("token has no valid NH role");
-    return Object.freeze({ actorId, role });
+    const boundaryIds = parseBoundaryClaim(claims[config.boundaryClaim ?? "nh_boundaries"]);
+    return Object.freeze({ actorId, role, boundaryIds });
   };
 }
 
@@ -129,13 +131,32 @@ function readOidcConfig(env: Readonly<Record<string, string | undefined>>): Oidc
   const jwksUri = requireHttpsUrl("NH_OIDC_JWKS_URI", env.NH_OIDC_JWKS_URI);
   const audience = required("NH_OIDC_AUDIENCE", env.NH_OIDC_AUDIENCE);
   const roleClaim = env.NH_OIDC_ROLE_CLAIM?.trim() || "nh_role";
+  const boundaryClaim = env.NH_OIDC_BOUNDARY_CLAIM?.trim() || "nh_boundaries";
   if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(roleClaim)) throw new Error("NH_OIDC_ROLE_CLAIM is invalid");
+  if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(boundaryClaim)) throw new Error("NH_OIDC_BOUNDARY_CLAIM is invalid");
   return Object.freeze({
-    issuer: issuer.replace(/\/$/, ""), jwksUri, audience, roleClaim,
+    issuer: issuer.replace(/\/$/, ""), jwksUri, audience, roleClaim, boundaryClaim,
     clockSkewSeconds: boundedInt("NH_OIDC_CLOCK_SKEW_SECONDS", env.NH_OIDC_CLOCK_SKEW_SECONDS, 60, 0, 300),
     cacheTtlMs: boundedInt("NH_OIDC_JWKS_TTL_SECONDS", env.NH_OIDC_JWKS_TTL_SECONDS, 300, 1, 3600) * 1000,
     timeoutMs: boundedInt("NH_OIDC_TIMEOUT_MS", env.NH_OIDC_TIMEOUT_MS, 3000, 100, 30000),
   });
+}
+
+function parseBoundaryClaim(raw: unknown): readonly string[] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 100) {
+    throw new UnauthorizedError("token has no valid NH boundary scope");
+  }
+  const boundaries: string[] = [];
+  const seen = new Set<string>();
+  for (const value of raw) {
+    if (typeof value !== "string" || !value.trim() || value !== value.trim() || value.length > 256 || value === "*") {
+      throw new UnauthorizedError("token has no valid NH boundary scope");
+    }
+    if (seen.has(value)) throw new UnauthorizedError("token has duplicate NH boundaries");
+    seen.add(value);
+    boundaries.push(value);
+  }
+  return Object.freeze(boundaries);
 }
 
 function validateClaims(claims: JwtClaims, config: OidcConfig): void {

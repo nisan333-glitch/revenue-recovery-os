@@ -19,7 +19,10 @@ export function actorFromRequest(req: FastifyRequest): ActorContext {
   }
   const actorId = id.trim();
   if (actorId !== id || actorId.length > 256) throw new UnauthorizedError("missing or invalid actor credentials");
-  return { actorId, role };
+  // Dev headers are allowed only in an explicitly isolated private pilot. They intentionally
+  // receive the internal wildcard so local tools can exercise synthetic boundaries; production
+  // OIDC identities can never receive this wildcard.
+  return { actorId, role, boundaryIds: Object.freeze(["*"]) };
 }
 
 export async function resolveActor(
