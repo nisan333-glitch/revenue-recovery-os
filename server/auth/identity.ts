@@ -20,7 +20,8 @@ export type GovernedAction =
   | "EstablishBaseline" // EP-8.1: establish + lock a baseline snapshot
   | "Intervene" // EP-8.1: record the governed Fix/intervention timing event
   | "IngestEvidence" // EP-8.1: pre-proof evidence ingestion
-  | "PromoteCandidate"; // EP-12E: accepted candidate -> authoritative RecoveryCase
+  | "PromoteCandidate" // EP-12E: accepted candidate -> authoritative RecoveryCase
+  | "SubmitPilotDataset"; // EP-13: submit a customer pilot dataset for contract validation
 
 // Least-privilege matrix: which role may perform which governed action. There is no
 // "admin"/superuser role — nothing here grants a separation-of-duties bypass.
@@ -30,8 +31,8 @@ export type GovernedAction =
 // (author/operator) — the same actors who already own the "Author" action — never the
 // approver, so the approver can never also be the one asserting the baseline/evidence facts.
 const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
-  author: ["Author", "EstablishBaseline", "Intervene", "IngestEvidence"],
-  operator: ["Author", "EstablishBaseline", "Intervene", "IngestEvidence", "PromoteCandidate"],
+  author: ["Author", "EstablishBaseline", "Intervene", "IngestEvidence", "SubmitPilotDataset"],
+  operator: ["Author", "EstablishBaseline", "Intervene", "IngestEvidence", "PromoteCandidate", "SubmitPilotDataset"],
   approver: ["Approve", "AuditRead"],
   verifier: ["Verify", "AuditRead"],
   steward: ["Flag", "Halt", "Exclude", "AuditRead"], // governance: may flag/halt/exclude & audit — never count

@@ -243,3 +243,34 @@ model RecoveryCaseRecord {
   @@index([boundaryId, openedAt], map: "recovery_cases_boundary_opened_idx")
   @@map("recovery_cases")
 }
+
+/// EP-13 · Record of one customer pilot dataset submission. It exists for ONE reason: to make a
+/// repeated upload recognisable, so the same exposure is not assessed twice. It is deliberately
+/// NOT an evidence, case or proof record and grants no authority whatsoever.
+///
+/// WHAT IT STORES: the tenant boundary, the customer's dataset label, the deterministic
+/// idempotency key, the file fingerprint, counts, and the VALIDATION CODES produced.
+/// WHAT IT NEVER STORES: uploaded row content, customer identifiers, monetary values, or the
+/// `detail` text of a finding (which can echo a customer value). A rejected row is reported to the
+/// uploader and then forgotten — it is never persisted.
+model PilotDatasetSubmissionRecord {
+  idempotencyKey     String   @id @map("idempotency_key")
+  boundaryId         String   @map("boundary_id")
+  datasetId          String   @map("dataset_id")
+  contractVersion    String   @map("contract_version")
+  datasetFingerprint String   @map("dataset_fingerprint")
+  accepted           Boolean
+  usable             Boolean
+  dataRows           Int      @map("data_rows")
+  acceptedRows       Int      @map("accepted_rows")
+  rejectedRows       Int      @map("rejected_rows")
+  warnedRows         Int      @map("warned_rows")
+  /// Distinct NH-DC-#### codes only. Never the findings' detail text.
+  findingCodes       String[] @map("finding_codes")
+  submittedByActorId String   @map("submitted_by_actor_id")
+  submittedByRole    String   @map("submitted_by_role")
+  submittedAt        DateTime @default(now()) @map("submitted_at")
+
+  @@index([boundaryId, submittedAt], map: "pilot_dataset_submissions_boundary_idx")
+  @@map("pilot_dataset_submissions")
+}

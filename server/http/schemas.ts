@@ -193,3 +193,72 @@ export const candidatePromotionSchema = {
     properties: { boundaryId: { type: "string", minLength: 1, maxLength: 256 } },
   },
 } as const;
+
+/**
+ * EP-13 · Customer pilot dataset submission.
+ *
+ * `additionalProperties: false` at every level is the point, not boilerplate: it is what makes a
+ * payload-supplied tenant (`tenantId`, `boundary`, `actorId`, …) a 400 instead of a field someone
+ * later decides to honour. The ONLY tenancy input is `boundaryId`, and the service treats that as an
+ * authorization request checked against the authenticated context — never as an assertion.
+ *
+ * `csvText.maxLength` is a TRANSPORT guard sized above the contract's own limit, so a file between
+ * the two is refused by the contract with its deterministic code (NH-DC-1011) rather than by a bare
+ * schema error. Neither path ever truncates.
+ */
+export const pilotDatasetSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "policy", "provenance"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      datasetId: { type: "string", minLength: 1, maxLength: 256 },
+      declaredVersion: { type: "string", minLength: 1, maxLength: 32 },
+      csvText: { type: "string", minLength: 1, maxLength: 20_971_520 },
+      locale: { type: "string", enum: ["MDY", "DMY"] },
+      amountFormat: { type: "string", enum: ["US", "EU"] },
+      policy: {
+        type: "object",
+        additionalProperties: false,
+        required: ["stallThresholdDays", "asOf", "currency"],
+        properties: {
+          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
+          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+        },
+      },
+      provenance: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceSystems",
+          "dataOwnerRole",
+          "extractionMethod",
+          "extractedAt",
+          "coverageStart",
+          "coverageEnd",
+          "assertedIndependentOfBeneficiary",
+        ],
+        properties: {
+          sourceSystems: {
+            type: "object",
+            additionalProperties: false,
+            required: ["contract", "billing", "product"],
+            properties: {
+              contract: { type: "string", minLength: 1, maxLength: 256 },
+              billing: { type: "string", minLength: 1, maxLength: 256 },
+              product: { type: "string", minLength: 1, maxLength: 256 },
+            },
+          },
+          dataOwnerRole: { type: "string", minLength: 1, maxLength: 256 },
+          extractionMethod: { type: "string", minLength: 1, maxLength: 1024 },
+          extractedAt: { type: "string", minLength: 1, maxLength: 64 },
+          coverageStart: { type: "string", minLength: 1, maxLength: 32 },
+          coverageEnd: { type: "string", minLength: 1, maxLength: 32 },
+          assertedIndependentOfBeneficiary: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;

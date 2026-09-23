@@ -13,6 +13,9 @@ import type {
   IngestEvidenceRequest,
 } from "./services/proofService";
 import * as auditService from "./audit/auditService";
+import * as pilotIntakeService from "./services/pilotIntakeService";
+import type { PilotDatasetRequest } from "./services/pilotIntakeService";
+import { INTAKE_LIMITS } from "../src/contract/pilotDataContract";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
 import { resolveActor, type IdentityResolver } from "./auth/actorContext";
@@ -27,6 +30,7 @@ import {
   candidateQueueSchema,
   candidateReviewSchema,
   candidatePromotionSchema,
+  pilotDatasetSchema,
 } from "./http/schemas";
 import type { AgentWorkerReadiness } from "./agents/worker";
 import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
@@ -131,6 +135,30 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         req.body.boundaryId,
       );
       return reply.code(result.created ? 201 : 200).send(result);
+    },
+  );
+
+  // EP-13 · Customer pilot dataset intake. SERVER-SIDE VALIDATION IS AUTHORITATIVE — the browser may
+  // run the same contract validator as preflight assistance, but this is the decision. Creates no
+  // RecoveryEvent, Case, Proof or revenue claim; it validates, and records only that a usable
+  // dataset was submitted (counts and codes — never row content).
+  // Fastify's default body limit is 1 MB — far below the contract's 10 MB dataset limit, so without
+  // this a legitimate upload dies at the transport with no contract code at all. The limit is set
+  // PER ROUTE, not globally: no other endpoint needs a large body, and raising it everywhere would
+  // widen the denial-of-service surface for free. The headroom above INTAKE_LIMITS.maxBytes is
+  // deliberate — a file between the two reaches the validator and is refused with the deterministic
+  // NH-DC-1011 instead of a bare transport error. Neither path truncates.
+  const pilotUploadTransportLimit = INTAKE_LIMITS.maxBytes + 2 * 1024 * 1024;
+
+  app.post<{ Body: PilotDatasetRequest }>(
+    "/pilot/datasets",
+    { schema: pilotDatasetSchema, bodyLimit: pilotUploadTransportLimit },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      const result = await pilotIntakeService.submitPilotDataset(actor, req.body);
+      // 200, not 201: a dataset whose rows were rejected is a VALID answer, not a created resource.
+      // The caller branches on `usableForAssessment`, never on the status code alone.
+      return reply.code(200).send(result);
     },
   );
 
