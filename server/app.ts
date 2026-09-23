@@ -14,7 +14,7 @@ import type {
 } from "./services/proofService";
 import * as auditService from "./audit/auditService";
 import * as pilotIntakeService from "./services/pilotIntakeService";
-import type { PilotDatasetRequest } from "./services/pilotIntakeService";
+import type { PilotDatasetRequest, RegisterAdmissionPolicyRequest } from "./services/pilotIntakeService";
 import { INTAKE_LIMITS } from "../src/contract/pilotDataContract";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
@@ -31,6 +31,7 @@ import {
   candidateReviewSchema,
   candidatePromotionSchema,
   pilotDatasetSchema,
+  admissionPolicySchema,
 } from "./http/schemas";
 import type { AgentWorkerReadiness } from "./agents/worker";
 import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
@@ -159,6 +160,18 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       // 200, not 201: a dataset whose rows were rejected is a VALID answer, not a created resource.
       // The caller branches on `usableForAssessment`, never on the status code alone.
       return reply.code(200).send(result);
+    },
+  );
+
+  // EP-14 · Register a versioned pilot admission policy for a boundary. The thresholds a dataset is
+  // judged against are the customer's commercial decision; this is how they state them. Append-only
+  // per (boundary, id, version) — a change is a new version, never an edit.
+  app.post<{ Body: RegisterAdmissionPolicyRequest }>(
+    "/pilot/admission-policies",
+    { schema: admissionPolicySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.code(201).send(await pilotIntakeService.registerPilotAdmissionPolicy(actor, req.body));
     },
   );
 

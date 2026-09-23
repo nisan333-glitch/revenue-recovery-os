@@ -23,6 +23,10 @@ import {
   type DatasetProvenance,
 } from "../../src/contract/pilotDataContract";
 import { IDENTITY_CODES } from "../../src/contract/rejectionCodes";
+import { evaluateAdmission, type AdmissionDecision } from "../../src/contract/admissionGate";
+import { POLICY_CODES } from "../../src/contract/admissionCodes";
+import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
+import { findAdmissionPolicy, registerAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
 import { makePolicy } from "../../src/assessment/policy";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
@@ -50,6 +54,13 @@ export interface PilotDatasetRequest {
   readonly provenance: DatasetProvenance;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
+  /**
+   * Which versioned admission policy to judge fitness against. Omitting it does NOT mean "skip the
+   * check" — it means NOT_ASSESSABLE (NH-AG-1001). There is no configuration in which a dataset is
+   * admitted without an explicit bar.
+   */
+  readonly admissionPolicyId?: string;
+  readonly admissionPolicyVersion?: string;
 }
 
 /**
@@ -76,12 +87,22 @@ export interface PilotIntakeResponse {
   readonly claimBoundary: ContractValidationReport["claimBoundary"];
   /** Server-recorded submission time when the dataset was accepted and recorded; else null. */
   readonly recordedAt: string | null;
+  /**
+   * EP-14 · Pilot fitness — a THIRD verdict, additive and independent. `accepted` and
+   * `usableForAssessment` keep their existing meanings exactly; this one answers whether the
+   * dataset satisfies an explicit, versioned pilot policy.
+   */
+  readonly admission: AdmissionDecision;
 }
 
 /** The contract version this build serves. Advertised so a client can pin and compare. */
 export const SERVED_CONTRACT_VERSION = PILOT_DATA_CONTRACT_VERSION;
 
-function toResponse(report: ContractValidationReport, recordedAt: string | null): PilotIntakeResponse {
+function toResponse(
+  report: ContractValidationReport,
+  recordedAt: string | null,
+  admission: AdmissionDecision,
+): PilotIntakeResponse {
   return Object.freeze({
     contractRef: report.contractRef,
     contractVersion: report.contractVersion,
@@ -99,6 +120,7 @@ function toResponse(report: ContractValidationReport, recordedAt: string | null)
     mappingId: report.mappingId,
     claimBoundary: report.claimBoundary,
     recordedAt,
+    admission,
   });
 }
 
@@ -159,9 +181,24 @@ export async function submitPilotDataset(
 
   const report = await validatePilotDataset(submission);
 
+  // EP-14 · Pilot fitness. The policy is loaded BOUNDARY-SCOPED, so a policy id belonging to
+  // another tenant reads as absent and yields NOT_ASSESSABLE rather than judging this dataset by
+  // someone else's bar. No policy named, or none found: NOT_ASSESSABLE. Never a default.
+  let admissionPolicy: PilotAdmissionPolicy | null = null;
+  if (request.admissionPolicyId?.trim()) {
+    const stored = await findAdmissionPolicy(
+      boundaryId,
+      request.admissionPolicyId.trim(),
+      request.admissionPolicyVersion?.trim() || undefined,
+    );
+    admissionPolicy = stored?.policy ?? null;
+  }
+  const admission = evaluateAdmission(report, policy, admissionPolicy);
+
   // Duplicate detection runs against the AUTHORIZED boundary, so a key minted for another tenant
   // reads as absent rather than as that tenant's record.
   const prior = await findSubmission(report.idempotencyKey, boundaryId);
+  void POLICY_CODES; // the codes the evaluator emits; referenced so the dependency is explicit
   if (prior !== null) {
     throw new ConflictError(
       `${IDENTITY_CODES.DUPLICATE_SUBMISSION.code}: this exact dataset was already submitted for this tenant on ${prior.submittedAt}. ${IDENTITY_CODES.DUPLICATE_SUBMISSION.remediation}`,
@@ -172,7 +209,7 @@ export async function submitPilotDataset(
   // no row behind: the uploader gets the findings and the database gets nothing. That also keeps a
   // corrected re-upload a genuinely new submission rather than a "duplicate" of a failure.
   if (!report.usableForAssessment) {
-    return toResponse(report, null);
+    return toResponse(report, null, admission);
   }
 
   const recorded = await recordSubmission({
@@ -192,5 +229,48 @@ export async function submitPilotDataset(
     submittedByRole: actor.role,
   });
 
-  return toResponse(report, recorded.submittedAt);
+  return toResponse(report, recorded.submittedAt, admission);
+}
+
+export interface RegisterAdmissionPolicyRequest {
+  readonly boundaryId: string;
+  readonly policy: PilotAdmissionPolicy;
+}
+
+/**
+ * Register a versioned admission policy for one boundary.
+ *
+ * Thresholds are the customer's commercial decision, so they must be able to state them — a policy
+ * that could only be inserted by hand would push every pilot back to "the system decided". The
+ * policy is validated by the domain constructor before it is written, and the (boundary, id,
+ * version) primary key makes a published version immutable: a change is a new version.
+ */
+export async function registerPilotAdmissionPolicy(
+  actor: ActorContext,
+  request: RegisterAdmissionPolicyRequest,
+): Promise<{ readonly boundaryId: string; readonly policyRef: string; readonly registeredAt: string }> {
+  requireCan(actor, "SubmitPilotDataset");
+  requireBoundaryAccess(actor, request.boundaryId);
+  const boundaryId = request.boundaryId.trim();
+
+  let policy: PilotAdmissionPolicy;
+  try {
+    policy = makeAdmissionPolicy(request.policy);
+  } catch {
+    // The message is deliberately generic; the caller gets the per-field defects from the gate's
+    // own codes rather than an exception string that could echo their input.
+    throw new ForbiddenError("admission policy is incomplete or out of range — every threshold must be configured explicitly");
+  }
+
+  const stored = await registerAdmissionPolicy({
+    boundaryId,
+    policy,
+    registeredByActorId: actor.actorId,
+    registeredByRole: actor.role,
+  });
+  return Object.freeze({
+    boundaryId: stored.boundaryId,
+    policyRef: `${stored.policy.policyId}@${stored.policy.policyVersion}`,
+    registeredAt: stored.registeredAt,
+  });
 }

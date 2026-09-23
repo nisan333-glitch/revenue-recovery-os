@@ -218,6 +218,8 @@ export const pilotDatasetSchema = {
       csvText: { type: "string", minLength: 1, maxLength: 20_971_520 },
       locale: { type: "string", enum: ["MDY", "DMY"] },
       amountFormat: { type: "string", enum: ["US", "EU"] },
+      admissionPolicyId: { type: "string", minLength: 1, maxLength: 256 },
+      admissionPolicyVersion: { type: "string", minLength: 1, maxLength: 32 },
       policy: {
         type: "object",
         additionalProperties: false,
@@ -257,6 +259,61 @@ export const pilotDatasetSchema = {
           coverageStart: { type: "string", minLength: 1, maxLength: 32 },
           coverageEnd: { type: "string", minLength: 1, maxLength: 32 },
           assertedIndependentOfBeneficiary: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * EP-14 · Register a versioned pilot admission policy.
+ *
+ * Every threshold is `required` here as well as in the domain. A schema that let one be omitted
+ * would push the "unset means no limit" decision one layer down, where it is harder to see.
+ */
+export const admissionPolicySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "policy"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      policy: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "policyId",
+          "policyVersion",
+          "calculationMethodVersion",
+          "minAcceptedRows",
+          "minDistinctEntities",
+          "maxRejectionRate",
+          "maxSingleReasonShare",
+          "maxDuplicateRate",
+          "minCoverageDays",
+          "requiredLifecycleStates",
+          "maxOrderingDefectRate",
+          "maxMissingRecommendedColumns",
+          "requireProvenanceDeclaration",
+        ],
+        properties: {
+          policyId: { type: "string", minLength: 1, maxLength: 256 },
+          policyVersion: { type: "string", minLength: 1, maxLength: 32 },
+          calculationMethodVersion: { type: "string", minLength: 1, maxLength: 64 },
+          minAcceptedRows: { type: "integer", minimum: 0, maximum: 1000000 },
+          minDistinctEntities: { type: "integer", minimum: 0, maximum: 1000000 },
+          maxRejectionRate: { type: "number", minimum: 0, maximum: 1 },
+          maxSingleReasonShare: { type: "number", minimum: 0, maximum: 1 },
+          maxDuplicateRate: { type: "number", minimum: 0, maximum: 1 },
+          minCoverageDays: { type: "integer", minimum: 0, maximum: 36500 },
+          requiredLifecycleStates: {
+            type: "array",
+            maxItems: 3,
+            items: { type: "string", enum: ["stalled", "reference", "undetermined"] },
+          },
+          maxOrderingDefectRate: { type: "number", minimum: 0, maximum: 1 },
+          maxMissingRecommendedColumns: { type: "integer", minimum: 0, maximum: 64 },
+          requireProvenanceDeclaration: { type: "boolean" },
         },
       },
     },

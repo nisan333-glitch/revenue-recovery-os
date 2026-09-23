@@ -274,3 +274,36 @@ model PilotDatasetSubmissionRecord {
   @@index([boundaryId, submittedAt], map: "pilot_dataset_submissions_boundary_idx")
   @@map("pilot_dataset_submissions")
 }
+
+/// EP-14 · A versioned pilot admission policy, scoped to one tenant boundary.
+///
+/// The thresholds a dataset is judged against are a COMMERCIAL decision belonging to the people
+/// running the pilot. They are stored per boundary and read back boundary-scoped, so one tenant's
+/// fitness bar can never be applied to another tenant's data — and a policy id borrowed from
+/// another tenant reads as absent rather than as that tenant's thresholds.
+///
+/// Append-only: a change is a NEW version, never an edit. A decision stamps the exact policy id and
+/// version it used, so re-reading that version reproduces the verdict.
+model PilotAdmissionPolicyRecord {
+  boundaryId                   String   @map("boundary_id")
+  policyId                     String   @map("policy_id")
+  policyVersion                String   @map("policy_version")
+  calculationMethodVersion     String   @map("calculation_method_version")
+  minAcceptedRows              Int      @map("min_accepted_rows")
+  minDistinctEntities          Int      @map("min_distinct_entities")
+  maxRejectionRate             Float    @map("max_rejection_rate")
+  maxSingleReasonShare         Float    @map("max_single_reason_share")
+  maxDuplicateRate             Float    @map("max_duplicate_rate")
+  minCoverageDays              Int      @map("min_coverage_days")
+  requiredLifecycleStates      String[] @map("required_lifecycle_states")
+  maxOrderingDefectRate        Float    @map("max_ordering_defect_rate")
+  maxMissingRecommendedColumns Int      @map("max_missing_recommended_columns")
+  requireProvenanceDeclaration Boolean  @map("require_provenance_declaration")
+  registeredByActorId          String   @map("registered_by_actor_id")
+  registeredByRole             String   @map("registered_by_role")
+  registeredAt                 DateTime @default(now()) @map("registered_at")
+
+  @@id([boundaryId, policyId, policyVersion], map: "pilot_admission_policies_pkey")
+  @@index([boundaryId, policyId, registeredAt], map: "pilot_admission_policies_boundary_idx")
+  @@map("pilot_admission_policies")
+}
