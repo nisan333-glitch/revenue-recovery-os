@@ -16,6 +16,7 @@ export type ApiErrorCode =
   | "forbidden"
   | "not_found"
   | "conflict"
+  | "payload_too_large"
   | "internal_error"
   | "network_error";
 
@@ -34,6 +35,7 @@ const SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
   "forbidden",
   "not_found",
   "conflict",
+  "payload_too_large",
   "internal_error",
 ]);
 
@@ -46,6 +48,7 @@ const SAFE_TO_SHOW_VERBATIM: ReadonlySet<ApiErrorCode> = new Set([
   "forbidden",
   "not_found",
   "conflict",
+  "payload_too_large",
 ]);
 
 const GENERIC_MESSAGE = "Something went wrong talking to the server. Please try again.";

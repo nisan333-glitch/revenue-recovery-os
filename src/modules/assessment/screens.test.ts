@@ -59,17 +59,78 @@ describe("Assessment screens render the critical content", () => {
     expect(html).toContain("Export summary");
   });
 
-  it("Upload surfaces a validation error and the client-side promise", () => {
+  // EP-13 · This screen previously promised the file was "never uploaded", and that was true when
+  // validation was purely local. It is no longer true: the server is now the authoritative check.
+  // The assertion is updated to the NEW promise rather than kept — a test asserting a claim the
+  // product contradicts is worse than no test.
+  const uploadProps = {
+    n: 30, setN: noop, asOf: "2026-03-01", setAsOf: noop, currency: "USD", setCurrency: noop,
+    locale: "" as const, setLocale: noop, amountFormat: "" as const, setAmountFormat: noop,
+    onFile: noop, onReject: noop,
+    boundaryId: "pilot-boundary-0001", setBoundaryId: noop,
+    datasetId: "dataset-0001", setDatasetId: noop,
+    provenance: {
+      sourceSystems: { contract: "crm", billing: "billing", product: "telemetry" },
+      dataOwnerRole: "revenue-operations", extractionMethod: "warehouse view",
+      extractedAt: "2026-03-01T00:00:00.000Z", coverageStart: "2026-01-01", coverageEnd: "2026-03-31",
+      assertedIndependentOfBeneficiary: false,
+    },
+    setProvenance: noop, validationPreliminary: false, validating: false,
+  };
+
+  it("Upload states the server-authoritative promise and surfaces a validation error", () => {
     const html = renderToStaticMarkup(
       createElement(UploadScreen, {
-        n: 30, setN: noop, asOf: "2026-03-01", setAsOf: noop, currency: "USD", setCurrency: noop,
-        locale: "", setLocale: noop, amountFormat: "", setAmountFormat: noop,
-        error: "CSV is missing required column(s): entity_id", onFile: noop, onReject: noop,
+        ...uploadProps,
+        error: "CSV is missing required column(s): entity_id",
+        validation: null,
       }),
     );
-    expect(html).toContain("never uploaded");
+    expect(html).toContain("on the server");
+    expect(html).not.toContain("never uploaded"); // the old promise must not survive as stale copy
     expect(html).toContain("missing required column");
     expect(html).toContain("Download data request");
+    // Tenancy is named here but authorized server-side — the screen says so.
+    expect(html).toContain("authenticated access");
+  });
+
+  it("Upload shows the contract verdict: version, counts, codes and guidance", () => {
+    const html = renderToStaticMarkup(
+      createElement(UploadScreen, {
+        ...uploadProps,
+        error: null,
+        validation: {
+          contractRef: "nh.customer-pilot-data-contract@1.1.0",
+          contractVersion: "1.1.0",
+          declaredVersion: "1.1.0",
+          boundaryId: "pilot-boundary-0001",
+          datasetId: "dataset-0001",
+          accepted: true,
+          usableForAssessment: false,
+          counts: { dataRows: 10, acceptedRows: 0, rejectedRows: 10, warnedRows: 2 },
+          datasetFindings: [],
+          rowFindings: [
+            {
+              sourceRowId: "row-2", rowNumber: 2, field: "signed_at", code: "NH-DC-2005",
+              severity: "row_rejected" as const,
+              title: "A timestamp carries a time of day but no UTC offset.",
+              remediation: "Supply either a plain calendar day or a full UTC instant ending in Z.",
+              detail: "2026-01-05 09:30:00",
+            },
+          ],
+          datasetFingerprint: "f".repeat(64),
+          idempotencyKey: "pds_test",
+          recordedAt: null,
+        },
+      }),
+    );
+    expect(html).toContain("contract 1.1.0"); // version shown
+    expect(html).toContain("NH-DC-2005"); // machine-readable code shown
+    expect(html).toContain("no UTC offset"); // what went wrong
+    expect(html).toContain("full UTC instant"); // actionable correction guidance
+    expect(html).toContain("not usable"); // status
+    expect(html).toContain("cannot continue into assessment"); // progression is blocked
+    expect(html).toContain("nothing was stored"); // and nothing was persisted or repaired
   });
 
   it("Pilot readiness is conservative and exposes the claim boundary", async () => {

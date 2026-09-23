@@ -195,3 +195,74 @@ npm run test          # includes src/contract/pilotDataContract.test.ts
 npm run test:ep2      # server suites (requires DATABASE_URL)
 npm run build && npm run build:server && npm run check:purity
 ```
+
+---
+
+# Customer Pilot Intake Integration v1
+
+Contract `1.1.0` wired into the real intake flow. Server-side validation is authoritative.
+
+## What changed, and the claim that had to go
+
+The intake previously ran entirely in the browser and told customers their file was
+**"never uploaded"**. That was true, and it is no longer true: `POST /pilot/datasets` now validates
+the dataset server-side before anything may proceed. The old copy was removed rather than softened,
+and a test asserts the phrase cannot come back as stale reassurance.
+
+Client-side validation is **preflight assistance only**. It runs the identical contract validator so
+a customer is not left waiting on a 10 MB upload to learn about a typo — but it cannot authorise
+anything, because a client controls its own code. The asymmetry is one-directional by construction:
+
+- preflight says *not usable* → stop early and save the upload;
+- preflight says *usable* → submit anyway and obey the server.
+
+A preflight can therefore only ever be **more** conservative than the server, never more permissive.
+There is deliberately **no offline fallback**: if the server cannot be reached the upload is an
+error, never a pass. "The network was down" must not become a way into assessment unvalidated.
+
+## Tenancy
+
+`boundaryId` is an authorization **request**, never an assertion. `requireBoundaryAccess` refuses it
+unless the authenticated context already grants it, so a client can only name a boundary it provably
+owns. Three independent reasons a dataset cannot choose its own tenant:
+
+1. The body schema declares no tenant field — `additionalProperties: false` makes `tenantId`,
+   `boundary`, `actorId` and friends a **400**.
+2. The contract declares no tenant field — a `tenant_id` column is rejected as undeclared
+   (`NH-DC-1005`).
+3. Duplicate lookup is filtered by boundary as well as by key, so a key minted for another tenant
+   reads as absent rather than as that tenant's record.
+
+Production identities are scoped (an OIDC boundary claim rejects `*` outright); a scoped actor
+reaching for another boundary gets **403** before anything is validated or written.
+
+## Persistence
+
+Only a **usable** dataset is recorded, and the record holds counts, the deterministic key, the
+fingerprint and NH-DC-#### **codes**. Never uploaded row content, never customer identifiers, never
+monetary values, and never a finding's `detail` text — which can echo a customer value. A rejected
+row is reported to the uploader and then forgotten. An invalid dataset leaves no row at all, which
+also keeps a corrected re-upload a genuinely new submission rather than a "duplicate" of a failure.
+
+The table is append-only at the database level, like every other governed record here.
+
+## Limits
+
+| Guard | Limit | Failure |
+|---|---|---|
+| Contract size rule | 10 MB | `NH-DC-1011`, refused whole |
+| Rows / columns | 100,000 / 64 | `NH-DC-1012` / `NH-DC-1013` |
+| Transport (per route) | 12 MB | `413 payload_too_large`, naming `NH-DC-1011` |
+
+Fastify's default body limit is 1 MB — far below the contract's 10 MB — so without a per-route limit
+a legitimate upload died at the transport with no contract code at all, surfacing as a generic 500.
+The limit is set **per route**: no other endpoint needs a large body, and raising it globally would
+widen the denial-of-service surface for nothing. The headroom between the two is deliberate, so a
+file between them reaches the validator and gets the deterministic code instead of a bare transport
+error. **Neither guard ever truncates.**
+
+## What this slice does not do
+
+No RecoveryEvent, no Case, no Proof, no revenue claim. Case Halt, the authority ledger, separation of
+duties, the baseline, evidence and the proof chain are untouched — asserted by a test that scopes
+every one of those tables to this submission's own identifiers and requires zero rows.

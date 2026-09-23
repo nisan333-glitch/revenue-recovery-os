@@ -12,6 +12,25 @@ import { DataQualityCohortScreen } from "./DataQualityCohortScreen";
 import { ObservedResultsScreen } from "./ObservedResultsScreen";
 import { PilotReadinessScreen } from "./PilotReadinessScreen";
 import { EMPTY_PILOT_DECLARATIONS, type PilotDeclarations } from "../../assessment/intakeKit";
+import type { DatasetProvenance } from "../../contract/pilotDataContract";
+import type { PilotIntakeResult } from "../../data/pilotIntakeClient";
+import { gateUpload } from "./intakeGate";
+import { operatorActorFor } from "../../data/devActor";
+
+/**
+ * Empty, not pre-filled. Provenance is a customer ASSERTION about where the data came from; a
+ * default would be the system inventing that claim on their behalf. The contract rejects an
+ * incomplete declaration (NH-DC-1008), which is the correct outcome for "nobody said".
+ */
+const EMPTY_PROVENANCE: DatasetProvenance = {
+  sourceSystems: { contract: "", billing: "", product: "" },
+  dataOwnerRole: "",
+  extractionMethod: "",
+  extractedAt: "",
+  coverageStart: "",
+  coverageEnd: "",
+  assertedIndependentOfBeneficiary: false,
+};
 
 type Step = "upload" | "mapping" | "quality" | "readiness" | "observed";
 
@@ -29,6 +48,12 @@ export function Assessment() {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("upload");
   const [declarations, setDeclarations] = useState<PilotDeclarations>(EMPTY_PILOT_DECLARATIONS);
+  const [boundaryId, setBoundaryId] = useState("");
+  const [datasetId, setDatasetId] = useState("");
+  const [provenance, setProvenance] = useState<DatasetProvenance>(EMPTY_PROVENANCE);
+  const [validation, setValidation] = useState<PilotIntakeResult | null>(null);
+  const [validationPreliminary, setValidationPreliminary] = useState(false);
+  const [validating, setValidating] = useState(false);
 
   async function run(text: string, useN: number, useMapping: ColumnMapping | undefined): Promise<void> {
     setError(null);
@@ -54,23 +79,57 @@ export function Assessment() {
     }
   }
 
-  // On file pick: auto-detect the column mapping. If every required column matched, run straight
-  // through; otherwise route to the guided mapping step so the operator can resolve the gaps.
-  function onFile(text: string): void {
+  /**
+   * On file pick: the dataset must clear the SERVER's contract validation before anything else
+   * happens. Column mapping, assessment and every later step are downstream of that verdict — a
+   * dataset the server refuses never reaches them, which is requirement 12 in one place rather
+   * than a check repeated at each screen.
+   */
+  async function onFile(text: string): Promise<void> {
     setError(null);
-    let p: MappingPlan;
+    setValidation(null);
+    setValidating(true);
     try {
-      p = planColumnMapping(text);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      return;
-    }
-    if (!p.needsReview) {
-      void run(text, n, p.mapping);
-    } else {
-      setPendingCsv(text);
-      setPlan(p);
-      setStep("mapping");
+      const outcome = await gateUpload(
+        {
+          boundaryId,
+          datasetId,
+          csvText: text,
+          provenance,
+          stallThresholdDays: n,
+          asOf,
+          currency,
+          locale: locale || undefined,
+          amountFormat: amountFormat || undefined,
+        },
+        operatorActorFor(null),
+      );
+
+      if (outcome.kind === "error") {
+        setError(outcome.message);
+        return;
+      }
+      setValidation(outcome.result);
+      setValidationPreliminary(outcome.kind === "blocked" && outcome.preliminary);
+      if (outcome.kind === "blocked") return; // findings are shown; no progression
+
+      // Validated and usable: continue into mapping/assessment exactly as before.
+      let p: MappingPlan;
+      try {
+        p = planColumnMapping(text);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      if (!p.needsReview) {
+        await run(text, n, p.mapping);
+      } else {
+        setPendingCsv(text);
+        setPlan(p);
+        setStep("mapping");
+      }
+    } finally {
+      setValidating(false);
     }
   }
 
@@ -99,7 +158,16 @@ export function Assessment() {
           amountFormat={amountFormat}
           setAmountFormat={setAmountFormat}
           error={error}
-          onFile={onFile}
+          onFile={(text) => void onFile(text)}
+          boundaryId={boundaryId}
+          setBoundaryId={setBoundaryId}
+          datasetId={datasetId}
+          setDatasetId={setDatasetId}
+          provenance={provenance}
+          setProvenance={setProvenance}
+          validation={validation}
+          validationPreliminary={validationPreliminary}
+          validating={validating}
           onReject={(msg) => setError(msg)}
         />
       )}
