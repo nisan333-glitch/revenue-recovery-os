@@ -24,7 +24,7 @@
 // Case → Evidence → Approval path, by a human, under the trust gates that already exist.
 
 /** Semantic version of the contract itself. Consumers pin, compare and negotiate on this. */
-export const PILOT_DATA_CONTRACT_VERSION = "1.0.0";
+export const PILOT_DATA_CONTRACT_VERSION = "1.1.0";
 
 /** Stable identity of this contract, stamped into every report and manifest. */
 export const PILOT_DATA_CONTRACT_ID = "nh.customer-pilot-data-contract";
@@ -295,6 +295,24 @@ export function fieldsByRequirement(requirement: FieldRequirement): readonly str
 
 /** Required canonical fields. Must agree with the adapter's REQUIRED — asserted in the tests. */
 export const CONTRACT_REQUIRED_FIELDS: readonly string[] = fieldsByRequirement("required");
+
+// ── Safe intake limits ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Hard limits on a single submission. These are REJECTION thresholds, never truncation points: a
+ * file over the limit is refused whole, with a deterministic code. Truncating would be the worst
+ * possible behaviour — the customer would receive a success for a dataset that silently lost its
+ * tail, and the fingerprint would attest to bytes they never chose to send.
+ *
+ * Sized for a historical export while bounding server memory: validation reads the whole file into
+ * memory and hashes it, so an unbounded upload is a denial-of-service lever.
+ */
+export const INTAKE_LIMITS = Object.freeze({
+  maxBytes: 10 * 1024 * 1024, // 10 MB
+  maxDataRows: 100_000,
+  maxColumns: 64,
+  truncatesOversizedInput: false,
+});
 
 // ── 3 · Time, timezone and ordering ───────────────────────────────────────────────────────────────
 

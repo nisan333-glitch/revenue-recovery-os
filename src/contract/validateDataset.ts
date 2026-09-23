@@ -24,6 +24,7 @@ import { SAAS_MAPPING_SPEC, toCycle, type AdapterOptions } from "../assessment/a
 import { sha256Hex } from "../assessment/fingerprint";
 import { epochDay } from "../assessment/dateNormalize";
 import {
+  INTAKE_LIMITS,
   PILOT_DATA_CONTRACT_FIELDS,
   PILOT_DATA_CONTRACT_REF,
   PILOT_DATA_CONTRACT_VERSION,
@@ -255,8 +256,31 @@ export async function validatePilotDataset(submission: DatasetSubmission): Promi
   // ── Provenance ─────────────────────────────────────────────────────────────────────────────────
   datasetFindings.push(...validateProvenance(provenance));
 
+  // ── Safe limits ────────────────────────────────────────────────────────────────────────────────
+  // Checked BEFORE parsing: an oversized file must not be tokenized just to be refused, and it is
+  // refused WHOLE. Truncating would report success for a dataset that silently lost its tail.
+  const byteLength = new TextEncoder().encode(submission.csvText).length;
+  if (byteLength > INTAKE_LIMITS.maxBytes) {
+    datasetFindings.push(
+      datasetFinding(DATASET_CODES.DATASET_TOO_LARGE, null, `${byteLength} bytes exceeds the ${INTAKE_LIMITS.maxBytes}-byte limit`),
+    );
+    return frozenReport(submission, datasetFindings, [], [], detectedNothing(), datasetFingerprint, idempotencyKey, 0);
+  }
+
   // ── Parse + header rules ───────────────────────────────────────────────────────────────────────
   const parsed = parseCsv(submission.csvText);
+  if (parsed.rows.length > INTAKE_LIMITS.maxDataRows) {
+    datasetFindings.push(
+      datasetFinding(DATASET_CODES.TOO_MANY_ROWS, null, `${parsed.rows.length} rows exceeds the ${INTAKE_LIMITS.maxDataRows}-row limit`),
+    );
+    return frozenReport(submission, datasetFindings, [], [], detectedNothing(), datasetFingerprint, idempotencyKey, parsed.rows.length);
+  }
+  if (parsed.headers.length > INTAKE_LIMITS.maxColumns) {
+    datasetFindings.push(
+      datasetFinding(DATASET_CODES.TOO_MANY_COLUMNS, null, `${parsed.headers.length} columns exceeds the ${INTAKE_LIMITS.maxColumns}-column limit`),
+    );
+    return frozenReport(submission, datasetFindings, [], [], detectedNothing(), datasetFingerprint, idempotencyKey, parsed.rows.length);
+  }
   if (parsed.rows.length === 0) {
     datasetFindings.push(datasetFinding(DATASET_CODES.EMPTY_DATASET, null, "no data rows were found after the header"));
   }
@@ -414,31 +438,67 @@ export async function validatePilotDataset(submission: DatasetSubmission): Promi
     );
   }
 
+  return frozenReport(
+    submission,
+    datasetFindings,
+    rowFindings,
+    acceptedCycles,
+    detected,
+    datasetFingerprint,
+    idempotencyKey,
+    mapped.rows.length,
+    rejectedRowIds.size,
+    warnedRowIds.size,
+  );
+}
+
+function detectedNothing(): { mapping: ColumnMapping } {
+  return { mapping: Object.freeze({}) };
+}
+
+/**
+ * Report builder shared by the limit short-circuits and the main path, so an early return can never
+ * drift from the normal shape (e.g. claim `usableForAssessment` while carrying a fatal finding).
+ */
+function frozenReport(
+  submission: DatasetSubmission,
+  datasetFindings: readonly DatasetFinding[],
+  rowFindings: readonly RowFinding[],
+  acceptedCycles: readonly ExpectationCycle[],
+  detected: { mapping: ColumnMapping },
+  datasetFingerprint: string,
+  idempotencyKey: string,
+  dataRows: number,
+  rejectedRows = 0,
+  warnedRows = 0,
+): ContractValidationReport {
   const accepted = !datasetFindings.some((f) => f.severity === "dataset_rejected");
   const usableForAssessment = accepted && acceptedCycles.length > 0;
   return Object.freeze({
     contractRef: PILOT_DATA_CONTRACT_REF,
     contractVersion: PILOT_DATA_CONTRACT_VERSION,
     declaredVersion: submission.declaredVersion,
-    boundaryId: boundary.boundaryId,
-    datasetId: boundary.datasetId,
+    boundaryId: submission.boundary.boundaryId,
+    datasetId: submission.boundary.datasetId,
     accepted,
     usableForAssessment,
-    datasetFindings: Object.freeze(datasetFindings),
-    rowFindings: Object.freeze(rowFindings),
+    datasetFindings: Object.freeze([...datasetFindings]),
+    rowFindings: Object.freeze([...rowFindings]),
     counts: Object.freeze({
-      dataRows: mapped.rows.length,
-      // A dataset-level failure means nothing is assessed — accepted rows are not reported as usable.
+      dataRows,
       acceptedRows: accepted ? acceptedCycles.length : 0,
-      rejectedRows: rejectedRowIds.size,
-      warnedRows: warnedRowIds.size,
+      rejectedRows,
+      warnedRows,
     }),
     datasetFingerprint,
     idempotencyKey,
     columnMapping: detected.mapping,
     mappingId: mappingId(detected.mapping),
-    provenance: Object.freeze({ ...provenance, sourceSystems: Object.freeze({ ...provenance.sourceSystems }) }),
-    acceptedCycles: Object.freeze(accepted ? acceptedCycles : []),
+    provenance: Object.freeze({
+      ...submission.provenance,
+      sourceSystems: Object.freeze({ ...submission.provenance.sourceSystems }),
+    }),
+    acceptedCycles: Object.freeze(accepted ? [...acceptedCycles] : []),
     claimBoundary: Object.freeze({
       observedInputOnly: true,
       provenanceIsCustomerAsserted: true,

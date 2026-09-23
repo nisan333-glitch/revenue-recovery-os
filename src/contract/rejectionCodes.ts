@@ -109,6 +109,28 @@ export const DATASET_CODES = Object.freeze({
       "Supply the column to strengthen the assessment. Reported once for the dataset rather than once per row, because its absence is a property of the export, not of any individual row.",
     since: "1.0.0",
   }),
+  DATASET_TOO_LARGE: code({
+    code: "NH-DC-1011",
+    severity: "dataset_rejected",
+    title: "The upload exceeds the maximum accepted size.",
+    remediation:
+      "Split the export by date range and submit each part. The file is refused whole rather than truncated — a truncated dataset would report success for data that was silently discarded.",
+    since: "1.1.0",
+  }),
+  TOO_MANY_ROWS: code({
+    code: "NH-DC-1012",
+    severity: "dataset_rejected",
+    title: "The dataset exceeds the maximum accepted row count.",
+    remediation: "Split the export by date range and submit each part.",
+    since: "1.1.0",
+  }),
+  TOO_MANY_COLUMNS: code({
+    code: "NH-DC-1013",
+    severity: "dataset_rejected",
+    title: "The dataset exceeds the maximum accepted column count.",
+    remediation: "Export only the columns the contract declares. Undeclared columns are rejected in any case.",
+    since: "1.1.0",
+  }),
   COVERAGE_WINDOW_INVALID: code({
     code: "NH-DC-1009",
     severity: "dataset_rejected",
@@ -302,6 +324,14 @@ export const IDENTITY_CODES = Object.freeze({
     title: "An identical row appears more than once in the dataset.",
     remediation: "De-duplicate at source. A repeated row would otherwise count the same exposure twice.",
     since: "1.0.0",
+  }),
+  DUPLICATE_SUBMISSION: code({
+    code: "NH-DC-4003",
+    severity: "dataset_rejected",
+    title: "This exact dataset was already submitted for this tenant.",
+    remediation:
+      "No action needed unless the data changed. A byte-identical re-upload is recognised and refused so the same exposure is not assessed twice; change the export and the submission is treated as new.",
+    since: "1.1.0",
   }),
   TENANT_BOUNDARY_CONFLICT: code({
     code: "NH-DC-4002",

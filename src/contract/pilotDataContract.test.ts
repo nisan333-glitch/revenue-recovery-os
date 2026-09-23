@@ -37,6 +37,8 @@ import {
   syntheticViolationCsv,
   toCsv,
 } from "./syntheticPilotDataset";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { SAAS_CANONICAL_FIELDS, SAAS_REQUIRED } from "../assessment/adapters/saasActivation";
 import { makePolicy } from "../assessment/policy";
 
@@ -140,6 +142,30 @@ describe("contract declaration", () => {
     expect(COMPATIBILITY_POLICY.acceptsNewerThanImplemented).toBe(false);
     // Changing a field's MEANING is breaking even when the name is untouched.
     expect(COMPATIBILITY_POLICY.major.join(" ")).toMatch(/MEANING/);
+  });
+});
+
+describe("layering — the contract stays pure", () => {
+  // EP-13 wired the contract into a real HTTP intake. That is exactly the moment a validator starts
+  // quietly acquiring a network call or a database handle "just for this one check". It must not:
+  // the same module runs in the browser as preflight and on the server as the authority, and it can
+  // only be trusted in both if it depends on neither.
+  const files = readdirSync(__dirname).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+
+  it("imports nothing from the network, server, persistence or app layers", () => {
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const code = readFileSync(join(__dirname, file), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/.*$/gm, "");
+      const imports = [...code.matchAll(/from "([^"]+)"/g)].map((m) => m[1]!);
+      for (const source of imports) {
+        expect(source, `${file} imports '${source}'`).toMatch(/^\.\/|^\.\.\/assessment\/|^\.\.\/domain\//);
+      }
+      for (const forbidden of ["fetch(", "XMLHttpRequest", "node:fs", "node:net", "prisma", "process.env"]) {
+        expect(code.includes(forbidden), `${file} references '${forbidden}'`).toBe(false);
+      }
+    }
   });
 });
 

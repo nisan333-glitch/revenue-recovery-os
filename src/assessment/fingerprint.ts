@@ -25,8 +25,16 @@ export class CanonicalHashUnavailableError extends Error {
   }
 }
 
-function subtle(): SubtleCrypto | null {
-  const c = (globalThis as { crypto?: Crypto }).crypto;
+// Structurally typed rather than referencing the DOM's `SubtleCrypto`/`Crypto`: this module is
+// imported by the browser bundle AND by the server (whose tsconfig has no DOM lib). The shape below
+// is exactly what is used, so behaviour is unchanged in both — including the explicit throw when
+// Web Crypto is absent, which must never degrade to a weaker hash.
+interface SubtleDigest {
+  digest(algorithm: string, data: Uint8Array): Promise<ArrayBuffer>;
+}
+
+function subtle(): SubtleDigest | null {
+  const c = (globalThis as { crypto?: { subtle?: SubtleDigest } }).crypto;
   return c && typeof c.subtle?.digest === "function" ? c.subtle : null;
 }
 
