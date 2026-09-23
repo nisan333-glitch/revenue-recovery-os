@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ActorContext } from "../auth/identity";
+import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
 import { ConflictError, ForbiddenError, NotFoundError } from "../http/errors";
 import type { CaseCandidate } from "./caseAdmission";
 
@@ -42,6 +42,7 @@ export class CandidateReviewService {
   list(actor: ActorContext, boundaryId: string): Promise<readonly ReviewQueueItem[]> {
     requireOperator(actor);
     if (!boundaryId.trim()) throw new Error("boundaryId is required");
+    requireBoundaryAccess(actor, boundaryId);
     return this.store.listPending(boundaryId);
   }
 
@@ -53,6 +54,7 @@ export class CandidateReviewService {
     if (!input.candidateId.trim() || !input.boundaryId.trim() || !input.reason.trim()) {
       throw new Error("candidateId, boundaryId and reason are required");
     }
+    requireBoundaryAccess(actor, input.boundaryId);
     return this.store.recordDecision(Object.freeze({
       reviewId: `CR-${randomUUID()}`,
       candidateId: input.candidateId,

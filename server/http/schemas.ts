@@ -193,3 +193,161 @@ export const candidatePromotionSchema = {
     properties: { boundaryId: { type: "string", minLength: 1, maxLength: 256 } },
   },
 } as const;
+
+/**
+ * EP-13 · Customer pilot dataset submission.
+ *
+ * `additionalProperties: false` at every level is the point, not boilerplate: it is what makes a
+ * payload-supplied tenant (`tenantId`, `boundary`, `actorId`, …) a 400 instead of a field someone
+ * later decides to honour. The ONLY tenancy input is `boundaryId`, and the service treats that as an
+ * authorization request checked against the authenticated context — never as an assertion.
+ *
+ * `csvText.maxLength` is a TRANSPORT guard sized above the contract's own limit, so a file between
+ * the two is refused by the contract with its deterministic code (NH-DC-1011) rather than by a bare
+ * schema error. Neither path ever truncates.
+ */
+export const pilotDatasetSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "policy", "provenance"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      datasetId: { type: "string", minLength: 1, maxLength: 256 },
+      declaredVersion: { type: "string", minLength: 1, maxLength: 32 },
+      csvText: { type: "string", minLength: 1, maxLength: 20_971_520 },
+      locale: { type: "string", enum: ["MDY", "DMY"] },
+      amountFormat: { type: "string", enum: ["US", "EU"] },
+      admissionPolicyId: { type: "string", minLength: 1, maxLength: 256 },
+      admissionPolicyVersion: { type: "string", minLength: 1, maxLength: 32 },
+      policy: {
+        type: "object",
+        additionalProperties: false,
+        required: ["stallThresholdDays", "asOf", "currency"],
+        properties: {
+          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
+          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+        },
+      },
+      provenance: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceSystems",
+          "dataOwnerRole",
+          "extractionMethod",
+          "extractedAt",
+          "coverageStart",
+          "coverageEnd",
+          "assertedIndependentOfBeneficiary",
+        ],
+        properties: {
+          sourceSystems: {
+            type: "object",
+            additionalProperties: false,
+            required: ["contract", "billing", "product"],
+            properties: {
+              contract: { type: "string", minLength: 1, maxLength: 256 },
+              billing: { type: "string", minLength: 1, maxLength: 256 },
+              product: { type: "string", minLength: 1, maxLength: 256 },
+            },
+          },
+          dataOwnerRole: { type: "string", minLength: 1, maxLength: 256 },
+          extractionMethod: { type: "string", minLength: 1, maxLength: 1024 },
+          extractedAt: { type: "string", minLength: 1, maxLength: 64 },
+          coverageStart: { type: "string", minLength: 1, maxLength: 32 },
+          coverageEnd: { type: "string", minLength: 1, maxLength: 32 },
+          assertedIndependentOfBeneficiary: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * EP-14 · Register a versioned pilot admission policy.
+ *
+ * Every threshold is `required` here as well as in the domain. A schema that let one be omitted
+ * would push the "unset means no limit" decision one layer down, where it is harder to see.
+ */
+export const admissionPolicySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "policy", "rationale"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      // Required, not optional: a threshold with no stated reasoning cannot be reviewed, and
+      // governance is asked to put it in force on the strength of that reasoning.
+      rationale: { type: "string", minLength: 1, maxLength: 2000 },
+      policy: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "policyId",
+          "policyVersion",
+          "calculationMethodVersion",
+          "minAcceptedRows",
+          "minDistinctEntities",
+          "maxRejectionRate",
+          "maxSingleReasonShare",
+          "maxDuplicateRate",
+          "minCoverageDays",
+          "requiredLifecycleStates",
+          "maxOrderingDefectRate",
+          "maxMissingRecommendedColumns",
+          "requireProvenanceDeclaration",
+        ],
+        properties: {
+          policyId: { type: "string", minLength: 1, maxLength: 256 },
+          policyVersion: { type: "string", minLength: 1, maxLength: 32 },
+          calculationMethodVersion: { type: "string", minLength: 1, maxLength: 64 },
+          minAcceptedRows: { type: "integer", minimum: 0, maximum: 1000000 },
+          minDistinctEntities: { type: "integer", minimum: 0, maximum: 1000000 },
+          maxRejectionRate: { type: "number", minimum: 0, maximum: 1 },
+          maxSingleReasonShare: { type: "number", minimum: 0, maximum: 1 },
+          maxDuplicateRate: { type: "number", minimum: 0, maximum: 1 },
+          minCoverageDays: { type: "integer", minimum: 0, maximum: 36500 },
+          requiredLifecycleStates: {
+            type: "array",
+            maxItems: 3,
+            items: { type: "string", enum: ["stalled", "reference", "undetermined"] },
+          },
+          maxOrderingDefectRate: { type: "number", minimum: 0, maximum: 1 },
+          maxMissingRecommendedColumns: { type: "integer", minimum: 0, maximum: 64 },
+          requireProvenanceDeclaration: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;
+
+/** EP-15 · Move an admission policy version through its lifecycle. Governance only. */
+export const policyTransitionSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "policyId", "policyVersion", "rationale"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      policyId: { type: "string", minLength: 1, maxLength: 256 },
+      policyVersion: { type: "string", minLength: 1, maxLength: 32 },
+      rationale: { type: "string", minLength: 1, maxLength: 2000 },
+    },
+  },
+} as const;
+
+/** EP-15 · Governed read of a policy's lifecycle. */
+export const policyGovernanceQuerySchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "policyId", "policyVersion"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      policyId: { type: "string", minLength: 1, maxLength: 256 },
+      policyVersion: { type: "string", minLength: 1, maxLength: 32 },
+    },
+  },
+} as const;

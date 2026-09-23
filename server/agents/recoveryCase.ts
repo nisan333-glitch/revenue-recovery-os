@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ActorContext } from "../auth/identity";
+import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
 import { ForbiddenError } from "../http/errors";
 
 export const RECOVERY_CASE_POLICY_VERSION = "recovery-case-promotion-v1";
@@ -36,6 +36,7 @@ export class CandidatePromotionService {
   promote(actor: ActorContext, candidateId: string, boundaryId: string) {
     if (actor.role !== "operator") throw new ForbiddenError("candidate promotion requires the operator role");
     if (!candidateId.trim() || !boundaryId.trim()) throw new Error("candidateId and boundaryId are required");
+    requireBoundaryAccess(actor, boundaryId);
     return this.store.promote({
       recoveryCaseId: `RC-${randomUUID()}`,
       candidateId,

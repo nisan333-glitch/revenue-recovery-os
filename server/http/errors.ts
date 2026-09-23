@@ -73,6 +73,18 @@ export function registerErrorHandler(app: FastifyInstance): void {
       });
     }
 
+    // EP-13 · A body over the route's transport limit. Fastify raises this before any handler runs,
+    // so it would otherwise fall through to a generic 500 and tell the uploader nothing actionable.
+    // Mapped to a deterministic 413 that names the contract's own size rule. The request is refused
+    // whole — nothing is ever truncated and then processed as if complete.
+    if ((err as unknown as { code?: string }).code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+      return reply.code(413).send({
+        error: "payload_too_large",
+        message:
+          "NH-DC-1011: the upload exceeds the maximum accepted size. Split the export by date range and submit each part; the file is refused whole rather than truncated.",
+      });
+    }
+
     // The database append-only triggers raise a message containing 'append-only'.
     // Map it to a clean conflict without exposing the underlying SQL.
     if (/append-only/i.test(String(err?.message ?? ""))) {

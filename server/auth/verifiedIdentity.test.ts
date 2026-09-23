@@ -22,6 +22,7 @@ function token(overrides: Record<string, unknown> = {}, key = privateKey): strin
     aud: config.audience,
     sub: "operator-1",
     nh_role: "operator",
+    nh_boundaries: ["tenant-1"],
     exp: Math.floor(Date.now() / 1000) + 300,
     ...overrides,
   });
@@ -43,7 +44,11 @@ function jwksResponse(keys: unknown[] = [jwk]): typeof fetch {
 describe("verified OIDC identity", () => {
   it("accepts a valid signed identity", async () => {
     const resolve = createOidcIdentityResolver(config, jwksResponse());
-    await expect(resolve(request(token()))).resolves.toEqual({ actorId: "operator-1", role: "operator" });
+    await expect(resolve(request(token()))).resolves.toEqual({
+      actorId: "operator-1",
+      role: "operator",
+      boundaryIds: ["tenant-1"],
+    });
   });
 
   it("rejects signature, issuer, audience, expiry and role failures", async () => {
@@ -77,6 +82,15 @@ describe("verified OIDC identity", () => {
   it("rejects non-canonical subjects", async () => {
     const resolve = createOidcIdentityResolver(config, jwksResponse());
     await expect(resolve(request(token({ sub: " operator-1" })))).rejects.toThrow(/subject/);
+  });
+
+  it("requires a bounded, canonical and non-wildcard boundary scope", async () => {
+    const resolve = createOidcIdentityResolver(config, jwksResponse());
+    await expect(resolve(request(token({ nh_boundaries: undefined })))).rejects.toThrow(/boundary scope/);
+    await expect(resolve(request(token({ nh_boundaries: [] })))).rejects.toThrow(/boundary scope/);
+    await expect(resolve(request(token({ nh_boundaries: ["tenant-1", "tenant-1"] })))).rejects.toThrow(/duplicate/);
+    await expect(resolve(request(token({ nh_boundaries: ["*"] })))).rejects.toThrow(/boundary scope/);
+    await expect(resolve(request(token({ nh_boundaries: [" tenant-1"] })))).rejects.toThrow(/boundary scope/);
   });
 });
 

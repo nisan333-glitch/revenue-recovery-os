@@ -1,12 +1,17 @@
+import type { DatasetProvenance } from "../../contract/pilotDataContract";
+import { PILOT_DATA_CONTRACT_VERSION, INTAKE_LIMITS } from "../../contract/pilotDataContract";
+import type { PilotIntakeResult } from "../../data/pilotIntakeClient";
+import { ValidationReportPanel } from "./ValidationReportPanel";
 import type { DateLocale } from "../../assessment/dateNormalize";
 import type { AmountFormat } from "../../assessment/amountNormalize";
 import { SectionHeader, Panel, Pill } from "../../components/ui";
 import { downloadDataRequestGuide, downloadTemplate } from "./exportSummary";
 
-// v1 CSV size cap. Rationale: parsing + SHA-256 run synchronously on the main thread (no workers/
-// streaming in this slice). 10 MB (~50k–100k rows) is generous for a historical export while keeping
-// the UI responsive and bounding memory; larger files are rejected with a clear message.
-export const MAX_CSV_BYTES = 10 * 1024 * 1024;
+// The browser-side cap is now the CONTRACT's cap, not a second number that could drift from it.
+// A file over this is refused here to save the customer an upload that the server would refuse
+// anyway — the server still enforces it independently, because this check is assistance, not
+// authority. Neither side truncates.
+export const MAX_CSV_BYTES = INTAKE_LIMITS.maxBytes;
 
 export interface UploadScreenProps {
   n: number;
@@ -22,6 +27,17 @@ export interface UploadScreenProps {
   error: string | null;
   onFile: (csvText: string) => void;
   onReject: (message: string) => void;
+  /** Tenant boundary for the upload. Named here, AUTHORIZED server-side — never asserted by the file. */
+  boundaryId: string;
+  setBoundaryId: (v: string) => void;
+  datasetId: string;
+  setDatasetId: (v: string) => void;
+  provenance: DatasetProvenance;
+  setProvenance: (p: DatasetProvenance) => void;
+  /** Latest validation verdict, if a file has been submitted. */
+  validation: PilotIntakeResult | null;
+  validationPreliminary: boolean;
+  validating: boolean;
 }
 
 export function UploadScreen(props: UploadScreenProps) {
@@ -35,20 +51,27 @@ export function UploadScreen(props: UploadScreenProps) {
       e.target.value = ""; // allow re-selecting the same (or another) file
       return;
     }
-    props.onFile(await f.text()); // client-side read; the file is never uploaded
+    // Read locally, then handed to the gate, which previews it and submits it for the server's
+    // authoritative verdict. It IS uploaded — the comment that used to say otherwise was true only
+    // while validation was purely client-side.
+    props.onFile(await f.text());
   }
 
   return (
     <div>
       <SectionHeader
         title="Revenue Opportunity Assessment"
-        subtitle="Size the revenue leaking in your historical data — from one CSV, entirely in your browser."
+        subtitle="Size the revenue leaking in your historical data — from one CSV, validated against the pilot data contract."
       />
 
       <Panel className="mb-4 p-3 text-[12px] text-slate-400">
-        <Pill tone="proof">private</Pill> Runs entirely in your browser. Your file is read locally and
-        <span className="text-slate-300"> never uploaded</span>. This slice reports only{" "}
-        <span className="text-slate-300">Observed</span> values — no forecast, no proven claims.
+        <Pill tone="proof">governed</Pill> Your file is checked against the Customer Pilot Data
+        Contract <span className="text-slate-300">on the server</span>, which is the authoritative
+        validation; the browser previews the same rules first so you are not left waiting on a large
+        upload. Rejected rows are reported back to you and{" "}
+        <span className="text-slate-300">never stored</span>, and no value is corrected for you. This
+        slice reports only <span className="text-slate-300">Observed</span> values — no forecast, no
+        proven claims.
       </Panel>
 
       <Panel className="mb-4 p-5">
@@ -87,8 +110,24 @@ export function UploadScreen(props: UploadScreenProps) {
         </div>
       </Panel>
 
+      <Panel className="mb-4 p-5">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-slate-200">2 · Pilot and data source</span>
+          <Pill tone="proof">contract {PILOT_DATA_CONTRACT_VERSION}</Pill>
+        </div>
+        <p className="mb-3 text-[11px] text-slate-500">
+          The pilot boundary is checked against your authenticated access on the server — naming one
+          you are not entitled to is refused, and nothing in the file can change it.
+        </p>
+        <div className="mb-4 grid grid-cols-2 gap-4">
+          <Field label="Pilot boundary" value={props.boundaryId} onChange={props.setBoundaryId} />
+          <Field label="Dataset label" value={props.datasetId} onChange={props.setDatasetId} />
+        </div>
+        <ProvenanceFields provenance={props.provenance} setProvenance={props.setProvenance} />
+      </Panel>
+
       <Panel className="p-5">
-        <div className="mb-3 text-sm font-semibold text-slate-200">2 · Upload your CSV</div>
+        <div className="mb-3 text-sm font-semibold text-slate-200">3 · Upload your CSV</div>
         <div className="flex flex-wrap items-center gap-3">
           <input type="file" accept=".csv,text/csv" onChange={onPick} className="text-sm text-slate-300" />
           <button onClick={downloadTemplate}
@@ -105,8 +144,68 @@ export function UploadScreen(props: UploadScreenProps) {
           next_invoice_due_at, next_invoice_amount, currency. Optional: subscription_id, activation_at,
           next_invoice_paid_at, status.
         </p>
+        {props.validating && (
+          <div className="mt-3 text-[12px] text-slate-400">Validating against the data contract…</div>
+        )}
         {props.error && <div className="mt-3 text-[12px] text-red-400">Error: {props.error}</div>}
       </Panel>
+
+      {props.validation && (
+        <ValidationReportPanel result={props.validation} preliminary={props.validationPreliminary} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Provenance is DECLARED BY THE CUSTOMER and recorded as an assertion. It is collected rather than
+ * inferred on purpose: a default would be the system inventing a claim about where data came from,
+ * which is precisely the kind of self-certification the trust model forbids.
+ */
+function ProvenanceFields(props: {
+  provenance: DatasetProvenance;
+  setProvenance: (p: DatasetProvenance) => void;
+}) {
+  const p = props.provenance;
+  const set = (patch: Partial<DatasetProvenance>) => props.setProvenance({ ...p, ...patch });
+  const setSystem = (key: "contract" | "billing" | "product", value: string) =>
+    set({ sourceSystems: { ...p.sourceSystems, [key]: value } });
+
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+      <Field label="Contract system of record" value={p.sourceSystems.contract} onChange={(v) => setSystem("contract", v)} />
+      <Field label="Billing system of record" value={p.sourceSystems.billing} onChange={(v) => setSystem("billing", v)} />
+      <Field label="Product/telemetry source" value={p.sourceSystems.product} onChange={(v) => setSystem("product", v)} />
+      <Field label="Data owner (role, not a person)" value={p.dataOwnerRole} onChange={(v) => set({ dataOwnerRole: v })} />
+      <Field label="Extraction method" value={p.extractionMethod} onChange={(v) => set({ extractionMethod: v })} />
+      <Field label="Extracted at (UTC)" value={p.extractedAt} onChange={(v) => set({ extractedAt: v })} />
+      <Field label="Coverage start" value={p.coverageStart} onChange={(v) => set({ coverageStart: v })} type="date" />
+      <Field label="Coverage end" value={p.coverageEnd} onChange={(v) => set({ coverageEnd: v })} type="date" />
+      <label className="flex items-end gap-2 pb-1 text-[12px] text-slate-400">
+        <input
+          type="checkbox"
+          checked={p.assertedIndependentOfBeneficiary}
+          onChange={(e) => set({ assertedIndependentOfBeneficiary: e.target.checked })}
+        />
+        <span>
+          Source is outside the beneficiary&rsquo;s control
+          <span className="block text-[10px] text-slate-500">Recorded as an assertion — never as verification.</span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function Field(props: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">{props.label}</span>
+      <input
+        type={props.type ?? "text"}
+        className="num-input w-full"
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+      />
+    </label>
   );
 }

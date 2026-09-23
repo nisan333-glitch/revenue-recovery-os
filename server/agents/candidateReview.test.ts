@@ -4,7 +4,7 @@ import { CaseAdmissionService, InMemoryCaseCandidateStore } from "./caseAdmissio
 import { CandidateReviewService, InMemoryCandidateReviewStore } from "./candidateReview";
 import type { CandidateSignal } from "./types";
 
-const OPERATOR: ActorContext = { actorId: "operator-1", role: "operator" };
+const OPERATOR: ActorContext = { actorId: "operator-1", role: "operator", boundaryIds: ["tenant-1"] };
 const SIGNAL: CandidateSignal = {
   signalId: "signal-1",
   boundaryId: "tenant-1",
@@ -57,5 +57,11 @@ describe("candidate review boundary", () => {
   it("requires an operator for review reads and decisions", async () => {
     const service = new CandidateReviewService(new InMemoryCandidateReviewStore());
     expect(() => service.list({ actorId: "a", role: "approver" }, "tenant-1")).toThrow(/operator/);
+  });
+
+  it("denies an operator outside the requested boundary", async () => {
+    const service = new CandidateReviewService(new InMemoryCandidateReviewStore());
+    expect(() => service.list({ actorId: "operator-2", role: "operator", boundaryIds: ["tenant-2"] }, "tenant-1"))
+      .toThrow(/not authorized for this boundary/);
   });
 });

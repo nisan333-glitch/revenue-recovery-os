@@ -12,7 +12,7 @@ import { SYNTHETIC_OPTIONS, syntheticCsv, syntheticRecords } from "./fixtures/ac
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const records = syntheticRecords();
-const actor = { actorId: "SYNTHETIC-test-operator", role: "operator" as const };
+const actor = { actorId: "SYNTHETIC-test-operator", role: "operator" as const, boundaryIds: ["*"] };
 const options = () => ({ ...SYNTHETIC_OPTIONS, boundaryId: `SYNTHETIC-fixture-${randomUUID()}` });
 
 describe.skipIf(!HAS_DB)("SYNTHETIC CSV PostgreSQL persistence and promotion", () => {

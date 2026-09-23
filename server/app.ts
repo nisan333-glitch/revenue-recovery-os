@@ -13,6 +13,13 @@ import type {
   IngestEvidenceRequest,
 } from "./services/proofService";
 import * as auditService from "./audit/auditService";
+import * as pilotIntakeService from "./services/pilotIntakeService";
+import type {
+  PilotDatasetRequest,
+  RegisterAdmissionPolicyRequest,
+  PolicyTransitionRequest,
+} from "./services/pilotIntakeService";
+import { INTAKE_LIMITS } from "../src/contract/pilotDataContract";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
 import { resolveActor, type IdentityResolver } from "./auth/actorContext";
@@ -27,6 +34,10 @@ import {
   candidateQueueSchema,
   candidateReviewSchema,
   candidatePromotionSchema,
+  pilotDatasetSchema,
+  admissionPolicySchema,
+  policyTransitionSchema,
+  policyGovernanceQuerySchema,
 } from "./http/schemas";
 import type { AgentWorkerReadiness } from "./agents/worker";
 import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
@@ -131,6 +142,81 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         req.body.boundaryId,
       );
       return reply.code(result.created ? 201 : 200).send(result);
+    },
+  );
+
+  // EP-13 · Customer pilot dataset intake. SERVER-SIDE VALIDATION IS AUTHORITATIVE — the browser may
+  // run the same contract validator as preflight assistance, but this is the decision. Creates no
+  // RecoveryEvent, Case, Proof or revenue claim; it validates, and records only that a usable
+  // dataset was submitted (counts and codes — never row content).
+  // Fastify's default body limit is 1 MB — far below the contract's 10 MB dataset limit, so without
+  // this a legitimate upload dies at the transport with no contract code at all. The limit is set
+  // PER ROUTE, not globally: no other endpoint needs a large body, and raising it everywhere would
+  // widen the denial-of-service surface for free. The headroom above INTAKE_LIMITS.maxBytes is
+  // deliberate — a file between the two reaches the validator and is refused with the deterministic
+  // NH-DC-1011 instead of a bare transport error. Neither path truncates.
+  const pilotUploadTransportLimit = INTAKE_LIMITS.maxBytes + 2 * 1024 * 1024;
+
+  app.post<{ Body: PilotDatasetRequest }>(
+    "/pilot/datasets",
+    { schema: pilotDatasetSchema, bodyLimit: pilotUploadTransportLimit },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      const result = await pilotIntakeService.submitPilotDataset(actor, req.body);
+      // 200, not 201: a dataset whose rows were rejected is a VALID answer, not a created resource.
+      // The caller branches on `usableForAssessment`, never on the status code alone.
+      return reply.code(200).send(result);
+    },
+  );
+
+  // EP-14 · Register a versioned pilot admission policy for a boundary. The thresholds a dataset is
+  // judged against are the customer's commercial decision; this is how they state them. Append-only
+  // per (boundary, id, version) — a change is a new version, never an edit.
+  app.post<{ Body: RegisterAdmissionPolicyRequest }>(
+    "/pilot/admission-policies",
+    { schema: admissionPolicySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.code(201).send(await pilotIntakeService.registerPilotAdmissionPolicy(actor, req.body));
+    },
+  );
+
+  // EP-15 · Policy lifecycle. Proposing is the customer side; activating, freezing, resuming and
+  // retiring are governance. The split is the point: a bar you set for yourself is the first input
+  // to the number you benefit from.
+  const transitions = [
+    ["activate", "ACTIVATED"],
+    ["freeze", "FROZEN"],
+    ["unfreeze", "UNFROZEN"],
+    ["retire", "RETIRED"],
+  ] as const;
+  for (const [path, transition] of transitions) {
+    app.post<{ Body: PolicyTransitionRequest }>(
+      `/pilot/admission-policies/${path}`,
+      { schema: policyTransitionSchema },
+      async (req, reply) => {
+        const actor = await resolveActor(req, options.identityResolver);
+        return reply
+          .code(200)
+          .send(await pilotIntakeService.transitionPilotAdmissionPolicy(actor, transition, req.body));
+      },
+    );
+  }
+
+  // Governed read: who proposed a bar, who put it in force, when and why.
+  app.get<{ Querystring: { boundaryId: string; policyId: string; policyVersion: string } }>(
+    "/pilot/admission-policies/governance",
+    { schema: policyGovernanceQuerySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(
+        await pilotIntakeService.readPilotAdmissionPolicyGovernance(
+          actor,
+          req.query.boundaryId,
+          req.query.policyId,
+          req.query.policyVersion,
+        ),
+      );
     },
   );
 

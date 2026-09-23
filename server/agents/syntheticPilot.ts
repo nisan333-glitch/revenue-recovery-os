@@ -18,7 +18,11 @@ import { PostgresCandidateReviewStore } from "./postgresCandidateReviewStore";
 import { createPostgresAgentTaskStore } from "./prismaTaskDatabase";
 
 const PILOT_SCHEMA_VERSION = "nh-synthetic-pilot-v1";
-const OPERATOR = Object.freeze({ actorId: "SYNTHETIC-pilot-operator", role: "operator" as const });
+const OPERATOR = Object.freeze({
+  actorId: "SYNTHETIC-pilot-operator",
+  role: "operator" as const,
+  boundaryIds: Object.freeze(["*"]),
+});
 const AUTHOR = Object.freeze({ "x-actor-id": "SYNTHETIC-pilot-author", "x-actor-role": "author" });
 const APPROVER = Object.freeze({ "x-actor-id": "SYNTHETIC-pilot-approver", "x-actor-role": "approver" });
 const STEWARD = Object.freeze({ "x-actor-id": "SYNTHETIC-pilot-steward", "x-actor-role": "steward" });

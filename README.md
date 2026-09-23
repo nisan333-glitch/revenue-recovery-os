@@ -71,6 +71,7 @@ and `seedTrust.verify.test.ts`.
 | Module | Purpose |
 |---|---|
 | **Recovery Loop** | The front door — a money screen, Opportunity → Recovery → Proof. Four numbers in two columns: Open Exposure (Money At Risk, Recovery Opportunity) vs Proven Results (Revenue Returned, Auditable Revenue). Forecast and proven never blended |
+| Candidate Review | Governed operator gate between detector output and Recovery Case creation — immutable accept/reject reason, followed by a separate explicit promotion step |
 | Executive Dashboard | Detected opportunity vs proven recovery, money recovered, trends |
 | Recovery Queue | Prioritized worklist — assign, act, advance (the fix workflow) |
 | Recovery Events | Full record of every event; drill into the workflow drawer |
@@ -112,7 +113,8 @@ persists across refreshes.
 > production.** This packaging (Docker image + `docker-compose.yml`) runs the real React
 > SPA, the real Fastify API, and real PostgreSQL together as one deployable unit, for a
 > single supervised pilot customer. Production mode requires verified OIDC/JWKS bearer
-> identity and rejects browser-supplied actor headers; dev headers are available only for
+> identity with a non-empty boundary-scope claim (`NH_OIDC_BOUNDARY_CLAIM`, default
+> `nh_boundaries`) and rejects browser-supplied actor headers; dev headers are available only for
 > an explicitly isolated private pilot. `docker-compose.yml`'s database credentials are fixed, local-only
 > placeholders, clearly labeled as such in that file. Do not point this at the public
 > internet, and do not use it to serve more than one customer's data at a time.
