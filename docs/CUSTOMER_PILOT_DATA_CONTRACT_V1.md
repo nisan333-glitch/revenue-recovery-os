@@ -444,3 +444,151 @@ activation — inheriting nothing from the version before it.
 
 No Proof, no Case, no revenue record, no authority ledger entry. Tenant isolation, Case Halt and the
 existing admission, intake and contract semantics are untouched.
+
+---
+
+# Pilot Assessment Orchestration v1
+
+**Status:** implemented · **Codes:** `NH-AX-####` · **Modules:** `src/contract/assessmentExecution.ts`,
+`src/contract/executionCodes.ts`, `server/services/pilotAssessmentService.ts`,
+`server/agents/pilotAssessmentAgent.ts`
+
+## The gap
+
+The three slices above produced a dataset that is validated, judged fit, and judged under a bar that
+governance put in force. Then the trail stopped.
+
+Assessment still ran **in the browser**, over whatever bytes were in memory, under whatever policy the
+page happened to hold. So the admission decision governed a verdict about a *file* and governed
+nothing about the *run*. Between "this dataset is admissible" and "here is what it showed" there was
+an ungoverned gap — and a number that comes out of an ungoverned gap is indistinguishable from a
+number someone typed.
+
+This slice closes it: an admitted dataset is handed to a **governed, leased, audited execution**, and
+every governing input is frozen into the execution's own identity.
+
+## The binding is the identity
+
+An execution's id is `PAX-` plus a SHA-256 over its entire binding:
+
+| Bound | Why it is part of the identity |
+|---|---|
+| `boundaryId` | a run belongs to exactly one tenant |
+| `datasetFingerprint` | the exact bytes that were admitted |
+| `admissionDecisionId` | the decision that authorised it |
+| admission policy id, version, **hash** | the bar it was judged under |
+| contract version | what the fields meant |
+| assessment policy (`asOf`, stall threshold, currency, method version) | how the data was read |
+| interpretation (`mappingId`, amount format, date locale) | a different reading is different numbers |
+| `recoveryCaseId` (optional) | which case's Halt applies |
+
+**The whole retry story follows from that one line.** Scheduling the same binding twice derives the
+same id, so the second attempt collides on a primary key and returns the first execution. Scheduling
+a *different* binding — a new policy version, a later `asOf`, other bytes — derives a different id, so
+a changed bar can never silently re-grade an existing run. Nothing has to remember to deduplicate.
+
+The **admission decision id** is derived the same way, from the submission record's own stored fields.
+That makes it falsifiable: an execution re-derives it and refuses (`NH-AX-1005`) if the record no
+longer hashes to the identifier it is stored under. Submissions recorded before this slice carry
+`null` and are deliberately **not backfilled** — minting an identifier now would assert a binding that
+never happened, so they refuse with `NH-AX-1002` instead.
+
+## Everything is re-checked at execution time
+
+Between scheduling and running, a steward can freeze the bar, a steward can halt the linked case, and
+a lease can expire and hand the work to a different worker. So the agent re-evaluates every
+precondition against the database, inside the run:
+
+| Re-checked | Failure |
+|---|---|
+| the binding still hashes to its own id | `NH-AX-1005` |
+| the decision still resolves, in this boundary, still `ADMISSIBLE` | `NH-AX-1001` / `NH-AX-1003` |
+| the admission policy is still `ACTIVE` | `NH-AX-1007` |
+| the linked case is not halted | `NH-AX-2001` |
+| the stored input matches its recorded hash | `NH-AX-2003` |
+
+A **blocked** execution is terminal and its task **succeeds**. That combination is deliberate: a frozen
+policy or a halted case is an *answer*, not a transient error, and letting the runtime retry-and-dead-letter
+such a task would bury a governance decision under an operational failure.
+
+## The execution input — and the boundary this slice moved
+
+EP-13 persisted **no** row-derived data, and that was right for a submission record whose only job was
+to recognise a repeated upload. An execution is different: it is asynchronous, leased, retried, and —
+by requirement — reproducible from its own audit trail. **An execution whose input cannot be re-read
+cannot be reproduced, and an unreproducible finding is an assertion.**
+
+So `pilot_assessment_execution_inputs` is the first table holding accepted-row-derived values. It is
+minimized until what remains cannot identify anyone:
+
+* `cycleId`, `entityId`, `sourceRowId` → **first-appearance ordinals** (`c-0001`, `e-0001`, `r-0001`).
+  Equality classes survive exactly — two cycles that shared an entity still share one — so the cohort
+  and payment arithmetic is bit-for-bit unchanged, while the stored value is not reversible and not
+  linkable across datasets. No secret key is involved, so there is no key to leak, rotate or forget.
+* `statusRaw` → **dropped**. Free text from the customer's source, read only by the adapter; by the
+  time a cycle exists its effect is already baked into `refundedAt`/`cancelledAt`.
+* `attributes` → only `paid_timing` (a fixed internal marker). `plan`, `segment` and anything else a
+  customer's export carried are dropped.
+* dates and exact minor-unit amounts → **kept**; they *are* the assessment.
+
+**Rejected rows have no representation anywhere.** The projection's only input is the accepted cycles,
+so no rejected value can reach a cohort, a sum, a finding, or any agent's context.
+
+## The agent creates nothing
+
+`pilot-assessment-v1` returns **zero `CandidateSignal`s, always**. That is how "do not create a
+Recovery Case automatically" is enforced structurally rather than by policy: the only automatic path
+from an agent into case creation runs through `PostgresCandidateSignalWriter`, which is driven by the
+signals a handler returns. A handler that returns none has no such path, and a structural test asserts
+that no branch could ever return one.
+
+Its task payload is **one field** — an execution id. The agent's entire context therefore contains no
+customer-derived value at all; everything else is looked up boundary-scoped from records it cannot
+influence.
+
+Case Halt is **read, never redefined**. An assessment is not a governed mutation — it creates no
+counted number — so it is deliberately not added to `HALTED_MUTATIONS`, which would change what Halt
+means for the proof chain. But a halt on a *linked* case stops the run: a steward who has stopped a
+case has stopped work on it.
+
+## Five states, derived
+
+`queued → running → completed`, with `blocked` and `failed` as the two ways it stops. State is
+**derived from an append-only event log**, never stored as a column: a status column can be set to
+anything by anyone who can write the row; a derived state can only be what its events produced. An
+illegal transition in the log is *ignored, not applied*. `blocked` and `completed` are terminal.
+
+`CLAIMED` is legal from `running` — the expired-lease case, where a worker died and the next worker to
+win the fenced claim is legitimately taking over. That does not weaken exclusion: exclusion is the
+task store's fenced lease, and this log only records what that decided.
+
+## The finding is an observation
+
+Exact minor units of **Revenue Opportunity** — a forecast-side reading. `constitutesProof` and
+`constitutesRevenue` are typed as the literal `false`, so an edit that tried to set either true would
+not compile. Zero imports from the proof kernel or the proven ledger, asserted structurally.
+
+Findings are keyed by execution id and content-hashed, so a retry after a lost lease re-derives
+byte-identical content and the second write is a **provable no-op**. A *different* hash under the same
+id is not reconciled by a last-writer rule — it is surfaced as `NH-AX-2004`.
+
+## Verification
+
+* `src/contract/assessmentExecution.test.ts` — 20 pure tests (identity, lifecycle, projection, finding)
+* `src/contract/assessmentExecution.boundaries.test.ts` — 10 structural tests (purity, ledger
+  separation, the agent's inability to create a case)
+* `server/services/pilotAssessmentOrchestration.test.ts` — 23 integration tests against real PostgreSQL
+* `server/agents/pilotAssessmentWorker.test.ts` — 9 queue tests (duplicates, concurrency, lease
+  recovery, rejected rows)
+* `src/modules/assessment/assessmentExecutionPanel.test.ts` — 16 UI tests
+* `npm run pilot:assessment` — the synthetic rehearsal, over a **real socket** with the **production
+  worker loop**
+
+## Known constraints
+
+* Enabling agents still requires `NH_AGENT_ADMISSION_POLICIES` (a pre-existing fail-closed guard in
+  `bootstrap.ts`), even for a pilot that only wants assessment and publishes no candidates. Loosening
+  it would weaken a guard, so it is left alone and noted here.
+* The execution re-supplies the CSV rather than the server holding it. That is what makes the
+  fingerprint check meaningful — the intake persists no uploaded bytes — but it does mean a scheduler
+  must still have the file.
