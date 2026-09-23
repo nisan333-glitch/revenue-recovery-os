@@ -7,6 +7,7 @@ import type {
   AgentTaskStore,
   CandidateSignal,
 } from "./types";
+import { publishesCandidates } from "./types";
 import { assertCandidateSignalBatch } from "./admission";
 
 export interface AgentRuntimeDependencies {
@@ -68,6 +69,15 @@ export class AgentRuntime {
     let signals: readonly CandidateSignal[];
     try {
       assertCandidateSignalBatch(rawSignals, task.boundaryId);
+      // An observation-only handler that returns a signal is a contract violation, and it is caught
+      // HERE — before `succeed()`, which is the only thing that invokes the publication sink. So the
+      // task fails and nothing is published; the declaration is enforced, not trusted. Checked after
+      // the batch assertion so a malformed signal still reports as malformed.
+      if (rawSignals.length > 0 && !publishesCandidates(handler)) {
+        throw new Error(
+          `agent '${handler.agentId}' is declared observation-only and must not emit CandidateSignals`,
+        );
+      }
       signals = rawSignals;
     } catch (error) {
       await this.stopAndRefreshLease(heartbeat, task, workerId, beforeClaim.leaseMs);

@@ -42,10 +42,30 @@ export interface AgentTask {
 
 export interface AgentHandler {
   readonly agentId: string;
+  /**
+   * Whether this handler may publish CandidateSignals — the only automatic route from detection into
+   * Case creation.
+   *
+   * ABSENT MEANS TRUE, deliberately. A handler that forgets to declare itself is treated as
+   * candidate-capable, so the candidate admission policy registry is still required for it and
+   * nothing is published without a configured economic threshold. The fail-closed direction is the
+   * one where a new detector cannot accidentally escape the registry requirement by omission.
+   *
+   * Declaring `false` is a CHECKED CONTRACT, not a promise: `AgentRuntime` fails any handler that
+   * declares it and then returns a signal anyway, before publication can occur. That makes this
+   * field strictly stronger than the situation without it, where nothing stopped a nominally
+   * observation-only agent from publishing.
+   */
+  readonly publishesCandidates?: boolean;
   run(
     payload: Readonly<Record<string, unknown>>,
     context: { readonly taskId: string; readonly boundaryId: string; readonly attempt: number },
   ): Promise<readonly CandidateSignal[]>;
+}
+
+/** Absent declaration ⇒ candidate-capable. The single place that default is decided. */
+export function publishesCandidates(handler: AgentHandler): boolean {
+  return handler.publishesCandidates !== false;
 }
 
 export interface AgentPolicySnapshot {

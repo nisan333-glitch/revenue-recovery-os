@@ -10,6 +10,9 @@ const fields = ["sourceRef", "signedAt", "activationDueAt", "activatedAt", "obse
 export function activationDetector(now: () => number = Date.now): AgentHandler {
   return {
     agentId: ACTIVATION_AGENT_ID,
+    // Explicit rather than relying on the absent-means-true default: this detector's whole purpose is
+    // to publish candidates, and saying so keeps the registry requirement visible at the source.
+    publishesCandidates: true,
     async run(payload, context) {
       if (Object.keys(payload).length !== fields.length || fields.some((key) => !(key in payload))
         || Object.keys(payload).some((key) => !fields.includes(key))) throw new Error("invalid activation observation fields");
