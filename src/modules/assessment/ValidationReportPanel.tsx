@@ -9,6 +9,7 @@
 // reader starts assuming more was proven than was.
 import { Panel, Pill } from "../../components/ui";
 import { groupRowFindings, type PilotIntakeResult } from "../../data/pilotIntakeClient";
+import type { AdmissionDecision } from "../../contract/admissionGate";
 
 export interface ValidationReportPanelProps {
   result: PilotIntakeResult;
@@ -26,7 +27,12 @@ function severityTone(severity: string): PillTone {
 
 export function ValidationReportPanel({ result, preliminary = false }: ValidationReportPanelProps) {
   const groups = groupRowFindings(result.rowFindings);
-  const blocked = !result.usableForAssessment;
+  const usable = result.usableForAssessment;
+  const admissible = result.admission?.admissibleForPilotAssessment === true;
+  // EP-14 · Two different answers, shown as two different answers. A dataset can be technically
+  // usable and still unfit for a pilot, and collapsing that into one badge is exactly how one
+  // surviving row gets treated as a dataset.
+  const blocked = !usable || !admissible;
 
   return (
     <Panel className="mt-4 p-5">
@@ -38,7 +44,12 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
         ) : (
           <Pill tone="proof">server-verified</Pill>
         )}
-        {blocked ? <Pill tone="detect">not usable</Pill> : <Pill tone="proof">usable</Pill>}
+        {usable ? <Pill tone="proof">technically usable</Pill> : <Pill tone="detect">not usable</Pill>}
+        {admissible ? (
+          <Pill tone="proof">pilot-admissible</Pill>
+        ) : (
+          <Pill tone="detect">not pilot-admissible</Pill>
+        )}
       </div>
 
       {preliminary && (
@@ -94,10 +105,15 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
         </div>
       )}
 
+      {result.admission && <AdmissionSection admission={result.admission} />}
+
       {blocked && (
         <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-[12px] text-red-300">
-          This dataset cannot continue into assessment. Correct the items above and upload again —
-          nothing was stored, and no value was altered or filled in for you.
+          This dataset cannot continue into pilot assessment.{" "}
+          {usable
+            ? "It parses and produced valid rows, but it does not meet the pilot's configured fitness policy."
+            : "Correct the items above and upload again."}{" "}
+          Nothing was stored, and no value was altered or filled in for you.
         </div>
       )}
 
@@ -106,6 +122,72 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
         It is not proven revenue, not a recovery claim, and not proof of anything.
       </p>
     </Panel>
+  );
+}
+
+/**
+ * Pilot fitness, shown as its own verdict with the measure AND the threshold for every check. A bar
+ * someone can see is a bar they can argue with; a bare "rejected" is one they can only accept.
+ */
+function AdmissionSection({ admission }: { admission: AdmissionDecision }) {
+  const outcomeTone = admission.outcome === "ADMISSIBLE" ? "proof" : "detect";
+  const fmt = (v: number) => (Number.isInteger(v) ? String(v) : `${(v * 100).toFixed(1)}%`);
+
+  return (
+    <div className="mt-5 border-t border-ink-500/40 pt-4">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-slate-200">Pilot admission</span>
+        <Pill tone={outcomeTone}>{admission.outcome.replace(/_/g, " ").toLowerCase()}</Pill>
+        {admission.policyRef ? (
+          <Pill tone="neutral">policy {admission.policyRef}</Pill>
+        ) : (
+          <Pill tone="detect">no policy configured</Pill>
+        )}
+      </div>
+
+      {admission.outcome === "NOT_ASSESSABLE" && (
+        <p className="mb-3 text-[12px] text-slate-400">
+          Fitness could not be judged. A missing or incomplete policy is never treated as “no limit” —
+          the thresholds are a decision for whoever runs the pilot, and nothing here will pick one.
+        </p>
+      )}
+
+      {admission.checks.length > 0 && (
+        <ul className="mb-3 grid gap-1 md:grid-cols-2">
+          {admission.checks.map((c) => (
+            <li key={c.id} className="flex items-baseline justify-between gap-2 rounded border border-ink-500/40 px-2 py-1 text-[12px]">
+              <span className={c.passed ? "text-slate-400" : "text-red-300"}>{c.label}</span>
+              <span className="whitespace-nowrap text-slate-500">
+                {fmt(c.observed)} {c.direction === "at_least" ? "≥" : "≤"} {fmt(c.threshold)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {admission.reasons.length > 0 && (
+        <ul className="space-y-2">
+          {admission.reasons.map((r, i) => (
+            <li key={`${r.code}-${i}`} className="rounded-lg border border-ink-500/50 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Pill tone="detect">{r.code}</Pill>
+                <span className="text-[13px] text-slate-200">{r.title}</span>
+              </div>
+              <div className="mt-1 text-[12px] text-slate-400">{r.remediation}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {admission.rejectionDistribution.length > 0 && (
+        <p className="mt-3 text-[11px] text-slate-500">
+          Excluded rows remain visible here on purpose: {admission.counts.rejectedRows} of{" "}
+          {admission.counts.dataRows} rows were rejected, the largest single cause accounting for{" "}
+          {(admission.rates.largestSingleReasonShare * 100).toFixed(0)}% of them. What was excluded
+          shapes what the remaining rows can represent.
+        </p>
+      )}
+    </div>
   );
 }
 

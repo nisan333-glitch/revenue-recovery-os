@@ -9,6 +9,8 @@ import { apiRequest } from "./apiClient";
 import type { DevActor } from "./devActor";
 import { validatePilotDataset, type ContractValidationReport } from "../contract/validateDataset";
 import { PILOT_DATA_CONTRACT_VERSION, type DatasetProvenance } from "../contract/pilotDataContract";
+import { evaluateAdmission, type AdmissionDecision } from "../contract/admissionGate";
+import type { PilotAdmissionPolicy } from "../contract/pilotAdmissionPolicy";
 import { makePolicy } from "../assessment/policy";
 import type { DateLocale } from "../assessment/dateNormalize";
 import type { AmountFormat } from "../assessment/amountNormalize";
@@ -51,6 +53,8 @@ export interface PilotIntakeResult {
   readonly datasetFingerprint: string;
   readonly idempotencyKey: string;
   readonly recordedAt: string | null;
+  /** EP-14 · pilot fitness — separate from, and never a substitute for, usableForAssessment. */
+  readonly admission: AdmissionDecision;
 }
 
 export interface PilotIntakeParams {
@@ -63,6 +67,15 @@ export interface PilotIntakeParams {
   readonly currency: string;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
+  /** Which versioned admission policy to judge fitness against. Absent means NOT_ASSESSABLE. */
+  readonly admissionPolicyId?: string;
+  readonly admissionPolicyVersion?: string;
+  /**
+   * Preflight only: the policy the browser judges against locally. The SERVER always loads its own
+   * copy boundary-scoped and ignores anything sent from here — a client-supplied threshold could
+   * otherwise set its own bar.
+   */
+  readonly preflightAdmissionPolicy?: PilotAdmissionPolicy;
 }
 
 /**
@@ -86,6 +99,19 @@ export async function preflightPilotDataset(params: PilotIntakeParams): Promise<
 }
 
 /** Submit for the authoritative verdict. The server decides; this only carries the answer back. */
+/**
+ * Local admission preview. Uses the SAME evaluator the server runs, so the preview cannot be more
+ * permissive by construction — but it judges against whatever policy the browser happens to hold,
+ * which is why the server reloads its own copy boundary-scoped and never trusts this one.
+ */
+export function preflightAdmission(
+  report: ContractValidationReport,
+  assessmentPolicy: Parameters<typeof evaluateAdmission>[1],
+  policy: PilotAdmissionPolicy | null | undefined,
+): AdmissionDecision {
+  return evaluateAdmission(report, assessmentPolicy, policy);
+}
+
 export function submitPilotDataset(params: PilotIntakeParams, actor: DevActor): Promise<PilotIntakeResult> {
   return apiRequest<PilotIntakeResult>("POST", "/pilot/datasets", actor, {
     boundaryId: params.boundaryId,
@@ -100,6 +126,8 @@ export function submitPilotDataset(params: PilotIntakeParams, actor: DevActor): 
     provenance: params.provenance,
     ...(params.locale ? { locale: params.locale } : {}),
     ...(params.amountFormat ? { amountFormat: params.amountFormat } : {}),
+    ...(params.admissionPolicyId ? { admissionPolicyId: params.admissionPolicyId } : {}),
+    ...(params.admissionPolicyVersion ? { admissionPolicyVersion: params.admissionPolicyVersion } : {}),
   });
 }
 

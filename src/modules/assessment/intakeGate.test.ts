@@ -7,6 +7,8 @@ import { SYNTHETIC_PROVENANCE, syntheticPilotCsv, syntheticViolationCsv } from "
 import { validatePilotDataset } from "../../contract/validateDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../contract/pilotDataContract";
 import { makePolicy } from "../../assessment/policy";
+import { evaluateAdmission, type AdmissionDecision } from "../../contract/admissionGate";
+import { makeAdmissionPolicy, ADMISSION_CALC_VERSION } from "../../contract/pilotAdmissionPolicy";
 
 const ACTOR = { actorId: "op@company", role: "operator" as const };
 
@@ -19,6 +21,35 @@ const params = (csvText: string): PilotIntakeParams => ({
   asOf: "2026-04-15",
   currency: "USD",
 });
+
+const admissionPolicy = makeAdmissionPolicy({
+  policyId: "pol-test",
+  policyVersion: "1.0.0",
+  calculationMethodVersion: ADMISSION_CALC_VERSION,
+  minAcceptedRows: 1,
+  minDistinctEntities: 1,
+  maxRejectionRate: 1,
+  maxSingleReasonShare: 1,
+  maxDuplicateRate: 1,
+  minCoverageDays: 1,
+  requiredLifecycleStates: [],
+  maxOrderingDefectRate: 1,
+  maxMissingRecommendedColumns: 64,
+  requireProvenanceDeclaration: false,
+});
+
+/** A stand-in admission decision with an explicit outcome, for wiring tests. */
+function admission(outcome: AdmissionDecision["outcome"]): AdmissionDecision {
+  const base = evaluateAdmission(
+    {
+      datasetFingerprint: "f".repeat(64),
+      usableForAssessment: false,
+    } as never,
+    makePolicy({ stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" }),
+    admissionPolicy,
+  );
+  return { ...base, outcome, admissibleForPilotAssessment: outcome === "ADMISSIBLE" };
+}
 
 function serverResult(over: Partial<PilotIntakeResult> = {}): PilotIntakeResult {
   return {
@@ -35,6 +66,7 @@ function serverResult(over: Partial<PilotIntakeResult> = {}): PilotIntakeResult 
     datasetFingerprint: "f".repeat(64),
     idempotencyKey: "pds_test",
     recordedAt: "2026-09-23T00:00:00.000Z",
+    admission: admission("ADMISSIBLE"),
     ...over,
   };
 }
@@ -56,6 +88,7 @@ describe("intake gate — the server decides", () => {
           accepted: false,
           usableForAssessment: false,
           counts: { dataRows: 10, acceptedRows: 0, rejectedRows: 10, warnedRows: 0 },
+          admission: admission("NOT_ASSESSABLE"),
         }),
     });
     expect(outcome.kind).toBe("blocked");
@@ -94,7 +127,30 @@ describe("intake gate — the server decides", () => {
           accepted: true,
           usableForAssessment: false,
           counts: { dataRows: 9, acceptedRows: 0, rejectedRows: 9, warnedRows: 0 },
+          admission: admission("NOT_ASSESSABLE"),
         }),
+    });
+    expect(outcome.kind).toBe("blocked");
+  });
+
+  it("EP-14 · technically usable but NOT admissible still blocks", async () => {
+    // The whole reason this gate changed: `usableForAssessment` is true and progression must still
+    // stop, because fitness is a separate question with its own answer.
+    const outcome = await gateUpload(params(syntheticPilotCsv(10)), ACTOR, {
+      submit: async () =>
+        serverResult({
+          accepted: true,
+          usableForAssessment: true,
+          counts: { dataRows: 100, acceptedRows: 1, rejectedRows: 99, warnedRows: 0 },
+          admission: admission("NOT_ADMISSIBLE"),
+        }),
+    });
+    expect(outcome.kind).toBe("blocked");
+  });
+
+  it("EP-14 · NOT_ASSESSABLE blocks too — an unconfigured bar is not a passing one", async () => {
+    const outcome = await gateUpload(params(syntheticPilotCsv(10)), ACTOR, {
+      submit: async () => serverResult({ admission: admission("NOT_ASSESSABLE") }),
     });
     expect(outcome.kind).toBe("blocked");
   });

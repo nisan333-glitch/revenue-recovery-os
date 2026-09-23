@@ -17,6 +17,8 @@ import {
 } from "../../data/pilotIntakeClient";
 import type { DevActor } from "../../data/devActor";
 import type { ContractValidationReport } from "../../contract/validateDataset";
+import { evaluateAdmission } from "../../contract/admissionGate";
+import { makePolicy } from "../../assessment/policy";
 
 export type IntakeGateOutcome =
   /** The server accepted the dataset as usable. Only this outcome may start an assessment. */
@@ -31,7 +33,13 @@ export interface IntakeGateDeps {
   readonly submit?: typeof submitPilotDataset;
 }
 
-/** Shape a local preflight report like a server result so one panel renders both. */
+/**
+ * Shape a local preflight report like a server result so one panel renders both.
+ *
+ * The admission decision is computed with NO policy, which yields NOT_ASSESSABLE. That is the honest
+ * preview: the browser does not hold the tenant's policy, and inventing one to make the preview look
+ * complete would show a fitness verdict nobody configured.
+ */
 export function preflightAsResult(report: ContractValidationReport): PilotIntakeResult {
   return {
     contractRef: report.contractRef,
@@ -48,11 +56,21 @@ export function preflightAsResult(report: ContractValidationReport): PilotIntake
     idempotencyKey: report.idempotencyKey,
     // A preflight never records anything — only the server can, and only for a usable dataset.
     recordedAt: null,
+    admission: evaluateAdmission(
+      report,
+      makePolicy({ stallThresholdDays: 0, asOf: "1970-01-01", currency: "USD" }),
+      null,
+    ),
   };
 }
 
 /**
- * Run the gate. Returns `proceed` only on an explicit server `usableForAssessment`.
+ * Run the gate. Returns `proceed` only when the server says the dataset is BOTH technically usable
+ * AND admissible for pilot assessment.
+ *
+ * EP-14 · `usableForAssessment` alone is not enough, and that is the whole point of this change: one
+ * surviving row among thousands rejected satisfies it. Fitness is a separate question with a
+ * separate, explicitly configured answer, and both must be yes.
  *
  * Note what is NOT here: no fallback that lets the preflight stand in when the server is
  * unreachable. An upload that could not be validated server-side is an `error`, never a pass —
@@ -82,7 +100,8 @@ export async function gateUpload(
     return { kind: "error", message: e instanceof Error ? e.message : String(e) };
   }
 
-  return server.usableForAssessment
+  const admitted = server.usableForAssessment && server.admission.admissibleForPilotAssessment;
+  return admitted
     ? { kind: "proceed", result: server }
     : { kind: "blocked", result: server, preliminary: false };
 }

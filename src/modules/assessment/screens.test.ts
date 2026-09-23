@@ -121,6 +121,37 @@ describe("Assessment screens render the critical content", () => {
           datasetFingerprint: "f".repeat(64),
           idempotencyKey: "pds_test",
           recordedAt: null,
+          admission: {
+            outcome: "NOT_ADMISSIBLE" as const,
+            admissibleForPilotAssessment: false,
+            policyRef: "pol-demo@1.0.0",
+            policyId: "pol-demo",
+            policyVersion: "1.0.0",
+            calculationMethodVersion: "admission-gate-2026.1",
+            datasetFingerprint: "f".repeat(64),
+            counts: {
+              dataRows: 10, acceptedRows: 0, rejectedRows: 10, duplicateRows: 0,
+              orderingDefectRows: 10, distinctEntities: 0, coverageDays: 0, missingRecommendedColumns: 0,
+            },
+            rates: { rejection: 1, duplicate: 0, orderingDefect: 1, largestSingleReasonShare: 1 },
+            lifecyclePresent: { stalled: 0, reference: 0, undetermined: 0 },
+            rejectionDistribution: [{ code: "NH-DC-2005", count: 10, share: 1 }],
+            checks: [
+              {
+                id: "sample_size", label: "Accepted rows", passed: false, observed: 0, threshold: 10,
+                direction: "at_least" as const, code: "NH-AG-2001", detail: "0 accepted of 10 read",
+              },
+            ],
+            reasons: [
+              {
+                code: "NH-AG-2001", severity: "not_admissible" as const,
+                title: "Fewer accepted rows than the policy's minimum sample.",
+                remediation: "Widen the export window or correct the rejected rows.",
+                detail: "Accepted rows: 0 accepted of 10 read",
+              },
+            ],
+            claimBoundary: { judgesFitnessOnly: true as const, constitutesProof: false as const, constitutesRevenue: false as const },
+          },
         },
       }),
     );
@@ -128,9 +159,13 @@ describe("Assessment screens render the critical content", () => {
     expect(html).toContain("NH-DC-2005"); // machine-readable code shown
     expect(html).toContain("no UTC offset"); // what went wrong
     expect(html).toContain("full UTC instant"); // actionable correction guidance
-    expect(html).toContain("not usable"); // status
-    expect(html).toContain("cannot continue into assessment"); // progression is blocked
-    expect(html).toContain("nothing was stored"); // and nothing was persisted or repaired
+    expect(html).toContain("not usable"); // technical status
+    expect(html).toContain("not pilot-admissible"); // fitness status, shown separately
+    expect(html).toContain("NH-AG-2001"); // the admission reason code
+    expect(html).toContain("policy pol-demo@1.0.0"); // which bar was applied
+    expect(html).toContain("cannot continue into pilot assessment"); // progression is blocked
+    expect(html).toMatch(/nothing was stored/i); // and nothing was persisted or repaired
+    expect(html).toContain("Excluded rows remain visible"); // representativeness stays auditable
   });
 
   it("Pilot readiness is conservative and exposes the claim boundary", async () => {

@@ -266,3 +266,99 @@ error. **Neither guard ever truncates.**
 No RecoveryEvent, no Case, no Proof, no revenue claim. Case Halt, the authority ledger, separation of
 duties, the baseline, evidence and the proof chain are untouched — asserted by a test that scopes
 every one of those tables to this submission's own identifiers and requires zero rows.
+
+---
+
+# Pilot Assessment Admission Gate v1
+
+A third verdict, separate from the two that already exist and changing neither.
+
+## The gap
+
+`usableForAssessment` means `accepted && acceptedRows > 0`. That is the right question for technical
+processing — can anything be computed at all — and the wrong question for pilot fitness. **One
+surviving row among 9,999 rejected ones satisfies it**, and nothing downstream ever re-asks. A pilot
+built on that dataset produces numbers whose representativeness was never examined, and by then the
+rejected 9,999 are invisible, so no reader can tell.
+
+| Verdict | Question |
+|---|---|
+| `accepted` | Is the file structurally interpretable? |
+| `usableForAssessment` | Did at least one valid cycle survive? |
+| `admissibleForPilotAssessment` | Does the dataset satisfy an explicit, versioned pilot policy? |
+
+All three are reported. Progression into assessment requires the **second and third** to be true.
+
+## No invented thresholds — the rule that shapes everything else
+
+There are no default thresholds and no code path that supplies one. Every threshold in
+`PilotAdmissionPolicy` is required; a policy missing one makes the dataset `NOT_ASSESSABLE`, naming
+the field that was not set (`NH-AG-1002`).
+
+This is not fussiness. A fitness bar — *how many rejected rows is too many?* — is a commercial
+judgement belonging to the people running the pilot. A system that picks its own bar is grading its
+own homework, and whatever number it picks will later be quoted as though someone chose it.
+
+Corollaries the tests pin down:
+
+- **Absence is not zero.** `0` is a deliberate choice ("no duplicates tolerated"); `undefined` and
+  `NaN` are questions nobody answered. They never collapse into each other.
+- **Out of range is refused, not clamped.** `makeAdmissionPolicy` will not construct an invalid
+  policy at all, so one cannot exist as an object and then be quietly used.
+- **Every defect is reported at once**, so a policy is fixed in one pass rather than one round trip
+  per missing field.
+
+## Three outcomes
+
+`ADMISSIBLE` · `NOT_ADMISSIBLE` · `NOT_ASSESSABLE` — the last being the fail-closed default for a
+missing policy, an unset threshold, an unusable dataset, or an uncomputable coverage window.
+
+## What is evaluated
+
+Sample size · distinct entities · rejection rate · rejection-reason concentration · duplicate rate ·
+temporal coverage · event-ordering quality · lifecycle coverage · missing recommended columns ·
+provenance declaration.
+
+Two that deserve explanation:
+
+- **Distinct entities, not just rows.** Twenty cycles belonging to one account look like a large
+  sample and are not one — the same customer's behaviour repeated is a single observation.
+- **Rejection concentration, separately from rejection rate.** Rejections concentrated in one cause
+  usually mean a systematic export defect affecting one *kind* of record, which is exactly the bias a
+  rate alone hides.
+
+## Rejected rows never enter, and never disappear
+
+The evaluator reads accepted cycles plus the **counts and codes** of rejections. It never sees a
+rejected row's content, so no rejected value can influence a rate or a verdict — asserted by a test
+that plants a unique string in a rejected row and greps the serialized decision for it.
+
+Their **effect stays fully visible**: rates, a reason distribution, and a line in the UI naming how
+many rows were excluded and what share came from the largest single cause. An exclusion that
+disappears silently is how a biased dataset passes for a clean one.
+
+## Policy storage and tenant isolation
+
+`pilot_admission_policies`, keyed `(boundary_id, policy_id, policy_version)`, append-only. Reads are
+boundary-scoped, so **a policy id borrowed from another tenant reads as absent** rather than as that
+tenant's thresholds. Applying tenant A's bar to tenant B's data would not error — it would produce a
+confident, wrong verdict, and leak what A considers acceptable.
+
+A published version is immutable: re-registering it is a 409, and UPDATE/DELETE are refused by
+trigger. Editing thresholds under a version a decision already stamped would silently re-grade a
+dataset judged under the old bar.
+
+## Reuse, not reinvention
+
+- `splitCohorts` / `classifyStall` (`src/assessment/cohort.ts`) supply lifecycle coverage — there is
+  no second stall classifier.
+- `assessPilotReadiness` (`src/assessment/intakeKit.ts`) is **unchanged**. It answers a different
+  question — *is the pilot designed?* (declarations and confirmations) — where this asks *is this
+  dataset fit?*. It has no minimum sample and no rate ceilings, so it could not be made fail-closed
+  without altering its meaning.
+
+## Creates nothing
+
+No money, no Proof, no Case, no revenue claim, no authority record. Case Halt, the authority ledger,
+separation of duties and existing contract semantics are untouched — asserted by a test that scopes
+every governed table to the submission's own identifiers and requires zero rows.
