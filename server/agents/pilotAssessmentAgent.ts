@@ -32,6 +32,7 @@ import { findSubmissionByDecisionId } from "../persistence/pilotDatasetStore";
 import { policyGovernanceState } from "../persistence/pilotPolicyGovernanceStore";
 import {
   appendExecutionEvent,
+  inputPurgeRecord,
   findExecutionInput,
   findExecutionUnscoped,
   recordFindingIfAbsent,
@@ -74,6 +75,9 @@ export function createPilotAssessmentAgent(deps: PilotAssessmentAgentDeps = {}):
 
   return {
     agentId: PILOT_ASSESSMENT_AGENT_ID,
+    // Declared, and enforced by the runtime: if any branch below ever returned a signal, the task
+    // would fail before publication instead of quietly creating a case candidate.
+    publishesCandidates: false,
 
     async run(payload, context): Promise<readonly CandidateSignal[]> {
       const keys = Object.keys(payload);
@@ -216,6 +220,16 @@ async function executeAssessment(
   // 5 · The input is present and unchanged since it was written.
   const stored = await findExecutionInput(executionId, boundaryId);
   if (!stored) {
+    // A purged input and an absent one are different facts and must not share one code. "Collected on
+    // schedule, after this run had already finished" is an expected, benign outcome; "there is no
+    // input and no record of one" is a bug worth finding.
+    const purge = await inputPurgeRecord(executionId, boundaryId);
+    if (purge) {
+      throw new ExecutionBlocked(
+        "execution_input_purged",
+        `the input was purged under the retention policy (${purge.reason})`,
+      );
+    }
     throw new ExecutionBlocked("execution_input_missing", "the execution has no stored input");
   }
   const input: ExecutionInput = Object.freeze({

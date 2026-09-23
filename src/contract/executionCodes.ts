@@ -53,6 +53,7 @@ export type ExecutionRefusal =
   | "no_assessable_cycles"
   | "case_halted"
   | "execution_input_missing"
+  | "execution_input_purged"
   | "execution_input_tampered"
   | "finding_conflict"
   | "assessment_error";
@@ -150,6 +151,14 @@ export const EXECUTION_REFUSAL_CODES: Readonly<Record<ExecutionRefusal, Executio
         "Schedule the execution again. The input is written in the same transaction as the execution record, so its absence means the record was reached by a path that never wrote one.",
       since: "1.0.0",
     }),
+    execution_input_purged: code({
+      code: "NH-AX-2005",
+      severity: "blocked",
+      title: "The execution's input has been purged under the retention policy.",
+      remediation:
+        "None, and none is needed: the run had already reached a terminal state before its input became eligible to purge. The finding, the binding and both hashes survive, so the result is still reproducible from the customer's original file. Schedule a new execution if the dataset must be assessed again.",
+      since: "1.1.0",
+    }),
     execution_input_tampered: code({
       code: "NH-AX-2003",
       severity: "blocked",
@@ -177,6 +186,102 @@ export const EXECUTION_REFUSAL_CODES: Readonly<Record<ExecutionRefusal, Executio
       since: "1.0.0",
     }),
   });
+
+// ── 4xxx · Retention decisions ────────────────────────────────────────────────────────────────────
+//
+// A SEPARATE catalogue, not more entries in the refusal union above. A purge is not a refusal of an
+// execution — the run already finished — and folding the two together would make "your input was
+// collected on schedule" read like something went wrong with the assessment.
+
+export type RetentionOutcome = "purged" | "retained";
+
+export interface RetentionCodeSpec {
+  readonly code: string;
+  readonly outcome: RetentionOutcome;
+  readonly title: string;
+  readonly remediation: string;
+  readonly since: string;
+}
+
+function retentionCode(spec: RetentionCodeSpec): RetentionCodeSpec {
+  return Object.freeze(spec);
+}
+
+/** Every reason an input was, or was not, purged. Total over `RetentionDecision` below. */
+export type RetentionDecision =
+  | "purged_terminal_completed"
+  | "purged_terminal_blocked"
+  | "purged_abandoned"
+  | "retained_no_policy"
+  | "retained_in_flight"
+  | "retained_grace_not_elapsed"
+  | "retained_retention_not_elapsed";
+
+export const RETENTION_CODES: Readonly<Record<RetentionDecision, RetentionCodeSpec>> = Object.freeze({
+  purged_terminal_completed: retentionCode({
+    code: "NH-AX-4001",
+    outcome: "purged",
+    title: "Input purged after the execution completed and its grace period elapsed.",
+    remediation:
+      "Nothing to do. The finding, the binding, the event log and both hashes are unaffected; only the pseudonymised input rows were collected.",
+    since: "1.1.0",
+  }),
+  purged_terminal_blocked: retentionCode({
+    code: "NH-AX-4002",
+    outcome: "purged",
+    title: "Input purged after the execution was blocked and its grace period elapsed.",
+    remediation:
+      "Nothing to do. A blocked execution is terminal, so its input can serve no further run. The refusal and its code remain in the event log.",
+    since: "1.1.0",
+  }),
+  purged_abandoned: retentionCode({
+    code: "NH-AX-4003",
+    outcome: "purged",
+    title: "Input purged: the execution never reached a terminal state and its retention period elapsed.",
+    remediation:
+      "If this dataset still needs assessing, schedule a new execution. An abandoned run whose input is gone will report NH-AX-2005 rather than producing a finding from data nobody re-checked.",
+    since: "1.1.0",
+  }),
+  retained_no_policy: retentionCode({
+    code: "NH-AX-4004",
+    outcome: "retained",
+    title: "No retention policy is configured, so nothing was purged.",
+    remediation:
+      "Set both NH_PILOT_INPUT_TERMINAL_GRACE_HOURS and NH_PILOT_INPUT_ABANDONED_RETENTION_DAYS. There is deliberately no default: a retention period is a policy decision, and a number this code invented would be quoted later as though someone had chosen it. Until both are set, inputs are kept — which is the fail-closed direction for data the system was trusted with, and the direction that must not be left in place indefinitely.",
+    since: "1.1.0",
+  }),
+  retained_in_flight: retentionCode({
+    code: "NH-AX-4005",
+    outcome: "retained",
+    title: "Input retained: the execution still has a claimable task.",
+    remediation:
+      "Nothing to do. A queued, leased or retry-waiting task will need this input again, and elapsed time is not a reason to take it from a run still in flight.",
+    since: "1.1.0",
+  }),
+  retained_grace_not_elapsed: retentionCode({
+    code: "NH-AX-4006",
+    outcome: "retained",
+    title: "Input retained: the execution is terminal but its grace period has not elapsed.",
+    remediation: "Nothing to do. It becomes eligible once the configured grace period has passed.",
+    since: "1.1.0",
+  }),
+  retained_retention_not_elapsed: retentionCode({
+    code: "NH-AX-4007",
+    outcome: "retained",
+    title: "Input retained: the execution has not reached a terminal state and its retention period has not elapsed.",
+    remediation:
+      "Nothing to do. An execution can legitimately sit un-run for a while; it becomes eligible for the abandoned rule once the configured period has passed.",
+    since: "1.1.0",
+  }),
+});
+
+export function retentionCodeFor(decision: RetentionDecision): RetentionCodeSpec {
+  return RETENTION_CODES[decision];
+}
+
+export function allRetentionCodes(): readonly RetentionCodeSpec[] {
+  return Object.freeze(Object.values(RETENTION_CODES).sort((a, b) => a.code.localeCompare(b.code)));
+}
 
 /** Look up one code. Total over the union, so this never returns undefined. */
 export function executionCode(refusal: ExecutionRefusal): ExecutionCodeSpec {

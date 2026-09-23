@@ -443,3 +443,32 @@ model PilotAssessmentFindingRecord {
   @@unique([executionId, boundaryId], map: "pilot_assessment_findings_identity_boundary_unique")
   @@map("pilot_assessment_findings")
 }
+
+/// EP-17 · Authorization for purging one execution's de-identified input, and what survives it.
+///
+/// Append-only and boundary-scoped. It preserves the input's hash and cycle count, so a purged
+/// execution stays reproducible: re-derive the projection from the customer's CSV, hash it, and
+/// compare against this row and `pilot_assessment_executions.input_hash`.
+///
+/// Its INSERT is validated by a database trigger against the durable event log, the task state and an
+/// elapsed bound — so a purge cannot be authorized from a fact that is not the fact in question, and
+/// an execution with a still-claimable task keeps its input.
+model PilotAssessmentInputPurgeRecord {
+  executionId            String   @id(map: "pilot_assessment_input_purges_pkey") @map("execution_id")
+  boundaryId             String   @map("boundary_id")
+  /// terminal_completed | terminal_blocked | abandoned_retention_elapsed
+  reason                 String
+  /// Preserved from the deleted input.
+  inputHash              String   @map("input_hash")
+  cycleCount             Int      @map("cycle_count")
+  /// The policy actually applied, recorded so the elapsed-time arithmetic stays checkable later.
+  terminalGraceHours     Int      @map("terminal_grace_hours")
+  abandonedRetentionDays Int      @map("abandoned_retention_days")
+  authorizedByActorId    String   @map("authorized_by_actor_id")
+  authorizedByRole       String   @map("authorized_by_role")
+  purgedAt               DateTime @default(now()) @map("purged_at")
+
+  @@unique([executionId, boundaryId], map: "pilot_assessment_input_purges_identity_boundary_unique")
+  @@index([boundaryId, purgedAt], map: "pilot_assessment_input_purges_boundary_idx")
+  @@map("pilot_assessment_input_purges")
+}

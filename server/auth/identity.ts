@@ -26,7 +26,8 @@ export type GovernedAction =
   | "ActivatePilotPolicy" // EP-15: put a proposed policy in force, or freeze/resume it (governance)
   | "RetirePilotPolicy" // EP-15: permanently end a policy version (governance)
   | "SchedulePilotAssessment" // EP-16: hand an ADMITTED dataset to a governed assessment execution
-  | "ReadPilotAssessment"; // EP-16: read an execution's state, lineage and finding
+  | "ReadPilotAssessment" // EP-16: read an execution's state, lineage and finding
+  | "PurgeAssessmentInput"; // EP-17: collect an execution's pseudonymised input under the retention policy
 
 // Least-privilege matrix: which role may perform which governed action. There is no
 // "admin"/superuser role — nothing here grants a separation-of-duties bypass.
@@ -37,6 +38,10 @@ export type GovernedAction =
 // else entirely. `ReadPilotAssessment` is held by EVERY role — an execution's state, lineage and
 // observation carry no proof, no counted dollar and no customer row, and a pilot whose own operator
 // cannot see whether their run is queued or blocked is not governed, merely opaque.
+// EP-17 · `PurgeAssessmentInput` is the steward's alone. Deleting the pseudonymised rows a finding was
+// computed from cannot change that finding — the hashes and the finding itself survive a purge — but
+// the actors who benefit from a larger recovery number should still not be the ones who decide when
+// the stored inputs go.
 // EstablishBaseline/Intervene/IngestEvidence (EP-8.1) belong to the case-management side
 // (author/operator) — the same actors who already own the "Author" action — never the
 // approver, so the approver can never also be the one asserting the baseline/evidence facts.
@@ -58,7 +63,7 @@ const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
   // which bar is in force. No administrator role exists, and none is added here.
   steward: [
     "Flag", "Halt", "Exclude", "AuditRead", "ActivatePilotPolicy", "RetirePilotPolicy",
-    "ReadPilotAssessment",
+    "ReadPilotAssessment", "PurgeAssessmentInput",
   ],
 };
 

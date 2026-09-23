@@ -198,6 +198,7 @@ describe.skipIf(!HAS_DB)("EP-16 · pilot assessment orchestration", () => {
     const out = (await schedule(scheduleBody(body, { csvText: `${body.csvText as string}\n` }))).json();
     expect(out.scheduled).toBe(false);
     expect(out.refusal.code).toBe("NH-AX-1001");
+    expect(await prisma.pilotAssessmentExecutionRecord.count({ where: { boundaryId } })).toBe(0);
   });
 
   // ── 2 · DRAFT, FROZEN and RETIRED all block ─────────────────────────────────────────────────────

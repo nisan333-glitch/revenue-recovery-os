@@ -403,3 +403,31 @@ export async function recordFindingIfAbsent(
     return { stored: raced, created: false, conflict: raced.findingHash !== input.findingHash };
   }
 }
+
+/** Has this execution's input been purged? Boundary-scoped, like every other read. */
+export async function inputPurgeRecord(
+  executionId: string,
+  boundaryId: string,
+  client: DbClient = prisma,
+): Promise<{
+  readonly reason: string;
+  readonly inputHash: string;
+  readonly cycleCount: number;
+  readonly purgedAt: string;
+  readonly authorizedByActorId: string;
+  readonly authorizedByRole: string;
+} | null> {
+  const row = await client.pilotAssessmentInputPurgeRecord.findFirst({
+    where: { executionId, boundaryId },
+  });
+  return row
+    ? Object.freeze({
+        reason: row.reason,
+        inputHash: row.inputHash,
+        cycleCount: row.cycleCount,
+        purgedAt: row.purgedAt.toISOString(),
+        authorizedByActorId: row.authorizedByActorId,
+        authorizedByRole: row.authorizedByRole,
+      })
+    : null;
+}

@@ -11,6 +11,7 @@
     "ingest:csv": "npm run build:server && node dist-server/server/agents/secureCsvIngestionCli.js",
     "pilot:synthetic": "npm run build:server && node dist-server/server/agents/syntheticPilotCli.js",
     "pilot:assessment": "npm run build:server && node dist-server/server/agents/pilotAssessmentRehearsalCli.js",
+    "pilot:purge-inputs": "npm run build:server && node dist-server/server/services/pilotInputRetentionCli.js",
     "fixture:activation": "vite-node scripts/write-synthetic-activation-fixture.ts",
     "build": "tsc -b && vite build",
     "build:server": "tsc -p tsconfig.server.json && node scripts/mark-server-commonjs.mjs",
