@@ -274,26 +274,40 @@ export function canTransitionExecution(
 // ── 4 · The input projection ──────────────────────────────────────────────────────────────────────
 
 /**
- * WHY ANYTHING ROW-DERIVED IS PERSISTED AT ALL.
+ * WHAT THIS IS: PSEUDONYMISED CUSTOMER-DERIVED DATA. Not anonymous data.
  *
- * EP-13 stored no row-derived data, and that was right for a submission record whose only job was to
- * recognise a repeated upload. An execution is different: it is asynchronous, leased, retried, and —
- * by requirement — reproducible from its own audit trail. An execution whose input cannot be re-read
- * cannot be reproduced, and an unreproducible finding is an assertion.
+ * An earlier version of this comment said the projection was "minimized until what remains cannot
+ * identify anyone" and was "not linkable to any other dataset". Both claims were wrong, and wrong in
+ * the direction that matters — a reader could have concluded this table sits outside data-protection
+ * obligations. It does not. The accurate statement:
  *
- * So the input is persisted, and minimized until what remains cannot identify anyone:
+ *   • Direct identifiers are replaced. `cycleId`, `entityId` and `sourceRowId` become FIRST-APPEARANCE
+ *     ORDINALS (`c-0001`, `e-0001`, `r-0001`), which preserves equality classes exactly — two cycles
+ *     that shared an entity still share one — so the cohort and payment arithmetic is bit-for-bit
+ *     unchanged. The mapping is not stored and not recoverable from the projection alone, and it needs
+ *     no secret key, so there is no key to leak, rotate or forget.
+ *   • What remains CAN PERMIT LINKAGE. Each projected cycle still carries four to six exact dates and
+ *     one or two exact minor-unit amounts. Anyone holding the source export — or any other extract
+ *     covering the same subscriptions — can match rows on those values. Removing a direct identifier
+ *     does not prevent that, and no claim is made here about how often it would succeed: this file
+ *     states the exposure, not a measured rate.
+ *   • Therefore: pseudonymised, retained under an explicit policy, and in scope. See
+ *     `server/services/pilotInputRetention.ts` for the retention rules and the governed purge path.
  *
- *   • `cycleId`, `entityId`, `sourceRowId` are replaced by FIRST-APPEARANCE ORDINALS (`c-0001`,
- *     `e-0001`, `r-0001`). This preserves equality classes exactly — two cycles that shared an
- *     entity still share one — so the cohort and payment arithmetic is bit-for-bit unchanged, while
- *     the stored value is not reversible and not linkable to any other dataset. It needs no secret
- *     key, which means there is no key to leak, rotate, or forget to configure.
- *   • `statusRaw` is dropped. It is free text from the customer's source system, and the adapter is
- *     the only thing that ever reads it — by the time a cycle exists, its effect is already baked
- *     into `refundedAt`/`cancelledAt` and the exclusion decision. Verified, not assumed.
- *   • `attributes` keeps only `paid_timing`, whose values are fixed internal markers. `plan`,
- *     `segment` and anything else a customer's export carried are free text and are dropped.
- *   • Dates and exact minor-unit amounts are kept: they ARE the assessment.
+ * WHAT IS DROPPED, verified rather than assumed:
+ *   • `statusRaw` — free text from the customer's source system. The adapter is the only thing that
+ *     ever reads it; by the time a cycle exists, its effect is already baked into
+ *     `refundedAt`/`cancelledAt` and the exclusion decision.
+ *   • `attributes` keeps only `paid_timing`, whose sole value is a fixed internal marker. `plan`,
+ *     `segment`, `product` and anything else a customer's export carried are free text and are gone.
+ *
+ * WHY ANYTHING ROW-DERIVED IS PERSISTED AT ALL. EP-13 stored none, which was right for a submission
+ * record whose only job was to recognise a repeated upload. An execution is asynchronous and leased: a
+ * worker that picks one up has no CSV, so the input it runs on must be durable. That is the whole
+ * justification, and it is narrower than the one this comment used to give — reproducibility ALONE
+ * would not require it, because `input_hash` plus the customer's original file already reproduce the
+ * finding without our copy. Retaining the projection buys durability for the run and reproduction
+ * without the customer's file; it does not buy correctness, and it is therefore bounded in time.
  *
  * REJECTED ROWS NEVER ENTER. The projection's only input is the accepted cycles. A rejected row has
  * no representation here, so no rejected value can influence a cohort, a sum or a finding.

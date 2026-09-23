@@ -124,3 +124,46 @@ describe("EP-16 · the agent cannot create a recovery case", () => {
     expect(agent).not.toMatch(/withGovernedCaseMutation/);
   });
 });
+
+describe("EP-17 · the corrected privacy description cannot quietly revert", () => {
+  // These guards exist because the original wording was wrong in the direction that matters: a reader
+  // could have concluded the inputs table sits outside data-protection obligations. Prose is not
+  // usually worth a test — an assertion about what stored data IS, which a reviewer relies on, is.
+  //
+  // The text is NORMALISED first: a doc comment wraps, so `cannot identify anyone` can be split across
+  // a line by ` * `. Matching the raw file would make these guards pass or fail depending on where the
+  // wrap happened to land, which is the opposite of a guard.
+  const prose = readFileSync(join(__dirname, "assessmentExecution.ts"), "utf8")
+    .replace(/\n\s*\*\s?/g, " ")
+    .replace(/\s+/g, " ");
+
+  const occurrences = (needle: string): number => prose.split(needle).length - 1;
+
+  it("mentions each retracted claim exactly once, inside the retraction", () => {
+    // Once, and only in the sentence that quotes it in order to withdraw it.
+    expect(occurrences("cannot identify anyone")).toBe(1);
+    expect(occurrences("not linkable to any other dataset")).toBe(1);
+    expect(prose).toMatch(
+      /An earlier version of this comment said .*cannot identify anyone.*not linkable to any other dataset.*Both claims were wrong/,
+    );
+  });
+
+  it("states what the data is, and that exact dates and amounts can permit linkage", () => {
+    expect(prose).toMatch(/PSEUDONYMISED CUSTOMER-DERIVED DATA/);
+    expect(prose).toMatch(/Not anonymous data/);
+    expect(prose).toMatch(/CAN PERMIT LINKAGE/);
+    expect(prose).toMatch(/exact dates/i);
+    expect(prose).toMatch(/exact minor-unit amounts/i);
+  });
+
+  it("claims no measured re-identification rate", () => {
+    // A number here would be a claim this codebase has not measured and could not defend.
+    expect(prose).toMatch(/states the exposure, not a measured rate/);
+    expect(prose).not.toMatch(/\d+(\.\d+)?\s*%/);
+    expect(prose).not.toMatch(/k-anonymity|re-?identification rate of/i);
+  });
+
+  it("points at where the retention rules live, rather than leaving lifetime unstated", () => {
+    expect(prose).toMatch(/pilotInputRetention/);
+  });
+});
