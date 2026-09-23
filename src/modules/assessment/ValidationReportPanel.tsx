@@ -10,6 +10,7 @@
 import { Panel, Pill } from "../../components/ui";
 import { groupRowFindings, type PilotIntakeResult } from "../../data/pilotIntakeClient";
 import type { AdmissionDecision } from "../../contract/admissionGate";
+import type { PolicyState } from "../../contract/policyLifecycle";
 
 export interface ValidationReportPanelProps {
   result: PilotIntakeResult;
@@ -105,7 +106,14 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
         </div>
       )}
 
-      {result.admission && <AdmissionSection admission={result.admission} />}
+      {result.admission && (
+        <AdmissionSection
+          admission={result.admission}
+          policyState={result.admissionPolicyState ?? null}
+          policyHash={result.admissionPolicyHash ?? null}
+          governanceRefusal={result.admissionGovernanceRefusal ?? null}
+        />
+      )}
 
       {blocked && (
         <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-[12px] text-red-300">
@@ -129,7 +137,17 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
  * Pilot fitness, shown as its own verdict with the measure AND the threshold for every check. A bar
  * someone can see is a bar they can argue with; a bare "rejected" is one they can only accept.
  */
-function AdmissionSection({ admission }: { admission: AdmissionDecision }) {
+function AdmissionSection({
+  admission,
+  policyState,
+  policyHash,
+  governanceRefusal,
+}: {
+  admission: AdmissionDecision;
+  policyState: PolicyState | null;
+  policyHash: string | null;
+  governanceRefusal: string | null;
+}) {
   const outcomeTone = admission.outcome === "ADMISSIBLE" ? "proof" : "detect";
   const fmt = (v: number) => (Number.isInteger(v) ? String(v) : `${(v * 100).toFixed(1)}%`);
 
@@ -143,7 +161,27 @@ function AdmissionSection({ admission }: { admission: AdmissionDecision }) {
         ) : (
           <Pill tone="detect">no policy configured</Pill>
         )}
+        {policyState !== null && <PolicyStatePill state={policyState} />}
       </div>
+
+      {governanceRefusal !== null && (
+        <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-[12px] text-amber-300">
+          <span className="font-semibold">Governance:</span> {governanceRefusal}.
+          <span className="mt-1 block text-[11px] text-slate-400">
+            Proposing a bar and putting it in force are separate acts by separate people. A policy
+            judges nothing until pilot governance activates it, and it may not be activated after the
+            dataset it would judge has already been seen.
+          </span>
+        </div>
+      )}
+
+      {policyHash !== null && (
+        <p className="mb-3 text-[11px] text-slate-500">
+          Judged under policy hash <span className="font-mono text-slate-400">{policyHash.slice(0, 23)}…</span> —
+          recorded with this decision, so retiring or superseding the policy can never change what it was
+          measured against.
+        </p>
+      )}
 
       {admission.outcome === "NOT_ASSESSABLE" && (
         <p className="mb-3 text-[12px] text-slate-400">
@@ -189,6 +227,22 @@ function AdmissionSection({ admission }: { admission: AdmissionDecision }) {
       )}
     </div>
   );
+}
+
+/**
+ * The four lifecycle states, shown as four distinguishable things. Only ACTIVE may judge a dataset;
+ * the other three each mean "not in force" for a different reason, and collapsing them into one
+ * "invalid" badge would hide whether the fix is to wait for approval, ask governance to resume, or
+ * propose a new version entirely.
+ */
+function PolicyStatePill({ state }: { state: PolicyState }) {
+  const label: Record<PolicyState, string> = {
+    DRAFT: "proposed — awaiting governance",
+    ACTIVE: "active",
+    FROZEN: "frozen by governance",
+    RETIRED: "retired",
+  };
+  return <Pill tone={state === "ACTIVE" ? "proof" : "detect"}>{label[state]}</Pill>;
 }
 
 function Counter({ label, value, tone }: { label: string; value: number; tone?: string }) {

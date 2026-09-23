@@ -67,6 +67,9 @@ function serverResult(over: Partial<PilotIntakeResult> = {}): PilotIntakeResult 
     idempotencyKey: "pds_test",
     recordedAt: "2026-09-23T00:00:00.000Z",
     admission: admission("ADMISSIBLE"),
+    admissionPolicyState: "ACTIVE" as const,
+    admissionPolicyHash: "sha256:" + "a".repeat(64),
+    admissionGovernanceRefusal: null,
     ...over,
   };
 }

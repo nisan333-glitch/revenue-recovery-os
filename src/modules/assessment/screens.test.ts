@@ -121,6 +121,10 @@ describe("Assessment screens render the critical content", () => {
           datasetFingerprint: "f".repeat(64),
           idempotencyKey: "pds_test",
           recordedAt: null,
+          admissionPolicyState: "DRAFT" as const,
+          admissionPolicyHash: null,
+          admissionGovernanceRefusal:
+            "the policy is a draft and has not been activated by pilot governance",
           admission: {
             outcome: "NOT_ADMISSIBLE" as const,
             admissibleForPilotAssessment: false,
@@ -163,6 +167,8 @@ describe("Assessment screens render the critical content", () => {
     expect(html).toContain("not pilot-admissible"); // fitness status, shown separately
     expect(html).toContain("NH-AG-2001"); // the admission reason code
     expect(html).toContain("policy pol-demo@1.0.0"); // which bar was applied
+    expect(html).toContain("proposed — awaiting governance"); // lifecycle state is distinguishable
+    expect(html).toContain("has not been activated by pilot governance"); // why it did not judge
     expect(html).toContain("cannot continue into pilot assessment"); // progression is blocked
     expect(html).toMatch(/nothing was stored/i); // and nothing was persisted or repaired
     expect(html).toContain("Excluded rows remain visible"); // representativeness stays auditable

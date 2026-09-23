@@ -362,3 +362,85 @@ dataset judged under the old bar.
 No money, no Proof, no Case, no revenue claim, no authority record. Case Halt, the authority ledger,
 separation of duties and existing contract semantics are untouched — asserted by a test that scopes
 every governed table to the submission's own identifiers and requires zero rows.
+
+---
+
+# Pilot Admission Policy Governance v1
+
+The admission gate made the fitness bar explicit. It did not say **who is allowed to set it**.
+
+## The gap
+
+A customer-authorized actor could register a policy and have it judge their own dataset in the same
+breath. The customer is the beneficiary of a larger recovery number, and a bar you set for yourself
+is that number's first input — exactly what the trust invariant forbids.
+
+## Propose and activate are different acts
+
+| Role | Gains | Why |
+|---|---|---|
+| `author` / `operator` | `ProposePilotPolicy` | they know their data and their commercial reality; pretending otherwise moves the decision somewhere less informed |
+| `steward` | `ActivatePilotPolicy`, `RetirePilotPolicy` | already the governance role, already structurally unable to count |
+
+**No new role and no administrator bypass.** Two additions to the existing `GovernedAction` union and
+the `PERMISSIONS` matrix, nothing else.
+
+Two independent separations, both enforced:
+
+1. **Role** — no customer-side role holds `ActivatePilotPolicy`.
+2. **Identity** — the actor who proposed a policy may not activate it, even if a future permission
+   change let one person hold both roles. This mirrors the kernel's own owner ≠ approver rule. Belt
+   and braces, because the cost of being wrong is a beneficiary setting the bar that judges them.
+
+## Four states, four meanings
+
+| State | May judge? | Meaning |
+|---|---|---|
+| `DRAFT` | no | proposed; has no force |
+| `ACTIVE` | **yes** | activated by a steward; thresholds immutable from that moment |
+| `FROZEN` | no | a reversible governance pause — "stop using this bar while we look at it" |
+| `RETIRED` | no | permanently ended |
+
+Only `ACTIVE` evaluates. The other three each mean "not in force" for a *different* reason, and the
+UI shows them distinctly — whether the fix is to wait for approval, ask governance to resume, or
+propose a new version entirely.
+
+Status is **derived from an append-only event log**, never stored as an editable column — the same
+shape the authority ledger uses. A replayed `PROPOSED` cannot knock an activated policy back to
+draft, and an illegal transition written into the log is ignored rather than applied: the safe
+reading of a tampered log is the state its *legal* events produced.
+
+## Pre-registration: the bar must predate the data
+
+> **A policy may judge a dataset only if it was activated before that dataset was first seen.**
+
+Every submission records a first sighting (`boundary`, `dataset fingerprint`, `first seen at` — no
+row content, no identifiers, and the timestamp never moves). If a policy's activation is later than
+that sighting, it is refused for this dataset.
+
+This is what stops the obvious attack: read the verdict, propose and activate a laxer version,
+resubmit. Without it the whole gate would be ceremonial. `activatedAt` is the *most recent*
+activation, not the first — otherwise a freeze/unfreeze cycle could launder a policy into looking
+older than its current authority.
+
+## Deterministic hash
+
+`sha256:` over a canonical ordered serialization of identity and every threshold. Rates are rendered
+at fixed precision (0.2 and 0.20 are one bar) and required lifecycle states are sorted (order is not
+a requirement). Stamped into every decision alongside id and version.
+
+Why a hash and not just `id@version`: a decision stamped with a version is only as trustworthy as the
+guarantee that the version still means what it meant. The hash removes the need for that guarantee —
+if a row were ever altered, stored and recomputed hashes diverge and the tampering is visible rather
+than silent. **Retiring or superseding a policy can never alter a decision already made under it.**
+
+## Immutability
+
+`ACTIVE` thresholds cannot be edited: the policy table, the lifecycle log and the sighting table all
+reject UPDATE and DELETE by trigger. A change is a **new version** with its own proposal and its own
+activation — inheriting nothing from the version before it.
+
+## Creates nothing
+
+No Proof, no Case, no revenue record, no authority ledger entry. Tenant isolation, Case Halt and the
+existing admission, intake and contract semantics are untouched.

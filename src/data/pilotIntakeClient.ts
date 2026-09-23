@@ -10,6 +10,7 @@ import type { DevActor } from "./devActor";
 import { validatePilotDataset, type ContractValidationReport } from "../contract/validateDataset";
 import { PILOT_DATA_CONTRACT_VERSION, type DatasetProvenance } from "../contract/pilotDataContract";
 import { evaluateAdmission, type AdmissionDecision } from "../contract/admissionGate";
+import type { PolicyState } from "../contract/policyLifecycle";
 import type { PilotAdmissionPolicy } from "../contract/pilotAdmissionPolicy";
 import { makePolicy } from "../assessment/policy";
 import type { DateLocale } from "../assessment/dateNormalize";
@@ -55,6 +56,12 @@ export interface PilotIntakeResult {
   readonly recordedAt: string | null;
   /** EP-14 · pilot fitness — separate from, and never a substitute for, usableForAssessment. */
   readonly admission: AdmissionDecision;
+  /** EP-15 · lifecycle state of the policy consulted; null when none was named or found. */
+  readonly admissionPolicyState: PolicyState | null;
+  /** EP-15 · deterministic hash of the bar this decision was judged under. */
+  readonly admissionPolicyHash: string | null;
+  /** EP-15 · set when governance refused to let the named policy judge this dataset. */
+  readonly admissionGovernanceRefusal: string | null;
 }
 
 export interface PilotIntakeParams {

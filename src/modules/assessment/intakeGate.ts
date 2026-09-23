@@ -61,6 +61,11 @@ export function preflightAsResult(report: ContractValidationReport): PilotIntake
       makePolicy({ stallThresholdDays: 0, asOf: "1970-01-01", currency: "USD" }),
       null,
     ),
+    // EP-15 · A preflight knows nothing about policy governance: the browser cannot see which bar a
+    // steward has put in force, and guessing would show an approval nobody gave.
+    admissionPolicyState: null,
+    admissionPolicyHash: null,
+    admissionGovernanceRefusal: null,
   };
 }
 
