@@ -27,6 +27,15 @@ export interface PilotSubmissionInput {
   readonly warnedRows: number;
   /** Distinct NH-DC-#### codes only — asserted by the caller and by tests. */
   readonly findingCodes: readonly string[];
+  /**
+   * EP-15 · The exact bar this decision was judged under, frozen with the decision. Retiring or
+   * superseding the policy later can never reach back and alter these — which is what makes a
+   * historical verdict reproducible rather than merely remembered.
+   */
+  readonly admissionOutcome: string | null;
+  readonly admissionPolicyId: string | null;
+  readonly admissionPolicyVersion: string | null;
+  readonly admissionPolicyHash: string | null;
   readonly submittedByActorId: string;
   readonly submittedByRole: string;
 }
@@ -48,6 +57,10 @@ function toRecord(row: {
   rejectedRows: number;
   warnedRows: number;
   findingCodes: string[];
+  admissionOutcome: string | null;
+  admissionPolicyId: string | null;
+  admissionPolicyVersion: string | null;
+  admissionPolicyHash: string | null;
   submittedByActorId: string;
   submittedByRole: string;
   submittedAt: Date;
@@ -65,6 +78,10 @@ function toRecord(row: {
     rejectedRows: row.rejectedRows,
     warnedRows: row.warnedRows,
     findingCodes: Object.freeze([...row.findingCodes]),
+    admissionOutcome: row.admissionOutcome,
+    admissionPolicyId: row.admissionPolicyId,
+    admissionPolicyVersion: row.admissionPolicyVersion,
+    admissionPolicyHash: row.admissionPolicyHash,
     submittedByActorId: row.submittedByActorId,
     submittedByRole: row.submittedByRole,
     submittedAt: row.submittedAt.toISOString(),
@@ -105,6 +122,10 @@ export async function recordSubmission(
       rejectedRows: input.rejectedRows,
       warnedRows: input.warnedRows,
       findingCodes: [...input.findingCodes],
+      admissionOutcome: input.admissionOutcome,
+      admissionPolicyId: input.admissionPolicyId,
+      admissionPolicyVersion: input.admissionPolicyVersion,
+      admissionPolicyHash: input.admissionPolicyHash,
       submittedByActorId: input.submittedByActorId,
       submittedByRole: input.submittedByRole,
     },

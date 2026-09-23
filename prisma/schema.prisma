@@ -267,6 +267,12 @@ model PilotDatasetSubmissionRecord {
   warnedRows         Int      @map("warned_rows")
   /// Distinct NH-DC-#### codes only. Never the findings' detail text.
   findingCodes       String[] @map("finding_codes")
+  /// EP-15 · The exact bar this decision was judged under. Retiring or superseding the policy can
+  /// never alter these three values, so a historical verdict stays reproducible forever.
+  admissionOutcome   String?  @map("admission_outcome")
+  admissionPolicyId  String?  @map("admission_policy_id")
+  admissionPolicyVersion String? @map("admission_policy_version")
+  admissionPolicyHash String? @map("admission_policy_hash")
   submittedByActorId String   @map("submitted_by_actor_id")
   submittedByRole    String   @map("submitted_by_role")
   submittedAt        DateTime @default(now()) @map("submitted_at")
@@ -299,6 +305,9 @@ model PilotAdmissionPolicyRecord {
   maxOrderingDefectRate        Float    @map("max_ordering_defect_rate")
   maxMissingRecommendedColumns Int      @map("max_missing_recommended_columns")
   requireProvenanceDeclaration Boolean  @map("require_provenance_declaration")
+  /// EP-15 · Deterministic hash of the thresholds. Stamped into every decision, so a historical
+  /// verdict carries proof of the exact bar it was judged under even if this row were ever altered.
+  policyHash                   String   @map("policy_hash")
   registeredByActorId          String   @map("registered_by_actor_id")
   registeredByRole             String   @map("registered_by_role")
   registeredAt                 DateTime @default(now()) @map("registered_at")
@@ -306,4 +315,37 @@ model PilotAdmissionPolicyRecord {
   @@id([boundaryId, policyId, policyVersion], map: "pilot_admission_policies_pkey")
   @@index([boundaryId, policyId, registeredAt], map: "pilot_admission_policies_boundary_idx")
   @@map("pilot_admission_policies")
+}
+
+/// EP-15 · Append-only lifecycle log for an admission policy version.
+///
+/// Status is DERIVED from these events, never stored as an editable column — the same shape the
+/// authority ledger uses. A policy is proposed by the customer side and activated by pilot
+/// governance; neither may do the other's half, and no row here is ever updated or deleted.
+model PilotAdmissionPolicyEventRecord {
+  id            String   @id
+  boundaryId    String   @map("boundary_id")
+  policyId      String   @map("policy_id")
+  policyVersion String   @map("policy_version")
+  transition    String // PROPOSED | ACTIVATED | FROZEN | UNFROZEN | RETIRED
+  actorId       String   @map("actor_id")
+  actorRole     String   @map("actor_role")
+  /// Why. Required on every transition — a governance decision with no stated reason is not one.
+  rationale     String
+  at            DateTime @default(now())
+
+  @@index([boundaryId, policyId, policyVersion, at], map: "pilot_policy_events_identity_idx")
+}
+
+/// EP-15 · First sighting of a dataset within a boundary.
+///
+/// Exists for ONE rule: a policy may judge a dataset only if it was activated BEFORE that dataset
+/// was first seen. Without this, someone could read a verdict, activate a laxer policy version, and
+/// resubmit — tuning the bar to the result. Stores a fingerprint only: no row content, no identifiers.
+model PilotDatasetSightingRecord {
+  boundaryId         String   @map("boundary_id")
+  datasetFingerprint String   @map("dataset_fingerprint")
+  firstSeenAt        DateTime @default(now()) @map("first_seen_at")
+
+  @@id([boundaryId, datasetFingerprint], map: "pilot_dataset_sightings_pkey")
 }

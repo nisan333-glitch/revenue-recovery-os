@@ -20,6 +20,10 @@ import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy"
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
 const APPROVER = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
+// EP-15 · A policy is now PROPOSED by the customer side and ACTIVATED by governance. These tests
+// were written before that split and registered a policy that judged immediately; they now walk the
+// real two-actor path. The assertions about admission itself are unchanged — only the setup is.
+const STEWARD = { "x-actor-id": "gov@company", "x-actor-role": "steward" };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 /** A policy the clean synthetic dataset satisfies. Stated in full — nothing is defaulted. */
@@ -67,18 +71,34 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
   const submit = (payload: unknown, headers = OPERATOR) =>
     app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
 
+  /** Propose a policy. It is a DRAFT and judges nothing until governance activates it. */
   const register = (boundaryId: string, policy: Record<string, unknown>, headers = OPERATOR) =>
     app.inject({
       method: "POST",
       url: "/pilot/admission-policies",
       headers,
-      payload: { boundaryId, policy } as object,
+      payload: { boundaryId, policy, rationale: "agreed pilot fitness bar" } as object,
     });
+
+  /** Put a proposed policy in force. Governance only, and never the proposer. */
+  const activate = (boundaryId: string, policyId: string, headers = STEWARD, policyVersion = "1.0.0") =>
+    app.inject({
+      method: "POST",
+      url: "/pilot/admission-policies/activate",
+      headers,
+      payload: { boundaryId, policyId, policyVersion, rationale: "reviewed and approved" } as object,
+    });
+
+  /** The normal two-actor setup: the customer proposes, governance activates. */
+  const registerActive = async (boundaryId: string, policy: Record<string, unknown>) => {
+    expect((await register(boundaryId, policy)).statusCode).toBe(201);
+    expect((await activate(boundaryId, policy.policyId as string)).statusCode).toBe(200);
+    return policy;
+  };
 
   it("1 · a valid synthetic pilot with a satisfied policy is ADMISSIBLE", async () => {
     const boundaryId = `pilot-boundary-${uid()}`;
-    const policy = policyBody();
-    expect((await register(boundaryId, policy)).statusCode).toBe(201);
+    const policy = await registerActive(boundaryId, policyBody());
 
     const res = await submit(datasetBody({ boundaryId, admissionPolicyId: policy.policyId }));
     expect(res.statusCode).toBe(200);
@@ -95,8 +115,7 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
 
   it("2 · one valid row among many rejected is usable but NOT admissible", async () => {
     const boundaryId = `pilot-boundary-${uid()}`;
-    const policy = policyBody();
-    await register(boundaryId, policy);
+    const policy = await registerActive(boundaryId, policyBody());
 
     const csv = toCsv([...syntheticPilotRows(1), ...syntheticViolationCases().map((c) => c.row)]);
     const out = (await submit(datasetBody({ boundaryId, csvText: csv, admissionPolicyId: policy.policyId }))).json();
@@ -127,8 +146,7 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     // would also learn what A considers acceptable, which is commercially sensitive on its own.
     const tenantA = `pilot-boundary-a-${uid()}`;
     const tenantB = `pilot-boundary-b-${uid()}`;
-    const shared = policyBody({ minAcceptedRows: 1, minDistinctEntities: 1, minCoverageDays: 1 });
-    expect((await register(tenantA, shared)).statusCode).toBe(201);
+    const shared = await registerActive(tenantA, policyBody({ minAcceptedRows: 1, minDistinctEntities: 1, minCoverageDays: 1 }));
 
     const out = (await submit(datasetBody({ boundaryId: tenantB, admissionPolicyId: shared.policyId }))).json();
     expect(out.admission.outcome).toBe("NOT_ASSESSABLE");
@@ -150,13 +168,13 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     try {
       const own = await scoped.inject({
         method: "POST", url: "/pilot/admission-policies", headers: OPERATOR,
-        payload: { boundaryId: "tenant-own", policy: policyBody() } as object,
+        payload: { boundaryId: "tenant-own", policy: policyBody(), rationale: "r" } as object,
       });
       expect(own.statusCode).toBe(201);
 
       const other = await scoped.inject({
         method: "POST", url: "/pilot/admission-policies", headers: OPERATOR,
-        payload: { boundaryId: "tenant-other", policy: policyBody() } as object,
+        payload: { boundaryId: "tenant-other", policy: policyBody(), rationale: "r" } as object,
       });
       expect(other.statusCode).toBe(403);
       expect(await prisma.pilotAdmissionPolicyRecord.count({ where: { boundaryId: "tenant-other" } })).toBe(0);
@@ -176,8 +194,7 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
 
   it("8 · insufficient sample, coverage and duplicate rate each refuse with their own code", async () => {
     const boundaryId = `pilot-boundary-${uid()}`;
-    const strict = policyBody({ minAcceptedRows: 500, minCoverageDays: 3650, maxDuplicateRate: 0 });
-    await register(boundaryId, strict);
+    const strict = await registerActive(boundaryId, policyBody({ minAcceptedRows: 500, minCoverageDays: 3650, maxDuplicateRate: 0 }));
 
     const base = syntheticPilotRows(10);
     const out = (
@@ -215,8 +232,10 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
 
   it("10 · no rejected-row content leaks into the admission decision", async () => {
     const boundaryId = `pilot-boundary-${uid()}`;
-    const policy = policyBody({ minAcceptedRows: 1, minDistinctEntities: 1, minCoverageDays: 1, maxRejectionRate: 1 });
-    await register(boundaryId, policy);
+    const policy = await registerActive(
+      boundaryId,
+      policyBody({ minAcceptedRows: 1, minDistinctEntities: 1, minCoverageDays: 1, maxRejectionRate: 1 }),
+    );
 
     const secret = "leaked.person@customer.example";
     const rows = [...syntheticPilotRows(20), { ...syntheticPilotRows(1)[0]!, entity_id: secret, subscription_id: `sub-leak-${uid()}` }];
@@ -230,8 +249,7 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
 
   it("11 · the gate creates no Proof, Case, evidence or authority record", async () => {
     const boundaryId = `pilot-boundary-${uid()}`;
-    const policy = policyBody();
-    await register(boundaryId, policy);
+    const policy = await registerActive(boundaryId, policyBody());
     const payload = datasetBody({ boundaryId, admissionPolicyId: policy.policyId });
     const out = (await submit(payload)).json();
     expect(out.admission.outcome).toBe("ADMISSIBLE");
@@ -246,8 +264,7 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
 
   it("12 · a published policy version is immutable at the database level", async () => {
     const boundaryId = `pilot-boundary-${uid()}`;
-    const policy = policyBody();
-    await register(boundaryId, policy);
+    const policy = await registerActive(boundaryId, policyBody());
 
     // Re-registering the same version is refused: editing thresholds under a version a decision
     // already stamped would silently re-grade a dataset judged under the old bar.

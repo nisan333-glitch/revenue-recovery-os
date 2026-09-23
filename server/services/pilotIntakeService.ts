@@ -27,10 +27,23 @@ import { evaluateAdmission, type AdmissionDecision } from "../../src/contract/ad
 import { POLICY_CODES } from "../../src/contract/admissionCodes";
 import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
 import { findAdmissionPolicy, registerAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
+import { hashAdmissionPolicy } from "../../src/contract/policyHash";
+import {
+  canTransition,
+  mayEvaluate,
+  whyCannotEvaluate,
+  type PolicyState,
+  type PolicyTransition,
+} from "../../src/contract/policyLifecycle";
+import {
+  appendPolicyEvent,
+  policyGovernanceState,
+  recordDatasetSighting,
+} from "../persistence/pilotPolicyGovernanceStore";
 import { makePolicy } from "../../src/assessment/policy";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
-import { ConflictError, ForbiddenError } from "../http/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../http/errors";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
 import { findSubmission, recordSubmission } from "../persistence/pilotDatasetStore";
@@ -87,6 +100,12 @@ export interface PilotIntakeResponse {
   readonly claimBoundary: ContractValidationReport["claimBoundary"];
   /** Server-recorded submission time when the dataset was accepted and recorded; else null. */
   readonly recordedAt: string | null;
+  /** EP-15 · lifecycle state of the policy consulted, or null when none was named/found. */
+  readonly admissionPolicyState: PolicyState | null;
+  /** EP-15 · deterministic hash of the bar this decision was judged under. */
+  readonly admissionPolicyHash: string | null;
+  /** EP-15 · set when governance refused to let the named policy judge this dataset. */
+  readonly admissionGovernanceRefusal: string | null;
   /**
    * EP-14 · Pilot fitness — a THIRD verdict, additive and independent. `accepted` and
    * `usableForAssessment` keep their existing meanings exactly; this one answers whether the
@@ -102,6 +121,11 @@ function toResponse(
   report: ContractValidationReport,
   recordedAt: string | null,
   admission: AdmissionDecision,
+  governance: {
+    readonly state: PolicyState | null;
+    readonly hash: string | null;
+    readonly refusal: string | null;
+  } = { state: null, hash: null, refusal: null },
 ): PilotIntakeResponse {
   return Object.freeze({
     contractRef: report.contractRef,
@@ -120,6 +144,9 @@ function toResponse(
     mappingId: report.mappingId,
     claimBoundary: report.claimBoundary,
     recordedAt,
+    admissionPolicyState: governance.state,
+    admissionPolicyHash: governance.hash,
+    admissionGovernanceRefusal: governance.refusal,
     admission,
   });
 }
@@ -184,15 +211,43 @@ export async function submitPilotDataset(
   // EP-14 · Pilot fitness. The policy is loaded BOUNDARY-SCOPED, so a policy id belonging to
   // another tenant reads as absent and yields NOT_ASSESSABLE rather than judging this dataset by
   // someone else's bar. No policy named, or none found: NOT_ASSESSABLE. Never a default.
+  //
+  // EP-15 · PRE-REGISTRATION. Record that this boundary has seen this dataset BEFORE resolving the
+  // policy. The first sighting is what the ordering rule compares against, and recording it first
+  // means the act of looking at a dataset is itself on the record.
+  const firstSeenAt = await recordDatasetSighting(boundaryId, report.datasetFingerprint);
+
   let admissionPolicy: PilotAdmissionPolicy | null = null;
+  let policyHash: string | null = null;
+  let policyState: PolicyState | null = null;
+  let governanceRefusal: string | null = null;
+
   if (request.admissionPolicyId?.trim()) {
     const stored = await findAdmissionPolicy(
       boundaryId,
       request.admissionPolicyId.trim(),
       request.admissionPolicyVersion?.trim() || undefined,
     );
-    admissionPolicy = stored?.policy ?? null;
+    if (stored) {
+      const governance = await policyGovernanceState(boundaryId, stored.policy.policyId, stored.policy.policyVersion);
+      policyState = governance.state;
+      if (!mayEvaluate(governance.state)) {
+        // DRAFT, FROZEN, RETIRED and "no lifecycle at all" all land here. A policy that governance
+        // has not put in force does not judge anything, and no state falls through to "allowed".
+        governanceRefusal = whyCannotEvaluate(governance.state);
+      } else if (governance.activatedAt !== null && governance.activatedAt > firstSeenAt) {
+        // THE ANTI-TUNING RULE. The bar must predate the data it judges. Activating a policy after
+        // seeing a dataset — then resubmitting — is how a threshold gets fitted to a result that is
+        // already known, which would make the whole gate ceremonial.
+        governanceRefusal =
+          "the policy was activated after this dataset was first submitted; a bar may not be set once the result is known";
+      } else {
+        admissionPolicy = stored.policy;
+        policyHash = stored.policyHash;
+      }
+    }
   }
+
   const admission = evaluateAdmission(report, policy, admissionPolicy);
 
   // Duplicate detection runs against the AUTHORIZED boundary, so a key minted for another tenant
@@ -208,8 +263,9 @@ export async function submitPilotDataset(
   // Persist ONLY a usable dataset. An invalid dataset, or one whose every row was rejected, leaves
   // no row behind: the uploader gets the findings and the database gets nothing. That also keeps a
   // corrected re-upload a genuinely new submission rather than a "duplicate" of a failure.
+  const governance = { state: policyState, hash: policyHash, refusal: governanceRefusal };
   if (!report.usableForAssessment) {
-    return toResponse(report, null, admission);
+    return toResponse(report, null, admission, governance);
   }
 
   const recorded = await recordSubmission({
@@ -225,16 +281,24 @@ export async function submitPilotDataset(
     rejectedRows: report.counts.rejectedRows,
     warnedRows: report.counts.warnedRows,
     findingCodes: distinctCodes(report),
+    // EP-15 · the exact bar this decision was judged under, frozen with the decision. Retiring or
+    // superseding the policy later can never reach back and change these.
+    admissionOutcome: admission.outcome,
+    admissionPolicyId: admission.policyId,
+    admissionPolicyVersion: admission.policyVersion,
+    admissionPolicyHash: policyHash,
     submittedByActorId: actor.actorId,
     submittedByRole: actor.role,
   });
 
-  return toResponse(report, recorded.submittedAt, admission);
+  return toResponse(report, recorded.submittedAt, admission, governance);
 }
 
 export interface RegisterAdmissionPolicyRequest {
   readonly boundaryId: string;
   readonly policy: PilotAdmissionPolicy;
+  /** Why this bar. Required — a threshold with no stated reasoning cannot be reviewed. */
+  readonly rationale: string;
 }
 
 /**
@@ -248,8 +312,17 @@ export interface RegisterAdmissionPolicyRequest {
 export async function registerPilotAdmissionPolicy(
   actor: ActorContext,
   request: RegisterAdmissionPolicyRequest,
-): Promise<{ readonly boundaryId: string; readonly policyRef: string; readonly registeredAt: string }> {
-  requireCan(actor, "SubmitPilotDataset");
+): Promise<{
+  readonly boundaryId: string;
+  readonly policyRef: string;
+  readonly policyHash: string;
+  readonly state: PolicyState;
+  readonly registeredAt: string;
+}> {
+  // EP-15 · Proposing is the CUSTOMER side: they know their data and their commercial reality, and
+  // pretending otherwise would move the decision somewhere less informed. What they cannot do is
+  // put it in force — that is `ActivatePilotPolicy`, which no customer-side role holds.
+  requireCan(actor, "ProposePilotPolicy");
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
@@ -262,15 +335,122 @@ export async function registerPilotAdmissionPolicy(
     throw new ForbiddenError("admission policy is incomplete or out of range — every threshold must be configured explicitly");
   }
 
+  const policyHash = await hashAdmissionPolicy(policy);
   const stored = await registerAdmissionPolicy({
     boundaryId,
     policy,
+    policyHash,
     registeredByActorId: actor.actorId,
     registeredByRole: actor.role,
+  });
+  await appendPolicyEvent({
+    boundaryId,
+    policyId: policy.policyId,
+    policyVersion: policy.policyVersion,
+    transition: "PROPOSED",
+    actorId: actor.actorId,
+    actorRole: actor.role,
+    rationale: request.rationale,
   });
   return Object.freeze({
     boundaryId: stored.boundaryId,
     policyRef: `${stored.policy.policyId}@${stored.policy.policyVersion}`,
+    policyHash: stored.policyHash,
+    state: "DRAFT" as PolicyState,
     registeredAt: stored.registeredAt,
+  });
+}
+
+export interface PolicyTransitionRequest {
+  readonly boundaryId: string;
+  readonly policyId: string;
+  readonly policyVersion: string;
+  readonly rationale: string;
+}
+
+/**
+ * Move a policy through its lifecycle. Governance only.
+ *
+ * TWO INDEPENDENT SEPARATIONS, both enforced:
+ *   1. ROLE — `ActivatePilotPolicy` is held by the steward alone. No customer-side role has it, and
+ *      there is no administrator role that bypasses this.
+ *   2. IDENTITY — the actor who proposed a policy may not be the one who activates it, even if some
+ *      future permission change let one person hold both roles. This mirrors the kernel's own
+ *      owner ≠ approver rule; belt and braces, because the cost of being wrong here is that a
+ *      beneficiary sets the bar that judges them.
+ */
+export async function transitionPilotAdmissionPolicy(
+  actor: ActorContext,
+  transition: PolicyTransition,
+  request: PolicyTransitionRequest,
+): Promise<{
+  readonly boundaryId: string;
+  readonly policyRef: string;
+  readonly state: PolicyState;
+  readonly transition: PolicyTransition;
+}> {
+  requireCan(actor, transition === "RETIRED" ? "RetirePilotPolicy" : "ActivatePilotPolicy");
+  requireBoundaryAccess(actor, request.boundaryId);
+  const boundaryId = request.boundaryId.trim();
+
+  // Boundary-scoped: a policy from another tenant reads as absent, never as theirs to govern.
+  const stored = await findAdmissionPolicy(boundaryId, request.policyId, request.policyVersion);
+  if (!stored) {
+    throw new NotFoundError("no such admission policy version exists for this boundary");
+  }
+
+  const governance = await policyGovernanceState(boundaryId, request.policyId, request.policyVersion);
+  if (governance.proposedBy !== null && governance.proposedBy === actor.actorId) {
+    throw new ForbiddenError(
+      "separation of duties: the actor who proposed an admission policy cannot be the one who puts it in force",
+    );
+  }
+  if (!canTransition(governance.state, transition)) {
+    throw new ConflictError(
+      `admission policy cannot move from ${governance.state ?? "no state"} via ${transition}`,
+    );
+  }
+
+  await appendPolicyEvent({
+    boundaryId,
+    policyId: request.policyId,
+    policyVersion: request.policyVersion,
+    transition,
+    actorId: actor.actorId,
+    actorRole: actor.role,
+    rationale: request.rationale,
+  });
+
+  const after = await policyGovernanceState(boundaryId, request.policyId, request.policyVersion);
+  return Object.freeze({
+    boundaryId,
+    policyRef: `${request.policyId}@${request.policyVersion}`,
+    state: after.state as PolicyState,
+    transition,
+  });
+}
+
+/** Governed read of a policy's full lifecycle — who proposed, who activated, when and why. */
+export async function readPilotAdmissionPolicyGovernance(
+  actor: ActorContext,
+  boundaryId: string,
+  policyId: string,
+  policyVersion: string,
+) {
+  requireCan(actor, "AuditRead");
+  requireBoundaryAccess(actor, boundaryId);
+  const stored = await findAdmissionPolicy(boundaryId.trim(), policyId, policyVersion);
+  if (!stored) throw new NotFoundError("no such admission policy version exists for this boundary");
+  const governance = await policyGovernanceState(boundaryId.trim(), policyId, policyVersion);
+  return Object.freeze({
+    boundaryId: stored.boundaryId,
+    policyRef: `${policyId}@${policyVersion}`,
+    policyHash: stored.policyHash,
+    state: governance.state,
+    proposedBy: governance.proposedBy,
+    proposedAt: governance.proposedAt,
+    activatedBy: governance.activatedBy,
+    activatedAt: governance.activatedAt,
+    events: governance.events,
   });
 }

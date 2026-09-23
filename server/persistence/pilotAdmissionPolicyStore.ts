@@ -15,6 +15,8 @@ import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contra
 export interface StoredAdmissionPolicy {
   readonly boundaryId: string;
   readonly policy: PilotAdmissionPolicy;
+  /** EP-15 · deterministic hash of the thresholds, stamped into every decision. */
+  readonly policyHash: string;
   readonly registeredByActorId: string;
   readonly registeredByRole: string;
   readonly registeredAt: string;
@@ -25,6 +27,7 @@ type Row = Awaited<ReturnType<typeof prisma.pilotAdmissionPolicyRecord.findFirst
 function toStored(row: Row): StoredAdmissionPolicy {
   return Object.freeze({
     boundaryId: row.boundaryId,
+    policyHash: row.policyHash,
     // Rebuilt through the domain constructor, which re-validates. A row that somehow held an
     // impossible threshold fails loudly here rather than quietly judging a dataset.
     policy: makeAdmissionPolicy({
@@ -69,6 +72,8 @@ export async function findAdmissionPolicy(
 export interface RegisterAdmissionPolicyInput {
   readonly boundaryId: string;
   readonly policy: PilotAdmissionPolicy;
+  /** Computed by the caller from the domain hasher — never derived inside the store. */
+  readonly policyHash: string;
   readonly registeredByActorId: string;
   readonly registeredByRole: string;
 }
@@ -95,6 +100,7 @@ export async function registerAdmissionPolicy(
       maxOrderingDefectRate: p.maxOrderingDefectRate,
       maxMissingRecommendedColumns: p.maxMissingRecommendedColumns,
       requireProvenanceDeclaration: p.requireProvenanceDeclaration,
+      policyHash: input.policyHash,
       registeredByActorId: input.registeredByActorId,
       registeredByRole: input.registeredByRole,
     },

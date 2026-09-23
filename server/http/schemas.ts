@@ -275,9 +275,12 @@ export const admissionPolicySchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["boundaryId", "policy"],
+    required: ["boundaryId", "policy", "rationale"],
     properties: {
       boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      // Required, not optional: a threshold with no stated reasoning cannot be reviewed, and
+      // governance is asked to put it in force on the strength of that reasoning.
+      rationale: { type: "string", minLength: 1, maxLength: 2000 },
       policy: {
         type: "object",
         additionalProperties: false,
@@ -316,6 +319,35 @@ export const admissionPolicySchema = {
           requireProvenanceDeclaration: { type: "boolean" },
         },
       },
+    },
+  },
+} as const;
+
+/** EP-15 · Move an admission policy version through its lifecycle. Governance only. */
+export const policyTransitionSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "policyId", "policyVersion", "rationale"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      policyId: { type: "string", minLength: 1, maxLength: 256 },
+      policyVersion: { type: "string", minLength: 1, maxLength: 32 },
+      rationale: { type: "string", minLength: 1, maxLength: 2000 },
+    },
+  },
+} as const;
+
+/** EP-15 · Governed read of a policy's lifecycle. */
+export const policyGovernanceQuerySchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "policyId", "policyVersion"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      policyId: { type: "string", minLength: 1, maxLength: 256 },
+      policyVersion: { type: "string", minLength: 1, maxLength: 32 },
     },
   },
 } as const;

@@ -77,8 +77,8 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
 
   it("2 · an invalid schema (missing required column) is rejected before any persistence", async () => {
     const csv = "entity_id,signed_at,next_invoice_due_at\nsynthetic-account-0001,2026-01-05,2026-02-04\n";
-    const before = await prisma.pilotDatasetSubmissionRecord.count();
-    const res = await post(body({ csvText: csv }));
+    const payload = body({ csvText: csv });
+    const res = await post(payload);
 
     expect(res.statusCode).toBe(200);
     const out = res.json();
@@ -87,20 +87,20 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     expect(out.datasetFindings.map((f: { code: string }) => f.code)).toContain("NH-DC-1002");
     expect(out.recordedAt).toBeNull();
     // Nothing reached the database — rejection happens before persistence, not after.
-    expect(await prisma.pilotDatasetSubmissionRecord.count()).toBe(before);
+    expect(await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } })).toBe(0);
   });
 
   it("3 · an undeclared column rejects the dataset and persists nothing", async () => {
     const csv =
       "entity_id,signed_at,next_invoice_due_at,next_invoice_amount,currency,internal_notes\n" +
       "synthetic-account-0001,2026-01-05,2026-02-04,1000.00,USD,free text\n";
-    const before = await prisma.pilotDatasetSubmissionRecord.count();
-    const res = await post(body({ csvText: csv }));
+    const payload = body({ csvText: csv });
+    const res = await post(payload);
 
     const out = res.json();
     expect(out.datasetFindings.map((f: { code: string }) => f.code)).toContain("NH-DC-1005");
     expect(out.usableForAssessment).toBe(false);
-    expect(await prisma.pilotDatasetSubmissionRecord.count()).toBe(before);
+    expect(await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } })).toBe(0);
   });
 
   it("4 · a timestamp with no UTC offset is rejected on its row, never assumed", async () => {
@@ -143,15 +143,15 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
   });
 
   it("6 · zero usable rows is reported, not persisted, and never marked usable", async () => {
-    const before = await prisma.pilotDatasetSubmissionRecord.count();
-    const res = await post(body({ csvText: syntheticViolationCsv() }));
+    const payload = body({ csvText: syntheticViolationCsv() });
+    const res = await post(payload);
     const out = res.json();
 
     expect(out.accepted).toBe(true); // the FILE is structurally legal …
     expect(out.counts.acceptedRows).toBe(0);
     expect(out.usableForAssessment).toBe(false); // … but there is nothing to assess
     expect(out.recordedAt).toBeNull();
-    expect(await prisma.pilotDatasetSubmissionRecord.count()).toBe(before);
+    expect(await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } })).toBe(0);
   });
 
   it("7 · a cross-tenant read attempt cannot see another tenant's submission", async () => {
@@ -223,14 +223,17 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     const csv = header + row.repeat(Math.ceil((INTAKE_LIMITS.maxBytes + 1024) / row.length));
     expect(csv.length).toBeGreaterThan(INTAKE_LIMITS.maxBytes);
 
-    const before = await prisma.pilotDatasetSubmissionRecord.count();
-    const out = (await post(body({ csvText: csv }))).json();
+    // Scoped to THIS submission's boundary, not a global count: the suites run in parallel against
+    // one database, so a global before/after count measures other suites' writes and fails for
+    // reasons unrelated to this endpoint.
+    const payload = body({ csvText: csv });
+    const out = (await post(payload)).json();
 
     expect(out.datasetFindings.map((f: { code: string }) => f.code)).toContain("NH-DC-1011");
     expect(out.usableForAssessment).toBe(false);
     // Refused whole: no partial row count is reported and nothing is stored.
     expect(out.counts.acceptedRows).toBe(0);
-    expect(await prisma.pilotDatasetSubmissionRecord.count()).toBe(before);
+    expect(await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } })).toBe(0);
   });
 
   it("9b · a body beyond the TRANSPORT limit fails deterministically, not as a generic 500", async () => {

@@ -14,7 +14,11 @@ import type {
 } from "./services/proofService";
 import * as auditService from "./audit/auditService";
 import * as pilotIntakeService from "./services/pilotIntakeService";
-import type { PilotDatasetRequest, RegisterAdmissionPolicyRequest } from "./services/pilotIntakeService";
+import type {
+  PilotDatasetRequest,
+  RegisterAdmissionPolicyRequest,
+  PolicyTransitionRequest,
+} from "./services/pilotIntakeService";
 import { INTAKE_LIMITS } from "../src/contract/pilotDataContract";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
@@ -32,6 +36,8 @@ import {
   candidatePromotionSchema,
   pilotDatasetSchema,
   admissionPolicySchema,
+  policyTransitionSchema,
+  policyGovernanceQuerySchema,
 } from "./http/schemas";
 import type { AgentWorkerReadiness } from "./agents/worker";
 import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
@@ -172,6 +178,45 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     async (req, reply) => {
       const actor = await resolveActor(req, options.identityResolver);
       return reply.code(201).send(await pilotIntakeService.registerPilotAdmissionPolicy(actor, req.body));
+    },
+  );
+
+  // EP-15 · Policy lifecycle. Proposing is the customer side; activating, freezing, resuming and
+  // retiring are governance. The split is the point: a bar you set for yourself is the first input
+  // to the number you benefit from.
+  const transitions = [
+    ["activate", "ACTIVATED"],
+    ["freeze", "FROZEN"],
+    ["unfreeze", "UNFROZEN"],
+    ["retire", "RETIRED"],
+  ] as const;
+  for (const [path, transition] of transitions) {
+    app.post<{ Body: PolicyTransitionRequest }>(
+      `/pilot/admission-policies/${path}`,
+      { schema: policyTransitionSchema },
+      async (req, reply) => {
+        const actor = await resolveActor(req, options.identityResolver);
+        return reply
+          .code(200)
+          .send(await pilotIntakeService.transitionPilotAdmissionPolicy(actor, transition, req.body));
+      },
+    );
+  }
+
+  // Governed read: who proposed a bar, who put it in force, when and why.
+  app.get<{ Querystring: { boundaryId: string; policyId: string; policyVersion: string } }>(
+    "/pilot/admission-policies/governance",
+    { schema: policyGovernanceQuerySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(
+        await pilotIntakeService.readPilotAdmissionPolicyGovernance(
+          actor,
+          req.query.boundaryId,
+          req.query.policyId,
+          req.query.policyVersion,
+        ),
+      );
     },
   );
 
