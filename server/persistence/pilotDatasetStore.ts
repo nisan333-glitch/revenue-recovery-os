@@ -36,6 +36,12 @@ export interface PilotSubmissionInput {
   readonly admissionPolicyId: string | null;
   readonly admissionPolicyVersion: string | null;
   readonly admissionPolicyHash: string | null;
+  /**
+   * EP-16 · Deterministic identifier for this decision, derived from the fields above. An execution
+   * binds to it, so it is what makes "this run was authorised by that decision" checkable rather
+   * than merely asserted. Null on a submission recorded before orchestration existed.
+   */
+  readonly admissionDecisionId: string | null;
   readonly submittedByActorId: string;
   readonly submittedByRole: string;
 }
@@ -61,6 +67,7 @@ function toRecord(row: {
   admissionPolicyId: string | null;
   admissionPolicyVersion: string | null;
   admissionPolicyHash: string | null;
+  admissionDecisionId: string | null;
   submittedByActorId: string;
   submittedByRole: string;
   submittedAt: Date;
@@ -82,6 +89,7 @@ function toRecord(row: {
     admissionPolicyId: row.admissionPolicyId,
     admissionPolicyVersion: row.admissionPolicyVersion,
     admissionPolicyHash: row.admissionPolicyHash,
+    admissionDecisionId: row.admissionDecisionId,
     submittedByActorId: row.submittedByActorId,
     submittedByRole: row.submittedByRole,
     submittedAt: row.submittedAt.toISOString(),
@@ -99,6 +107,23 @@ export async function findSubmission(
 ): Promise<PilotSubmissionRecord | null> {
   const row = await client.pilotDatasetSubmissionRecord.findFirst({
     where: { idempotencyKey, boundaryId },
+  });
+  return row ? toRecord(row) : null;
+}
+
+/**
+ * EP-16 · Look up the admission decision an execution is bound to.
+ *
+ * Boundary-scoped like every other read here. A decision id minted for another tenant reads as
+ * absent, so an execution cannot borrow another tenant's admission to authorise itself.
+ */
+export async function findSubmissionByDecisionId(
+  admissionDecisionId: string,
+  boundaryId: string,
+  client: DbClient = prisma,
+): Promise<PilotSubmissionRecord | null> {
+  const row = await client.pilotDatasetSubmissionRecord.findFirst({
+    where: { admissionDecisionId, boundaryId },
   });
   return row ? toRecord(row) : null;
 }
@@ -126,6 +151,7 @@ export async function recordSubmission(
       admissionPolicyId: input.admissionPolicyId,
       admissionPolicyVersion: input.admissionPolicyVersion,
       admissionPolicyHash: input.admissionPolicyHash,
+      admissionDecisionId: input.admissionDecisionId,
       submittedByActorId: input.submittedByActorId,
       submittedByRole: input.submittedByRole,
     },

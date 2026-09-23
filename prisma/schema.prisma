@@ -273,11 +273,16 @@ model PilotDatasetSubmissionRecord {
   admissionPolicyId  String?  @map("admission_policy_id")
   admissionPolicyVersion String? @map("admission_policy_version")
   admissionPolicyHash String? @map("admission_policy_hash")
+  /// EP-16 · Deterministic identifier for this decision, derived from the fields above. Nullable and
+  /// never backfilled: a submission recorded before orchestration existed was never bound to an
+  /// execution, and minting an identifier now would assert a binding that never happened.
+  admissionDecisionId String? @map("admission_decision_id")
   submittedByActorId String   @map("submitted_by_actor_id")
   submittedByRole    String   @map("submitted_by_role")
   submittedAt        DateTime @default(now()) @map("submitted_at")
 
   @@index([boundaryId, submittedAt], map: "pilot_dataset_submissions_boundary_idx")
+  @@index([boundaryId, admissionDecisionId], map: "pilot_dataset_submissions_decision_idx")
   @@map("pilot_dataset_submissions")
 }
 
@@ -348,4 +353,93 @@ model PilotDatasetSightingRecord {
   firstSeenAt        DateTime @default(now()) @map("first_seen_at")
 
   @@id([boundaryId, datasetFingerprint], map: "pilot_dataset_sightings_pkey")
+}
+
+/// EP-16 · One governed assessment execution over an admitted dataset.
+///
+/// The primary key is the DETERMINISTIC execution id — sha256 over the whole binding — so the same
+/// binding cannot be scheduled twice and a changed bar cannot silently re-grade an existing run.
+/// Append-only: DB triggers reject UPDATE and DELETE. There is no status column; the five states the
+/// UI shows are derived from the append-only event log.
+model PilotAssessmentExecutionRecord {
+  executionId              String   @id(map: "pilot_assessment_executions_pkey") @map("execution_id")
+  boundaryId               String   @map("boundary_id")
+  datasetFingerprint       String   @map("dataset_fingerprint")
+  admissionDecisionId      String   @map("admission_decision_id")
+  admissionPolicyId        String   @map("admission_policy_id")
+  admissionPolicyVersion   String   @map("admission_policy_version")
+  admissionPolicyHash      String   @map("admission_policy_hash")
+  contractVersion          String   @map("contract_version")
+  assessmentPolicyId       String   @map("assessment_policy_id")
+  assessmentPolicyVersion  String   @map("assessment_policy_version")
+  calculationMethodVersion String   @map("calculation_method_version")
+  asOf                     String   @map("as_of")
+  stallThresholdDays       Int      @map("stall_threshold_days")
+  currency                 String
+  mappingId                String   @map("mapping_id")
+  amountFormat             String   @map("amount_format")
+  dateLocale               String   @map("date_locale")
+  /// Optional link to a governed recovery case. When set, that case's Halt blocks this execution.
+  recoveryCaseId           String?  @map("recovery_case_id")
+  bindingHash              String   @map("binding_hash")
+  inputHash                String   @map("input_hash")
+  scheduledByActorId       String   @map("scheduled_by_actor_id")
+  scheduledByRole          String   @map("scheduled_by_role")
+  scheduledAt              DateTime @default(now()) @map("scheduled_at")
+
+  @@unique([executionId, boundaryId], map: "pilot_assessment_executions_identity_boundary_unique")
+  @@index([boundaryId, scheduledAt], map: "pilot_assessment_executions_boundary_idx")
+  @@map("pilot_assessment_executions")
+}
+
+/// EP-16 · The de-identified input one execution runs on.
+///
+/// The only place accepted-row-derived values are persisted, and the reason an execution is
+/// reproducible rather than merely remembered. Identifiers arrive already replaced by
+/// first-appearance ordinals; free-text customer fields never reach this table; and a rejected row
+/// has no representation here at all.
+model PilotAssessmentExecutionInputRecord {
+  executionId String   @id(map: "pilot_assessment_execution_inputs_pkey") @map("execution_id")
+  boundaryId  String   @map("boundary_id")
+  cycles      Json
+  cycleCount  Int      @map("cycle_count")
+  inputHash   String   @map("input_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([executionId, boundaryId], map: "pilot_assessment_inputs_identity_boundary_unique")
+  @@map("pilot_assessment_execution_inputs")
+}
+
+/// EP-16 · Append-only lifecycle log for one execution. State is DERIVED from these rows.
+model PilotAssessmentExecutionEventRecord {
+  id          String   @id(map: "pilot_assessment_execution_events_pkey")
+  executionId String   @map("execution_id")
+  boundaryId  String   @map("boundary_id")
+  transition  String // SCHEDULED | CLAIMED | RELEASED | BLOCKED | COMPLETED | FAILED
+  /// The NH-AX-#### code, when the transition carries one. Null for ordinary progress.
+  code        String?
+  byId        String   @map("by_id")
+  detail      String
+  at          DateTime @default(now())
+
+  @@index([boundaryId, executionId, at], map: "pilot_assessment_events_identity_idx")
+  @@map("pilot_assessment_execution_events")
+}
+
+/// EP-16 · What an execution produced. An OBSERVATION — never a proof, never revenue, never a case.
+///
+/// Keyed by the execution id, so a retry after a committed finding conflicts rather than writing a
+/// second answer. The content is deterministic given the binding and the input, so the conflict is
+/// either a provable no-op (same hash) or a tamper signal (different hash).
+model PilotAssessmentFindingRecord {
+  executionId  String   @id(map: "pilot_assessment_findings_pkey") @map("execution_id")
+  boundaryId   String   @map("boundary_id")
+  assessmentId String   @map("assessment_id")
+  finding      Json
+  findingHash  String   @map("finding_hash")
+  producedBy   String   @map("produced_by")
+  recordedAt   DateTime @default(now()) @map("recorded_at")
+
+  @@unique([executionId, boundaryId], map: "pilot_assessment_findings_identity_boundary_unique")
+  @@map("pilot_assessment_findings")
 }

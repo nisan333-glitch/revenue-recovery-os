@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { assertCandidateSignal } from "./admission";
 import type { AgentHandler, CandidateSignal } from "./types";
+import { createPilotAssessmentAgent } from "./pilotAssessmentAgent";
 
 export const ACTIVATION_AGENT_ID = "activation-deadline-v1";
 const fields = ["sourceRef", "signedAt", "activationDueAt", "activatedAt", "observedAt", "amountAtRiskMinor", "currency", "actionAvailable"];
@@ -42,9 +43,29 @@ export function activationDetector(now: () => number = Date.now): AgentHandler {
   };
 }
 
+/**
+ * The production handler registry. Every agent is OPT-IN by an explicit `true`; an unset flag means
+ * off and any other value is a configuration error rather than a silent default — a detector that
+ * turned itself on because a variable was misspelled would be the wrong kind of surprise.
+ *
+ * EP-16 · The pilot assessment agent lives here too. It is observation-only and emits no
+ * CandidateSignal, so enabling it adds no path into case creation; what it adds is the ability for a
+ * worker to pick up an execution that the governed schedule endpoint has already authorised.
+ */
 export function configuredAgentHandlers(env: Readonly<Record<string, string | undefined>>): readonly AgentHandler[] {
-  const enabled = env.NH_ACTIVATION_DETECTOR_ENABLED;
+  return [
+    ...optIn(env, "NH_ACTIVATION_DETECTOR_ENABLED", () => activationDetector()),
+    ...optIn(env, "NH_PILOT_ASSESSMENT_AGENT_ENABLED", () => createPilotAssessmentAgent()),
+  ];
+}
+
+function optIn(
+  env: Readonly<Record<string, string | undefined>>,
+  variable: string,
+  make: () => AgentHandler,
+): readonly AgentHandler[] {
+  const enabled = env[variable];
   if (enabled === undefined || enabled === "false") return [];
-  if (enabled !== "true") throw new Error("NH_ACTIVATION_DETECTOR_ENABLED must be true or false");
-  return [activationDetector()];
+  if (enabled !== "true") throw new Error(`${variable} must be true or false`);
+  return [make()];
 }
