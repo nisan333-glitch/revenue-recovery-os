@@ -38,6 +38,16 @@ export interface UploadScreenProps {
   validation: PilotIntakeResult | null;
   validationPreliminary: boolean;
   validating: boolean;
+  /**
+   * EP-19 · Which activated admission policy this dataset is judged against. Naming one is NOT
+   * optional-with-a-default: leaving it blank makes the server return NOT_ASSESSABLE and the upload is
+   * blocked. The bar itself is proposed and activated on the Pilot Policy Governance screen, by two
+   * different identities — nothing here can set or change a threshold.
+   */
+  admissionPolicyId: string;
+  setAdmissionPolicyId: (v: string) => void;
+  admissionPolicyVersion: string;
+  setAdmissionPolicyVersion: (v: string) => void;
 }
 
 export function UploadScreen(props: UploadScreenProps) {
@@ -75,7 +85,31 @@ export function UploadScreen(props: UploadScreenProps) {
       </Panel>
 
       <Panel className="mb-4 p-5">
-        <div className="mb-3 text-sm font-semibold text-slate-200">1 · Assessment policy</div>
+        <div className="mb-1 text-sm font-semibold text-slate-200">1 · Pilot admission policy</div>
+        <p className="mb-3 text-[12px] text-slate-500">
+          The versioned fitness bar this dataset will be judged against. It must already be{" "}
+          <span className="text-slate-300">ACTIVE</span> — proposed by the pilot team and activated by
+          pilot governance on the <span className="text-slate-300">Pilot Policy Governance</span> screen.
+          Leaving this blank does not skip the check: the server answers{" "}
+          <span className="text-slate-300">NOT_ASSESSABLE</span> and the upload is refused, because there
+          is no configuration in which a dataset is admitted without an explicit bar.
+        </p>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Admission policy id</span>
+            <input className="num-input w-full" value={props.admissionPolicyId}
+              onChange={(e) => props.setAdmissionPolicyId(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Admission policy version</span>
+            <input className="num-input w-full" value={props.admissionPolicyVersion}
+              onChange={(e) => props.setAdmissionPolicyVersion(e.target.value)} />
+          </label>
+        </div>
+      </Panel>
+
+      <Panel className="mb-4 p-5">
+        <div className="mb-3 text-sm font-semibold text-slate-200">2 · Assessment policy</div>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Stall threshold N (days)</span>

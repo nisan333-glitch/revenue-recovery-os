@@ -76,6 +76,10 @@ describe("Assessment screens render the critical content", () => {
       assertedIndependentOfBeneficiary: false,
     },
     setProvenance: noop, validationPreliminary: false, validating: false,
+    // EP-19 · Naming an activated admission policy is required, not optional: the server answers
+    // NOT_ASSESSABLE without one and the upload is refused.
+    admissionPolicyId: "pol-0001", setAdmissionPolicyId: noop,
+    admissionPolicyVersion: "1.0.0", setAdmissionPolicyVersion: noop,
   };
 
   it("Upload states the server-authoritative promise and surfaces a validation error", () => {

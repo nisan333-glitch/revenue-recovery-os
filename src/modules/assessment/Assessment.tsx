@@ -16,6 +16,13 @@ import type { DatasetProvenance } from "../../contract/pilotDataContract";
 import type { PilotIntakeResult } from "../../data/pilotIntakeClient";
 import { gateUpload } from "./intakeGate";
 import { operatorActorFor } from "../../data/devActor";
+import {
+  readPilotAssessment,
+  schedulePilotAssessment,
+  type AssessmentExecutionView,
+} from "../../data/pilotAssessmentClient";
+import { pollUntilSettled, timeoutMessage } from "./executionPolling";
+import { AssessmentExecutionPanel } from "./AssessmentExecutionPanel";
 
 /**
  * Empty, not pre-filled. Provenance is a customer ASSERTION about where the data came from; a
@@ -32,7 +39,9 @@ const EMPTY_PROVENANCE: DatasetProvenance = {
   assertedIndependentOfBeneficiary: false,
 };
 
-type Step = "upload" | "mapping" | "quality" | "readiness" | "observed";
+// EP-19 · "observed" is the browser's LOCAL PREVIEW of the dataset. "execution" is the governed server
+// run, and it is the only step that shows an authoritative figure.
+type Step = "upload" | "mapping" | "quality" | "readiness" | "observed" | "execution";
 
 export function Assessment() {
   const [csvText, setCsvText] = useState<string | null>(null);
@@ -54,6 +63,14 @@ export function Assessment() {
   const [validation, setValidation] = useState<PilotIntakeResult | null>(null);
   const [validationPreliminary, setValidationPreliminary] = useState(false);
   const [validating, setValidating] = useState(false);
+  // EP-19 · Which activated bar this dataset is to be judged against. Absent is NOT "skip the check":
+  // the server returns NOT_ASSESSABLE, and the gate blocks. There is no configuration in which a
+  // dataset is admitted without an explicit, governance-activated policy.
+  const [admissionPolicyId, setAdmissionPolicyId] = useState("");
+  const [admissionPolicyVersion, setAdmissionPolicyVersion] = useState("1.0.0");
+  const [execution, setExecution] = useState<AssessmentExecutionView | null>(null);
+  const [executionError, setExecutionError] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState(false);
 
   async function run(text: string, useN: number, useMapping: ColumnMapping | undefined): Promise<void> {
     setError(null);
@@ -80,6 +97,61 @@ export function Assessment() {
   }
 
   /**
+   * Hand the admitted dataset to the governed server execution, then wait for the server's own answer.
+   *
+   * This is the only path to an authoritative figure. The browser's `runAssessment` result stays
+   * visible as a labelled local preview because it is genuinely useful for judging dataset shape — but
+   * it is not an execution, it carries no binding, no policy hash and no audit lineage, and nothing on
+   * this screen presents it as a result.
+   *
+   * A refusal is displayed with its NH-AX-#### code, not swallowed. A timeout is displayed as a
+   * timeout — never as a result — because the alternative is a screen that shows a number the server
+   * did not produce.
+   */
+  async function runGovernedExecution(text: string): Promise<void> {
+    setExecutionError(null);
+    setExecution(null);
+    setScheduling(true);
+    setStep("execution");
+    try {
+      const actor = operatorActorFor(null);
+      const scheduled = await schedulePilotAssessment(
+        {
+          boundaryId,
+          datasetId,
+          csvText: text,
+          provenance,
+          stallThresholdDays: n,
+          asOf,
+          currency,
+          locale: locale || undefined,
+          amountFormat: amountFormat || undefined,
+        },
+        actor,
+      );
+      if (!scheduled.scheduled || !scheduled.executionId) {
+        const code = scheduled.refusal ? `${scheduled.refusal.code} — ${scheduled.refusal.title}` : "refused";
+        setExecutionError(
+          `${code}${scheduled.refusalDetail ? ` (${scheduled.refusalDetail})` : ""}` +
+            (scheduled.refusal ? ` ${scheduled.refusal.remediation}` : ""),
+        );
+        return;
+      }
+      const executionId = scheduled.executionId;
+      const outcome = await pollUntilSettled(() => readPilotAssessment(boundaryId, executionId, actor));
+      if (outcome.kind === "settled") setExecution(outcome.view);
+      else if (outcome.kind === "timeout") setExecutionError(timeoutMessage(outcome));
+      else setExecutionError(outcome.message);
+    } catch (e) {
+      // Includes an unreachable server. There is deliberately no fallback to the local preview: a run
+      // that could not be validated server-side is an error, never a pass.
+      setExecutionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setScheduling(false);
+    }
+  }
+
+  /**
    * On file pick: the dataset must clear the SERVER's contract validation before anything else
    * happens. Column mapping, assessment and every later step are downstream of that verdict — a
    * dataset the server refuses never reaches them, which is requirement 12 in one place rather
@@ -101,6 +173,10 @@ export function Assessment() {
           currency,
           locale: locale || undefined,
           amountFormat: amountFormat || undefined,
+          // Without this the server has no bar to judge against, returns NOT_ASSESSABLE, and the gate
+          // blocks. Before EP-19 the UI never sent it, so the flow could not leave this screen at all.
+          admissionPolicyId: admissionPolicyId.trim() || undefined,
+          admissionPolicyVersion: admissionPolicyVersion.trim() || undefined,
         },
         operatorActorFor(null),
       );
@@ -169,6 +245,10 @@ export function Assessment() {
           validationPreliminary={validationPreliminary}
           validating={validating}
           onReject={(msg) => setError(msg)}
+          admissionPolicyId={admissionPolicyId}
+          setAdmissionPolicyId={setAdmissionPolicyId}
+          admissionPolicyVersion={admissionPolicyVersion}
+          setAdmissionPolicyVersion={setAdmissionPolicyVersion}
         />
       )}
       {step === "mapping" && plan && (
@@ -202,8 +282,84 @@ export function Assessment() {
         />
       )}
       {step === "observed" && result && (
-        <ObservedResultsScreen result={result} onBack={() => setStep("readiness")} />
+        <ObservedResultsScreen
+          result={result}
+          onBack={() => setStep("readiness")}
+          onRunGoverned={csvText ? () => void runGovernedExecution(csvText) : undefined}
+          running={scheduling}
+        />
       )}
+      {step === "execution" && (
+        <ExecutionStep
+          execution={execution}
+          error={executionError}
+          running={scheduling}
+          onBack={() => setStep("observed")}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The governed result, or an honest account of why there is none.
+ *
+ * Three states and no fourth: running, refused/failed-to-settle, or a finding. There is deliberately
+ * no branch that falls back to the browser preview — the whole point of this step is that what it shows
+ * came from the server.
+ */
+function ExecutionStep({
+  execution,
+  error,
+  running,
+  onBack,
+}: {
+  execution: AssessmentExecutionView | null;
+  error: string | null;
+  running: boolean;
+  onBack: () => void;
+}) {
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <div className="text-lg font-semibold text-slate-100">Governed assessment execution</div>
+          <div className="text-[12px] text-slate-500">
+            Scheduled on the server, run by a leased worker, bound to the admission decision that
+            admitted this dataset. This is the authoritative figure — and it is still an observation,
+            never Proof or Revenue Returned.
+          </div>
+        </div>
+        <button
+          onClick={onBack}
+          className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50"
+        >
+          ← Local preview
+        </button>
+      </div>
+
+      {running && !execution && !error && (
+        <div className="rounded-xl border border-ink-500/40 bg-ink-800/60 p-5 text-sm text-slate-300">
+          Waiting for a worker to claim and finish the execution…
+          <div className="mt-1 text-[12px] text-slate-500">
+            Nothing is shown until the server records a result. If this screen stops waiting it will say
+            so — it will not show a figure the server did not produce.
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-xl border border-detect-600/40 bg-ink-800/60 p-5">
+          <div className="text-sm text-detect-500">The execution did not produce a result.</div>
+          <p className="mt-1 text-[13px] text-slate-300">{error}</p>
+          <p className="mt-2 text-[12px] text-slate-500">
+            No figure is shown, because none was produced. The local preview on the previous screen is
+            still a preview and is not a substitute for this.
+          </p>
+        </div>
+      )}
+
+      {execution && <AssessmentExecutionPanel execution={execution} />}
     </div>
   );
 }
