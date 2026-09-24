@@ -14,6 +14,8 @@ import type {
 } from "./services/proofService";
 import * as auditService from "./audit/auditService";
 import * as pilotIntakeService from "./services/pilotIntakeService";
+import * as pilotAssessmentService from "./services/pilotAssessmentService";
+import type { SchedulePilotAssessmentRequest } from "./services/pilotAssessmentService";
 import type {
   PilotDatasetRequest,
   RegisterAdmissionPolicyRequest,
@@ -38,6 +40,9 @@ import {
   admissionPolicySchema,
   policyTransitionSchema,
   policyGovernanceQuerySchema,
+  schedulePilotAssessmentSchema,
+  pilotAssessmentReadSchema,
+  pilotAssessmentListSchema,
 } from "./http/schemas";
 import type { AgentWorkerReadiness } from "./agents/worker";
 import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
@@ -216,6 +221,49 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
           req.query.policyId,
           req.query.policyVersion,
         ),
+      );
+    },
+  );
+
+  // EP-16 · Schedule a governed assessment execution over an ALREADY-ADMITTED dataset.
+  //
+  // The CSV is re-supplied rather than held server-side: the intake deliberately persists no
+  // uploaded bytes, so re-supplying them is what lets the fingerprint check prove that the file
+  // being executed is the file that was admitted. Same per-route body limit and same reasoning as
+  // the intake — a large body is needed here and nowhere else.
+  app.post<{ Body: SchedulePilotAssessmentRequest }>(
+    "/pilot/assessments",
+    { schema: schedulePilotAssessmentSchema, bodyLimit: pilotUploadTransportLimit },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      const result = await pilotAssessmentService.schedulePilotAssessment(actor, req.body);
+      // 201 only when a NEW execution was created. A repeat of an identical binding is 200 (the
+      // idempotent path), and a refusal is 200 with a deterministic NH-AX-#### code — a dataset
+      // that may not be executed is a valid answer, exactly as a rejected dataset is at the intake.
+      return reply.code(result.scheduled && result.created ? 201 : 200).send(result);
+    },
+  );
+
+  // EP-16 · Read one execution: state, full lineage, and the finding if it produced one.
+  app.get<{ Params: { executionId: string }; Querystring: { boundaryId: string } }>(
+    "/pilot/assessments/:executionId",
+    { schema: pilotAssessmentReadSchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(
+        await pilotAssessmentService.readPilotAssessment(actor, req.query.boundaryId, req.params.executionId),
+      );
+    },
+  );
+
+  // EP-16 · The status board: every execution for one boundary, newest first.
+  app.get<{ Querystring: { boundaryId: string; limit?: number } }>(
+    "/pilot/assessments",
+    { schema: pilotAssessmentListSchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(
+        await pilotAssessmentService.listPilotAssessments(actor, req.query.boundaryId, req.query.limit),
       );
     },
   );

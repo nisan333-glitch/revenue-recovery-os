@@ -444,3 +444,274 @@ activation — inheriting nothing from the version before it.
 
 No Proof, no Case, no revenue record, no authority ledger entry. Tenant isolation, Case Halt and the
 existing admission, intake and contract semantics are untouched.
+
+---
+
+# Pilot Assessment Orchestration v1
+
+**Status:** implemented · **Codes:** `NH-AX-####` · **Modules:** `src/contract/assessmentExecution.ts`,
+`src/contract/executionCodes.ts`, `server/services/pilotAssessmentService.ts`,
+`server/agents/pilotAssessmentAgent.ts`
+
+## The gap
+
+The three slices above produced a dataset that is validated, judged fit, and judged under a bar that
+governance put in force. Then the trail stopped.
+
+Assessment still ran **in the browser**, over whatever bytes were in memory, under whatever policy the
+page happened to hold. So the admission decision governed a verdict about a *file* and governed
+nothing about the *run*. Between "this dataset is admissible" and "here is what it showed" there was
+an ungoverned gap — and a number that comes out of an ungoverned gap is indistinguishable from a
+number someone typed.
+
+This slice closes it: an admitted dataset is handed to a **governed, leased, audited execution**, and
+every governing input is frozen into the execution's own identity.
+
+## The binding is the identity
+
+An execution's id is `PAX-` plus a SHA-256 over its entire binding:
+
+| Bound | Why it is part of the identity |
+|---|---|
+| `boundaryId` | a run belongs to exactly one tenant |
+| `datasetFingerprint` | the exact bytes that were admitted |
+| `admissionDecisionId` | the decision that authorised it |
+| admission policy id, version, **hash** | the bar it was judged under |
+| contract version | what the fields meant |
+| assessment policy (`asOf`, stall threshold, currency, method version) | how the data was read |
+| interpretation (`mappingId`, amount format, date locale) | a different reading is different numbers |
+| `recoveryCaseId` (optional) | which case's Halt applies |
+
+**The whole retry story follows from that one line.** Scheduling the same binding twice derives the
+same id, so the second attempt collides on a primary key and returns the first execution. Scheduling
+a *different* binding — a new policy version, a later `asOf`, other bytes — derives a different id, so
+a changed bar can never silently re-grade an existing run. Nothing has to remember to deduplicate.
+
+The **admission decision id** is derived the same way, from the submission record's own stored fields.
+That makes it falsifiable: an execution re-derives it and refuses (`NH-AX-1005`) if the record no
+longer hashes to the identifier it is stored under. Submissions recorded before this slice carry
+`null` and are deliberately **not backfilled** — minting an identifier now would assert a binding that
+never happened, so they refuse with `NH-AX-1002` instead.
+
+## Everything is re-checked at execution time
+
+Between scheduling and running, a steward can freeze the bar, a steward can halt the linked case, and
+a lease can expire and hand the work to a different worker. So the agent re-evaluates every
+precondition against the database, inside the run:
+
+| Re-checked | Failure |
+|---|---|
+| the binding still hashes to its own id | `NH-AX-1005` |
+| the decision still resolves, in this boundary, still `ADMISSIBLE` | `NH-AX-1001` / `NH-AX-1003` |
+| the admission policy is still `ACTIVE` | `NH-AX-1007` |
+| the linked case is not halted | `NH-AX-2001` |
+| the stored input matches its recorded hash | `NH-AX-2003` |
+
+A **blocked** execution is terminal and its task **succeeds**. That combination is deliberate: a frozen
+policy or a halted case is an *answer*, not a transient error, and letting the runtime retry-and-dead-letter
+such a task would bury a governance decision under an operational failure.
+
+## The execution input — pseudonymised customer-derived data
+
+> **Correction (EP-17).** This section previously said the projection was "minimized until what remains
+> cannot identify anyone" and that the stored values were "not linkable across datasets". Both claims
+> were wrong, and wrong in the direction that matters: a reader could have concluded this table sits
+> outside data-protection obligations. It does not. The accurate description is below. The EP-16
+> migration's comment overstated it in the same way; because that file is already applied, its text is
+> left alone rather than edited underneath a recorded checksum, and the authoritative description is
+> attached to the table itself with `COMMENT ON` in the EP-17 migration.
+
+`pilot_assessment_execution_inputs` holds **pseudonymised customer-derived data**. Not anonymous data.
+
+* **Direct identifiers are replaced.** `cycleId`, `entityId`, `sourceRowId` become **first-appearance
+  ordinals** (`c-0001`, `e-0001`, `r-0001`). Equality classes survive exactly — two cycles that shared
+  an entity still share one — so the cohort and payment arithmetic is bit-for-bit unchanged. The
+  mapping is not stored and is not recoverable from the projection alone, and no secret key is
+  involved, so there is no key to leak, rotate or forget.
+* **What remains can permit linkage.** Each projected cycle still carries four to six **exact dates**
+  (signature, activation, invoice due, payment, refund, cancellation) and one or two **exact
+  minor-unit amounts**. Anyone holding the customer's source export — or any other extract covering
+  the same subscriptions — can match rows on those values. Removing a direct identifier does not
+  prevent that. **No rate of successful re-identification is claimed here**; what is stated is the
+  exposure, not a measurement of it.
+* **Dropped, verified rather than assumed.** `statusRaw` — free text from the customer's source, read
+  only inside the adapter, and by the time a cycle exists its effect is already baked into
+  `refundedAt`/`cancelledAt`. `attributes` keeps only `paid_timing`, whose sole value is a fixed
+  internal marker; `plan`, `segment`, `product` and anything else the export carried are gone.
+* **Rejected rows have no representation anywhere.** The projection's only input is the accepted
+  cycles, so no rejected value can reach a cohort, a sum, a finding, or any agent's context.
+
+### Why it is persisted, stated narrowly
+
+EP-13 persisted **no** row-derived data, which was right for a submission record whose only job was to
+recognise a repeated upload. The justification here is narrower than EP-16 originally claimed:
+
+> An execution is **asynchronous and leased**. A worker that picks one up has no CSV, so the input it
+> runs on must be durable.
+
+That is the whole reason. **Reproducibility alone would not require it** — `input_hash`, `binding_hash`
+and `finding_hash` plus the customer's original file already reproduce and verify the finding without
+our copy. EP-16's claim that "an execution whose input cannot be re-read cannot be reproduced" was too
+strong. Retaining the projection buys durability for the run in flight, and reproduction without
+needing the customer to still hold the file. It does not buy correctness — which is why it is bounded.
+
+## Retention and purging
+
+Two settings, **both required, no defaults**:
+
+| Variable | Meaning |
+|---|---|
+| `NH_PILOT_INPUT_TERMINAL_GRACE_HOURS` | hours to keep an input after the execution **completed** or was **blocked** |
+| `NH_PILOT_INPUT_ABANDONED_RETENTION_DAYS` | days to keep the input of an execution that **never reached a terminal state** |
+
+With either unset, `purgeEligibleInputs` deletes nothing and reports every input as retained under
+`NH-AX-4004`. There is deliberately no default, for the same reason the admission gate has none: a
+retention period this code invented would be quoted later as though someone had chosen it. That is
+fail-closed for the data, and it is **not a state to leave in place** — an unconfigured deployment
+retains indefinitely, which the report says out loud so it cannot pass for a policy.
+
+**A purge is not a delete.** It is an append-only `pilot_assessment_input_purges` row — preserving the
+input hash, the cycle count, the reason, the policy applied and who authorized it — followed by the
+delete, in one transaction. So the trail still says: *an input existed, it had N cycles, its hash was
+X, purged at T by A under policy P for reason R.*
+
+**Eligibility is decided twice.** The service decides; the database re-checks against the durable event
+log, the task state and the elapsed bound when the authorization row is inserted. A disagreement raises
+rather than deletes.
+
+**The scan is complete; only the purges are bounded.** `limit` caps how many records one run may
+*purge*, not how many it examines: the scan pages forward through the whole eligible set by keyset. An
+earlier version capped the scan itself, which was a permanent head-of-line block — if the oldest
+records were all ineligible, every run examined the same ones, purged nothing, and never reached the
+eligible records behind them. A retention policy that stops applying past a fixed offset is not one.
+Stopping at the purge limit is safe: the next run starts from the oldest remaining record and the
+purged ones are gone, so each run strictly advances. The report says `scanComplete` and
+`reachedPurgeLimit` so "purged 50" cannot be mistaken for "50 was all of them".
+
+**A database error fails the run.** It raises `InputRetentionFailure`, naming the execution it stopped
+on and how many records were purged before it — not a retention verdict. An earlier version caught
+every error and reported `retained_in_flight`, so a dropped connection, a constraint bug and a
+serialization failure all read as a routine decision to keep a record. There is no benign race to
+excuse: every rule requires the task to be `succeeded` or `dead_lettered`, and both are absorbing
+(every transition out of them requires `status = 'leased'`, and `enqueueIfAbsent` uses `ON CONFLICT DO
+NOTHING`), so a refusal after the service's checks pass means something is genuinely inconsistent.
+Prisma does not expose SQLSTATE through a model `create`, so the error cannot be classified after the
+fact — and the honest response to an error nobody can classify is to stop and say so.
+
+`countsByDecision` is exact for every code. Individual `verdicts` are capped — every purge is always
+listed, retained ones are sampled — so one run over a large table cannot return an unbounded array
+while the totals stay precise.
+
+| Rule | Condition |
+|---|---|
+| `terminal_completed` | a `COMPLETED` event exists **and** the grace period since the latest one has elapsed |
+| `terminal_blocked` | a `BLOCKED` event exists **and** the grace period since the latest one has elapsed |
+| `abandoned_retention_elapsed` | **no** terminal event exists **and** the retention period since `scheduled_at` has elapsed |
+| *every* rule | **no claimable task** (`queued`, `leased`, `retry_wait`) exists for this execution |
+
+That last row is how **input is retained during retries**, structurally rather than by timing luck: a
+task that can still be claimed will need its input again, and elapsed time is not a reason to take it
+from a run still in flight.
+
+**The trigger deliberately does not key on "a finding exists."** A finding is written just before the
+`COMPLETED` event, so that fact is true inside the window where the run has not yet durably completed,
+and it says nothing at all about a blocked or abandoned execution. Deletion is authorized by an
+explicit recorded decision, validated against the log — never inferred from a neighbouring row.
+
+**What survives a purge:** the execution and its whole binding, `binding_hash`, `input_hash`, the full
+append-only event log, the finding and `finding_hash`, and the purge record itself. A later run that
+finds its input purged blocks with `NH-AX-2005`, distinct from `NH-AX-2002` ("no input and no record of
+one" — a bug, not a policy outcome).
+
+Only a **steward** holds `PurgeAssessmentInput`. A purge cannot change a number — the finding and its
+hash survive — but the actors who benefit from a larger recovery number should still not decide when
+the stored inputs go.
+
+### Backups, and the limits of reproducing from a CSV
+
+Two honest limits, neither of which this codebase can close on its own:
+
+1. **A purge does not reach backups.** Deleting a row removes it from the live database. Any snapshot,
+   WAL archive, replica or dump taken while the input existed still contains it, and PostgreSQL offers
+   no way to reach into one. A retention policy is therefore only as short as the **backup** retention
+   behind it: if snapshots are kept for 90 days, the effective lifetime of an input is up to 90 days
+   past its purge, whatever these two settings say. Anyone quoting a retention period to a customer
+   must quote the longer of the two. Backup scheduling, encryption and expiry are deployment
+   concerns and live outside this repository; nothing here configures or verifies them.
+2. **Reproduction from a customer-supplied CSV is conditional.** After a purge, re-verifying a finding
+   requires the customer's original file, byte-for-byte — `datasetFingerprint` and `input_hash` both
+   fail on a single changed byte, which is the point, but it also means a re-export, a re-save through
+   a spreadsheet, or a different line ending is **not** the same file and will not reproduce. It also
+   requires the same contract version and the same adapter, mapping, amount format and date locale,
+   all of which the binding records. If the customer no longer holds that exact file, the finding
+   remains attested by its stored hashes and its append-only lineage, but it can no longer be
+   independently recomputed from source. That is a real reduction in verifiability, accepted in
+   exchange for not retaining the rows indefinitely — and it is the reason the grace period exists
+   rather than purging the instant a run completes.
+
+## The agent creates nothing
+
+`pilot-assessment-v1` returns **zero `CandidateSignal`s, always**. That is how "do not create a
+Recovery Case automatically" is enforced structurally rather than by policy: the only automatic path
+from an agent into case creation runs through `PostgresCandidateSignalWriter`, which is driven by the
+signals a handler returns. A handler that returns none has no such path, and a structural test asserts
+that no branch could ever return one.
+
+Its task payload is **one field** — an execution id. The agent's entire context therefore contains no
+customer-derived value at all; everything else is looked up boundary-scoped from records it cannot
+influence.
+
+Case Halt is **read, never redefined**. An assessment is not a governed mutation — it creates no
+counted number — so it is deliberately not added to `HALTED_MUTATIONS`, which would change what Halt
+means for the proof chain. But a halt on a *linked* case stops the run: a steward who has stopped a
+case has stopped work on it.
+
+## Five states, derived
+
+`queued → running → completed`, with `blocked` and `failed` as the two ways it stops. State is
+**derived from an append-only event log**, never stored as a column: a status column can be set to
+anything by anyone who can write the row; a derived state can only be what its events produced. An
+illegal transition in the log is *ignored, not applied*. `blocked` and `completed` are terminal.
+
+`CLAIMED` is legal from `running` — the expired-lease case, where a worker died and the next worker to
+win the fenced claim is legitimately taking over. That does not weaken exclusion: exclusion is the
+task store's fenced lease, and this log only records what that decided.
+
+## The finding is an observation
+
+Exact minor units of **Revenue Opportunity** — a forecast-side reading. `constitutesProof` and
+`constitutesRevenue` are typed as the literal `false`, so an edit that tried to set either true would
+not compile. Zero imports from the proof kernel or the proven ledger, asserted structurally.
+
+Findings are keyed by execution id and content-hashed, so a retry after a lost lease re-derives
+byte-identical content and the second write is a **provable no-op**. A *different* hash under the same
+id is not reconciled by a last-writer rule — it is surfaced as `NH-AX-2004`.
+
+## Verification
+
+* `src/contract/assessmentExecution.test.ts` — 20 pure tests (identity, lifecycle, projection, finding)
+* `src/contract/assessmentExecution.boundaries.test.ts` — 10 structural tests (purity, ledger
+  separation, the agent's inability to create a case)
+* `server/services/pilotAssessmentOrchestration.test.ts` — 23 integration tests against real PostgreSQL
+* `server/agents/pilotAssessmentWorker.test.ts` — 9 queue tests (duplicates, concurrency, lease
+  recovery, rejected rows)
+* `src/modules/assessment/assessmentExecutionPanel.test.ts` — 16 UI tests
+* `npm run pilot:assessment` — the synthetic rehearsal, over a **real socket** with the **production
+  worker loop**
+
+## Known constraints
+
+* ~~Enabling agents still requires `NH_AGENT_ADMISSION_POLICIES` even for an assessment-only pilot.~~
+  **Resolved in EP-17.** The guard was process-wide because `AgentHandler` declared no publication
+  capability, so it could not tell a detector from an observation-only agent. It now applies to exactly
+  the handlers it is about: `publishesCandidates` (absent ⇒ **true**, so the requirement can only be
+  escaped deliberately, never by omission) scopes the requirement to candidate-capable handlers, the
+  publication sink is not even constructed without one, and `AgentRuntime` fails any handler that
+  declares itself observation-only and then returns a signal — before `succeed()`, which is the only
+  caller of the sink. Strictly stronger than the original guard, and an assessment-only pilot no longer
+  has to invent a recovery type and threshold it would never use.
+* The execution re-supplies the CSV rather than the server holding it. That is what makes the
+  fingerprint check meaningful — the intake persists no uploaded bytes — but it does mean a scheduler
+  must still have the file.
+* A purge cannot reach backups, and reproduction from a customer-supplied CSV requires that exact file.
+  See "Backups, and the limits of reproducing from a CSV" above.

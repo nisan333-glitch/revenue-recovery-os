@@ -140,6 +140,26 @@ without both an explicit `NH_AGENT_BOUNDARIES` list and a reviewed production ha
 startup fail closed. The worker lifecycle, leasing and readiness plumbing exist; no detector is
 silently promoted into a continuously running process.
 
+Each agent is opted in by its own flag, and an unset or `false` flag means off. Any other value is
+a startup error rather than a silent default, so a misspelling cannot switch a detector on:
+
+| Flag | Agent | Publishes candidates? |
+|---|---|---|
+| `NH_ACTIVATION_DETECTOR_ENABLED` | `activation-deadline-v1` | **Yes** — needs `NH_AGENT_ADMISSION_POLICIES` |
+| `NH_PILOT_ASSESSMENT_AGENT_ENABLED` | `pilot-assessment-v1` | No — observation only |
+
+`NH_AGENT_ADMISSION_POLICIES` is required only when at least one enabled agent can publish
+candidates, and its absence is then a startup error naming the agents that need it. An
+assessment-only deployment therefore needs no admission policy registry — it has no candidate to
+admit, and inventing a recovery type and threshold it would never use would put a fabricated number
+into configuration. A handler that does not declare its capability is treated as candidate-capable,
+so the requirement can only be escaped deliberately, never by omission; and a handler that declares
+itself observation-only and then returns a signal is failed by the runtime before publication.
+
+Assessment-execution inputs carry a retention policy, and purging them is a separate governed
+action — see [Retention](docs/CUSTOMER_PILOT_DATA_CONTRACT_V1.md#retention-and-purging) for the two
+required settings and what survives a purge.
+
 Generate the deterministic **SYNTHETIC** ActivationMissed fixtures. These are fictional test
 inputs, not customer evidence. The 100-row mixed fixture contains 70 admissible rows, 15 below
 threshold, 5 without an action, 5 duplicates and 5 malformed rows. Importing that complete file

@@ -55,6 +55,23 @@ services:
       NH_REQUIRE_RECOVERY_CASE_ROOT: "true"
       # Agent workers remain fail-closed until a reviewed production detector is registered.
       NH_AGENTS_ENABLED: "false"
+      # Per-agent opt-in. Unset or "false" is off; any other value is a startup error.
+      #   NH_ACTIVATION_DETECTOR_ENABLED  — publishes candidates, so it also requires
+      #                                     NH_AGENT_ADMISSION_POLICIES="<RecoveryType>:<minorUnits>".
+      #   NH_PILOT_ASSESSMENT_AGENT_ENABLED — observation only; emits no candidate and therefore
+      #                                     needs no admission policy registry.
+      NH_ACTIVATION_DETECTOR_ENABLED: "false"
+      NH_PILOT_ASSESSMENT_AGENT_ENABLED: "false"
+      # Retention for assessment-execution inputs (pseudonymised customer-derived rows). BOTH are
+      # required before any input may be purged; with either unset, purging refuses and nothing is
+      # deleted. There is deliberately no default — a retention period is a policy decision, and a
+      # number this file invented would end up quoted as one.
+      #   NH_PILOT_INPUT_TERMINAL_GRACE_HOURS: hours to keep an input after the execution completed
+      #                                        or was blocked.
+      #   NH_PILOT_INPUT_ABANDONED_RETENTION_DAYS: days to keep the input of an execution that never
+      #                                        reached a terminal state.
+      # NH_PILOT_INPUT_TERMINAL_GRACE_HOURS: "24"
+      # NH_PILOT_INPUT_ABANDONED_RETENTION_DAYS: "30"
       # HOST=0.0.0.0 here binds only inside the container's own isolated network namespace —
       # it does NOT expose the app beyond this machine. The actual "127.0.0.1 only" guarantee
       # is the host-side bind below (`127.0.0.1:4000:4000`): Docker's published-port NAT can

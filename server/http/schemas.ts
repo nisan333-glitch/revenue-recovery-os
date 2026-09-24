@@ -266,6 +266,107 @@ export const pilotDatasetSchema = {
 } as const;
 
 /**
+ * EP-16 · Schedule a governed assessment execution over an already-admitted dataset.
+ *
+ * Note what this body CANNOT carry, and why each absence matters:
+ *   • no tenant field other than `boundaryId`, which is an authorization request the service
+ *     refuses unless the authenticated context already grants it;
+ *   • no admission policy id or version — the bar is read from the decision that admitted the
+ *     dataset, so a caller cannot ask to be executed under a different bar than the one that
+ *     judged them;
+ *   • no thresholds, no admission outcome, no finding — an execution reports what it computed, and
+ *     nothing a caller asserts about the result is accepted as input.
+ * `additionalProperties: false` with `removeAdditional: false` means an injected field is a 400,
+ * never a silently stripped one.
+ */
+export const schedulePilotAssessmentSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "policy", "provenance"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      datasetId: { type: "string", minLength: 1, maxLength: 256 },
+      declaredVersion: { type: "string", minLength: 1, maxLength: 32 },
+      csvText: { type: "string", minLength: 1, maxLength: 20_971_520 },
+      locale: { type: "string", enum: ["MDY", "DMY"] },
+      amountFormat: { type: "string", enum: ["US", "EU"] },
+      recoveryCaseId: { type: "string", minLength: 1, maxLength: 256 },
+      policy: {
+        type: "object",
+        additionalProperties: false,
+        required: ["stallThresholdDays", "asOf", "currency"],
+        properties: {
+          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
+          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+        },
+      },
+      provenance: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "sourceSystems",
+          "dataOwnerRole",
+          "extractionMethod",
+          "extractedAt",
+          "coverageStart",
+          "coverageEnd",
+          "assertedIndependentOfBeneficiary",
+        ],
+        properties: {
+          sourceSystems: {
+            type: "object",
+            additionalProperties: false,
+            required: ["contract", "billing", "product"],
+            properties: {
+              contract: { type: "string", minLength: 1, maxLength: 256 },
+              billing: { type: "string", minLength: 1, maxLength: 256 },
+              product: { type: "string", minLength: 1, maxLength: 256 },
+            },
+          },
+          dataOwnerRole: { type: "string", minLength: 1, maxLength: 256 },
+          extractionMethod: { type: "string", minLength: 1, maxLength: 1024 },
+          extractedAt: { type: "string", minLength: 1, maxLength: 64 },
+          coverageStart: { type: "string", minLength: 1, maxLength: 32 },
+          coverageEnd: { type: "string", minLength: 1, maxLength: 32 },
+          assertedIndependentOfBeneficiary: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;
+
+/** EP-16 · Read one execution. Boundary is required and is re-authorized in the service. */
+export const pilotAssessmentReadSchema = {
+  params: {
+    type: "object",
+    additionalProperties: false,
+    required: ["executionId"],
+    properties: { executionId: { type: "string", pattern: "^PAX-[a-f0-9]{32}$" } },
+  },
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId"],
+    properties: { boundaryId: { type: "string", minLength: 1, maxLength: 256 } },
+  },
+} as const;
+
+/** EP-16 · List executions for one boundary — the UI's status board. */
+export const pilotAssessmentListSchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      limit: { type: "integer", minimum: 1, maximum: 200 },
+    },
+  },
+} as const;
+
+/**
  * EP-14 · Register a versioned pilot admission policy.
  *
  * Every threshold is `required` here as well as in the domain. A schema that let one be omitted

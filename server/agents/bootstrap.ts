@@ -4,7 +4,7 @@ import { createPostgresAgentTaskStore } from "./prismaTaskDatabase";
 import { AgentRuntime } from "./runtime";
 import { ConfiguredAgentPolicyProvider, parseAgentProcessConfig } from "./config";
 import { AgentWorker, AgentWorkerSupervisor, type AgentTaskRunner } from "./worker";
-import type { AgentAuditSink, AgentHandler } from "./types";
+import { publishesCandidates, type AgentAuditSink, type AgentHandler } from "./types";
 import { PostgresCandidateSignalWriter } from "./postgresCandidateSignalWriter";
 
 export interface AgentProcess {
@@ -21,8 +21,18 @@ export function createAgentProcessFromEnvironment(
   if (config.enabled && handlers.length === 0) {
     throw new Error("agents are enabled but no production agent handlers are registered");
   }
-  if (config.enabled && config.admissionPolicies.size === 0) {
-    throw new Error("agents are enabled but no candidate admission policies are configured");
+  // The registry requirement is scoped to the handlers that can actually publish, and NOT relaxed for
+  // the ones that can. Before this, the guard was process-wide: it could not tell a detector from an
+  // observation-only agent, so an assessment-only pilot had to invent a recovery type and a threshold
+  // it would never use — a fabricated number in configuration, which is the habit this codebase
+  // exists to break. Narrowing the guard to the handlers it is actually about removes the incentive
+  // to fabricate without removing the guard from anything it previously covered.
+  const candidateCapable = handlers.filter(publishesCandidates);
+  if (config.enabled && candidateCapable.length > 0 && config.admissionPolicies.size === 0) {
+    throw new Error(
+      "agents are enabled but no candidate admission policies are configured for the candidate-publishing agents " +
+        `(${candidateCapable.map((h) => h.agentId).join(", ")})`,
+    );
   }
   assertUniqueAgentIds(handlers);
 
@@ -30,7 +40,11 @@ export function createAgentProcessFromEnvironment(
   const runtime = new AgentRuntime({
     store: createPostgresAgentTaskStore(
       undefined,
-      config.enabled ? new PostgresCandidateSignalWriter(config.admissionPolicies) : undefined,
+      // No publisher ⇒ no publication sink at all. `succeed()` calls it with `?.`, so its absence is
+      // a no-op rather than a branch: an observation-only deployment has no code path to a candidate.
+      config.enabled && candidateCapable.length > 0
+        ? new PostgresCandidateSignalWriter(config.admissionPolicies)
+        : undefined,
     ),
     policy,
     audit: NOOP_AUDIT,

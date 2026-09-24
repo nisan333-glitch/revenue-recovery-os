@@ -28,6 +28,7 @@ import { POLICY_CODES } from "../../src/contract/admissionCodes";
 import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
 import { findAdmissionPolicy, registerAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
 import { hashAdmissionPolicy } from "../../src/contract/policyHash";
+import { deriveAdmissionDecisionId } from "../../src/contract/assessmentExecution";
 import {
   canTransition,
   mayEvaluate,
@@ -268,6 +269,21 @@ export async function submitPilotDataset(
     return toResponse(report, null, admission, governance);
   }
 
+  // EP-16 · The decision's own identifier, derived from the fields being written in this same call.
+  // Deriving it (rather than minting a random id) makes it falsifiable: an execution re-derives it
+  // from the stored row and refuses if the two disagree, so a record altered after the fact cannot
+  // quietly go on authorising runs.
+  const admissionDecisionId = await deriveAdmissionDecisionId({
+    boundaryId,
+    idempotencyKey: report.idempotencyKey,
+    datasetFingerprint: report.datasetFingerprint,
+    contractVersion: report.contractVersion,
+    outcome: admission.outcome,
+    admissionPolicyId: admission.policyId,
+    admissionPolicyVersion: admission.policyVersion,
+    admissionPolicyHash: policyHash,
+  });
+
   const recorded = await recordSubmission({
     idempotencyKey: report.idempotencyKey,
     boundaryId,
@@ -287,6 +303,7 @@ export async function submitPilotDataset(
     admissionPolicyId: admission.policyId,
     admissionPolicyVersion: admission.policyVersion,
     admissionPolicyHash: policyHash,
+    admissionDecisionId,
     submittedByActorId: actor.actorId,
     submittedByRole: actor.role,
   });
