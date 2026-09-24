@@ -238,13 +238,34 @@ reaching for another boundary gets **403** before anything is validated or writt
 
 ## Persistence
 
+**The customer's file is uploaded.** It is not stored as a file — the uploaded bytes are never
+persisted — but two different things *are* written, and this section once described only the first.
+
+### The submission record (EP-13)
+
 Only a **usable** dataset is recorded, and the record holds counts, the deterministic key, the
-fingerprint and NH-DC-#### **codes**. Never uploaded row content, never customer identifiers, never
-monetary values, and never a finding's `detail` text — which can echo a customer value. A rejected
-row is reported to the uploader and then forgotten. An invalid dataset leaves no row at all, which
-also keeps a corrected re-upload a genuinely new submission rather than a "duplicate" of a failure.
+fingerprint and NH-DC-#### **codes**. No uploaded row content, no customer identifiers, no monetary
+values, and never a finding's `detail` text — which can echo a customer value. A rejected row is
+reported to the uploader and then forgotten. An invalid dataset leaves no row at all, which also
+keeps a corrected re-upload a genuinely new submission rather than a "duplicate" of a failure.
 
 The table is append-only at the database level, like every other governed record here.
+
+### The execution input (EP-16 / EP-17) — a second, different record
+
+Scheduling a governed assessment also persists a **pseudonymised projection of the accepted cycles**.
+The sentence above about "no monetary values" is true of the submission record and **false** of this
+one: the projection keeps exact dates and exact amounts, replacing only the direct identifiers. It is
+called out here because this section described only the submission record for two epics after the
+second record existed, and a reader would reasonably have taken the narrower description as the whole
+answer.
+
+It is **pseudonymised customer-derived data, not anonymous data.** Full description, retention rules,
+purge authorisation, and the limits of reproducing an execution later — including backups and the fact
+that we keep no copy of the uploaded bytes — are in
+[The execution input](#the-execution-input--pseudonymised-customer-derived-data) and
+[Retention and purging](#retention-and-purging) below. They are not restated here, so there is one
+authoritative description rather than two that can drift apart.
 
 ## Limits
 
@@ -698,6 +719,58 @@ id is not reconciled by a last-writer rule — it is surfaced as `NH-AX-2004`.
 * `src/modules/assessment/assessmentExecutionPanel.test.ts` — 16 UI tests
 * `npm run pilot:assessment` — the synthetic rehearsal, over a **real socket** with the **production
   worker loop**
+
+## The pilot journey, end to end (EP-19)
+
+Before this, the pieces existed and did not meet: `Assessment.tsx` never sent an admission policy id,
+so the server always answered `NOT_ASSESSABLE`, the intake gate always blocked, and the flow could not
+leave the upload screen by either route. Nothing under `src/` called `/pilot/admission-policies` at
+all, so there was no way to propose or activate a bar from the UI. The screen completed no run.
+
+The journey now has six steps, and the split between the first two is the whole point:
+
+| # | Step | Who | Where |
+|---|---|---|---|
+| 1 | Propose the fitness bar | operator (customer side) | Pilot Policy Governance |
+| 2 | **Activate** it | steward — a **different** identity | Pilot Policy Governance |
+| 3 | Upload the CSV; server validates and judges admission | operator | Revenue Opportunity Assessment |
+| 4 | Local preview of the dataset's shape | browser | same screen, labelled a preview |
+| 5 | Schedule the governed execution | operator | same screen |
+| 6 | Poll; display the server's finding | worker answers | execution panel |
+
+Steps 1 and 2 live on a **separate screen**, outside the customer's assessment flow, on purpose. A
+single screen that walked from proposing a bar to activating it would model a beneficiary setting the
+bar that judges them — and the server refuses that anyway, by identity as well as by role, so a UI
+that offered it would only be teaching the wrong shape.
+
+### What the browser computes, and what it is not
+
+The preview at step 4 is real and useful: it runs the same pure assessment core locally, so a customer
+can see the dataset's shape without waiting. It is labelled **"Local preview — computed in this
+browser"** and states that it is **not an execution, a Proof, or Revenue Returned**, and that it carries
+no execution binding, no policy hash and no audit lineage. Only step 6 shows an authoritative figure.
+
+Three failure modes are deliberately visible rather than smoothed over:
+
+* A **refusal** shows its `NH-AX-####` code and remediation. It is an answer, not an error.
+* A **timeout** shows as a timeout, naming the last state seen, and says plainly that no result is
+  shown because none was produced — and that waiting stopped without cancelling the run.
+* An **unreachable server** is an error. There is no fallback to the local preview, no cached finding
+  and no offline mode. A browser-computed number presented as a governed result would be
+  indistinguishable on screen from a real one, which is why the data layer has no path to it.
+
+A `failed` state is **not** settled: the runtime retries it, so telling someone their run is over would
+cost them a re-upload they did not need.
+
+### How this is verified
+
+`npm run test:journey` drives the whole path in a real browser (Chromium) against a real Fastify
+process, a real worker loop and a real PostgreSQL database, then compares the figures on screen against
+the same execution read back from the API. It asserts the two governance acts were performed by two
+different identities, that exactly one execution exists, that the execution is bound to an admission
+decision, and that the proven-ledger vocabulary appears on the result **only inside a denial of
+itself**. It uses the Vite **dev** server, because `apiClient.ts` attaches development identity headers
+only under `import.meta.env.DEV` and a production bundle would 401 on every governed call.
 
 ## Known constraints
 
