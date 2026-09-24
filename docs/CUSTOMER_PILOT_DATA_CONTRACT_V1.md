@@ -579,6 +579,29 @@ X, purged at T by A under policy P for reason R.*
 log, the task state and the elapsed bound when the authorization row is inserted. A disagreement raises
 rather than deletes.
 
+**The scan is complete; only the purges are bounded.** `limit` caps how many records one run may
+*purge*, not how many it examines: the scan pages forward through the whole eligible set by keyset. An
+earlier version capped the scan itself, which was a permanent head-of-line block — if the oldest
+records were all ineligible, every run examined the same ones, purged nothing, and never reached the
+eligible records behind them. A retention policy that stops applying past a fixed offset is not one.
+Stopping at the purge limit is safe: the next run starts from the oldest remaining record and the
+purged ones are gone, so each run strictly advances. The report says `scanComplete` and
+`reachedPurgeLimit` so "purged 50" cannot be mistaken for "50 was all of them".
+
+**A database error fails the run.** It raises `InputRetentionFailure`, naming the execution it stopped
+on and how many records were purged before it — not a retention verdict. An earlier version caught
+every error and reported `retained_in_flight`, so a dropped connection, a constraint bug and a
+serialization failure all read as a routine decision to keep a record. There is no benign race to
+excuse: every rule requires the task to be `succeeded` or `dead_lettered`, and both are absorbing
+(every transition out of them requires `status = 'leased'`, and `enqueueIfAbsent` uses `ON CONFLICT DO
+NOTHING`), so a refusal after the service's checks pass means something is genuinely inconsistent.
+Prisma does not expose SQLSTATE through a model `create`, so the error cannot be classified after the
+fact — and the honest response to an error nobody can classify is to stop and say so.
+
+`countsByDecision` is exact for every code. Individual `verdicts` are capped — every purge is always
+listed, retained ones are sampled — so one run over a large table cannot return an unbounded array
+while the totals stay precise.
+
 | Rule | Condition |
 |---|---|
 | `terminal_completed` | a `COMPLETED` event exists **and** the grace period since the latest one has elapsed |

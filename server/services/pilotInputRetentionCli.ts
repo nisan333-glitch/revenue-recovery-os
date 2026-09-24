@@ -29,7 +29,15 @@ async function main(): Promise<void> {
     reports.push(await purgeEligibleInputs(actor, { boundaryId }));
   }
   const unconfigured = reports.some((r) => r.policy === null);
+  const incomplete = reports.filter((r) => r.reachedPurgeLimit);
   process.stdout.write(`${JSON.stringify({ reports }, null, 2)}\n`);
+  // Said in plain words, not only as a JSON field: a run that spent its budget is a normal outcome,
+  // but an operator who does not notice it will think the queue is empty when it is not.
+  for (const report of incomplete) {
+    process.stderr.write(
+      `note: purge limit reached after ${report.purged} record(s); more may be eligible — run again\n`,
+    );
+  }
   if (unconfigured) {
     throw new Error("no retention policy is configured; nothing was purged");
   }
@@ -37,6 +45,8 @@ async function main(): Promise<void> {
 
 main()
   .catch((error: unknown) => {
+    // Includes InputRetentionFailure, whose message names the execution it stopped on and how many
+    // records were purged first — the two things needed to know what state the data is in.
     console.error(error instanceof Error ? error.message : "input retention run failed");
     process.exitCode = 1;
   })
