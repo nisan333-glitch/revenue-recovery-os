@@ -129,3 +129,44 @@ export function nextGovernanceAction(state: PolicyState | null): string {
       return "Permanently ended. A replacement is a new version, with its own proposal and activation.";
   }
 }
+
+// ── Which identity a lifecycle read belongs to ────────────────────────────────────────────────────
+//
+// A governance verdict describes ONE exact (boundary, policyId, policyVersion). Showing it beside any
+// other identity invites a reader to believe a bar is in force when it is not — and ACTIVE is what the
+// assessment flow waits for before it will judge a dataset. So the verdict is keyed to the selection it
+// was read for, and anything that does not match that key is not shown at all.
+
+/**
+ * The identity a read belongs to, as a comparable key.
+ *
+ * `JSON.stringify` of an array rather than a joined string on purpose: any separator can be forged out
+ * of the field values themselves, so `("a", "b", "c")` and `("a", "bc", "")` would collide into one key
+ * and a verdict for one policy could be shown for another.
+ */
+export function selectedPolicyKey(boundaryId: string, policyId: string, policyVersion: string): string {
+  return JSON.stringify([boundaryId.trim(), policyId.trim(), policyVersion.trim()]);
+}
+
+/**
+ * The held value, but only when it was loaded for the identity now selected — otherwise nothing.
+ *
+ * Generic so the lifecycle view and the policy hash obey one rule instead of two copies of it: they are
+ * read together and must never be shown apart.
+ */
+export function forSelection<T>(held: T | null, loadedKey: string | null, currentKey: string): T | null {
+  if (loadedKey === null || loadedKey !== currentKey) return null;
+  return held;
+}
+
+/**
+ * Whether a finished read may be painted.
+ *
+ * A read can resolve after the reader has edited the selection. Painting it then would put a verdict
+ * next to an identity it does not describe — the same defect as the stale display, arriving by a route
+ * no amount of derived state can see, because the in-flight closure has no way to learn that the
+ * selection moved. The caller compares the key it requested against the key selected now.
+ */
+export function mayApplyRead(requestedKey: string, selectedKeyNow: string): boolean {
+  return requestedKey === selectedKeyNow;
+}

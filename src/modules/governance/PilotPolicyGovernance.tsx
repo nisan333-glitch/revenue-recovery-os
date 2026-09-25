@@ -14,11 +14,14 @@
 //
 // Nothing on this screen computes a threshold, a verdict, or a number. It states thresholds and reports
 // what the server decided about them.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Panel, Pill, SectionHeader } from "../../components/ui";
 import { ADMISSION_CALC_VERSION, validateAdmissionPolicy, type PilotAdmissionPolicy, type RequiredLifecycleState } from "../../contract/pilotAdmissionPolicy";
 import type { PolicyState } from "../../contract/policyLifecycle";
 import {
+  forSelection,
+  mayApplyRead,
+  selectedPolicyKey,
   mayJudge,
   nextGovernanceAction,
   proposeAdmissionPolicy,
@@ -78,15 +81,39 @@ export function PilotPolicyGovernance() {
   const [rationale, setRationale] = useState("");
   const [governance, setGovernance] = useState<PolicyGovernanceView | null>(null);
   const [policyHash, setPolicyHash] = useState<string | null>(null);
+  // Which identity the held view and hash were read for. Null means "nothing read for what is selected".
+  const [loadedPolicyKey, setLoadedPolicyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A ref, not state: `refresh()` needs to know, AFTER its await, whether the selection has moved since
+  // it started. Derived state cannot tell it that — the in-flight closure would never learn.
+  const selectedKeyRef = useRef(selectedPolicyKey(boundaryId, policyId, policyVersion));
 
   const proposer = operatorActorFor(null);
   const identified = Boolean(boundaryId.trim() && policyId.trim() && policyVersion.trim());
   const complete = completePolicy(thresholds, requiredLifecycleStates, requireProvenanceDeclaration, policyId.trim(), policyVersion.trim());
   const policyDefects = complete ? validateAdmissionPolicy(complete) : [];
   const policyToPropose = complete && policyDefects.length === 0 ? complete : null;
-  const state = governance?.state ?? null;
+  // A verdict is shown only beside the identity it was read for. Everything below renders these, never
+  // `governance`/`policyHash` directly.
+  const currentPolicyKey = selectedPolicyKey(boundaryId, policyId, policyVersion);
+  const currentGovernance = forSelection(governance, loadedPolicyKey, currentPolicyKey);
+  const currentPolicyHash = forSelection(policyHash, loadedPolicyKey, currentPolicyKey);
+  const state = currentGovernance?.state ?? null;
+
+  /**
+   * Editing the selection drops what was read for the old one.
+   *
+   * Clearing the state looks redundant beside the derived gate above, and is not: it makes editing away
+   * and back require an explicit re-read, instead of silently restoring a view that may no longer match
+   * the server. Do not "simplify" it out.
+   */
+  function invalidateSelection(nextBoundary: string, nextId: string, nextVersion: string): void {
+    selectedKeyRef.current = selectedPolicyKey(nextBoundary, nextId, nextVersion);
+    setGovernance(null);
+    setPolicyHash(null);
+    setLoadedPolicyKey(null);
+  }
 
   function numberField(key: NumericField, label: string, step: string) {
     const value = thresholds[key];
@@ -106,6 +133,7 @@ export function PilotPolicyGovernance() {
 
   async function refresh(): Promise<void> {
     if (!identified) return;
+    const requestedPolicyKey = currentPolicyKey;
     setError(null);
     try {
       // Read as the steward: the governance read requires `AuditRead`, which the customer-side
@@ -115,10 +143,15 @@ export function PilotPolicyGovernance() {
         { boundaryId: boundaryId.trim(), policyId: policyId.trim(), policyVersion: policyVersion.trim() },
         STEWARD,
       );
+      if (!mayApplyRead(requestedPolicyKey, selectedKeyRef.current)) return;
       setGovernance(view);
       setPolicyHash(view.policyHash);
+      setLoadedPolicyKey(requestedPolicyKey);
     } catch (e) {
+      if (!mayApplyRead(requestedPolicyKey, selectedKeyRef.current)) return;
       setGovernance(null);
+      setPolicyHash(null);
+      setLoadedPolicyKey(null);
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -147,7 +180,10 @@ export function PilotPolicyGovernance() {
         },
         proposer,
       );
-      setPolicyHash(result.policyHash);
+      // The hash is deliberately NOT set from here. It is only ever displayed from a successful
+      // lifecycle read (`refresh`, which runs next via `act`), because a hash shown beside a lifecycle
+      // the screen could not read would assert more than is known. A failed read surfaces its error.
+      void result;
     });
 
   const move = (transition: "ACTIVATED" | "FROZEN" | "UNFROZEN" | "RETIRED") =>
@@ -184,15 +220,24 @@ export function PilotPolicyGovernance() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Boundary (tenant)</span>
-            <input className="num-input w-full" value={boundaryId} onChange={(e) => setBoundaryId(e.target.value)} />
+            <input className="num-input w-full" value={boundaryId} onChange={(e) => {
+              invalidateSelection(e.target.value, policyId, policyVersion);
+              setBoundaryId(e.target.value);
+            }} />
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Policy id</span>
-            <input className="num-input w-full" value={policyId} onChange={(e) => setPolicyId(e.target.value)} />
+            <input className="num-input w-full" value={policyId} onChange={(e) => {
+              invalidateSelection(boundaryId, e.target.value, policyVersion);
+              setPolicyId(e.target.value);
+            }} />
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Policy version</span>
-            <input className="num-input w-full" value={policyVersion} onChange={(e) => setPolicyVersion(e.target.value)} />
+            <input className="num-input w-full" value={policyVersion} onChange={(e) => {
+              invalidateSelection(boundaryId, policyId, e.target.value);
+              setPolicyVersion(e.target.value);
+            }} />
           </label>
         </div>
         <button
@@ -299,9 +344,9 @@ export function PilotPolicyGovernance() {
           </button>
         </div>
 
-        {policyHash && (
+        {currentPolicyHash && (
           <div className="mt-3 text-[11px] text-slate-500">
-            Policy hash <span className="font-mono text-slate-300">{policyHash}</span> — stamped into
+            Policy hash <span className="font-mono text-slate-300">{currentPolicyHash}</span> — stamped into
             every decision, so retiring or superseding this version can never alter a verdict already
             made under it.
           </div>
@@ -313,13 +358,13 @@ export function PilotPolicyGovernance() {
         )}
       </Panel>
 
-      {governance && governance.events.length > 0 && (
+      {currentGovernance && currentGovernance.events.length > 0 && (
         <Panel className="p-5">
           <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
             Who decided what — append-only, nothing here is editable
           </div>
           <ol className="space-y-2">
-            {governance.events.map((event, i) => (
+            {currentGovernance.events.map((event, i) => (
               <li key={`${event.at}-${i}`} className="rounded-lg border border-ink-500/50 p-3 text-[12px]">
                 <div className="flex flex-wrap items-center gap-2">
                   <Pill tone="neutral">{event.transition}</Pill>
@@ -331,11 +376,11 @@ export function PilotPolicyGovernance() {
               </li>
             ))}
           </ol>
-          {governance.proposedBy && governance.activatedBy && (
+          {currentGovernance.proposedBy && currentGovernance.activatedBy && (
             <p className="mt-3 text-[11px] text-slate-500">
-              Proposed by <span className="text-slate-300">{governance.proposedBy}</span>, activated by{" "}
-              <span className="text-slate-300">{governance.activatedBy}</span> —{" "}
-              {governance.proposedBy === governance.activatedBy
+              Proposed by <span className="text-slate-300">{currentGovernance.proposedBy}</span>, activated by{" "}
+              <span className="text-slate-300">{currentGovernance.activatedBy}</span> —{" "}
+              {currentGovernance.proposedBy === currentGovernance.activatedBy
                 ? "the same identity, which the server should not have allowed."
                 : "two different identities, which is the point."}
             </p>

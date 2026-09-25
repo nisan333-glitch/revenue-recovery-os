@@ -199,6 +199,21 @@ try {
   await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 });
   check("an activated bar may judge a dataset", await page.getByText("may judge a dataset").isVisible());
 
+  // A lifecycle belongs to one exact boundary, policy id and version. Editing any of them must
+  // immediately hide the old ACTIVE verdict — the state, the "may judge" pill and the hash together.
+  const policyIdInput = page.getByLabel("Policy id", { exact: true });
+  await policyIdInput.fill(`${POLICY_ID}-other`);
+  check("changing policy identity hides the old ACTIVE verdict",
+    (await page.getByText("not proposed", { exact: true }).isVisible()) &&
+    !(await page.getByText("may judge a dataset").count()) &&
+    !(await page.getByText("Policy hash", { exact: false }).count()));
+  // Restoring the identity does NOT restore the verdict: it has to be read again, deliberately.
+  await policyIdInput.fill(POLICY_ID);
+  check("restoring the identity still requires an explicit re-read",
+    await page.getByText("not proposed", { exact: true }).isVisible());
+  await page.getByRole("button", { name: "Read lifecycle" }).click();
+  await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 });
+
   // The screen must show both halves attributed to their own actor — the audit claim, on screen.
   const governanceText = await page.locator("main").innerText();
   check(

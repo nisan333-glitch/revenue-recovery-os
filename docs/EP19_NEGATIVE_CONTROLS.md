@@ -19,6 +19,8 @@ branch. All controls were run against a real PostgreSQL 16 database.
 | NC-7 | The EP-19 UI wiring (`Assessment.tsx`) | stopped sending `admissionPolicyId` to the gate | the **browser journey**, at the upload screen | caught |
 | NC-8 | Defective rows participate in their own collision (`validateDataset.ts`) | re-exempted them: `if (!rejectedForAnyReason)` on the candidate push | 2 — `corrupting a rival row…` and `identical rows are both excluded` | caught |
 | NC-9 | The collision rule entirely | reinstated "first wins" (`firstWins` map + `continue`) | **5** across `pilotDataContract.test.ts` and `syntheticScenarios.test.ts` | caught |
+| NC-10 | The **pure rule** keying a verdict to its identity (`forSelection`) | made it return `held` regardless of the keys | 3 in `policySelection.test.ts` | caught |
+| NC-11 | The **component's use** of that rule (`PilotPolicyGovernance.tsx`) | rendered `governance`/`policyHash` directly, `forSelection` intact | the journey's 2 identity-change checks | caught |
 
 ## What NC-7 showed about the harness itself
 
@@ -55,6 +57,25 @@ missing** — because on an empty form the button is already disabled by `!ident
 threshold invalid. The lesson is not that the unit test was wrong but that it was asserting a state the
 page reaches for several different reasons; a check on a fully-populated form was needed to isolate the
 one that mattered.
+
+## Why the governance-selection rule needed TWO controls
+
+There are two guards, not one: the pure rule, and the component actually routing through it. A single
+control cannot prove both, and the first draft of this pair got it wrong — removing the component's gate
+leaves `forSelection` untouched, so its unit tests keep passing and that control says nothing about them.
+
+Run separately, the asymmetry is the whole point:
+
+| | `policySelection.test.ts` | the browser journey |
+|---|---|---|
+| **NC-10** — `forSelection` ignores the keys | **3 fail** | fails too (the component calls it) |
+| **NC-11** — component bypasses the gate | **all 10 pass** | **2 fail** |
+
+NC-11 passing every unit test while the browser check goes red is what proves the two layers test
+different things: the rule can be perfectly correct and simply not wired up. Incidentally, TypeScript
+caught part of NC-11 on its own — bypassing the gate left `loadedPolicyKey` unread, which
+`noUnusedLocals` rejects. That is a third, free guard, but it only fires for this particular shape of
+mistake and is not a substitute for either control.
 
 ## What is not covered here
 
