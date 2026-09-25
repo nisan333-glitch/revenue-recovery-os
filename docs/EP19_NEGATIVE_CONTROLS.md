@@ -107,6 +107,8 @@ done. The test has to disagree with that too, so it is controlled separately.
 |---|---|---|
 | NC-13a | the component wholesale — restore the previous preliminary rendering | `ValidationReportPanel.test.ts`, on the missing explanation |
 | NC-13b | **half-fixed** — keep the new prose and pill, but still render `AdmissionSection` when preliminary | `ValidationReportPanel.test.ts`, on `no policy configured` |
+| NC-14a | The migration — recreate `recovery_cases_candidate_boundary_unique` | the `leaves exactly one uniqueness arbiter` test | caught |
+| NC-14b | The same, with the schema test filtered out so it cannot mask the result | the concurrency test — **it did not fail**; see below | **not caught** |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -114,6 +116,30 @@ browser journey checks the same wording end to end and needs a PostgreSQL-backed
 **Before/after evidence.** The defect was demonstrated at `cc9029e` before being fixed: rendering the
 preliminary panel for `all-rejected` there produced both `no policy configured` and
 `not pilot-admissible`. Without that step the fix would only be asserted.
+
+## NC-14 · the measurement that says what the concurrency test is actually worth
+
+`ON CONFLICT` suppresses conflicts only on the arbiter index it names, so a second unique index over the
+same column can raise a duplicate-key error on a valid replay. The fix drops the redundant composite.
+
+The added test came as **one** test with the schema assertion first, which breaks its own control:
+restoring the constraint aborts on the schema line before the concurrency half runs, so the control
+would look like it worked while proving nothing. Split into two, each controlled separately.
+
+**NC-14a** fires deterministically: recreate the constraint and the schema test goes red.
+
+**NC-14b is the honest part.** With the constraint restored and the schema test filtered out, the
+concurrency test was run **10 times — 4 candidates × 3 concurrent promotions each, 120 concurrent
+promotions in total — and it never failed. 0 of 10.**
+
+So, stated plainly: **the concurrency test does not catch this defect.** The guard that does is the
+schema assertion. In CI the race surfaced exactly once across many runs, which matches: it is rare, not
+impossible, and a test that cannot be made to fail on demand is not the thing protecting us here.
+
+The concurrency test is kept, because it proves something else that is real and worth pinning — across
+12 concurrent promotions exactly one `created` is returned, one `recoveryCaseId` exists per candidate,
+and exactly one `PromoteCandidate` authority event is written. That is the store's idempotent replay
+path, and it holds whether or not the race fires. It is simply not evidence about the arbiter.
 
 ## What is not covered here
 

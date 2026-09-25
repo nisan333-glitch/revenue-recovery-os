@@ -239,7 +239,6 @@ model RecoveryCaseRecord {
   openedAt          DateTime @map("opened_at") @db.Timestamptz(3)
   persistedAt       DateTime @default(now()) @map("persisted_at") @db.Timestamptz(3)
 
-  @@unique([sourceCandidateId, boundaryId], map: "recovery_cases_candidate_boundary_unique")
   @@index([boundaryId, openedAt], map: "recovery_cases_boundary_opened_idx")
   @@map("recovery_cases")
 }
