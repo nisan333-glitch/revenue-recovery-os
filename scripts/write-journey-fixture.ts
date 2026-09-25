@@ -8,7 +8,7 @@
 //
 // SYNTHETIC ONLY. Every identifier carries a `synthetic-` prefix so a leaked row is obviously fake.
 import { mkdir, writeFile } from "node:fs/promises";
-import { SCENARIO_POLICY, syntheticPilotCsv, SYNTHETIC_PROVENANCE } from "../src/contract/syntheticPilotDataset";
+import { SCENARIO_POLICY, syntheticPilotCsv, syntheticScenarios, SYNTHETIC_PROVENANCE } from "../src/contract/syntheticPilotDataset";
 
 const ROW_COUNT = 24;
 const directory = "e2e/fixtures";
@@ -20,7 +20,9 @@ await writeFile(`${directory}/journey.synthetic.csv`, syntheticPilotCsv(ROW_COUN
 });
 await writeFile(
   `${directory}/journey.fixture.json`,
-  `${JSON.stringify({ rowCount: ROW_COUNT, policy: SCENARIO_POLICY, provenance: SYNTHETIC_PROVENANCE }, null, 2)}\n`,
+  `${JSON.stringify({ rowCount: ROW_COUNT, policy: SCENARIO_POLICY, provenance: SYNTHETIC_PROVENANCE,
+    scenarios: syntheticScenarios().map(({ id, csvText, expected }) => ({ id, csvText, expected })),
+  }, null, 2)}\n`,
   { encoding: "utf8", mode: 0o600 },
 );
 console.log(`wrote SYNTHETIC journey fixture (${ROW_COUNT} rows) to ${directory}/`);

@@ -62,7 +62,7 @@ if (!existsSync(CSV_PATH)) {
   console.error("missing journey fixture — run `npm run fixture:journey` first (test:journey does).");
   process.exit(2);
 }
-const { policy: SCENARIO_POLICY } = JSON.parse(
+const { policy: SCENARIO_POLICY, scenarios: RISK_SCENARIOS } = JSON.parse(
   readFileSync(join(ROOT, "e2e/fixtures/journey.fixture.json"), "utf8"),
 );
 
@@ -350,7 +350,126 @@ try {
     /Revenue Opportunity/i.test(executionText),
   );
 
-  // ── 8 · Egress and page health ───────────────────────────────────────────────────────────────────
+  // ── 8 · Each generated data-risk scenario, through the actual upload screen ────────────────────
+  // The API/worker matrix checks the domain decision. These checks also catch a browser that shows
+  // a misleading verdict, promotes a preflight refusal to a server verdict, or lets a refused
+  // dataset leave Upload. Each file gets a fresh screen and dataset id; all share the activated bar.
+  /**
+   * What the report panel SHOWS, asserted identically whether the dataset was admitted or refused.
+   *
+   * One helper rather than two copies: a dataset can be correctly admitted by the server and still be
+   * displayed with the wrong counts, or with a rejected row's code silently dropped. That is the class
+   * of defect only a browser can see, and it is no less serious on the admitted path.
+   */
+  /**
+   * The number a Counter shows, compared EXACTLY.
+   *
+   * Not `endsWith`: a counter displaying 31 where 1 is expected ends with "1" and would pass. NC-12
+   * caught that — sabotaging the panel to show `dataRows` left `one-valid-row` green, because its
+   * expected accepted count is 1 and the wrong value was 31. The value is the counter's last token,
+   * with the thousands separator `toLocaleString` adds removed.
+   */
+  function counterValue(text) {
+    const last = text.trim().split(/\s+/).pop() ?? "";
+    return Number(last.replace(/,/g, ""));
+  }
+
+  async function checkVisibleReport(scenario) {
+    const report = page.locator("main");
+    const accepted = await page.getByText("Accepted", { exact: true }).locator("..").innerText();
+    const rejected = await page.getByText("Rejected", { exact: true }).locator("..").innerText();
+    check(`${scenario.id}: the visible accepted/rejected counts match the fixture`,
+      counterValue(accepted) === scenario.expected.acceptedRows &&
+      counterValue(rejected) === scenario.expected.rejectedRows,
+      `accepted=${counterValue(accepted)} rejected=${counterValue(rejected)} ` +
+      `expected ${scenario.expected.acceptedRows}/${scenario.expected.rejectedRows}`);
+    for (const code of scenario.expected.codes) {
+      check(`${scenario.id}: the report names ${code}`,
+        (await report.getByText(code, { exact: true }).count()) > 0);
+    }
+  }
+
+  for (const scenario of RISK_SCENARIOS) {
+    await page.goto(UI_BASE, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Revenue Opportunity Assessment" }).click();
+    await page.getByLabel("Admission policy id").fill(POLICY_ID);
+    await page.getByLabel("Admission policy version").fill(POLICY_VERSION);
+    await page.getByLabel("Analysis as-of date").fill(AS_OF);
+    await page.getByLabel("Pilot boundary").fill(BOUNDARY);
+    await page.getByLabel("Dataset label").fill(`matrix-${scenario.id}-${randomUUID().slice(0, 8)}`);
+    await page.getByLabel("Contract system of record").fill("synthetic-crm");
+    await page.getByLabel("Billing system of record").fill("synthetic-billing");
+    await page.getByLabel("Product/telemetry source").fill("synthetic-telemetry");
+    await page.getByLabel("Data owner (role, not a person)").fill("synthetic-revenue-operations");
+    await page.getByLabel("Extraction method").fill("synthetic deterministic generator");
+    await page.getByLabel("Extracted at (UTC)").fill("2026-03-01T00:00:00.000Z");
+    await page.getByLabel("Coverage start").fill("2026-01-01");
+    await page.getByLabel("Coverage end").fill("2026-03-31");
+
+    const serverReply = scenario.expected.usableForAssessment
+      ? page.waitForResponse(
+          (r) => r.url().includes("/api/pilot/datasets") && r.request().method() === "POST",
+          { timeout: 30_000 },
+        )
+      : null;
+    await page.setInputFiles('input[type="file"]', {
+      name: `${scenario.id}.synthetic.csv`, mimeType: "text/csv",
+      buffer: Buffer.from(scenario.csvText, "utf8"),
+    });
+
+    if (scenario.expected.admission === "ADMISSIBLE") {
+      await page.getByRole("button", { name: "Pilot readiness →" }).waitFor({ timeout: 30_000 });
+      const reply = await serverReply;
+      const body = reply?.ok() ? await reply.json() : null;
+      check(`${scenario.id}: admitted by the server and progressed in the browser`,
+        body?.admission?.outcome === "ADMISSIBLE" &&
+        body.counts?.acceptedRows === scenario.expected.acceptedRows &&
+        body.counts?.rejectedRows === scenario.expected.rejectedRows);
+
+      // The report panel is NOT on screen here: progressing moved the flow to the cohort step, which
+      // unmounts it. `validation` survives that move (it is cleared only by the next upload), so going
+      // back to Upload re-renders the panel with the SERVER result — deterministically, no race.
+      await page.getByRole("button", { name: "← Upload" }).click();
+      await page.getByText("Data contract validation", { exact: true }).waitFor({ timeout: 30_000 });
+      check(`${scenario.id}: the admitted report is marked server-verified`,
+        (await page.locator("main").innerText()).includes("server-verified"));
+      await checkVisibleReport(scenario);
+    } else {
+      await page.getByText("Data contract validation", { exact: true }).waitFor({ timeout: 30_000 });
+      const admissionPill = page.getByText("Pilot admission", { exact: true }).locator("..");
+      const preliminary = !scenario.expected.usableForAssessment;
+      if (preliminary) {
+        // A local preflight evaluates admission with NO policy, so its pill reads "not assessable" for
+        // every unusable dataset whatever its real fitness would be — asserting that it equals the
+        // fixture's admission would prove nothing. What the preview actually means is that no bar was
+        // applied, and the panel says so. This fails if the browser ever shows a fitness verdict it
+        // cannot know, which is the only thing worth checking here.
+        await admissionPill.getByText("no policy configured", { exact: true }).waitFor({ timeout: 30_000 });
+      } else {
+        await admissionPill.getByText(scenario.expected.admission.replace(/_/g, " ").toLowerCase(),
+          { exact: true }).waitFor({ timeout: 30_000 });
+      }
+      const reply = await serverReply;
+      if (!preliminary && !reply) throw new Error(`${scenario.id}: expected server verdict, got no response`);
+      // An unusable file stops at local preflight and is labelled as such; a usable but unfit file
+      // must receive an authoritative server verdict. Neither may expose the next-step button.
+      const report = page.locator("main");
+      const text = await report.innerText();
+      check(`${scenario.id}: refusal has the correct authority and remains on Upload`,
+        text.includes(preliminary ? "preview — not yet confirmed by the server" : "server-verified") &&
+        (await page.getByRole("button", { name: "Pilot readiness →" }).count()) === 0);
+      await checkVisibleReport(scenario);
+      if (reply) {
+        const body = await reply.json();
+        check(`${scenario.id}: browser refusal agrees with the server`,
+          body.admission?.outcome === scenario.expected.admission &&
+          body.counts?.acceptedRows === scenario.expected.acceptedRows &&
+          body.counts?.rejectedRows === scenario.expected.rejectedRows);
+      }
+    }
+  }
+
+  // ── 9 · Egress and page health ───────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
   check("the page made no request outside its own origin", external.length === 0, external.slice(0, 3).join(", "));
   check("no uncaught page error occurred", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));

@@ -21,6 +21,7 @@ branch. All controls were run against a real PostgreSQL 16 database.
 | NC-9 | The collision rule entirely | reinstated "first wins" (`firstWins` map + `continue`) | **5** across `pilotDataContract.test.ts` and `syntheticScenarios.test.ts` | caught |
 | NC-10 | The **pure rule** keying a verdict to its identity (`forSelection`) | made it return `held` regardless of the keys | 3 in `policySelection.test.ts` | caught |
 | NC-11 | The **component's use** of that rule (`PilotPolicyGovernance.tsx`) | rendered `governance`/`policyHash` directly, `forSelection` intact | the journey's 2 identity-change checks | caught |
+| NC-12 | The report panel's displayed counts and codes (`ValidationReportPanel.tsx`) | showed `dataRows` in the `Accepted` counter and dropped the row-level code pill | **12** across the browser matrix, on both the admitted and refused paths | caught |
 
 ## What NC-7 showed about the harness itself
 
@@ -76,6 +77,19 @@ different things: the rule can be perfectly correct and simply not wired up. Inc
 caught part of NC-11 on its own — bypassing the gate left `loadedPolicyKey` unread, which
 `noUnusedLocals` rejects. That is a third, free guard, but it only fires for this particular shape of
 mistake and is not a substitute for either control.
+
+## NC-12 found a false pass in the assertion it was testing
+
+String-matching browser assertions are the kind that quietly pass against whatever happens to be on
+screen, which is why this control was worth running rather than assuming.
+
+The first version compared counts with `endsWith(String(expected))`. Under the sabotage, `one-valid-row`
+stayed **green**: the panel showed 31 accepted where 1 was expected, and `"ACCEPTED 31".endsWith("1")` is
+true. The check had been passing for a reason unrelated to the number being right.
+
+Replaced with an exact numeric comparison of the counter's last token. Re-running the control then
+produced **12** failures instead of 11 — the extra one being `one-valid-row`'s counts, which is the
+evidence the gap is closed.
 
 ## What is not covered here
 
