@@ -174,11 +174,10 @@ try {
   // An out-of-range threshold must NAME the field. A silently disabled button sends an operator hunting
   // through eight boxes, and `validateAdmissionPolicy` already returns the field and the reason.
   await page.getByLabel("Max duplicate rate", { exact: true }).fill("1.1");
-  // Located by attribute, not getByLabel: getByLabel resolves labelable FORM CONTROLS, and this is a
-  // <ul aria-label=...>, so getByLabel silently matches nothing there.
-  const defect = page.locator('[aria-label="Policy threshold errors"]').getByText(/maxDuplicateRate:.*between 0 and 1/);
-  // waitFor, not isVisible: isVisible() samples the DOM now, so on a missed React flush it would report
-  // the defect list broken when it had merely not rendered — and a false PASS is the worse direction.
+  const defect = page.getByLabel("Policy threshold errors").getByText(/maxDuplicateRate:.*between 0 and 1/);
+  // waitFor before sampling: isVisible() reads the DOM as it is right now, so a check that ran before
+  // React flushed would report the defect list missing when it had merely not rendered yet. A false
+  // FAIL here is noise; the same race in the other direction is how a real gap gets a green tick.
   await defect.waitFor({ state: "visible", timeout: 10_000 }).catch(() => undefined);
   check("an invalid threshold names the field and blocks proposal",
     (await defect.isVisible()) && !(await proposeButton.isEnabled()));
