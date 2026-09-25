@@ -69,12 +69,38 @@ describe("EP-19 · the governance screen", () => {
     expect(html).not.toContain("may judge a dataset");
   });
 
-  it("presents the starting thresholds as a conversation, never a recommendation", () => {
-    expect(html).toMatch(/not a\s*<\/span>\s*recommendation|not a <!-- -->recommendation|not a\s+recommendation/);
-    expect(html).toMatch(/Every threshold is required and the system has no default/);
+  it("starts with every commercial choice blank and refuses to propose one", () => {
+    // The screen used to open with a full set of plausible thresholds. A seeded bar anchors the
+    // judgement it claims not to make, and the bar is the first input to the number the pilot
+    // benefits from — so nothing is pre-filled, and nothing incomplete can be sent.
+    expect(html).toMatch(/Every threshold must be stated deliberately/);
     expect(html).toMatch(/commercial judgement/);
-    // Absence must never read as permissiveness.
-    expect(html).toMatch(/absence is never read as/i);
+    expect(html).toMatch(/Blank is not zero and cannot be proposed/);
+    // Kept from the previous wording: these two sentences are what tie this screen to the server's
+    // no-default rule, which the server enforces at two layers and the server matrix pins.
+    expect(html).toContain("The system has no default for any of them");
+    expect(html).toMatch(/absence is never read as no limit/i);
+    // Every numeric box empty, and all eight of them present.
+    expect(html).toMatch(/value=""[^>]*type="number"|type="number"[^>]*value=""/);
+    expect((html.match(/type="number"/g) ?? []).length).toBe(8);
+    expect(html).toMatch(/disabled=""[^>]*>Propose as/);
+  });
+
+  it("makes an empty lifecycle selection a decision rather than an omission", () => {
+    // Three unticked boxes on an untouched form say nothing at all. The review gate is what turns an
+    // empty selection into "none required", so absence never reads as a deliberate zero.
+    expect(html).toContain("I have reviewed lifecycle coverage");
+    const fieldset = html.slice(html.indexOf("<fieldset"), html.indexOf("</fieldset>"));
+    expect(fieldset).toContain("Required lifecycle states");
+    for (const state of ["stalled", "reference", "undetermined"]) {
+      // Asserted inside the fieldset, as a checkbox: `toContain(state)` against the whole page would
+      // pass on any document containing the word "reference".
+      expect(fieldset, state).toMatch(new RegExp(`<input[^>]*type="checkbox"[^>]*>\\s*${state}`));
+    }
+    // Until the gate is ticked the three states are unavailable — an untouched form cannot half-state
+    // a policy. Four checkboxes in total: the gate plus the three states.
+    expect((fieldset.match(/type="checkbox"/g) ?? []).length).toBe(4);
+    expect((fieldset.match(/disabled=""/g) ?? []).length).toBe(3);
   });
 
   it("requires a stated rationale on every act", () => {

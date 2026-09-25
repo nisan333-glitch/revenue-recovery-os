@@ -16,7 +16,7 @@
 // what the server decided about them.
 import { useState } from "react";
 import { Panel, Pill, SectionHeader } from "../../components/ui";
-import { ADMISSION_CALC_VERSION, type PilotAdmissionPolicy } from "../../contract/pilotAdmissionPolicy";
+import { ADMISSION_CALC_VERSION, validateAdmissionPolicy, type PilotAdmissionPolicy, type RequiredLifecycleState } from "../../contract/pilotAdmissionPolicy";
 import type { PolicyState } from "../../contract/policyLifecycle";
 import {
   mayJudge,
@@ -28,27 +28,37 @@ import {
 } from "../../data/pilotPolicyClient";
 import { STEWARD, operatorActorFor } from "../../data/devActor";
 
-/**
- * Starting thresholds for the form — a STARTING POINT FOR A CONVERSATION, not a recommendation.
- *
- * Every field is required by the contract and has no default anywhere in the system; these are here
- * only so a demo does not begin with eleven empty boxes. They are the customer's commercial decision
- * to change, and nothing downstream treats them as advice. The `expected`-style discipline applies:
- * the system never picks a bar on anyone's behalf, and the server refuses a policy with a field unset.
- */
-const STARTING_THRESHOLDS: Omit<PilotAdmissionPolicy, "policyId" | "policyVersion"> = {
-  calculationMethodVersion: ADMISSION_CALC_VERSION,
-  minAcceptedRows: 10,
-  minDistinctEntities: 5,
-  maxRejectionRate: 0.2,
-  maxSingleReasonShare: 0.9,
-  maxDuplicateRate: 0.05,
-  minCoverageDays: 10,
-  requiredLifecycleStates: ["stalled", "reference"],
-  maxOrderingDefectRate: 0.05,
-  maxMissingRecommendedColumns: 2,
-  requireProvenanceDeclaration: true,
+// NOTHING IS SEEDED HERE ANY MORE. This form used to open with a full set of plausible thresholds,
+// described as "a starting point for a conversation". The trouble with a seeded bar is that it anchors
+// the commercial judgement it claims not to make: the path of least resistance is to accept it, and the
+// bar a pilot is judged against is the first input to the number the pilot benefits from. So every
+// field starts blank, blank is not zero, and an incomplete policy cannot be proposed at all.
+const NUMERIC_FIELDS = ["minAcceptedRows", "minDistinctEntities", "minCoverageDays", "maxMissingRecommendedColumns", "maxRejectionRate", "maxSingleReasonShare", "maxDuplicateRate", "maxOrderingDefectRate"] as const;
+type NumericField = (typeof NUMERIC_FIELDS)[number];
+const EMPTY_THRESHOLDS: Record<NumericField, string> = {
+  minAcceptedRows: "", minDistinctEntities: "", minCoverageDays: "", maxMissingRecommendedColumns: "",
+  maxRejectionRate: "", maxSingleReasonShare: "", maxDuplicateRate: "", maxOrderingDefectRate: "",
 };
+
+/**
+ * The policy as stated so far, or null while any choice is still unmade.
+ *
+ * It does NOT validate — that is deliberate. An unfinished form is not an invalid one, and showing
+ * "must be a fraction between 0 and 1" against a box nobody has typed in yet trains people to ignore
+ * the message. Validation runs separately on a complete policy, so defects mean something when shown.
+ */
+function completePolicy(
+  fields: Record<NumericField, string>,
+  lifecycle: readonly RequiredLifecycleState[] | null,
+  provenanceRequired: boolean | null,
+  policyId: string,
+  policyVersion: string,
+): PilotAdmissionPolicy | null {
+  if (NUMERIC_FIELDS.some(field => fields[field].trim() === "") || lifecycle === null || provenanceRequired === null) return null;
+  const numeric = Object.fromEntries(NUMERIC_FIELDS.map(field => [field, Number(fields[field])])) as Record<NumericField, number>;
+  return { ...numeric, policyId, policyVersion, calculationMethodVersion: ADMISSION_CALC_VERSION,
+    requiredLifecycleStates: lifecycle, requireProvenanceDeclaration: provenanceRequired };
+}
 
 function stateTone(state: PolicyState | null): "proof" | "detect" | "neutral" {
   if (state === "ACTIVE") return "proof";
@@ -60,7 +70,11 @@ export function PilotPolicyGovernance() {
   const [boundaryId, setBoundaryId] = useState("");
   const [policyId, setPolicyId] = useState("");
   const [policyVersion, setPolicyVersion] = useState("1.0.0");
-  const [thresholds, setThresholds] = useState(STARTING_THRESHOLDS);
+  const [thresholds, setThresholds] = useState(EMPTY_THRESHOLDS);
+  // null means "not yet reviewed", [] means "reviewed, none required". Collapsing those two would let
+  // an untouched form read as a deliberate decision that no lifecycle state need be present.
+  const [requiredLifecycleStates, setRequiredLifecycleStates] = useState<readonly RequiredLifecycleState[] | null>(null);
+  const [requireProvenanceDeclaration, setRequireProvenanceDeclaration] = useState<boolean | null>(null);
   const [rationale, setRationale] = useState("");
   const [governance, setGovernance] = useState<PolicyGovernanceView | null>(null);
   const [policyHash, setPolicyHash] = useState<string | null>(null);
@@ -69,9 +83,12 @@ export function PilotPolicyGovernance() {
 
   const proposer = operatorActorFor(null);
   const identified = Boolean(boundaryId.trim() && policyId.trim() && policyVersion.trim());
+  const complete = completePolicy(thresholds, requiredLifecycleStates, requireProvenanceDeclaration, policyId.trim(), policyVersion.trim());
+  const policyDefects = complete ? validateAdmissionPolicy(complete) : [];
+  const policyToPropose = complete && policyDefects.length === 0 ? complete : null;
   const state = governance?.state ?? null;
 
-  function numberField(key: keyof typeof STARTING_THRESHOLDS, label: string, step: string) {
+  function numberField(key: NumericField, label: string, step: string) {
     const value = thresholds[key];
     return (
       <label className="block" key={key}>
@@ -80,10 +97,8 @@ export function PilotPolicyGovernance() {
           type="number"
           step={step}
           className="num-input w-full"
-          value={typeof value === "number" ? value : 0}
-          onChange={(e) =>
-            setThresholds({ ...thresholds, [key]: Number(e.target.value) } as typeof thresholds)
-          }
+          value={value}
+          onChange={(e) => setThresholds({ ...thresholds, [key]: e.target.value })}
         />
       </label>
     );
@@ -123,10 +138,11 @@ export function PilotPolicyGovernance() {
 
   const propose = () =>
     act(async () => {
+      if (!policyToPropose) throw new Error("State every threshold and lifecycle choice before proposing a policy.");
       const result = await proposeAdmissionPolicy(
         {
           boundaryId: boundaryId.trim(),
-          policy: { ...thresholds, policyId: policyId.trim(), policyVersion: policyVersion.trim() },
+          policy: policyToPropose,
           rationale: rationale.trim(),
         },
         proposer,
@@ -192,11 +208,9 @@ export function PilotPolicyGovernance() {
       <Panel className="mb-4 p-5">
         <div className="mb-1 text-sm font-semibold text-slate-200">2 · Thresholds</div>
         <p className="mb-3 text-[12px] text-slate-500">
-          Every threshold is required and the system has no default for any of them. The values below
-          are a starting point for a conversation, <span className="text-slate-300">not a
-          recommendation</span> — a fitness bar is a commercial judgement belonging to whoever runs the
-          pilot. A policy with a field unset is refused, and absence is never read as &ldquo;no
-          limit&rdquo;.
+          Every threshold must be stated deliberately. Blank is not zero and cannot be proposed.
+          The system has no default for any of them; absence is never read as no limit.
+          A fitness bar is a commercial judgement belonging to whoever runs the pilot.
         </p>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {numberField("minAcceptedRows", "Min accepted rows", "1")}
@@ -208,6 +222,40 @@ export function PilotPolicyGovernance() {
           {numberField("maxDuplicateRate", "Max duplicate rate", "0.01")}
           {numberField("maxOrderingDefectRate", "Max ordering-defect rate", "0.01")}
         </div>
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <fieldset className="block text-sm text-slate-300">
+            <legend>Required lifecycle states</legend>
+            {/* The gate exists so an EMPTY selection can be a decision rather than an omission. Three
+                unticked boxes on an untouched form say nothing; ticking this says "none required". */}
+            <label className="mt-1 block">
+              <input type="checkbox" checked={requiredLifecycleStates !== null}
+                onChange={e => setRequiredLifecycleStates(e.target.checked ? [] : null)} />
+              {" "}I have reviewed lifecycle coverage (none required if no states are selected)
+            </label>
+            {(["stalled", "reference", "undetermined"] as const).map(state => (
+              <label className="mt-1 block" key={state}>
+                <input type="checkbox" disabled={requiredLifecycleStates === null}
+                  checked={requiredLifecycleStates?.includes(state) ?? false}
+                  onChange={e => setRequiredLifecycleStates(current => current === null ? null :
+                    e.target.checked ? [...current, state] : current.filter(value => value !== state))} />
+                {" "}{state}
+              </label>
+            ))}
+          </fieldset>
+          <label className="block text-sm text-slate-300">Require provenance declaration
+            <select className="num-input mt-1 w-full" value={requireProvenanceDeclaration === null ? "" : String(requireProvenanceDeclaration)}
+              onChange={(e) => setRequireProvenanceDeclaration(e.target.value === "" ? null : e.target.value === "true")}>
+              <option value="">Choose explicitly</option><option value="true">Yes</option><option value="false">No</option>
+            </select>
+          </label>
+        </div>
+        {/* Named defects, not a silently disabled button. `validateAdmissionPolicy` returns the field
+            and the reason precisely so a caller holding user input can say which box is wrong. */}
+        {policyDefects.length > 0 && (
+          <ul className="mt-3 text-[12px] text-detect-500" aria-label="Policy threshold errors">
+            {policyDefects.map(defect => <li key={`${defect.field}:${defect.spec.code}`}>{defect.field}: {defect.detail}</li>)}
+          </ul>
+        )}
         <label className="mt-3 block">
           <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">
             Rationale (required on every act)
@@ -234,7 +282,7 @@ export function PilotPolicyGovernance() {
         <p className="mb-3 text-[12px] text-slate-400">{nextGovernanceAction(state)}</p>
 
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="rounded-lg border border-proof-600/40 bg-proof-600/10 px-3 py-1.5 text-sm text-proof-500 hover:bg-proof-600/20 disabled:opacity-40" disabled={!identified || busy || !rationale.trim()} onClick={() => void propose()}>
+          <button type="button" className="rounded-lg border border-proof-600/40 bg-proof-600/10 px-3 py-1.5 text-sm text-proof-500 hover:bg-proof-600/20 disabled:opacity-40" disabled={!identified || !policyToPropose || busy || !rationale.trim()} onClick={() => void propose()}>
             Propose as {proposer.actorId} ({proposer.role})
           </button>
           <button type="button" className="rounded-lg border border-proof-600/40 bg-proof-600/10 px-3 py-1.5 text-sm text-proof-500 hover:bg-proof-600/20 disabled:opacity-40" disabled={!identified || busy || !rationale.trim()} onClick={() => void move("ACTIVATED")}>

@@ -159,10 +159,30 @@ try {
   ]) {
     await page.getByLabel(label, { exact: true }).fill(value);
   }
+  // The review gate first: the three state boxes are disabled until it is ticked, so an untouched form
+  // cannot half-state a policy.
+  await page.getByLabel("I have reviewed lifecycle coverage").check();
+  for (const state of SCENARIO_POLICY.requiredLifecycleStates) {
+    await page.getByRole("group", { name: "Required lifecycle states" }).getByLabel(state, { exact: true }).check();
+  }
+  await page.getByLabel("Require provenance declaration").selectOption(String(SCENARIO_POLICY.requireProvenanceDeclaration));
   await page.getByLabel("Rationale (required on every act)").fill("journey fixture bar");
 
   const proposeButton = page.getByRole("button", { name: /^Propose as / });
   const activateButton = page.getByRole("button", { name: /^Activate as / });
+
+  // An out-of-range threshold must NAME the field. A silently disabled button sends an operator hunting
+  // through eight boxes, and `validateAdmissionPolicy` already returns the field and the reason.
+  await page.getByLabel("Max duplicate rate", { exact: true }).fill("1.1");
+  // Located by attribute, not getByLabel: getByLabel resolves labelable FORM CONTROLS, and this is a
+  // <ul aria-label=...>, so getByLabel silently matches nothing there.
+  const defect = page.locator('[aria-label="Policy threshold errors"]').getByText(/maxDuplicateRate:.*between 0 and 1/);
+  // waitFor, not isVisible: isVisible() samples the DOM now, so on a missed React flush it would report
+  // the defect list broken when it had merely not rendered — and a false PASS is the worse direction.
+  await defect.waitFor({ state: "visible", timeout: 10_000 }).catch(() => undefined);
+  check("an invalid threshold names the field and blocks proposal",
+    (await defect.isVisible()) && !(await proposeButton.isEnabled()));
+  await page.getByLabel("Max duplicate rate", { exact: true }).fill(String(SCENARIO_POLICY.maxDuplicateRate));
   const proposerName = (await proposeButton.textContent())?.replace("Propose as ", "").trim() ?? "";
   const stewardName = (await activateButton.textContent())?.replace("Activate as ", "").trim() ?? "";
   check(
