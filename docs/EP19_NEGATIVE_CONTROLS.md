@@ -91,11 +91,35 @@ Replaced with an exact numeric comparison of the counter's last token. Re-runnin
 produced **12** failures instead of 11 — the extra one being `one-valid-row`'s counts, which is the
 evidence the gap is closed.
 
+## NC-13 · Local preflight must not claim a policy verdict
+
+The browser's preliminary report has no admission policy: `preflightAsResult` evaluates it with a
+null policy. The previous screen nevertheless displayed "no policy configured" and "not
+pilot-admissible", which could misrepresent a configured active policy as absent. The preliminary
+screen now describes a contract preflight and says admission was not evaluated. It leaves the policy
+verdict to the server result.
+
+**Two controls, because a wholesale revert is the easy case.** The regression that actually happens is a
+half-fix: someone corrects the wording and leaves the admission section in place, believing they are
+done. The test has to disagree with that too, so it is controlled separately.
+
+| Control | Guard broken | Must fail |
+|---|---|---|
+| NC-13a | the component wholesale — restore the previous preliminary rendering | `ValidationReportPanel.test.ts`, on the missing explanation |
+| NC-13b | **half-fixed** — keep the new prose and pill, but still render `AdmissionSection` when preliminary | `ValidationReportPanel.test.ts`, on `no policy configured` |
+
+Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
+browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
+
+**Before/after evidence.** The defect was demonstrated at `cc9029e` before being fixed: rendering the
+preliminary panel for `all-rejected` there produced both `no policy configured` and
+`not pilot-admissible`. Without that step the fix would only be asserted.
+
 ## What is not covered here
 
 * **Database-level guards** (append-only triggers, TRUNCATE protection, the purge-authorisation
   function) were negative-controlled in EP-16, EP-17 and EP-18 — 6 controls each — and are unchanged
   by this branch. They were not re-run.
-* **Browser-level coverage of each risk-matrix row** is deliberately out of scope for this branch; the
-  matrix is proven at API / worker / PostgreSQL level and the browser proves the journey. Per-case
-  browser coverage is the next branch.
+* **The nine CSV scenarios** are exercised in the browser matrix in `EP20_BROWSER_MATRIX.md`.
+  Browser coverage of tenant access, roles, repeats, network failures, concurrent claims, frozen
+  policy, halted case and retention remains outstanding.

@@ -436,16 +436,16 @@ try {
       await checkVisibleReport(scenario);
     } else {
       await page.getByText("Data contract validation", { exact: true }).waitFor({ timeout: 30_000 });
-      const admissionPill = page.getByText("Pilot admission", { exact: true }).locator("..");
       const preliminary = !scenario.expected.usableForAssessment;
       if (preliminary) {
-        // A local preflight evaluates admission with NO policy, so its pill reads "not assessable" for
-        // every unusable dataset whatever its real fitness would be — asserting that it equals the
-        // fixture's admission would prove nothing. What the preview actually means is that no bar was
-        // applied, and the panel says so. This fails if the browser ever shows a fitness verdict it
-        // cannot know, which is the only thing worth checking here.
-        await admissionPill.getByText("no policy configured", { exact: true }).waitFor({ timeout: 30_000 });
+        // Preflight knows no active bar; "no policy configured" would misdescribe an activated bar as
+        // missing. It reports contract usability only and makes no policy fitness claim.
+        await page.getByText("pilot admission not evaluated", { exact: true }).waitFor({ timeout: 30_000 });
+        check(`${scenario.id}: preflight makes no policy fitness claim`,
+          (await page.locator("main").innerText()).includes("No admission policy was read here") &&
+          (await page.getByText("Pilot admission", { exact: true }).count()) === 0);
       } else {
+        const admissionPill = page.getByText("Pilot admission", { exact: true }).locator("..");
         await admissionPill.getByText(scenario.expected.admission.replace(/_/g, " ").toLowerCase(),
           { exact: true }).waitFor({ timeout: 30_000 });
       }

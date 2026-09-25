@@ -20,10 +20,10 @@ Three details are worth knowing before changing any of it:
   against the panel before it unmounts would be a race.
 * **Counts are compared exactly, not with `endsWith`.** A counter showing 31 where 1 is expected ends
   with "1". The negative control below caught precisely that false pass.
-* **On the preliminary path the admission pill carries no information.** The local preflight evaluates
-  admission with *no policy*, so it reads "not assessable" for every unusable dataset whatever its real
-  fitness would be. What is asserted there instead is `no policy configured` — the honest meaning of the
-  preview — which fails if the browser ever shows a fitness verdict it cannot know.
+* **On the preliminary path there is no policy fitness verdict.** The local preflight evaluates
+  admission with *no policy*, so its internal value is "not assessable" for every unusable dataset
+  whatever its real fitness would be. The screen instead says `pilot admission not evaluated` and
+  that no policy was read during preview. It does not claim that no active policy is configured.
 
 This covers the nine CSV scenarios: valid, all rejected, one valid row, duplicate collisions,
 narrow coverage, local timestamp, undated refund, overpayment and point in time partial payments.
