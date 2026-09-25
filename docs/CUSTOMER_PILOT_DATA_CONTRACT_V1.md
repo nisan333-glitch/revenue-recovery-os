@@ -145,8 +145,11 @@ the observation, not a gap, and warning about it would bury the real signals.
 
 ## 9 · Duplicates and idempotency
 
-- **Identical rows** within a dataset are rejected (`NH-DC-4001`) — the same exposure must not count twice.
-- **Colliding cycle identities** are rejected (`NH-DC-2016`).
+- **Identical rows** carry `NH-DC-4001`; both copies are excluded from accepted cycles.
+- **Colliding cycle identities** carry `NH-DC-2016` on every row in the collision, including a row
+  rejected for another defect if the adapter can still derive its cycle identity. No row wins because
+  of file order or because the other row was corrupted. If the adapter cannot derive a cycle identity
+  from an invalid row, no collision can be asserted for that row; its own rejection still applies.
 - **`idempotencyKey`** = `pds_<sha256>` over contract ∥ boundary ∥ datasetId ∥ exact file bytes.
   Re-uploading the identical extract under the same tenant yields the identical key, so a pipeline can
   drop the repeat. Change one byte and the key changes — a changed file is a different dataset and

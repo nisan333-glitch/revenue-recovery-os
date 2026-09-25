@@ -17,6 +17,8 @@ branch. All controls were run against a real PostgreSQL 16 database.
 | NC-5 | Undeclared handler ⇒ candidate-capable (`server/agents/types.ts`) | flipped `!== false` to `=== true` (fail-open) | **8+** across the agent-runtime suites | caught |
 | NC-6 | Corrected customer-facing privacy claims (`DP_EXECUTION_PACKAGE.md`) | restored the "entirely in your browser" pitch | 1 — the retracted-claim guard | caught |
 | NC-7 | The EP-19 UI wiring (`Assessment.tsx`) | stopped sending `admissionPolicyId` to the gate | the **browser journey**, at the upload screen | caught |
+| NC-8 | Defective rows participate in their own collision (`validateDataset.ts`) | re-exempted them: `if (!rejectedForAnyReason)` on the candidate push | 2 — `corrupting a rival row…` and `identical rows are both excluded` | caught |
+| NC-9 | The collision rule entirely | reinstated "first wins" (`firstWins` map + `continue`) | **5** across `pilotDataContract.test.ts` and `syntheticScenarios.test.ts` | caught |
 
 ## What NC-7 showed about the harness itself
 
@@ -28,6 +30,31 @@ recorded check and the four governance checks before the failure point had genui
 In a CI log that line would be read as a pass. The harness now distinguishes recorded-check failures
 from harness errors and prints `JOURNEY FAILED` explicitly. A negative control that only verified the
 exit code would have missed this; the output a human actually reads is part of the guard.
+
+## What NC-8 and NC-9 are for (the collision rule)
+
+NC-9 is the one that proves the original defect is closed rather than merely re-described. It reinstates
+"first wins" and five tests go red, including the order-invariance assertion — reverse the file, get a
+different accepted population. That assertion is the load-bearing one: the counts alone would still pass
+under either rule for some datasets.
+
+NC-8 covers the *second* lever, which the first version of this fix left open. Excluding every colliding
+row removes file **order** as a way to choose which row counts; it does not, by itself, remove the
+ability to choose by making the unwanted row invalid — unless a defective row still participates in the
+collision it caused. Re-exempting defective rows turns the corrupt-rival test red, which is exactly the
+behaviour a beneficiary could have used.
+
+## A defect the browser journey caught and the unit test could not
+
+The Propose button is meant to be disabled while a stated policy is invalid. The unit test asserts
+`/disabled=""[^>]*>Propose as/` against the server-rendered screen and **passed even with the guard
+missing** — because on an empty form the button is already disabled by `!identified`. It could not tell
+"disabled because nothing is identified yet" from "disabled because this policy is invalid".
+
+`npm run test:journey` caught it, because it fills the form completely first and only then makes one
+threshold invalid. The lesson is not that the unit test was wrong but that it was asserting a state the
+page reaches for several different reasons; a check on a fully-populated form was needed to isolate the
+one that mattered.
 
 ## What is not covered here
 
