@@ -469,7 +469,30 @@ try {
     }
   }
 
-  // ── 9 · Egress and page health ───────────────────────────────────────────────────────────────────
+  // ── 9 · A transport failure cannot turn a previous server verdict into permission ───────────────
+  // The last matrix case leaves Upload visible. It may still carry an earlier server validation, so
+  // interrupting the next submission tests both the error path and stale-verdict clearing.
+  // PRECONDITION, asserted rather than assumed. The clearing check below is `count === 0`, which
+  // passes trivially if the panel was never there. It IS there today — the last matrix scenario is an
+  // admitted one, so the loop returned to Upload with a server-verified report — but that is incidental
+  // to the scenario order, not a rule. Without this, reordering the matrix would leave the check green
+  // and testing nothing, the same way `endsWith` did before NC-12.
+  check("the upload screen still carries the previous server verdict before the failure",
+    (await page.locator("main").getByText("server-verified").count()) > 0);
+
+  await page.route("**/api/pilot/datasets", (route) => route.abort("failed"));
+  await page.setInputFiles('input[type="file"]', {
+    name: `offline-${randomUUID().slice(0, 8)}.synthetic.csv`, mimeType: "text/csv",
+    buffer: readFileSync(CSV_PATH),
+  });
+  await page.getByText(/^Error:/).waitFor({ timeout: 15_000 });
+  check("network failure is shown as an error, with no stale verdict or next step",
+    (await page.getByText(/^Error:/).isVisible()) &&
+    (await page.getByRole("button", { name: "Pilot readiness →" }).count()) === 0 &&
+    (await page.locator("main").getByText("server-verified").count()) === 0);
+  await page.unroute("**/api/pilot/datasets");
+
+  // ── 10 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
   check("the page made no request outside its own origin", external.length === 0, external.slice(0, 3).join(", "));
   check("no uncaught page error occurred", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));

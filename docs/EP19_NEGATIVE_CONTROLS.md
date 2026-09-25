@@ -109,6 +109,7 @@ done. The test has to disagree with that too, so it is controlled separately.
 | NC-13b | **half-fixed** — keep the new prose and pill, but still render `AdmissionSection` when preliminary | `ValidationReportPanel.test.ts`, on `no policy configured` |
 | NC-14a | The migration — recreate `recovery_cases_candidate_boundary_unique` | the `leaves exactly one uniqueness arbiter` test | caught |
 | NC-14b | The same, with the schema test filtered out so it cannot mask the result | the concurrency test — **it did not fail**; see below | **not caught** |
+| NC-15 | Clearing the previous verdict on a new upload — removed `setValidation(null)` from `onFile` | the journey's stale-verdict check: the server-verified panel survives a failed upload | caught |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -141,11 +142,23 @@ The concurrency test is kept, because it proves something else that is real and 
 and exactly one `PromoteCandidate` authority event is written. That is the store's idempotent replay
 path, and it holds whether or not the race fires. It is simply not evidence about the arbiter.
 
+## NC-15 · a failed upload must not leave the last verdict on screen
+
+The data layer already refuses to invent a result when the server is unreachable — `networkFailure.test.ts`,
+controlled by NC-3. What that cannot see is the screen. The journey reaches the transport-failure step
+holding a **server-verified** report from the last admitted scenario, so if a failed upload does not clear
+it, the operator sees an error *and* an apparently valid report for a file that was never accepted.
+
+Removing `setValidation(null)` from `onFile` turns the check red, so the assertion pins that clearing and
+not something else. The precondition — that the verdict is on screen *before* the failure — is asserted
+rather than assumed, because `count === 0` would otherwise pass trivially if the matrix were reordered so
+the last scenario was a refused one.
+
 ## What is not covered here
 
 * **Database-level guards** (append-only triggers, TRUNCATE protection, the purge-authorisation
   function) were negative-controlled in EP-16, EP-17 and EP-18 — 6 controls each — and are unchanged
   by this branch. They were not re-run.
 * **The nine CSV scenarios** are exercised in the browser matrix in `EP20_BROWSER_MATRIX.md`.
-  Browser coverage of tenant access, roles, repeats, network failures, concurrent claims, frozen
-  policy, halted case and retention remains outstanding.
+  Browser coverage of tenant access, roles, repeats, concurrent claims, frozen policy, halted case
+  and retention remains outstanding. A transport failure on upload IS covered (NC-15).

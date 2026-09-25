@@ -27,9 +27,16 @@ Three details are worth knowing before changing any of it:
 
 This covers the nine CSV scenarios: valid, all rejected, one valid row, duplicate collisions,
 narrow coverage, local timestamp, undated refund, overpayment and point in time partial payments.
-Tenant access, roles, repeats, network failures, concurrent claims, frozen policy, halted case and
+Tenant access, roles, repeats, concurrent claims, frozen policy, halted case and
 retention are covered by the PostgreSQL server suites, **not** by a browser scenario in this change.
 Their browser behaviour is still outstanding and must not be described as covered by this matrix.
+
+**A transport failure on upload is covered here too.** The intake request is aborted mid-submission and
+the screen must show an error, offer no next step, and — the part worth having — **clear the previous
+dataset's verdict**. The journey reaches that point holding a `server-verified` report from the last
+admitted scenario, so without clearing an operator would see an error beside an apparently valid report
+for a file that was never accepted. The check asserts that verdict is present *before* the failure, so
+`count === 0` afterwards cannot pass vacuously if the scenario order ever changes.
 
 The existing `e2e/smoke.mjs` remains unwired: its static preview and two row fixture predate the
 server admission gate. The browser journey runs through Vite's development server with the explicit
