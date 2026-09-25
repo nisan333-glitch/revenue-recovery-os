@@ -365,28 +365,18 @@ export function syntheticScenarios(): readonly SyntheticScenario[] {
     scenario(
       "duplicates",
       "the same cycle identity twice",
-      // Three collisions, not one. Under "first wins" a single colliding pair contributes ONE rejected
-      // row, so one pair measures 1/21 ≈ 4.8% and sits under the 5% bar — while under the assessment
-      // core's "reject both" the same file measures 2/21 ≈ 9.5% and is over it. The same dataset is
-      // admissible under one rule and refused under the other, which is why the inconsistency below is
-      // a finding and not a detail. Three pairs put it unambiguously over the bar either way.
+      // Both rows of each colliding pair are excluded. A single pair measures 2/21 ≈ 9.5%
+      // and crosses the 5% bar; three pairs exercise repeated collisions.
       [...valid(20), renumber(valid(20)[3]!, 3), renumber(valid(20)[5]!, 5), renumber(valid(20)[7]!, 7)],
       {
         dataRows: 23,
-        // KNOWN INCONSISTENCY, pinned here rather than papered over. The contract validator keeps the
-        // FIRST row and rejects the repeat (validateDataset.ts, `cycleSeen`), so one row survives. The
-        // assessment core takes the opposite view and rejects every colliding row, commented "never
-        // picking a 'winner'" (assess.ts, `dedupeCollisions`). The governed path runs the validator, so
-        // these numbers describe it; the browser preview runs the core and would say 19/2.
-        //
-        // Not changed here: which rows survive a collision is a core definition, and this repository's
-        // own rule is that those go through the constitution before the code. Recorded as a finding.
-        acceptedRows: 20,
-        rejectedRows: 3,
+        // The contract and assessment core both reject all colliding rows; no row wins by file order.
+        acceptedRows: 17,
+        rejectedRows: 6,
         codes: ["NH-DC-2016"],
         usableForAssessment: true,
         admission: "NOT_ADMISSIBLE",
-        why: "Duplicate cycle identity is rejected and pushes the duplicate rate past the bar; which of the colliding rows survives differs between the validator and the assessment core.",
+        why: "All rows claiming a duplicate cycle identity are rejected, regardless of file order.",
       },
     ),
 

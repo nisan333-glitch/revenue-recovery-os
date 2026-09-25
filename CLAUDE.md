@@ -84,6 +84,21 @@ A recovery dollar may be counted **only when**:
 > recovery number influence the baseline, evidence, timing, attribution, approval, or
 > historical calculation? **If yes, reject the design.**
 
+**Pilot dataset collision decision (2026-09-25).** The contract validator previously
+accepted the first of two rows with the same derived cycle identity while the
+assessment core excluded both. That gave the file author control over the selected
+row by reordering the file, potentially changing admission and the measured amount.
+Before changing the implementation, the governing rule is: **all rows sharing a
+derived cycle identity are excluded from the accepted population, regardless of
+order, identical content, or other row defects, whenever the adapter yields that
+identity.** Report both rows as duplicate-cycle exclusions;
+an identical repeated source row may additionally carry its source-duplicate code.
+No surviving row may be chosen by file position. Reordering must preserve the
+accepted population and admission outcome. This is a pilot-data trust rule and
+does not turn any observed amount into proven Revenue Returned.
+If a malformed row yields no cycle identity at all, a collision cannot be
+established from it; its separate rejection remains in force.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

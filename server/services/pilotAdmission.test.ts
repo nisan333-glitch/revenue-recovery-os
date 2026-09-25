@@ -196,12 +196,17 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     const boundaryId = `pilot-boundary-${uid()}`;
     const strict = await registerActive(boundaryId, policyBody({ minAcceptedRows: 500, minCoverageDays: 3650, maxDuplicateRate: 0 }));
 
-    const base = syntheticPilotRows(10);
+    // FIVE pairs collide; fifteen cycles survive. The fixture used to duplicate EVERY row, which no
+    // longer reaches the thresholds this test is about: since all colliding rows are excluded, a
+    // wholly-duplicated file leaves zero accepted cycles, so the dataset is not usable and the gate
+    // correctly answers NOT_ASSESSABLE (NH-AG-3001) instead of measuring anything. Threshold codes
+    // can only be asserted on a dataset that survives far enough to be measured.
+    const base = syntheticPilotRows(20);
     const out = (
       await submit(
         datasetBody({
           boundaryId,
-          csvText: toCsv([...base, ...base]), // every row duplicated
+          csvText: toCsv([...base, ...base.slice(0, 5)]),
           admissionPolicyId: strict.policyId,
         }),
       )

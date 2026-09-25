@@ -119,29 +119,26 @@ describe("EP-19 · the scenarios that carry the point of the admission gate", ()
     expect(admission.rates.rejection).toBeGreaterThan(SCENARIO_POLICY.maxRejectionRate);
   });
 
-  it("pins the duplicate-collision inconsistency between the validator and the assessment core", async () => {
-    // TWO LAYERS, TWO ANSWERS, and this test exists to keep that visible rather than let it drift.
-    //
-    //   validateDataset  — keeps the FIRST row, rejects the repeat ("first wins")
-    //   assess           — rejects EVERY colliding row, commented "never picking a 'winner'"
-    //
-    // The governed path runs the validator, so "first wins" is what a pilot actually gets. That makes
-    // file ORDER decide which of two conflicting rows counts, and file order is supplied by the party
-    // who benefits from the number. Not changed here: which rows survive a collision is a core
-    // definition, and this repository requires those to go through the constitution before the code.
+  it("excludes every colliding row regardless of the order supplied by the beneficiary", async () => {
+    // THE ASSERTION THAT CARRIES THE RULE. Both layers now reject every row in a collision, so no row
+    // survives because of where it sat in the file — and file order is supplied by the party who
+    // benefits from the number. The reorder half below is the part that would catch a regression back
+    // to "first wins": the counts alone would still pass under either rule for some datasets.
     const { report } = await assess(syntheticScenario("duplicates").csvText);
     const duplicates = report.rowFindings.filter((f) => f.code === "NH-DC-2016");
-    // Three collisions produce three rejections, not six: one row of each pair survives.
-    expect(duplicates.length).toBe(3);
-    expect(duplicates[0]!.detail).toMatch(/cycle id already used by data row/);
-    expect(report.counts.acceptedRows).toBe(20);
+    expect(duplicates.length).toBe(6);
+    expect(duplicates[0]!.detail).toMatch(/cycle id shared by data rows/);
+    expect(report.counts.acceptedRows).toBe(17);
     expect(report.counts.dataRows).toBe(23);
-
-    // And the consequence that makes this a finding rather than a detail: the measured duplicate rate
-    // depends on which rule ran. 3/23 under "first wins"; 6/23 under "reject both".
     const { admission } = await assess(syntheticScenario("duplicates").csvText);
-    expect(admission.rates.duplicate).toBeCloseTo(3 / 23, 5);
-    expect(admission.rates.duplicate * 2).toBeCloseTo(6 / 23, 5);
+    expect(admission.rates.duplicate).toBeCloseTo(6 / 23, 5);
+    const lines = syntheticScenario("duplicates").csvText.trim().split("\n");
+    const reordered = `${lines[0]}\n${lines.slice(1).reverse().join("\n")}\n`;
+    const opposite = await assess(reordered);
+    expect(opposite.report.counts.acceptedRows).toBe(17);
+    expect(opposite.admission.outcome).toBe(admission.outcome);
+    expect(opposite.admission.rates.duplicate).toBeCloseTo(6 / 23, 5);
+    expect(opposite.report.acceptedCycles.map(c => c.cycleId).sort()).toEqual(report.acceptedCycles.map(c => c.cycleId).sort());
   });
 
   it("keeps a reversal after the cutoff invisible at that cutoff", async () => {

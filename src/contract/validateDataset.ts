@@ -334,8 +334,8 @@ export async function validatePilotDataset(submission: DatasetSubmission): Promi
   // ── Rows ───────────────────────────────────────────────────────────────────────────────────────
   const mapped = applyMapping(parsed, detected.mapping);
   const acceptedCycles: ExpectationCycle[] = [];
+  const cycleCandidates: { cycle: ExpectationCycle; at: { sourceRowId: string; rowNumber: number }; rejectedForAnyReason: boolean }[] = [];
   const contentSeen = new Map<string, number>();
-  const cycleSeen = new Map<string, number>();
   const currencies = new Set<string>();
   const rejectedRowIds = new Set<string>();
   const warnedRowIds = new Set<string>();
@@ -348,11 +348,11 @@ export async function validatePilotDataset(submission: DatasetSubmission): Promi
     const rowCurrency = cell("currency").toUpperCase();
     if (rowCurrency !== "") currencies.add(rowCurrency);
 
-    let rowRejected = false;
+    let rejectedForAnyReason = false;
     const reject = (finding: RowFinding) => {
       rowFindings.push(finding);
       rejectedRowIds.add(raw.sourceRowId);
-      rowRejected = true;
+      rejectedForAnyReason = true;
     };
 
     // PII hiding in an identifier column.
@@ -422,14 +422,27 @@ export async function validatePilotDataset(submission: DatasetSubmission): Promi
       warnedRowIds.add(raw.sourceRowId);
     }
 
-    const priorCycleRow = cycleSeen.get(outcome.cycle.cycleId);
-    if (priorCycleRow !== undefined) {
-      reject(rowFinding(ROW_CODES.DUPLICATE_CYCLE_ID, at, "subscription_id", `cycle id already used by data row ${priorCycleRow}`));
-      continue;
-    }
-    cycleSeen.set(outcome.cycle.cycleId, at.rowNumber);
+    // Every row that yields a cycle participates, including rows rejected for another defect.
+    // Otherwise the file author could corrupt the unwanted rival to select a winner.
+    cycleCandidates.push({ cycle: outcome.cycle, at, rejectedForAnyReason });
+  }
 
-    if (!rowRejected) acceptedCycles.push(outcome.cycle);
+  const cycleGroups = new Map<string, typeof cycleCandidates>();
+  for (const candidate of cycleCandidates) {
+    const group = cycleGroups.get(candidate.cycle.cycleId) ?? [];
+    group.push(candidate);
+    cycleGroups.set(candidate.cycle.cycleId, group);
+  }
+  for (const group of cycleGroups.values()) {
+    if (group.length === 1) {
+      if (!group[0]!.rejectedForAnyReason) acceptedCycles.push(group[0]!.cycle);
+    } else {
+      const rowNumbers = group.map(c => c.at.rowNumber).sort((a, b) => a - b).join(", ");
+      for (const candidate of group) {
+        rowFindings.push(rowFinding(ROW_CODES.DUPLICATE_CYCLE_ID, candidate.at, "subscription_id", `cycle id shared by data rows ${rowNumbers}`));
+        rejectedRowIds.add(candidate.at.sourceRowId);
+      }
+    }
   }
 
   if (currencies.size > 1) {
