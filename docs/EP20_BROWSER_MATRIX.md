@@ -27,9 +27,43 @@ Three details are worth knowing before changing any of it:
 
 This covers the nine CSV scenarios: valid, all rejected, one valid row, duplicate collisions,
 narrow coverage, local timestamp, undated refund, overpayment and point in time partial payments.
-Tenant access, roles, repeats, concurrent claims, frozen policy, halted case and
-retention are covered by the PostgreSQL server suites, **not** by a browser scenario in this change.
-Their browser behaviour is still outstanding and must not be described as covered by this matrix.
+Repeats, concurrent claims, frozen policy, halted case and retention are covered by the PostgreSQL
+server suites, **not** by a browser scenario in this change. Their browser behaviour is still
+outstanding and must not be described as covered by this matrix.
+
+## Roles — the wiring is covered, the refusal is not
+
+Authorization is enforced server-side by `requireCan` over a five-role least-privilege matrix with no
+superuser, and it is well covered off-browser. What the browser adds is the thing a server test cannot
+see: **that the UI actually routes each act through the identity that holds the permission.** Three
+checks do that, all scoped to the governance screen's audit panel — which renders only from a
+successful lifecycle read, and that read requires `AuditRead`, which the operator does not hold:
+
+* the audit trail **loaded at all** (the precondition — without it the next two could pass on an empty
+  screen);
+* the trail records both `PROPOSED` and `ACTIVATED`, each beside its own actor id;
+* the sentence the server's `proposedBy`/`activatedBy` comparison produces reads *"two different
+  identities, which is the point."*, and *"the same identity, which the server should not have
+  allowed."* is **absent**.
+
+The last one is the strongest evidence available here: it is computed from the governance payload as the
+server recorded it, so no button label can satisfy it. That matters because the assertion it replaced
+was satisfied by button labels — see `EP19_NEGATIVE_CONTROLS.md` → NC-19, where suppressing the whole
+audit panel left the old check green.
+
+NC-16 → NC-18 rewire the lifecycle read, the activation and the intake submission to identities lacking
+`AuditRead`, `ActivatePilotPolicy` and `SubmitPilotDataset` respectively; each makes the journey fail on
+named checks. **Not proven:** an unauthorized user being refused *in the UI*. No role-forbidden act is
+reachable from the screens, so observing that would need an act-as affordance this change does not add.
+
+## Tenant access — not provable in this browser path
+
+The guard exists (`requireBoundaryAccess`) and is negative-controlled at service level with scoped
+actors. It cannot be proven here: `actorFromRequest` gives every dev-header request
+`boundaryIds: ["*"]`, and the wildcard satisfies the guard unconditionally — a cross-tenant browser test
+would pass with the guard deleted. Proof end to end requires the OIDC resolver and a real boundary
+claim. Tenant access therefore stays open on Risk #3, with that reason attached rather than as a bare
+TODO, and the dev identity switch is not treated as evidence of authentication.
 
 **A transport failure on upload is covered here too.** The intake request is aborted mid-submission and
 the screen must show an error, offer no next step, and — the part worth having — **clear the previous

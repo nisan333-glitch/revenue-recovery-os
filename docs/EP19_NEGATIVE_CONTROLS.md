@@ -110,6 +110,10 @@ done. The test has to disagree with that too, so it is controlled separately.
 | NC-14a | The migration — recreate `recovery_cases_candidate_boundary_unique` | the `leaves exactly one uniqueness arbiter` test | caught |
 | NC-14b | The same, with the schema test filtered out so it cannot mask the result | the concurrency test — **it did not fail**; see below | **not caught** |
 | NC-15 | Clearing the previous verdict on a new upload — removed `setValidation(null)` from `onFile` | the journey's stale-verdict check: the server-verified panel survives a failed upload | caught |
+| NC-16 | The UI reads the lifecycle as an **`AuditRead`** holder (`PilotPolicyGovernance.tsx`) | `refresh()` reads as `proposer` (operator) instead of `STEWARD` | **6** in the journey, incl. all three new audit-trail checks | caught |
+| NC-17 | The UI activates as a **steward** (`ActivatePilotPolicy`) | `move()` sends the transition as `proposer` | **5** in the journey — `an activated bar may judge a dataset` first | caught |
+| NC-18 | The UI submits intake as a **`SubmitPilotDataset`** holder (`Assessment.tsx`) | `runGovernedExecution` schedules as `STEWARD` | **6** in the journey — completion, then `count=0` executions | caught |
+| NC-19 | The audit panel itself — proof that the **old** assertion was vacuous | `{false && currentGovernance && …}` on the panel's render guard | the 3 new checks (the old one still **passed**) | caught |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -160,5 +164,64 @@ the last scenario was a refused one.
   function) were negative-controlled in EP-16, EP-17 and EP-18 — 6 controls each — and are unchanged
   by this branch. They were not re-run.
 * **The nine CSV scenarios** are exercised in the browser matrix in `EP20_BROWSER_MATRIX.md`.
-  Browser coverage of tenant access, roles, repeats, concurrent claims, frozen policy, halted case
-  and retention remains outstanding. A transport failure on upload IS covered (NC-15).
+  Browser coverage of repeats, concurrent claims, frozen policy, halted case and retention remains
+  outstanding. A transport failure on upload IS covered (NC-15). Role **wiring** is covered by
+  NC-16 → NC-18; **tenant isolation is not, and cannot be on this path** — see below.
+
+## NC-16 → NC-19 · role wiring, and the vacuous assertion they replaced
+
+Authorization itself was already well covered off-browser (~40 forbidden/403 assertions across 15 server
+test files, plus service-level tests built on scoped actors). What was **not** covered is the class of
+defect this branch keeps finding: *a rule may exist and be correct while the UI is not wired to it.*
+
+The assertion that claimed to cover it was:
+
+```js
+const governanceText = await page.locator("main").innerText();
+check("the lifecycle names the proposer and the activator separately",
+  governanceText.includes(proposerName) && governanceText.includes(stewardName));
+```
+
+Both identity strings are rendered by the **Propose** and **Activate** buttons, which are inside `main`.
+NC-19 proves the consequence rather than arguing it: with the entire audit panel suppressed, that check
+still **passed** and the journey still reported `JOURNEY PASSED`. It could not have failed for any
+governance reason.
+
+It is now three checks scoped to the audit panel — which the screen renders only from a successful
+lifecycle read, and that read requires `AuditRead` — ending in the sentence the server's own
+`proposedBy`/`activatedBy` comparison produces, which no button label can satisfy.
+
+NC-16 → NC-18 then rewire each of the three acts to an identity that does **not** hold the permission,
+so the refusal observed in the browser is a genuine server 403 on the governed path. They are
+distinguishable, which is the point: NC-16 removes the panel entirely (the read is refused), while NC-17
+leaves the panel loading and shows `PROPOSED unassigned-operator@company (operator)` with **no
+`ACTIVATED` event at all** — the activation never happened. NC-18 leaves governance intact and kills the
+execution, with the API reporting `count=0` executions for the boundary.
+
+Two waits had to stop throwing for these controls to mean anything. A bare `waitFor` aborts the harness,
+so the run ended with `2/2 recorded checks passed` and a bare `Timeout` — the failure was real but
+attributable to nothing. Each now degrades and is followed by a named check that samples the DOM, so a
+refused act is reported as *that* check failing. The same pass removed a `check("an admitted dataset
+leaves the upload screen", true)` — a literal `true`, recorded as a PASS for a condition never sampled.
+
+**Not controlled, because it cannot be:** refusal of an unauthorized user *inside* the UI. No
+role-forbidden act is reachable from the screens — governance hard-codes the steward for
+activate/freeze/retire and the operator for propose; assessment hard-codes the operator — so observing
+an in-UI refusal would require an act-as affordance, which this slice deliberately does not add.
+
+## Tenant isolation is not browser-provable on this path
+
+`requireBoundaryAccess` is real and is negative-controlled at service level with scoped actors
+(`boundaryIds: ["tenant-1"]` → `ForbiddenError`). It cannot be proven through the browser, because
+`actorFromRequest` returns `boundaryIds: Object.freeze(["*"])` for **every** dev-header request:
+
+```ts
+// server/auth/actorContext.ts
+return { actorId, role, boundaryIds: Object.freeze(["*"]) };
+```
+
+The wildcard satisfies the guard unconditionally, so a browser test for cross-tenant refusal would pass
+with `requireBoundaryAccess` **deleted** — exactly the vacuity NC-19 was written to expose. Enforcement
+on the path that matters is the OIDC resolver (`verifiedIdentity.ts`, `parseBoundaryClaim` over
+`nh_boundaries`), which needs an HTTPS issuer and a JWKS endpoint. End-to-end proof waits for that; it is
+not being claimed in the meantime, and the dev identity switch is **not** evidence of authentication.

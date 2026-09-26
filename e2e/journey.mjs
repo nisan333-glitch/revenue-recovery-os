@@ -191,13 +191,21 @@ try {
   );
 
   await proposeButton.click();
-  await page.getByText("DRAFT", { exact: true }).waitFor({ timeout: 15_000 });
-  check("a proposed bar is DRAFT and judges nothing", await page.getByText("judges nothing").isVisible());
+  // The state pill and the "judges nothing" verdict are BOTH rendered from the lifecycle read that
+  // `act` performs after the write — a read that needs `AuditRead`. So the wait degrades instead of
+  // throwing: if the read is refused, this must be a RECORDED failure attributable to this check, not
+  // a harness abort that ends the run with nothing said about anything downstream (the NC-7 lesson).
+  await page.getByText("DRAFT", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  check("a proposed bar is DRAFT and judges nothing",
+    (await page.getByText("DRAFT", { exact: true }).isVisible()) &&
+    (await page.getByText("judges nothing").isVisible()));
 
   // ── 2 · Governance: a DIFFERENT identity puts it in force ────────────────────────────────────────
   await activateButton.click();
-  await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 });
-  check("an activated bar may judge a dataset", await page.getByText("may judge a dataset").isVisible());
+  await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  check("an activated bar may judge a dataset",
+    (await page.getByText("ACTIVE", { exact: true }).isVisible()) &&
+    (await page.getByText("may judge a dataset").isVisible()));
 
   // A lifecycle belongs to one exact boundary, policy id and version. Editing any of them must
   // immediately hide the old ACTIVE verdict — the state, the "may judge" pill and the hash together.
@@ -212,14 +220,41 @@ try {
   check("restoring the identity still requires an explicit re-read",
     await page.getByText("not proposed", { exact: true }).isVisible());
   await page.getByRole("button", { name: "Read lifecycle" }).click();
-  await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 });
+  await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  check("an explicit re-read restores the ACTIVE verdict for the selected identity",
+    (await page.getByText("ACTIVE", { exact: true }).isVisible()) &&
+    (await page.getByText("may judge a dataset").isVisible()));
 
-  // The screen must show both halves attributed to their own actor — the audit claim, on screen.
-  const governanceText = await page.locator("main").innerText();
-  check(
-    "the lifecycle names the proposer and the activator separately",
-    governanceText.includes(proposerName) && governanceText.includes(stewardName),
-  );
+  // SEPARATION OF DUTIES, read out of the SERVER's audit trail — not off the buttons.
+  //
+  // This check used to be `page.locator("main").innerText()` containing both identity strings. The
+  // Propose and Activate buttons are in `main` and render those exact strings, so it passed on the
+  // labels alone: suppressing the entire audit panel left it green and the journey at 61/61. It was
+  // the assertion claiming to prove two-actor governance, and it proved nothing.
+  //
+  // Everything below is scoped to the audit panel, which the screen renders ONLY from a successful
+  // lifecycle read — and that read requires `AuditRead`, which the operator does not hold. So the
+  // panel's mere existence is evidence the UI performed it as a steward.
+  const bareId = (label) => label.replace(/\s*\(.*\)$/, "").trim();
+  const audit = page.getByText("Who decided what", { exact: false }).locator("..");
+  await audit.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
+  check("the governance audit trail loaded, which requires an AuditRead identity",
+    await audit.isVisible());
+
+  // Degrade to empty rather than throwing: if the panel is absent the two checks below must be
+  // RECORDED failures, not a harness abort that stops the run and reports nothing (the NC-7 lesson).
+  const auditText = ((await audit.innerText().catch(() => "")) || "").replace(/\s+/g, " ");
+  check("the audit trail records both transitions, each attributed to its own actor",
+    auditText.includes("PROPOSED") && auditText.includes("ACTIVATED") &&
+    auditText.includes(bareId(proposerName)) && auditText.includes(bareId(stewardName)),
+    auditText.slice(0, 200));
+
+  // Rendered from the server's own proposedBy/activatedBy comparison, so it cannot be satisfied by a
+  // label. The negative sentence is asserted absent too: the screen says outright when one identity
+  // did both, and that wording appearing here would mean the server allowed what it must refuse.
+  check("the server recorded two DIFFERENT identities for the two governance acts",
+    auditText.includes("two different identities, which is the point.") &&
+    !auditText.includes("the same identity, which the server should not have allowed."));
 
   // ── 3 · Assessment: intake and admission ────────────────────────────────────────────────────────
   await page.getByRole("button", { name: "Revenue Opportunity Assessment" }).click();
@@ -241,11 +276,15 @@ try {
 
   // Admitted ⇒ the flow leaves Upload on its own. Before EP-19 it could not, because the UI never
   // sent an admission policy id and the server therefore always answered NOT_ASSESSABLE.
-  await page.getByRole("button", { name: "Pilot readiness →" }).waitFor({ timeout: 30_000 });
-  check("an admitted dataset leaves the upload screen", true);
+  // `check(..., true)` used to stand here, with the bare `waitFor` above as the only real gate. That
+  // records a PASS for a condition it never sampled, and if the wait ever throws the run aborts with
+  // this check never reported at all. Both halves are now the assertion.
+  const readiness = page.getByRole("button", { name: "Pilot readiness →" });
+  await readiness.waitFor({ timeout: 30_000 }).catch(() => undefined);
+  check("an admitted dataset leaves the upload screen", await readiness.isVisible());
 
   // ── 4 · The browser's own figure is reachable, and is labelled a preview ─────────────────────────
-  await page.getByRole("button", { name: "Pilot readiness →" }).click();
+  await readiness.click();
   await page.getByRole("button", { name: "Observed result →" }).click();
   const previewText = await page.locator("main").innerText();
   check(
@@ -264,7 +303,11 @@ try {
   // the screen is required to show a timeout as a timeout, and this harness is required to fail.
   // The execution-state pill, specifically — the event log below it also contains the word, and
   // matching either would let a COMPLETED event on a run that is still settling read as a result.
-  await page.getByText("Completed — an observation was recorded").waitFor({ timeout: 90_000 });
+  // Degrading rather than throwing so that a refused or stalled execution is reported by the NAMED
+  // check below — a harness abort here would end the run with the execution checks never printed, and
+  // an authorization defect in the intake path would look like a broken harness instead of a failure.
+  await page.getByText("Completed — an observation was recorded")
+    .waitFor({ timeout: 90_000 }).catch(() => undefined);
   // Scoped to <main>, NOT the whole body. The sidebar carries a standing "Auditable recovered"
   // total for the separate proven ledger — that belongs there, and matching it would turn correct
   // two-ledger chrome into a false failure while hiding a real one in the noise.
