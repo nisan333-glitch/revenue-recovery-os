@@ -520,8 +520,20 @@ export const COMPATIBILITY_POLICY = Object.freeze({
   acceptsOlderMinorOfSameMajor: true,
   /** A dataset declaring a NEWER version than the code implements is rejected, never guessed at. */
   acceptsNewerThanImplemented: false,
-  /** Two majors are supported concurrently for at least one full pilot cycle before removal. */
+  /**
+   * Two majors are supported concurrently for at least one full pilot cycle before removal.
+   *
+   * EP-27 · "One full pilot cycle" has no definition anywhere — it is a commercial period, not an
+   * engineering constant, and inventing a duration here would invent a threshold nobody decided. So the
+   * window is expressed as `MAJOR_ROW_SEMANTICS`, an explicit per-major declaration a human withdraws,
+   * rather than as a clock. That is checkable; a timer nobody set is not.
+   */
   deprecationWindow: "one full pilot cycle, minimum",
+  /** Which previous majors the current build accepts. Read from the same declaration the gate uses. */
+  get acceptedPreviousMajors(): readonly number[] {
+    const impl = parseContractVersion(PILOT_DATA_CONTRACT_VERSION);
+    return impl ? (MAJOR_ROW_SEMANTICS[impl.major] ?? []) : [];
+  },
 });
 
 export interface ParsedVersion {
@@ -537,14 +549,55 @@ export function parseContractVersion(version: string): ParsedVersion | null {
 }
 
 /**
- * May this build process a dataset declaring `declared`? Same major and not newer than implemented.
- * Fails closed on anything unparseable — an unreadable version is not a compatible one.
+ * EP-27 · Which PREVIOUS majors a given implemented major declares row-semantics-identical to.
+ *
+ * §10 promises that two majors are supported concurrently for at least one full pilot cycle. Honouring
+ * that does NOT require a second interpretation of the data — it requires being able to say, and to
+ * check, that there is nothing to interpret differently. A major appears here only when every row-level
+ * rule is unchanged from it: no field added, removed or renamed, no field's MEANING changed, no
+ * validation rule tightened. The identity derivation and the request envelope are deliberately not in
+ * that list, because §10's promise is about the customer's export, not about our HTTP shape.
+ *
+ * FAIL-CLOSED BY CONSTRUCTION. A major with no entry accepts no previous major at all, so the moment a
+ * future major does change what a field means, saying nothing is the safe answer and the build refuses.
+ * An entry is a human withdrawing or granting compatibility, never something inferred from a diff.
+ *
+ * Empty today: the implemented major is 1 and there is no major 0. The mechanism is nonetheless proved
+ * rather than promised — `isSupportedContractVersion` takes the implemented version as a parameter, so
+ * the rule is tested at a hypothetical 2.0.0 without bumping the published constant. Evidence before the
+ * change, not after it.
+ *
+ * Reasoning and the rejected alternatives: docs/CONTRACT_DUAL_MAJOR_V1.md.
  */
-export function isSupportedContractVersion(declared: string): boolean {
+export const MAJOR_ROW_SEMANTICS: Readonly<Record<number, readonly number[]>> = Object.freeze({
+  1: Object.freeze([]),
+});
+
+/** Does `implementedMajor` declare `declaredMajor`'s row semantics identical to its own? */
+export function acceptsPreviousMajor(implementedMajor: number, declaredMajor: number): boolean {
+  return (MAJOR_ROW_SEMANTICS[implementedMajor] ?? []).includes(declaredMajor);
+}
+
+/**
+ * May this build process a dataset declaring `declared`?
+ *
+ * Same major and not newer than implemented — or a PREVIOUS major the build has declared
+ * row-semantics-identical to its own (§10's two-major window, see `MAJOR_ROW_SEMANTICS`).
+ *
+ * `implemented` is a parameter so the rule is a pure function of both versions and can be exercised at a
+ * future major without bumping the constant. Fails closed on anything unparseable — an unreadable version
+ * is not a compatible one — and on a NEWER major, always: a build never guesses at a contract it does not
+ * implement, which is the same rule `acceptsNewerThanImplemented: false` states for minors.
+ */
+export function isSupportedContractVersion(
+  declared: string,
+  implemented: string = PILOT_DATA_CONTRACT_VERSION,
+): boolean {
   const d = parseContractVersion(declared);
-  const impl = parseContractVersion(PILOT_DATA_CONTRACT_VERSION);
+  const impl = parseContractVersion(implemented);
   if (!d || !impl) return false;
-  if (d.major !== impl.major) return false;
+  if (d.major > impl.major) return false;
+  if (d.major < impl.major) return acceptsPreviousMajor(impl.major, d.major);
   if (d.minor > impl.minor) return false;
   if (d.minor === impl.minor && d.patch > impl.patch) return false;
   return true;

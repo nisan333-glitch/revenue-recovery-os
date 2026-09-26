@@ -127,8 +127,12 @@ temporal guard is that the version must be ACTIVE when it is used — **not** th
 `activatedAt > firstSeenAt` rule, which would forbid the later re-reading the decision above permits. The
 fail-closed enforcement is a **breaking, tightening** change; its major bump is deferred to land with the
 derivation and its migration, because the contract reference sits inside the idempotency key. The derivation is still
-unchanged, the contract stays at its current major, and no migration is written: the remaining
-prerequisite is the §10 two-major compatibility decision. Full treatment and the field-by-field classification are
+unchanged, the contract stays at its current major, and no migration is written. The §10
+two-major compatibility decision — the next prerequisite — was **decided and built on 2026-09-26**: the
+promise is honoured at the level it was made, as a checked per-major declaration that the older major's row
+semantics are unchanged, with the declared version persisted so the claim is auditable
+([`docs/CONTRACT_DUAL_MAJOR_V1.md`](docs/CONTRACT_DUAL_MAJOR_V1.md)). What remains before the derivation
+changes is the derivation itself, under one major version with its migration. Full treatment and the field-by-field classification are
 in [`docs/ASSESSMENT_IDENTITY_V1.md`](docs/ASSESSMENT_IDENTITY_V1.md). This is a pilot-data trust rule
 and does not turn any observed amount into a proven figure.
 

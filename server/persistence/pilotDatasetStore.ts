@@ -18,6 +18,11 @@ export interface PilotSubmissionInput {
   readonly boundaryId: string;
   readonly datasetId: string;
   readonly contractVersion: string;
+  /**
+   * EP-27 · What the customer's export declared. Under §10's two-major window this need not equal
+   * `contractVersion` (what the build implemented). Null only for rows written before the column existed.
+   */
+  readonly declaredVersion: string | null;
   readonly datasetFingerprint: string;
   readonly accepted: boolean;
   readonly usable: boolean;
@@ -55,6 +60,7 @@ function toRecord(row: {
   boundaryId: string;
   datasetId: string;
   contractVersion: string;
+  declaredVersion: string | null;
   datasetFingerprint: string;
   accepted: boolean;
   usable: boolean;
@@ -77,6 +83,7 @@ function toRecord(row: {
     boundaryId: row.boundaryId,
     datasetId: row.datasetId,
     contractVersion: row.contractVersion,
+    declaredVersion: row.declaredVersion,
     datasetFingerprint: row.datasetFingerprint,
     accepted: row.accepted,
     usable: row.usable,
@@ -139,6 +146,7 @@ export async function recordSubmission(
       boundaryId: input.boundaryId,
       datasetId: input.datasetId,
       contractVersion: input.contractVersion,
+      declaredVersion: input.declaredVersion,
       datasetFingerprint: input.datasetFingerprint,
       accepted: input.accepted,
       usable: input.usable,

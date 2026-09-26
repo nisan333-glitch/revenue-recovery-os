@@ -26,7 +26,11 @@ import {
   type ContractValidationReport,
   type DatasetSubmission,
 } from "../../src/contract/validateDataset";
-import { PILOT_DATA_CONTRACT_VERSION, type DatasetProvenance } from "../../src/contract/pilotDataContract";
+import {
+  PILOT_DATA_CONTRACT_VERSION,
+  isSupportedContractVersion,
+  type DatasetProvenance,
+} from "../../src/contract/pilotDataContract";
 import {
   assessmentPolicyRef,
   deriveAdmissionDecisionId,
@@ -218,11 +222,22 @@ export async function schedulePilotAssessment(
   if (decision.datasetFingerprint !== report.datasetFingerprint) {
     return refused(boundaryId, "fingerprint_mismatch", "the supplied bytes do not match the admitted dataset");
   }
-  if (decision.contractVersion !== report.contractVersion) {
+  // EP-27 · COMPATIBILITY, not string equality. This was `decision.contractVersion !== report.contractVersion`
+  // — the version the build implemented at submit time against the version it implements now — so ANY bump,
+  // including a purely editorial patch, refused execution of every already-admitted dataset with NH-AX-1006
+  // and the message "the fields may not mean the same thing", which for a patch is simply false. A promise
+  // that two MAJORS coexist (§10) is void in a build where two PATCHES cannot.
+  //
+  // The question that actually matters is whether THIS build can still faithfully interpret what that
+  // decision was made under, which is exactly what the version gate answers. `declaredVersion` is null only
+  // for rows written before EP-27's column existed; those fall back to the implemented version they were
+  // recorded with — the same value the migration backfilled — never to an optimistic assumption.
+  const admittedUnder = decision.declaredVersion ?? decision.contractVersion;
+  if (!isSupportedContractVersion(admittedUnder)) {
     return refused(
       boundaryId,
       "contract_version_mismatch",
-      `admitted under ${decision.contractVersion}; this build serves ${PILOT_DATA_CONTRACT_VERSION}`,
+      `admitted under ${admittedUnder}; this build serves ${PILOT_DATA_CONTRACT_VERSION} and does not accept it`,
     );
   }
   if (decision.admissionOutcome !== "ADMISSIBLE") {

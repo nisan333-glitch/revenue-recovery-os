@@ -486,3 +486,34 @@ to the identity derivation, no contract major bump, no migration of existing sub
 or OIDC semantics. **The fail-closed enforcement is a breaking, tightening change**, recorded as such in
 [`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md) → *The version bump this change needs, and
 does not have yet*; it is explicitly **not** classified as minor merely because `NH-AX-1010` would be.
+
+## EP-27 · §10's two-major compatibility window (NC-40 … NC-43)
+
+| # | Guard removed | What failed |
+|---|---|---|
+| NC-40 | The gate accepts **any** previous major (the `MAJOR_ROW_SEMANTICS` declaration ignored) | **2** — the two pure gate tests |
+| NC-41 | The gate accepts a **newer** major | **6** — 3 pure gate/rejection tests + 3 DB tests |
+| NC-42 | The **declared** version is not persisted (the build's is stored instead) | **1** — test 2 only |
+| NC-43 | The schedule-time check returns to exact string equality | **1** — test 3 only |
+
+**NC-41 is broad on purpose and the breadth is the finding.** Accepting a version the build does not
+implement breaks the fail-closed rule at every layer at once — the gate, the intake rejection code, and the
+schedule-time re-check — because `acceptsNewerThanImplemented: false` is load-bearing in all three. A
+control that fails in one place only would have meant the rule lived in one place only.
+
+**NC-43 is the pre-existing defect, made visible.** The check used to be
+`decision.contractVersion !== report.contractVersion` — the version the build implemented at submit time
+against the version it implements now — so a purely **editorial patch** bump refused execution of every
+already-admitted dataset, with the message *"the fields may not mean the same thing"*. Test 3 could not be
+written before this slice, because the old check could not fail for the case §10 is about.
+
+**How tests 4 and 5 get their rows, and why.** `pilot_dataset_submissions` carries an append-only trigger,
+so a decision row cannot be edited to carry an unsupported version — the first attempt at these tests was
+refused by the database, which is the guarantee working. They therefore **insert** a row as a build serving
+another contract version would have written it, computing the fingerprint, the idempotency key and the
+admission-decision id with the real derivations so the version is the only anomaly. **4a is the positive
+control**: the identical construction with a supported version schedules successfully, so a refusal in 4b is
+attributable to the version and to nothing else.
+
+**Scope:** the compatibility window and its audit trail. No contract version bump, no identity derivation
+change, no migration of existing submissions beyond adding and backfilling one nullable column.

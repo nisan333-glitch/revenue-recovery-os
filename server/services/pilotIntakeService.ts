@@ -365,6 +365,8 @@ export async function submitPilotDataset(
     boundaryId,
     datasetId: report.datasetId,
     contractVersion: report.contractVersion,
+    // EP-27 · The declaration, recorded as the customer made it — not as the build reinterpreted it.
+    declaredVersion: report.declaredVersion,
     datasetFingerprint: report.datasetFingerprint,
     accepted: report.accepted,
     usable: report.usableForAssessment,

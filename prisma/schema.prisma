@@ -257,6 +257,10 @@ model PilotDatasetSubmissionRecord {
   boundaryId             String   @map("boundary_id")
   datasetId              String   @map("dataset_id")
   contractVersion        String   @map("contract_version")
+  /// EP-27 · The version the CUSTOMER'S EXPORT declared, which under §10's two-major window need not be
+  /// the version this build implements. Nullable only for rows written before the column existed; those
+  /// were backfilled from `contract_version`, which is exact for every row this product's clients created.
+  declaredVersion        String?  @map("declared_version")
   datasetFingerprint     String   @map("dataset_fingerprint")
   accepted               Boolean
   usable                 Boolean

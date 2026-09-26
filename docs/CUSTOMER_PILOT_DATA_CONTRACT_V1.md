@@ -213,6 +213,26 @@ A dataset declaring an older minor of the same major is accepted and its version
 version than the build implements is **refused** (`NH-DC-5001`), never interpreted optimistically.
 Two majors are supported concurrently for at least one full pilot cycle.
 
+> **How the two-major window works, since 2026-09-26 (EP-27).** It is a **declaration you can check**, not
+> a clock. `MAJOR_ROW_SEMANTICS` in `src/contract/pilotDataContract.ts` names, per implemented major, the
+> previous majors whose **row-level semantics are identical** to it — no field added, removed or renamed, no
+> field's meaning changed, no validation rule tightened. A declared previous major is accepted **only** if it
+> is named there, so a major with no entry accepts none: the safe answer is the default, and the moment a
+> future major changes what a field means, saying nothing refuses the older export. The window opens
+> backwards only; a newer major is still refused.
+>
+> Each decision now records the version the **export declared** alongside the version the **build
+> implemented**, so which contract judged a dataset is auditable per decision rather than inferred. And
+> whether an admitted dataset may still be *executed* is now decided by that same compatibility rule — it
+> used to be exact string equality, which refused execution of every admitted dataset after a purely
+> editorial **patch** bump, making this promise void in practice.
+>
+> **"One full pilot cycle" is not defined anywhere** — it is a commercial period, not an engineering
+> constant, and this repository does not invent thresholds nobody decided. Until it is defined, the window
+> is a declaration a human withdraws, which is stronger than a timer nobody set. Full reasoning, the
+> rejected alternatives and the consequences at a 2.0.0 cutover:
+> [`CONTRACT_DUAL_MAJOR_V1.md`](CONTRACT_DUAL_MAJOR_V1.md).
+
 Changing what a field *means* is breaking even when every column name is identical — that is exactly
 the change that invalidates a pilot's conclusions without anyone noticing.
 

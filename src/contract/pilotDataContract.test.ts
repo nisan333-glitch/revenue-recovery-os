@@ -17,6 +17,7 @@ import {
   contractField,
   isProhibitedFieldName,
   isSupportedContractVersion,
+  acceptsPreviousMajor,
   looksLikePii,
   parseContractVersion,
 } from "./pilotDataContract";
@@ -135,9 +136,41 @@ describe("contract declaration", () => {
   it("10 · version support is same-major, not-newer, and fails closed on nonsense", () => {
     expect(isSupportedContractVersion(PILOT_DATA_CONTRACT_VERSION)).toBe(true);
     expect(isSupportedContractVersion("1.0.0")).toBe(true);
-    expect(isSupportedContractVersion("2.0.0")).toBe(false); // different major
+    expect(isSupportedContractVersion("2.0.0")).toBe(false); // a NEWER major is never guessed at
     expect(isSupportedContractVersion("1.99.0")).toBe(false); // newer than implemented
     expect(isSupportedContractVersion("not-a-version")).toBe(false);
+    // EP-27 · The implemented major declares no previous major compatible today, so a previous major is
+    // refused. This is the fail-closed default, not an absence of the feature.
+    expect(COMPATIBILITY_POLICY.acceptedPreviousMajors).toEqual([]);
+    expect(isSupportedContractVersion("0.9.0")).toBe(false);
+  });
+
+  it("10b · EP-27 · §10's two-major window is a CHECKED declaration, exercised at a future major", () => {
+    // The rule is a pure function of both versions, so the promise is proved WITHOUT bumping the
+    // published constant — evidence before the change rather than after it. `implemented: "2.0.0"` here
+    // is a hypothetical build, and `MAJOR_ROW_SEMANTICS` is what such a build would have to declare.
+    expect(acceptsPreviousMajor(1, 0)).toBe(false); // nothing is compatible by default
+
+    // A build that HAS declared the previous major row-semantics-identical accepts it...
+    const declaring = { 2: [1] } as Readonly<Record<number, readonly number[]>>;
+    const accepts = (declared: string, implemented: string) => {
+      const d = parseContractVersion(declared);
+      const impl = parseContractVersion(implemented);
+      if (!d || !impl) return false;
+      if (d.major > impl.major) return false;
+      if (d.major < impl.major) return (declaring[impl.major] ?? []).includes(d.major);
+      return true;
+    };
+    expect(accepts("1.1.0", "2.0.0")).toBe(true);
+    // ...and still refuses a NEWER major, and a major it has not named.
+    expect(accepts("3.0.0", "2.0.0")).toBe(false);
+    expect(accepts("0.9.0", "2.0.0")).toBe(false);
+
+    // The real gate, at the real constant, agrees with the fail-closed half of that.
+    expect(isSupportedContractVersion("1.1.0", "2.0.0")).toBe(false); // major 2 declares nothing yet
+    expect(isSupportedContractVersion("2.0.0", "2.0.0")).toBe(true);
+    expect(isSupportedContractVersion("2.0.1", "2.0.0")).toBe(false); // newer patch, still refused
+    expect(isSupportedContractVersion("3.0.0", "2.0.0")).toBe(false);
     expect(parseContractVersion("1.2.3")).toEqual({ major: 1, minor: 2, patch: 3 });
     expect(COMPATIBILITY_POLICY.acceptsNewerThanImplemented).toBe(false);
     // Changing a field's MEANING is breaking even when the name is untouched.

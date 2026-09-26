@@ -114,11 +114,19 @@ Binding order. Each step is a prerequisite for the next.
    anti-tuning rule (`activatedAt > firstSeenAt`), because that would forbid the re-reading the decision
    above explicitly permits. The guarantee is structural instead — a new definition yields a new execution
    identity and cannot re-grade an existing finding. The reasoning is in that document.
-2. **A decision on the two-major compatibility window.** §10 of the data contract promises that two
-   majors are supported concurrently for at least one pilot cycle. That promise has **no
-   implementation**: the version check rejects any different major outright. Honouring it is larger work
-   than the derivation change; amending it is a published-promise change. Either way it is decided
-   *before*, not after.
+2. ~~**A decision on the two-major compatibility window.**~~ **DECIDED AND BUILT 2026-09-26 (EP-27)** —
+   [`CONTRACT_DUAL_MAJOR_V1.md`](CONTRACT_DUAL_MAJOR_V1.md). Verdict: **honour the promise at the level it
+   was made.** The 2.0.0 this repository is about to cut changes no field, no field meaning and no
+   row-level rule — it changes the identity derivation and the request envelope — so a 1.x export validates
+   identically under it. The window is therefore a checked per-major **declaration** that the older major's
+   row semantics are unchanged, the declared version is now **persisted** so the claim is auditable, and the
+   schedule-time check became compatibility-aware (it was exact string equality, which refused execution of
+   every admitted dataset after a *patch* bump). Amending §10 was rejected: nothing forced it. A general
+   two-major validator was rejected: there is no semantic difference to select between, so it would mean
+   maintaining two paths that can silently drift.
+
+   That document also answers, from evidence, two questions this one left open — see its §5 and §6, and the
+   corrections below.
 3. **The derivation change itself**, as a major contract version, with the migration questions below
    answered explicitly.
 
@@ -129,9 +137,19 @@ Binding order. Each step is a prerequisite for the next.
   past submission: **one re-assessment per historical dataset at the cutover.**
 * **This is not a new behaviour.** The implemented contract reference is already inside the identity, so
   the previous minor bump already had exactly this effect. Whether that was intended, or is a second
-  unexamined consequence of version-in-identity, is itself unanswered.
-* A dual-key lookup would be required only to *prevent* the free re-assessment. Whether to prevent it is
-  a product decision, and the precedent above suggests the answer may be "no".
+  unexamined consequence of version-in-identity, is itself unanswered. **ANSWERED (EP-27): incidental, with
+  positive evidence.** Commit `3f2de72` ("contract 1.1.0") reasoned explicitly *"no previously valid dataset
+  newly rejected"* — and introduced `NH-DC-4003` duplicate submission in the same act, never mentioning that
+  bumping the version resets every key. So one commit created a duplicate guarantee and silently reset its
+  own scope. No test anywhere asserts the key's behaviour across versions.
+* A dual-key lookup would be required only to *prevent* the free re-assessment. **ANSWERED (EP-27):
+  not required, and deliberately not built.** The free re-assessment is only dangerous together with an
+  operator who can also choose what the re-assessment *measures* — which was the situation until EP-26b.
+  A second reading is now measured under an ACTIVE **governed** AssessmentPolicy the beneficiary cannot
+  author or activate, and it produces a new execution identity standing beside the first. Rules 2, 5 and 9
+  are satisfied without dual-key lookup. What remains, stated plainly: the duplicate-submission protection
+  resets **once** at the cutover, and in exchange the derivation permanently removes the operator-supplied
+  label from the identity. Reasoning: [`CONTRACT_DUAL_MAJOR_V1.md`](CONTRACT_DUAL_MAJOR_V1.md) §5.
 * No backfill is required for correctness; one would be required only for the dual-key behaviour.
 
 ## Tests required before the change lands
