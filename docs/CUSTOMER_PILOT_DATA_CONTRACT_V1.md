@@ -156,7 +156,7 @@ the observation, not a gap, and warning about it would bury the real signals.
   deserves a fresh decision rather than inheriting the previous verdict. Two tenants uploading
   byte-identical files never collide.
 
-  > **Known implementation deviation — open Constitution issue, not a specification change.**
+  > **Known implementation deviation — decided at the constitution level, NOT yet implemented.**
   >
   > The guarantee above is the intended one and is left standing. The **current implementation does not
   > fully deliver it**: `datasetId` is an operator-supplied *label*, so byte-identical data in the same
@@ -168,10 +168,15 @@ the observation, not a gap, and warning about it would bury the real signals.
   > (`pilot_dataset_sightings`) is keyed on boundary and fingerprint **only**, so the two mechanisms
   > disagree about what "the same dataset" means.
   >
-  > **Status: undecided.** Whether the identity should drop the label, and which assessment parameters
-  > belong in it instead, is a Constitution/Product decision that has not been made; §10 classifies any
-  > change to identity derivation as a **major** bump. This note records the deviation so the guarantee
-  > is not quietly narrowed to match the code. Nothing here authorises a change.
+  > **Status (2026-09-26): decided, not built.** The identity is to contain the stable identity of the
+  > data plus only parameters whose change materially changes the meaning or result-space of the
+  > assessment; descriptive and operator-controlled metadata never determine identity. The analysis
+  > terms (`asOf`, `stallThresholdDays`) may create a new assessment of the same extract **only once
+  > they are pre-registered and governed the way the admission bar is** — which they are not yet. So the
+  > derivation is unchanged, this major version is unchanged, and no migration exists. Governance for
+  > the analysis terms comes first. Field-by-field classification and the binding order of work:
+  > [`ASSESSMENT_IDENTITY_V1.md`](ASSESSMENT_IDENTITY_V1.md). §10 classifies a change to identity
+  > derivation as a **major** bump, and that still applies when the work is done.
   >
   > **Concurrency is a separate matter and is settled:** two concurrent submissions resolving to the
   > same *current* identity yield exactly one row, one winner, and the loser receives this same
