@@ -109,8 +109,13 @@ enough. Whether the derivation should include an operator-supplied field is a co
 is raised as one, not patched inside a test.
 
 **Boundaries:** duplicate submission is a different rule from duplicate rows inside a CSV, from
-in-dataset cycle collision, from concurrency and from anti-tuning. These repeats are **sequential** and
-prove nothing about concurrent ones.
+in-dataset cycle collision, from concurrency and from anti-tuning. The repeats proven **in the browser**
+are **sequential** and prove nothing about concurrent ones.
+
+**Concurrent repeats are covered, but not here.** `pilotIntake.test.ts` **5d** exercises them against
+real PostgreSQL and deterministically — it holds an uncommitted INSERT open as the concurrent winner and
+waits until the database reports a backend blocked on the lock. The browser drives one upload at a time
+and must not be described as evidence for that case.
 
 ## Frozen policy — the intake refusal is proven, the schedule-time re-check is not
 

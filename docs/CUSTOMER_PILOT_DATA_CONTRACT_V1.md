@@ -156,6 +156,27 @@ the observation, not a gap, and warning about it would bury the real signals.
   deserves a fresh decision rather than inheriting the previous verdict. Two tenants uploading
   byte-identical files never collide.
 
+  > **Known implementation deviation — open Constitution issue, not a specification change.**
+  >
+  > The guarantee above is the intended one and is left standing. The **current implementation does not
+  > fully deliver it**: `datasetId` is an operator-supplied *label*, so byte-identical data in the same
+  > boundary can be submitted and assessed again after **relabelling** — the identical extract does not
+  > then yield the identical key. Measured, not inferred.
+  >
+  > No rationale for including `datasetId` in the derivation is recorded anywhere in this repository —
+  > no ADR, no commit rationale, no test asserts it. The sibling pre-registration record
+  > (`pilot_dataset_sightings`) is keyed on boundary and fingerprint **only**, so the two mechanisms
+  > disagree about what "the same dataset" means.
+  >
+  > **Status: undecided.** Whether the identity should drop the label, and which assessment parameters
+  > belong in it instead, is a Constitution/Product decision that has not been made; §10 classifies any
+  > change to identity derivation as a **major** bump. This note records the deviation so the guarantee
+  > is not quietly narrowed to match the code. Nothing here authorises a change.
+  >
+  > **Concurrency is a separate matter and is settled:** two concurrent submissions resolving to the
+  > same *current* identity yield exactly one row, one winner, and the loser receives this same
+  > `NH-DC-4003` classification (`pilotIntake.test.ts` 5, 5c, 5d).
+
 ## 10 · Versioning and backward compatibility
 
 Semver on the contract itself.

@@ -188,6 +188,88 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     ).toBe(2);
   });
 
+  it("5d · a concurrent loser receives the duplicate CONTRACT code, not a bare uniqueness error", async () => {
+    // THE TOCTOU. `submitPilotDataset` reads (`findSubmission`) and then writes (`recordSubmission`)
+    // with no transaction and no lock, so two concurrent identical submissions can both observe
+    // "no prior" and both attempt the insert. The primary key means exactly one row survives — the
+    // outcome is safe — but the loser's error must still be the contract's NH-DC-4003, because a
+    // client routes on that code. A bare uniqueness violation tells it nothing.
+    //
+    // DETERMINISTIC, not "N attempts and hope". The concurrent winner is a real INSERT held open in an
+    // uncommitted transaction: the service's own `findSubmission` runs on the default client, outside
+    // that transaction, so it CANNOT see the row and misses every time. The service's insert then
+    // blocks on the primary key — and the test waits for PostgreSQL to report a backend actually
+    // waiting on a lock before releasing, so the interleaving is observed rather than assumed.
+    const payload = body();
+
+    // Derive the key the service will derive, by letting the contract do it rather than hand-rolling
+    // a hash here: a hash written in the test could drift from the one the product computes.
+    const { validatePilotDataset } = await import("../../src/contract/validateDataset");
+    const report = await validatePilotDataset({
+      boundary: { boundaryId: payload.boundaryId as string, datasetId: payload.datasetId as string },
+      declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+      csvText: payload.csvText as string,
+      policy: POLICY,
+      provenance: SYNTHETIC_PROVENANCE,
+    });
+
+    let releaseWinner: () => void = () => undefined;
+    const winnerHolding = new Promise<void>((resolve) => { releaseWinner = resolve; });
+    let winnerInserted: () => void = () => undefined;
+    const inserted = new Promise<void>((resolve) => { winnerInserted = resolve; });
+
+    // The concurrent winner: inserts, signals, and holds the transaction open.
+    const winner = prisma.$transaction(async (tx) => {
+      await tx.pilotDatasetSubmissionRecord.create({
+        data: {
+          idempotencyKey: report.idempotencyKey,
+          boundaryId: payload.boundaryId as string,
+          datasetId: payload.datasetId as string,
+          contractVersion: report.contractVersion,
+          datasetFingerprint: report.datasetFingerprint,
+          accepted: true, usable: true,
+          dataRows: 12, acceptedRows: 12, rejectedRows: 0, warnedRows: 0,
+          findingCodes: [],
+          submittedByActorId: "concurrent-winner@company", submittedByRole: "operator",
+        },
+      });
+      winnerInserted();
+      await winnerHolding;
+    }, { timeout: 20_000 });
+
+    await inserted;
+    // The loser goes through the REAL HTTP surface. Not awaited yet — it is about to block.
+    const loser = post(payload);
+
+    // Wait for the observable blocked state. This is what makes the test deterministic: it proceeds
+    // only once PostgreSQL reports a backend waiting on a lock, never after a fixed sleep.
+    let waiters = 0;
+    for (let i = 0; i < 200 && waiters === 0; i += 1) {
+      const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+        SELECT count(*)::bigint AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'`;
+      waiters = Number(rows[0]?.n ?? 0);
+      if (waiters === 0) await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(waiters).toBeGreaterThan(0); // the race really happened; it was not serialised by luck
+
+    releaseWinner();
+    await winner;
+    const res = await loser;
+
+    // 1 · exactly one row, 2 · exactly one winner.
+    expect(
+      await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId as string } }),
+    ).toBe(1);
+    // 3 · the loser gets the SAME stable contract classification a sequential repeat gets (test 5).
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toContain("NH-DC-4003");
+    // 4 · and no second governed decision exists for it to bind an execution to.
+    const rows = await prisma.pilotDatasetSubmissionRecord.findMany({
+      where: { boundaryId: payload.boundaryId as string },
+    });
+    expect(rows.filter((r) => r.admissionDecisionId !== null)).toHaveLength(0);
+  });
+
   it("5b · the same bytes under a DIFFERENT tenant are not a duplicate", async () => {
     const csvText = syntheticPilotCsv(6);
     const datasetId = `shared-${uid()}`;

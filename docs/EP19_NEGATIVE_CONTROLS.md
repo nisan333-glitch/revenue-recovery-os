@@ -122,6 +122,7 @@ done. The test has to disagree with that too, so it is controlled separately.
 | NC-25 | The 409 reaching the operator (`apiClient.ts`) | `"conflict"` removed from `SAFE_TO_SHOW_VERBATIM` | **1** — only the screen check; the server still refuses correctly | caught |
 | NC-26 | The repeat actually being a repeat (`journey.mjs`) | `REPEAT_CSV_PATH = FROZEN_CSV_PATH` | **4** — incl. a **second execution**: `before=1 after=2` | caught |
 | NC-27 | The database constraint behind test 5c | `ALTER TABLE pilot_dataset_submissions DROP CONSTRAINT …_pkey` on a scratch database | 1 — the same-key INSERT *succeeds*: "promise resolved instead of rejecting" | caught |
+| NC-28 | Classifying the insert's conflict (`recordDuplicateAware`) | re-throw the `P2002` instead of translating it | **2** — tests 5 *and* 5d, both with the generic uniqueness message | caught |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -353,6 +354,61 @@ counts would be fine if the mechanisms were still distinct:
 Duplicate **submission** is not duplicate **rows inside a CSV**, not in-dataset **cycle collision**
 (NC-8/NC-9), not **concurrency**, not **anti-tuning**. Five separate rules. These are **sequential**
 repeats and say nothing whatever about concurrent ones.
+
+## NC-28 · the intake TOCTOU, and a defect reproduced deterministically
+
+Duplicate detection used to be a `findSubmission` check *before* the write — a check-then-act with no
+transaction and no lock. Two concurrent identical submissions could both read "no prior" and both
+attempt the insert. The primary key meant exactly one row survived, so **the outcome was never at
+risk**; what the loser received was a bare `P2002` that the error handler mapped to
+*"duplicate: a uniqueness constraint was violated"* rather than the contract's own `NH-DC-4003`.
+A client routing on that code saw nothing it could use.
+
+**Reproduced deterministically on the unmodified implementation** — not "N attempts and hope", which
+the NC-14b measurement already showed is worth nothing here. Test **5d** holds a real **uncommitted
+INSERT** open as the concurrent winner: the service's `findSubmission` runs on the default client,
+outside that transaction, so it cannot see the row and misses *every* time. The service's insert then
+blocks on the primary key, and the test waits until **PostgreSQL itself reports a backend waiting on a
+lock** (`pg_stat_activity.wait_event_type = 'Lock'`) before releasing the winner. The interleaving is
+observed, not assumed. Pre-fix result:
+
+```
+× 5d · a concurrent loser receives the duplicate CONTRACT code, not a bare uniqueness error
+  → expected 'duplicate: a uniqueness constraint wa…' to contain 'NH-DC-4003'
+```
+
+with the one-row and `409` assertions passing — exactly the documented shape of the defect.
+
+### The mechanism chosen, and the two rejected
+
+**Chosen: the insert is the arbiter.** The pre-check is gone; `recordDuplicateAware` catches the
+`P2002`, re-reads the winning row for its `submittedAt`, and raises the same `ConflictError` a
+sequential repeat raises. The sequential and concurrent cases now travel **one** code path, which is
+why NC-28 — re-throwing instead of translating — fails **both** test 5 and test 5d with the identical
+generic message. There is no second path that could drift.
+
+**Rejected: a transaction or an advisory lock.** `caseGuard.ts` takes a per-case advisory lock because
+Halt-versus-mutation is a real write skew across two tables — there is no single row for the writers to
+collide on, so the conflict has to be manufactured. Here the primary key *is* the invariant: the
+writers already collide on one row and the database already serialises them. A lock would buy no
+guarantee and would serialise every submission for a boundary behind one another.
+
+**Rejected: `upsert` / `ON CONFLICT DO NOTHING`.** That absorbs the conflict, and absorbing it is
+precisely what must not happen — the caller has to learn that this dataset was already submitted, and
+when.
+
+Matching on `P2002` alone is precise rather than broad: the call writes to one table, and that table has
+exactly one uniqueness arbiter — its primary key — which test **5c** asserts by exercising it. Anything
+else is re-thrown untouched.
+
+**Database consequence, stated plainly:** a sequential duplicate now performs a *failed* INSERT where it
+previously performed a SELECT. No row is written, the append-only triggers are untouched, and one dead
+tuple per refused duplicate is the whole cost. Nothing about the one-row invariant changed — it was
+always the primary key doing that work (NC-24).
+
+**Scope:** this is the concurrency defect only. It makes **no** change to the identity derivation, no
+contract version bump, and no migration. The open question about `datasetId` in the identity is
+untouched and still open.
 
 ## Tenant isolation is not browser-provable on this path
 
