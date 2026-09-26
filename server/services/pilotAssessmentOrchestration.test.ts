@@ -16,6 +16,7 @@ import { AgentRuntime } from "../agents/runtime";
 import { createPilotAssessmentAgent, PILOT_ASSESSMENT_AGENT_ID } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import type { AgentPolicySnapshot } from "../agents/types";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -57,7 +58,10 @@ function datasetBody(over: Record<string, unknown> = {}) {
     datasetId: `ds-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(40),
-    policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+    policy: { currency: "USD" },
+      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
+      // activates them for this boundary through the two-identity lifecycle before submitting.
+      ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };
@@ -87,8 +91,12 @@ describe.skipIf(!HAS_DB)("EP-16 · pilot assessment orchestration", () => {
       payload: { boundaryId, policyId, policyVersion, rationale: "reviewed" } as object,
     });
 
-  const submit = (payload: unknown, headers = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  // EP-26 · Both entry points resolve the analysis terms from the register, so both need them active.
+  const submit = async (payload: unknown, headers = OPERATOR) => {
+      const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+      if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  };
 
   /**
    * The schedule body deliberately carries NO admission policy id or version: the bar is read from
@@ -101,8 +109,11 @@ describe.skipIf(!HAS_DB)("EP-16 · pilot assessment orchestration", () => {
     return { ...rest, ...over };
   };
 
-  const schedule = (payload: unknown, headers = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/assessments", headers, payload: payload as object });
+  const schedule = async (payload: unknown, headers = OPERATOR) => {
+      const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+      if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/assessments", headers, payload: payload as object });
+  };
 
   const read = (boundaryId: string, executionId: string, headers = OPERATOR) =>
     app.inject({

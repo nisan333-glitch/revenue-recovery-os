@@ -18,6 +18,7 @@ import {
   toCsv,
 } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION, INTAKE_LIMITS } from "../../src/contract/pilotDataContract";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
@@ -25,7 +26,9 @@ const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "oper
 const APPROVER = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-const POLICY = { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" };
+// EP-26 · Only the currency is still the caller's to state. The cut-off and the stall threshold are a
+// governed definition, cited by reference; `GOVERNED_TERMS_FIELDS` is that reference.
+const POLICY = { currency: "USD" };
 
 function body(over: Record<string, unknown> = {}) {
   return {
@@ -34,6 +37,7 @@ function body(over: Record<string, unknown> = {}) {
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(12),
     policy: POLICY,
+    ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };
@@ -49,8 +53,16 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     await prisma.$disconnect();
   });
 
-  const post = (payload: unknown, headers: Record<string, string> = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  /**
+   * EP-26 · Every submission now names a GOVERNED analysis-terms version, so the suite activates one for
+   * whichever boundary the payload carries — through the two-identity lifecycle, not a seam. Opting out
+   * is how the refusal is tested; see `analysisTermsGovernance.test.ts`.
+   */
+  const post = async (payload: unknown, headers: Record<string, string> = OPERATOR) => {
+    const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+    if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  };
 
   it("1 · a valid synthetic upload is accepted, usable, and recorded once", async () => {
     const payload = body();
@@ -132,6 +144,145 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     expect(rows).toHaveLength(1);
   });
 
+  it("5c · the database itself refuses a second row for the same derived identity", async () => {
+    // Test 5 proves the APPLICATION refuses. This proves the refusal does not DEPEND on it.
+    //
+    // `findSubmission` is one layer; `idempotency_key` being the primary key of
+    // pilot_dataset_submissions is another, and they fail independently. EP-24's NC-24 disabled the
+    // lookup and the repeat was STILL refused 409 — carrying the generic uniqueness message in place
+    // of NH-DC-4003. This test pins the mechanism that did the refusing there, by exercising the
+    // consequence rather than reading the schema: a second INSERT under the same key is rejected and
+    // no second row appears.
+    //
+    // It lives here because no HTTP route exposes submissions, so the browser journey cannot observe
+    // this consequence at all. Without it the browser's duplicate proof would rest on one layer while
+    // the documentation claims two.
+    const payload = body();
+    expect((await post(payload)).statusCode).toBe(200);
+    const [stored] = await prisma.pilotDatasetSubmissionRecord.findMany({
+      where: { boundaryId: payload.boundaryId },
+    });
+    expect(stored).toBeDefined();
+
+    const row = (over: Record<string, unknown>) => ({
+      idempotencyKey: stored!.idempotencyKey,
+      boundaryId: stored!.boundaryId,
+      datasetId: `${stored!.datasetId}-again`,
+      contractVersion: stored!.contractVersion,
+      datasetFingerprint: stored!.datasetFingerprint,
+      accepted: true,
+      usable: true,
+      dataRows: 1,
+      acceptedRows: 1,
+      rejectedRows: 0,
+      warnedRows: 0,
+      findingCodes: [],
+      submittedByActorId: "second-writer@company",
+      submittedByRole: "operator",
+      ...over,
+    });
+
+    // The same key, written directly — bypassing every application check there is.
+    await expect(prisma.pilotDatasetSubmissionRecord.create({ data: row({}) })).rejects.toMatchObject({
+      code: "P2002",
+    });
+    expect(
+      await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } }),
+    ).toBe(1);
+
+    // The discriminator, so the rejection above cannot be mistaken for "this table refuses writes".
+    // Identical row, DIFFERENT key: accepted. So what the database refused was the reused identity.
+    await prisma.pilotDatasetSubmissionRecord.create({
+      data: row({ idempotencyKey: `${stored!.idempotencyKey}-distinct` }),
+    });
+    expect(
+      await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } }),
+    ).toBe(2);
+  });
+
+  it("5d · a concurrent loser receives the duplicate CONTRACT code, not a bare uniqueness error", async () => {
+    // THE TOCTOU. `submitPilotDataset` reads (`findSubmission`) and then writes (`recordSubmission`)
+    // with no transaction and no lock, so two concurrent identical submissions can both observe
+    // "no prior" and both attempt the insert. The primary key means exactly one row survives — the
+    // outcome is safe — but the loser's error must still be the contract's NH-DC-4003, because a
+    // client routes on that code. A bare uniqueness violation tells it nothing.
+    //
+    // DETERMINISTIC, not "N attempts and hope". The concurrent winner is a real INSERT held open in an
+    // uncommitted transaction: the service's own `findSubmission` runs on the default client, outside
+    // that transaction, so it CANNOT see the row and misses every time. The service's insert then
+    // blocks on the primary key — and the test waits for PostgreSQL to report a backend actually
+    // waiting on a lock before releasing, so the interleaving is observed rather than assumed.
+    const payload = body();
+
+    // Derive the key the service will derive, by letting the contract do it rather than hand-rolling
+    // a hash here: a hash written in the test could drift from the one the product computes.
+    const { validatePilotDataset } = await import("../../src/contract/validateDataset");
+    const report = await validatePilotDataset({
+      boundary: { boundaryId: payload.boundaryId as string, datasetId: payload.datasetId as string },
+      declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+      csvText: payload.csvText as string,
+      policy: POLICY,
+    ...GOVERNED_TERMS_FIELDS,
+      provenance: SYNTHETIC_PROVENANCE,
+    });
+
+    let releaseWinner: () => void = () => undefined;
+    const winnerHolding = new Promise<void>((resolve) => { releaseWinner = resolve; });
+    let winnerInserted: () => void = () => undefined;
+    const inserted = new Promise<void>((resolve) => { winnerInserted = resolve; });
+
+    // The concurrent winner: inserts, signals, and holds the transaction open.
+    const winner = prisma.$transaction(async (tx) => {
+      await tx.pilotDatasetSubmissionRecord.create({
+        data: {
+          idempotencyKey: report.idempotencyKey,
+          boundaryId: payload.boundaryId as string,
+          datasetId: payload.datasetId as string,
+          contractVersion: report.contractVersion,
+          datasetFingerprint: report.datasetFingerprint,
+          accepted: true, usable: true,
+          dataRows: 12, acceptedRows: 12, rejectedRows: 0, warnedRows: 0,
+          findingCodes: [],
+          submittedByActorId: "concurrent-winner@company", submittedByRole: "operator",
+        },
+      });
+      winnerInserted();
+      await winnerHolding;
+    }, { timeout: 20_000 });
+
+    await inserted;
+    // The loser goes through the REAL HTTP surface. Not awaited yet — it is about to block.
+    const loser = post(payload);
+
+    // Wait for the observable blocked state. This is what makes the test deterministic: it proceeds
+    // only once PostgreSQL reports a backend waiting on a lock, never after a fixed sleep.
+    let waiters = 0;
+    for (let i = 0; i < 200 && waiters === 0; i += 1) {
+      const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+        SELECT count(*)::bigint AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'`;
+      waiters = Number(rows[0]?.n ?? 0);
+      if (waiters === 0) await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(waiters).toBeGreaterThan(0); // the race really happened; it was not serialised by luck
+
+    releaseWinner();
+    await winner;
+    const res = await loser;
+
+    // 1 · exactly one row, 2 · exactly one winner.
+    expect(
+      await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId as string } }),
+    ).toBe(1);
+    // 3 · the loser gets the SAME stable contract classification a sequential repeat gets (test 5).
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toContain("NH-DC-4003");
+    // 4 · and no second governed decision exists for it to bind an execution to.
+    const rows = await prisma.pilotDatasetSubmissionRecord.findMany({
+      where: { boundaryId: payload.boundaryId as string },
+    });
+    expect(rows.filter((r) => r.admissionDecisionId !== null)).toHaveLength(0);
+  });
+
   it("5b · the same bytes under a DIFFERENT tenant are not a duplicate", async () => {
     const csvText = syntheticPilotCsv(6);
     const datasetId = `shared-${uid()}`;
@@ -184,6 +335,10 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     });
     await scoped.ready();
     try {
+      // EP-26 · Both boundaries get governed terms, so neither answer can come from the terms gate:
+      // tenant-a's 200 is a real admission and tenant-b's 403 is a real boundary refusal.
+      await ensureGovernedTerms("tenant-a");
+      await ensureGovernedTerms("tenant-b");
       const own = await scoped.inject({
         method: "POST", url: "/pilot/datasets", headers: OPERATOR,
         payload: body({ boundaryId: "tenant-a" }) as object,
@@ -195,6 +350,9 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
         payload: body({ boundaryId: "tenant-b" }) as object,
       });
       expect(other.statusCode).toBe(403);
+      // ...and refused for the RIGHT reason. Without this the test would also pass if the analysis-terms
+      // gate had refused it, which says nothing about tenant isolation.
+      expect(other.json().message).toMatch(/boundary/i);
       expect(other.json().message).toMatch(/not authorized for this boundary/i);
       // Refused before anything was validated or written.
       expect(await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: "tenant-b" } })).toBe(0);
@@ -253,8 +411,10 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
   it("10 · an unauthorized role and an unauthenticated caller are both refused", async () => {
     // An approver may never submit customer data for assessment (least privilege, unchanged).
     expect((await post(body(), APPROVER)).statusCode).toBe(403);
+    const unauthenticated = body();
+    await ensureGovernedTerms(unauthenticated.boundaryId);
     expect(
-      (await app.inject({ method: "POST", url: "/pilot/datasets", payload: body() as object })).statusCode,
+      (await app.inject({ method: "POST", url: "/pilot/datasets", payload: unauthenticated as object })).statusCode,
     ).toBe(401);
   });
 

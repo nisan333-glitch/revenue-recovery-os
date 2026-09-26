@@ -14,6 +14,7 @@ import { AuditTrail } from "./modules/AuditTrail";
 import { RecoveryReasons } from "./modules/RecoveryReasons";
 import { ConfidencePanel } from "./modules/ConfidencePanel";
 import { Assessment } from "./modules/assessment/Assessment";
+import { PilotPolicyGovernance } from "./modules/governance/PilotPolicyGovernance";
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
 import { CandidateReviewQueue } from "./modules/CandidateReviewQueue";
@@ -35,7 +36,8 @@ type ModuleKey =
   | "audit"
   | "assessment"
   | "synthetic-pilot"
-  | "candidate-review";
+  | "candidate-review"
+  | "policy-governance";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "demo", label: `Guided Demo — ${DEMO_CASE_ID}`, group: "Demo" },
@@ -52,6 +54,10 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "confidence", label: "Confidence Score", group: "Trust" },
   { key: "audit", label: "Audit Trail", group: "Trust" },
   { key: "assessment", label: "Revenue Opportunity Assessment", group: "Assess" },
+  // EP-19 · Deliberately its own entry, outside "Assess": proposing a fitness bar and putting one in
+  // force are two acts by two people, and a screen that walked from one to the other would model a
+  // beneficiary setting the bar that judges them.
+  { key: "policy-governance", label: "Pilot Policy Governance", group: "Govern" },
 ];
 
 // `initialModule` is a small, optional, additive testability seam (defaults to "loop"); omitting it
@@ -193,6 +199,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
           {active === "reasons" && <RecoveryReasons />}
           {active === "confidence" && <ConfidencePanel />}
           {active === "audit" && <AuditTrail />}
+          {active === "policy-governance" && <PilotPolicyGovernance />}
           {active === "assessment" && (
             <AssessmentErrorBoundary>
               <Assessment />

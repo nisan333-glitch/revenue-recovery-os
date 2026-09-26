@@ -44,9 +44,20 @@ import {
 import { makePolicy } from "../../src/assessment/policy";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
+import { Prisma } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../http/errors";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
+import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
+
+/**
+ * EP-26 · The stable phrase a refused submission carries when the analysis terms are not governed.
+ *
+ * Not an NH-DC-#### code: those are the DATA contract, and this refusal says nothing about the data.
+ * Not an NH-AX-#### code either — nothing is being executed yet. It is an authorization refusal, and
+ * the UI may show it verbatim because `forbidden` is in the client's safe-to-display set.
+ */
+export const ANALYSIS_TERMS_REFUSAL = "analysis terms are not governed";
 import { findSubmission, recordSubmission } from "../persistence/pilotDatasetStore";
 
 export interface PilotDatasetRequest {
@@ -61,10 +72,17 @@ export interface PilotDatasetRequest {
   readonly declaredVersion: string;
   readonly csvText: string;
   readonly policy: {
-    readonly stallThresholdDays: number;
-    readonly asOf: string;
     readonly currency: string;
   };
+  /**
+   * EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION defines this reading — the cut-off and the stall
+   * threshold. They are no longer request parameters: `asOf` decides what information exists and
+   * `stallThresholdDays` decides what "stalled" MEANS, so a requester who could state them would be
+   * defining the measurement they benefit from. Omitting the reference is not "use a default"; there
+   * is no default, and the submission is refused.
+   */
+  readonly analysisTermsId?: string;
+  readonly analysisTermsVersion?: string;
   readonly provenance: DatasetProvenance;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
@@ -173,6 +191,30 @@ function distinctCodes(report: ContractValidationReport): string[] {
  * Nothing is written before step 3 passes, so an invalid dataset and a rejected row never reach the
  * database at all.
  */
+/**
+ * Record a submission, translating the primary key's refusal into the contract's own duplicate code.
+ *
+ * The sequential repeat and the concurrent loser therefore receive the IDENTICAL classification, from
+ * the identical code path — there is no second path that could drift from this one. `submittedAt` is
+ * re-read from the winning row so the message carries the same detail either way; if that read comes
+ * back empty (the row was removed between the conflict and the read, which the append-only triggers
+ * forbid) the code is still returned, without inventing a timestamp.
+ */
+async function recordDuplicateAware(
+  input: Parameters<typeof recordSubmission>[0],
+): Promise<Awaited<ReturnType<typeof recordSubmission>>> {
+  try {
+    return await recordSubmission(input);
+  } catch (e) {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") throw e;
+    const prior = await findSubmission(input.idempotencyKey, input.boundaryId);
+    const when = prior ? ` on ${prior.submittedAt}` : "";
+    throw new ConflictError(
+      `${IDENTITY_CODES.DUPLICATE_SUBMISSION.code}: this exact dataset was already submitted for this tenant${when}. ${IDENTITY_CODES.DUPLICATE_SUBMISSION.remediation}`,
+    );
+  }
+}
+
 export async function submitPilotDataset(
   actor: ActorContext,
   request: PilotDatasetRequest,
@@ -183,16 +225,33 @@ export async function submitPilotDataset(
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
-  // A malformed policy is the caller's error, and its message must not echo customer data.
+  // EP-26 · THE ANALYSIS TERMS COME FROM THE REGISTER, NEVER FROM THE REQUEST. This is a 403 rather
+  // than a dataset verdict on purpose: an ungoverned cut-off is not a property of the file, and
+  // answering NOT_ASSESSABLE would tell the customer their data is unfit when what is unauthorized is
+  // their choice of definition. Refused before the bytes are parsed — nothing is measured under terms
+  // nobody approved, not even to produce a rejection count.
+  const resolvedTerms = await resolveGovernedAnalysisTerms(
+    boundaryId,
+    request.analysisTermsId,
+    request.analysisTermsVersion,
+  );
+  if (!resolvedTerms.ok) {
+    throw new ForbiddenError(`${ANALYSIS_TERMS_REFUSAL}: ${resolvedTerms.reason}`);
+  }
+  const governedTerms = resolvedTerms.stored.terms;
+
+  // Only the currency is still the caller's to state: it describes the file, not the reading of it.
   let policy;
   try {
     policy = makePolicy({
-      stallThresholdDays: request.policy.stallThresholdDays,
-      asOf: request.policy.asOf,
+      policyId: governedTerms.termsId,
+      policyVersion: governedTerms.termsVersion,
+      stallThresholdDays: governedTerms.stallThresholdDays,
+      asOf: governedTerms.asOf,
       currency: request.policy.currency,
     });
   } catch {
-    throw new ForbiddenError("assessment policy is invalid (stall threshold, as-of date or currency)");
+    throw new ForbiddenError("assessment policy is invalid (currency)");
   }
 
   const submission: DatasetSubmission = {
@@ -251,15 +310,7 @@ export async function submitPilotDataset(
 
   const admission = evaluateAdmission(report, policy, admissionPolicy);
 
-  // Duplicate detection runs against the AUTHORIZED boundary, so a key minted for another tenant
-  // reads as absent rather than as that tenant's record.
-  const prior = await findSubmission(report.idempotencyKey, boundaryId);
   void POLICY_CODES; // the codes the evaluator emits; referenced so the dependency is explicit
-  if (prior !== null) {
-    throw new ConflictError(
-      `${IDENTITY_CODES.DUPLICATE_SUBMISSION.code}: this exact dataset was already submitted for this tenant on ${prior.submittedAt}. ${IDENTITY_CODES.DUPLICATE_SUBMISSION.remediation}`,
-    );
-  }
 
   // Persist ONLY a usable dataset. An invalid dataset, or one whose every row was rejected, leaves
   // no row behind: the uploader gets the findings and the database gets nothing. That also keeps a
@@ -284,7 +335,31 @@ export async function submitPilotDataset(
     admissionPolicyHash: policyHash,
   });
 
-  const recorded = await recordSubmission({
+  // DUPLICATE DETECTION IS THE INSERT ITSELF.
+  //
+  // This used to be a `findSubmission` check before the write — a check-then-act with no transaction
+  // and no lock, so two concurrent identical submissions could both read "no prior" and both attempt
+  // the insert. The primary key meant exactly one row survived, so the OUTCOME was never at risk; what
+  // the loser got was a bare `P2002` that the error handler mapped to a generic uniqueness conflict
+  // instead of the contract's own NH-DC-4003. A client routing on that code saw nothing it could use.
+  // Test 5d reproduces it deterministically, by holding a real uncommitted INSERT open as the
+  // concurrent winner and waiting for PostgreSQL to report a backend blocked on the lock.
+  //
+  // WHY NOT A LOCK OR A TRANSACTION. `caseGuard.ts` takes a per-case advisory lock because Halt versus
+  // mutation is a genuine write skew across two tables — there is no single row for the two writers to
+  // collide on, so the conflict has to be manufactured. Here the primary key IS the invariant: the
+  // writers already collide on one row, and the database already serialises them. Adding a lock or a
+  // transaction around a check that the insert performs anyway would buy no guarantee and would
+  // serialise every submission for the same boundary behind one another.
+  //
+  // WHY NOT AN UPSERT. `upsert`/`ON CONFLICT DO NOTHING` would swallow the conflict, and a swallowed
+  // conflict is exactly what must not happen: the caller has to learn that this dataset was already
+  // submitted, and when. So the conflict is caught and CLASSIFIED, never absorbed.
+  //
+  // Matching on `P2002` alone is precise rather than broad: this call writes to one table, and that
+  // table has exactly one uniqueness arbiter — its primary key — which test 5c asserts by exercising
+  // it. Any other error, including a P2002 from anywhere else, is re-thrown untouched.
+  const recorded = await recordDuplicateAware({
     idempotencyKey: report.idempotencyKey,
     boundaryId,
     datasetId: report.datasetId,

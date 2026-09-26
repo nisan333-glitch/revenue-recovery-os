@@ -5,10 +5,26 @@
 > validation. Customer-facing text is in English (ready to send). Evolve freely through field experience.
 > Pairs with `DP_VALIDATION_KIT.md` (session flow, Session Record, Friction Log, assumption tracker).
 
+> ### ⚠️ Correction (EP-19) — the data-handling claims below were wrong and are fixed in place
+>
+> Every sentence in this document that promised *"entirely in your browser"* or *"your file never
+> leaves your machine"* has been rewritten. **Those claims stopped being true at EP-13** (server-side
+> validation became authoritative) and are further untrue since EP-16/EP-17 (a pseudonymised
+> projection of the accepted rows is retained server-side under a stated retention period).
+>
+> This matters more than an ordinary doc drift, because these are **scripts read aloud to design
+> partners and pasted into emails**. Saying the file stays on their machine while it is uploaded is a
+> misrepresentation to a prospect, and the first one their security reviewer catches ends the pilot.
+>
+> The honest version is not a weaker pitch, it is a different one: *the number is derived under a bar
+> fixed before we saw the result, and we cannot alter it after the fact.* That was always the real
+> claim. "We can't see your data" never was.
+
 **Product under validation:** NH Revenue Recovery OS — M1 Assessment. Sizes **Observed Unpaid** in a
-stalled cohort from **one historical CSV, entirely in the browser**. Four money states separated
-(Observed only; Estimated/Forecast "Not calculated"; Proven $0). Wedge: **Signed → Onboarding →
-Activation → First Value → Second Invoice**.
+stalled cohort from **one historical CSV**, uploaded to our server, where validation and the governed
+assessment run. A local in-browser **preview** is available first, and is labelled as a preview. Four
+money states separated (Observed only; Estimated/Forecast "Not calculated"; Proven $0). Wedge:
+**Signed → Onboarding → Activation → First Value → Second Invoice**.
 
 ---
 
@@ -28,11 +44,12 @@ historical CSV and has an owner for that leak.
 | Economic buyer | CFO **or** CRO, reachable within ≤2 meetings | A pilot needs budget/authority |
 
 **Hard disqualifiers:** no recurring billing · can't/won't export data · security will never allow a
-browser tool (even client-side) · no internal owner · pre-revenue · agency/services/one-off billing ·
-"just curious."
+CSV of contract/billing rows to be uploaded to a vendor · no internal owner · pre-revenue ·
+agency/services/one-off billing · "just curious."
 
 **One-line pitch:** *"We size the revenue leaking between your signed deals and their second invoice —
-from one CSV, entirely in your browser, with a number you can't fudge and we can't see."*
+from one CSV, against a fitness bar set before we see your result, so neither of us can move the
+number afterwards."*
 
 ## 2 · Prioritized Target-Profile Criteria (screen in this order)
 1. **Named, expensive activation/second-invoice leak** (kills the deal if absent).
@@ -70,8 +87,13 @@ costly step.
 > Quick one — most SaaS teams I talk to can't put a defensible number on the revenue that stalls between
 > a **signed deal and its second invoice** (failed activation, delayed go-live, silent non-payment).
 >
-> We built a way to size it from **one historical CSV, entirely in your browser** — your file never
-> leaves your machine, and the number is derived so that no one (including us) can massage it.
+> We built a way to size it from **one historical CSV**. You upload it, we validate it against a
+> published data contract, and the assessment runs against a fitness bar that is fixed and recorded
+> **before** your result exists — so neither of us can move the number afterwards.
+>
+> On handling: the file is uploaded. We keep a pseudonymised copy of the rows that passed validation
+> (identifiers replaced; dates and amounts kept, because the calculation needs them) under a stated
+> retention period, and we keep nothing from the rows that failed.
 >
 > Worth a 30-minute look at your own data? Not a pitch — a working session where you'd see your own
 > Observed number.
@@ -79,14 +101,14 @@ costly step.
 > {Name}
 
 **LinkedIn DM (shorter):**
-> Hi {First name} — we size the revenue that stalls between signed and second-invoice, from one CSV that
-> never leaves your browser. Open to a 30-min working session on your own data? Genuinely a look, not a
-> pitch.
+> Hi {First name} — we size the revenue that stalls between signed and second-invoice from one CSV you
+> send us, judged against a bar fixed before we see the result. Open to a 30-min working session on your
+> own data? Genuinely a look, not a pitch.
 
 **Warm-intro ask (to your network):**
 > Do you know a RevOps or Finance lead at a $5–100M ARR SaaS who'd say activation/second-invoice leakage
-> is a real, expensive problem? I have a browser-only tool that sizes it from their own CSV in 30
-> minutes — looking for 3–5 design partners, no cost.
+> is a real, expensive problem? I have a tool that sizes it from their own CSV in 30 minutes — looking
+> for 3–5 design partners, no cost.
 
 ## 5 · Discovery-Meeting Script (45 min)
 
@@ -106,7 +128,9 @@ touched; **if privacy can't be guaranteed → STOP.**
 - **(10m) Data + trust:**
   - "What would it take to export a CSV with signed date, next-invoice due date, amount, and activation
     status?"
-  - "Who'd need to approve a browser-based tool where the file never leaves your machine?"
+  - "Who'd need to approve sending us a CSV of contract and billing rows? What would they want to see
+    about retention and deletion?" (Answer honestly: it is uploaded; a pseudonymised copy of the rows
+    that passed validation is retained for a stated period; rejected rows are not kept.)
 - **(5m) Position M1 honestly:** Observed only; no forecast, no proven claims; the number is
   reproducible and un-fudgeable.
 - **(5m) Next step:** agree to pull a CSV / book the readout.

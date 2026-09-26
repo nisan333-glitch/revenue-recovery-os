@@ -21,6 +21,7 @@ import {
   purgeEligibleInputs,
 } from "./pilotInputRetention";
 import type { ActorContext } from "../auth/identity";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -151,12 +152,18 @@ describe.skipIf(!HAS_DB)("EP-17 · purging an execution input", () => {
       })).statusCode,
     ).toBe(200);
 
+    // EP-26 · The boundary needs an ACTIVE analysis-terms version before anything may be measured.
+    await ensureGovernedTerms(boundaryId);
+
     const base = {
       boundaryId,
       datasetId: `ds-${uid()}`,
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: syntheticPilotCsv(40),
-      policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+      policy: { currency: "USD" },
+      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
+      // activates them for this boundary through the two-identity lifecycle before submitting.
+      ...GOVERNED_TERMS_FIELDS,
       provenance: SYNTHETIC_PROVENANCE,
     };
     expect(
@@ -585,13 +592,19 @@ describe.skipIf(!HAS_DB)("EP-18 · the scan reaches records behind an ineligible
     ).toBe(200);
 
     const executionIds: string[] = [];
+    // EP-26 · Governed analysis terms once for the boundary, before any of its datasets are measured.
+    await ensureGovernedTerms(boundaryId);
+
     for (const rows of rowCounts) {
       const base = {
         boundaryId,
         datasetId: `ds-${uid()}`,
         declaredVersion: PILOT_DATA_CONTRACT_VERSION,
         csvText: syntheticPilotCsv(rows),
-        policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+        policy: { currency: "USD" },
+      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
+      // activates them for this boundary through the two-identity lifecycle before submitting.
+      ...GOVERNED_TERMS_FIELDS,
         provenance: SYNTHETIC_PROVENANCE,
       };
       expect(
@@ -751,12 +764,18 @@ describe.skipIf(!HAS_DB)("EP-18 · a database failure fails the run instead of r
       method: "POST", url: "/pilot/admission-policies/activate", headers: STEWARD_HEADERS,
       payload: { boundaryId, policyId: policy.policyId, policyVersion: "1.0.0", rationale: "reviewed" },
     });
+    // EP-26 · The boundary needs an ACTIVE analysis-terms version before anything may be measured.
+    await ensureGovernedTerms(boundaryId);
+
     const base = {
       boundaryId,
       datasetId: `ds-${uid()}`,
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: syntheticPilotCsv(40),
-      policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+      policy: { currency: "USD" },
+      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
+      // activates them for this boundary through the two-identity lifecycle before submitting.
+      ...GOVERNED_TERMS_FIELDS,
       provenance: SYNTHETIC_PROVENANCE,
     };
     await app.inject({

@@ -351,21 +351,41 @@ describe("tenant boundaries and identifiers", () => {
 });
 
 describe("duplicates and idempotency", () => {
-  it("9 · an identical repeat row is rejected — the same exposure is never counted twice", async () => {
+  it("9 · identical rows are both excluded from accepted cycles", async () => {
     const row = syntheticPilotRows(1)[0]!;
     const report = await validatePilotDataset(submission(toCsv([row, row])));
     const dup = report.rowFindings.filter((f) => f.code === "NH-DC-4001");
     expect(dup).toHaveLength(1);
     expect(dup[0]!.rowNumber).toBe(2);
     expect(dup[0]!.detail).toContain("data row 1");
-    expect(report.acceptedCycles).toHaveLength(1);
+    expect(report.rowFindings.filter((f) => f.code === "NH-DC-2016")).toHaveLength(2);
+    expect(report.acceptedCycles).toHaveLength(0);
   });
 
   it("9 · two rows claiming the same cycle identity are rejected", async () => {
     const [first, second] = [syntheticPilotRows(2)[0]!, syntheticPilotRows(2)[1]!];
     const collided = { ...second, subscription_id: first.subscription_id };
     const report = await validatePilotDataset(submission(toCsv([first, collided])));
-    expect(codesFor(report.rowFindings)).toContain("NH-DC-2016");
+    expect(report.rowFindings.filter((f) => f.code === "NH-DC-2016")).toHaveLength(2);
+    expect(report.acceptedCycles).toHaveLength(0);
+  });
+
+  it("9 · corrupting a rival row cannot select a surviving cycle", async () => {
+    // THE SECOND LEVER. Rejecting every colliding row removes file ORDER as a way to choose which row
+    // counts. It does not, on its own, remove the ability to choose by making the unwanted row invalid
+    // — unless a defective row still participates in the collision it caused. It does.
+    //
+    // `cycleId` comes from `subscription_id` when one is present (saasActivation.ts), so corrupting
+    // `entity_id` leaves the cycle identity untouched: the collision is real and both rows go.
+    const first = syntheticPilotRows(1)[0]!;
+    const corrupted = { ...first, entity_id: "person@example.com" };
+    for (const rows of [[first, corrupted], [corrupted, first]]) {
+      const report = await validatePilotDataset(submission(toCsv(rows)));
+      expect(report.rowFindings.map(f => f.code)).toContain("NH-DC-3002");
+      expect(report.rowFindings.filter(f => f.code === "NH-DC-2016")).toHaveLength(2);
+      expect(report.acceptedCycles).toHaveLength(0);
+      expect(report.counts.rejectedRows).toBe(2);
+    }
   });
 
   it("9 · the idempotency key is stable for identical bytes and tenant-scoped", async () => {

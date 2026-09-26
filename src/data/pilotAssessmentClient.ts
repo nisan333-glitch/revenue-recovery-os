@@ -132,11 +132,15 @@ export interface ScheduleAssessmentParams {
   readonly datasetId: string;
   readonly csvText: string;
   readonly provenance: DatasetProvenance;
-  readonly stallThresholdDays: number;
-  readonly asOf: string;
   readonly currency: string;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
+  /**
+   * EP-26 · Which governed analysis-terms version this run is measured under. Absent, unknown, draft,
+   * frozen or retired is refused with NH-AX-1010 — there is no value pair to supply instead.
+   */
+  readonly analysisTermsId?: string;
+  readonly analysisTermsVersion?: string;
   /** Optional link to a governed case. Supplying it never creates one. */
   readonly recoveryCaseId?: string;
 }
@@ -150,11 +154,11 @@ export function schedulePilotAssessment(
     datasetId: params.datasetId,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: params.csvText,
-    policy: {
-      stallThresholdDays: params.stallThresholdDays,
-      asOf: params.asOf,
-      currency: params.currency,
-    },
+    // EP-26 · The cut-off and the threshold are NOT sent. The server resolves them from its own
+    // register of governed definitions; this names which one, and nothing more.
+    policy: { currency: params.currency },
+    ...(params.analysisTermsId ? { analysisTermsId: params.analysisTermsId } : {}),
+    ...(params.analysisTermsVersion ? { analysisTermsVersion: params.analysisTermsVersion } : {}),
     provenance: params.provenance,
     ...(params.locale ? { locale: params.locale } : {}),
     ...(params.amountFormat ? { amountFormat: params.amountFormat } : {}),

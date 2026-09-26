@@ -84,6 +84,49 @@ A recovery dollar may be counted **only when**:
 > recovery number influence the baseline, evidence, timing, attribution, approval, or
 > historical calculation? **If yes, reject the design.**
 
+**Pilot dataset collision decision (2026-09-25).** The contract validator previously
+accepted the first of two rows with the same derived cycle identity while the
+assessment core excluded both. That gave the file author control over the selected
+row by reordering the file, potentially changing admission and the measured amount.
+Before changing the implementation, the governing rule is: **all rows sharing a
+derived cycle identity are excluded from the accepted population, regardless of
+order, identical content, or other row defects, whenever the adapter yields that
+identity.** Report both rows as duplicate-cycle exclusions;
+an identical repeated source row may additionally carry its source-duplicate code.
+No surviving row may be chosen by file position. Reordering must preserve the
+accepted population and admission outcome. This is a pilot-data trust rule and
+does not turn any observed amount into proven Revenue Returned.
+If a malformed row yields no cycle identity at all, a collision cannot be
+established from it; its separate rejection remains in force.
+
+**Assessment identity and analysis-terms governance decision (2026-09-26).** An audit found that the
+pilot submission identity is derived over `(boundaryId, datasetId, datasetFingerprint)` where
+`datasetId` is a free-text label the uploader types, so byte-identical data in the same boundary could
+be assessed again by renaming it. No rationale for including the label is recorded anywhere in the
+repository, and the sibling pre-registration record excludes it. The governing rule is now:
+
+> **The submission identity contains the stable identity of the data plus only those parameters whose
+> change materially changes the meaning or the result-space of the assessment. Purely descriptive or
+> operator-controlled metadata never determines identity.**
+
+And, because `asOf` and `stallThresholdDays` decide what "stalled" means and what the analysis cut-off
+is, they fall under rule **2** above — *the baseline and recovery definition were established before the
+outcome was known* — which they currently escape:
+
+> **The same extract may be assessed again under new analysis terms, but only when those terms were
+> pre-registered and governed in the way the admission bar is governed.** An operator may not choose a
+> new cut-off or stall definition and obtain a fresh assessment on their own authority.
+
+**Order of work, binding:** the governance mechanism for analysis terms comes **first**; the identity
+derivation changes only after it exists. **That mechanism was built on 2026-09-26** — `asOf` and
+`stallThresholdDays` are now a registered, versioned definition, proposed by one identity and activated by
+another, and they are no longer request parameters at all
+([`docs/ANALYSIS_TERMS_GOVERNANCE.md`](docs/ANALYSIS_TERMS_GOVERNANCE.md)). The derivation is still
+unchanged, the contract stays at its current major, and no migration is written: the remaining
+prerequisite is the §10 two-major compatibility decision. Full treatment and the field-by-field classification are
+in [`docs/ASSESSMENT_IDENTITY_V1.md`](docs/ASSESSMENT_IDENTITY_V1.md). This is a pilot-data trust rule
+and does not turn any observed amount into a proven figure.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

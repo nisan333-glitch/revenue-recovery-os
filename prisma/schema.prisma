@@ -239,7 +239,6 @@ model RecoveryCaseRecord {
   openedAt          DateTime @map("opened_at") @db.Timestamptz(3)
   persistedAt       DateTime @default(now()) @map("persisted_at") @db.Timestamptz(3)
 
-  @@unique([sourceCandidateId, boundaryId], map: "recovery_cases_candidate_boundary_unique")
   @@index([boundaryId, openedAt], map: "recovery_cases_boundary_opened_idx")
   @@map("recovery_cases")
 }
@@ -254,32 +253,32 @@ model RecoveryCaseRecord {
 /// `detail` text of a finding (which can echo a customer value). A rejected row is reported to the
 /// uploader and then forgotten — it is never persisted.
 model PilotDatasetSubmissionRecord {
-  idempotencyKey     String   @id @map("idempotency_key")
-  boundaryId         String   @map("boundary_id")
-  datasetId          String   @map("dataset_id")
-  contractVersion    String   @map("contract_version")
-  datasetFingerprint String   @map("dataset_fingerprint")
-  accepted           Boolean
-  usable             Boolean
-  dataRows           Int      @map("data_rows")
-  acceptedRows       Int      @map("accepted_rows")
-  rejectedRows       Int      @map("rejected_rows")
-  warnedRows         Int      @map("warned_rows")
+  idempotencyKey         String   @id @map("idempotency_key")
+  boundaryId             String   @map("boundary_id")
+  datasetId              String   @map("dataset_id")
+  contractVersion        String   @map("contract_version")
+  datasetFingerprint     String   @map("dataset_fingerprint")
+  accepted               Boolean
+  usable                 Boolean
+  dataRows               Int      @map("data_rows")
+  acceptedRows           Int      @map("accepted_rows")
+  rejectedRows           Int      @map("rejected_rows")
+  warnedRows             Int      @map("warned_rows")
   /// Distinct NH-DC-#### codes only. Never the findings' detail text.
-  findingCodes       String[] @map("finding_codes")
+  findingCodes           String[] @map("finding_codes")
   /// EP-15 · The exact bar this decision was judged under. Retiring or superseding the policy can
   /// never alter these three values, so a historical verdict stays reproducible forever.
-  admissionOutcome   String?  @map("admission_outcome")
-  admissionPolicyId  String?  @map("admission_policy_id")
-  admissionPolicyVersion String? @map("admission_policy_version")
-  admissionPolicyHash String? @map("admission_policy_hash")
+  admissionOutcome       String?  @map("admission_outcome")
+  admissionPolicyId      String?  @map("admission_policy_id")
+  admissionPolicyVersion String?  @map("admission_policy_version")
+  admissionPolicyHash    String?  @map("admission_policy_hash")
   /// EP-16 · Deterministic identifier for this decision, derived from the fields above. Nullable and
   /// never backfilled: a submission recorded before orchestration existed was never bound to an
   /// execution, and minting an identifier now would assert a binding that never happened.
-  admissionDecisionId String? @map("admission_decision_id")
-  submittedByActorId String   @map("submitted_by_actor_id")
-  submittedByRole    String   @map("submitted_by_role")
-  submittedAt        DateTime @default(now()) @map("submitted_at")
+  admissionDecisionId    String?  @map("admission_decision_id")
+  submittedByActorId     String   @map("submitted_by_actor_id")
+  submittedByRole        String   @map("submitted_by_role")
+  submittedAt            DateTime @default(now()) @map("submitted_at")
 
   @@index([boundaryId, submittedAt], map: "pilot_dataset_submissions_boundary_idx")
   @@index([boundaryId, admissionDecisionId], map: "pilot_dataset_submissions_decision_idx")
@@ -353,6 +352,55 @@ model PilotDatasetSightingRecord {
   firstSeenAt        DateTime @default(now()) @map("first_seen_at")
 
   @@id([boundaryId, datasetFingerprint], map: "pilot_dataset_sightings_pkey")
+}
+
+/// EP-26 · A registered, versioned ANALYSIS-TERMS tuple: the cut-off and the stall definition.
+///
+/// A SEPARATE table from `pilot_admission_policies`, deliberately. The two answer different questions —
+/// "was this dataset fit to judge?" versus "as of when, and with what threshold, is it read?" — and one
+/// table keyed by a shared id would let an admission policy id collide with a terms id, so a single
+/// governance act could read as the other. Append-only per (boundary, id, version): a change is a NEW
+/// version with its own proposal and its own activation, because editing a cut-off that has already
+/// produced a finding would silently redefine what that finding measured.
+model PilotAnalysisTermsRecord {
+  boundaryId               String   @map("boundary_id")
+  termsId                  String   @map("terms_id")
+  termsVersion             String   @map("terms_version")
+  /// Analysis cut-off (ISO date, stored as text so no timezone can shift the day).
+  asOf                     String   @map("as_of")
+  stallThresholdDays       Int      @map("stall_threshold_days")
+  calculationMethodVersion String   @map("calculation_method_version")
+  /// Deterministic hash of the DEFINITION. Stamped into every execution binding, so a historical run
+  /// proves which cut-off and threshold it was measured under even if this row were ever altered.
+  termsHash                String   @map("terms_hash")
+  registeredByActorId      String   @map("registered_by_actor_id")
+  registeredByRole         String   @map("registered_by_role")
+  registeredAt             DateTime @default(now()) @map("registered_at")
+
+  @@id([boundaryId, termsId, termsVersion], map: "pilot_analysis_terms_pkey")
+  @@index([boundaryId, termsId, registeredAt], map: "pilot_analysis_terms_boundary_idx")
+  @@map("pilot_analysis_terms")
+}
+
+/// EP-26 · Append-only lifecycle log for one analysis-terms version.
+///
+/// Same shape and same reasoning as the admission-policy log, and a different table: state is DERIVED
+/// from these rows rather than stored as an editable column, the customer side proposes, governance
+/// activates, and no row here is ever updated or deleted.
+model PilotAnalysisTermsEventRecord {
+  id           String   @id(map: "pilot_analysis_terms_events_pkey")
+  boundaryId   String   @map("boundary_id")
+  termsId      String   @map("terms_id")
+  termsVersion String   @map("terms_version")
+  transition   String // PROPOSED | ACTIVATED | FROZEN | UNFROZEN | RETIRED
+  actorId      String   @map("actor_id")
+  actorRole    String   @map("actor_role")
+  /// Why. Required on every transition — a governance decision with no stated reason is not one.
+  rationale    String
+  at           DateTime @default(now())
+
+  @@index([boundaryId, termsId, termsVersion, at], map: "pilot_analysis_terms_events_identity_idx")
+  @@map("pilot_analysis_terms_events")
 }
 
 /// EP-16 · One governed assessment execution over an admitted dataset.

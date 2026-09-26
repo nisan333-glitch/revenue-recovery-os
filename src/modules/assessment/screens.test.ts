@@ -35,7 +35,7 @@ describe("Assessment screens render the critical content", () => {
     expect(r.undeterminedCount).toBe(1);
     expect(r.referenceCount).toBe(1);
     const html = renderToStaticMarkup(
-      createElement(DataQualityCohortScreen, { result: r, n: 30, error: null, onChangeN: noop, onBack: noop, onNext: noop }),
+      createElement(DataQualityCohortScreen, { result: r, n: 30, error: null, onBack: noop, onNext: noop }),
     );
     expect(html).toContain("Stalled");
     expect(html).toContain("Undetermined");
@@ -45,7 +45,7 @@ describe("Assessment screens render the critical content", () => {
   it("DataQuality shows a re-run error banner (no silent stale result)", async () => {
     const r = await sample();
     const html = renderToStaticMarkup(
-      createElement(DataQualityCohortScreen, { result: r, n: 30, error: "unsupported currency", onChangeN: noop, onBack: noop, onNext: noop }),
+      createElement(DataQualityCohortScreen, { result: r, n: 30, error: "unsupported currency", onBack: noop, onNext: noop }),
     );
     expect(html).toContain("Re-run failed");
     expect(html).toContain("unsupported currency");
@@ -64,7 +64,7 @@ describe("Assessment screens render the critical content", () => {
   // The assertion is updated to the NEW promise rather than kept — a test asserting a claim the
   // product contradicts is worse than no test.
   const uploadProps = {
-    n: 30, setN: noop, asOf: "2026-03-01", setAsOf: noop, currency: "USD", setCurrency: noop,
+    n: 30, asOf: "2026-03-01", currency: "USD", setCurrency: noop,
     locale: "" as const, setLocale: noop, amountFormat: "" as const, setAmountFormat: noop,
     onFile: noop, onReject: noop,
     boundaryId: "pilot-boundary-0001", setBoundaryId: noop,
@@ -76,6 +76,16 @@ describe("Assessment screens render the critical content", () => {
       assertedIndependentOfBeneficiary: false,
     },
     setProvenance: noop, validationPreliminary: false, validating: false,
+    // EP-19 · Naming an activated admission policy is required, not optional: the server answers
+    // NOT_ASSESSABLE without one and the upload is refused.
+    admissionPolicyId: "pol-0001", setAdmissionPolicyId: noop,
+    admissionPolicyVersion: "1.0.0", setAdmissionPolicyVersion: noop,
+    // EP-26 · N and the cut-off are a governed reference, not two inputs on this screen.
+    governedTerms: [
+      { termsRef: "terms-q1@1.0.0", termsId: "terms-q1", termsVersion: "1.0.0", asOf: "2026-03-01",
+        stallThresholdDays: 30, termsHash: "sha256:t", state: "ACTIVE" as const, mayMeasure: true },
+    ],
+    analysisTermsRef: "terms-q1@1.0.0", setAnalysisTermsRef: noop, termsError: null,
   };
 
   it("Upload states the server-authoritative promise and surfaces a validation error", () => {

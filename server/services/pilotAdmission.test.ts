@@ -16,6 +16,7 @@ import {
 } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
 import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -52,7 +53,10 @@ function datasetBody(over: Record<string, unknown> = {}) {
     datasetId: `dataset-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(40),
-    policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+    policy: { currency: "USD" },
+      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
+      // activates them for this boundary through the two-identity lifecycle before submitting.
+      ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };
@@ -68,8 +72,13 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     await prisma.$disconnect();
   });
 
-  const submit = (payload: unknown, headers = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  // EP-26 · Activate governed analysis terms for the payload's boundary before submitting: the
+  // cut-off and the stall threshold are no longer request fields.
+  const submit = async (payload: unknown, headers = OPERATOR) => {
+      const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+      if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  };
 
   /** Propose a policy. It is a DRAFT and judges nothing until governance activates it. */
   const register = (boundaryId: string, policy: Record<string, unknown>, headers = OPERATOR) =>
@@ -196,12 +205,17 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     const boundaryId = `pilot-boundary-${uid()}`;
     const strict = await registerActive(boundaryId, policyBody({ minAcceptedRows: 500, minCoverageDays: 3650, maxDuplicateRate: 0 }));
 
-    const base = syntheticPilotRows(10);
+    // FIVE pairs collide; fifteen cycles survive. The fixture used to duplicate EVERY row, which no
+    // longer reaches the thresholds this test is about: since all colliding rows are excluded, a
+    // wholly-duplicated file leaves zero accepted cycles, so the dataset is not usable and the gate
+    // correctly answers NOT_ASSESSABLE (NH-AG-3001) instead of measuring anything. Threshold codes
+    // can only be asserted on a dataset that survives far enough to be measured.
+    const base = syntheticPilotRows(20);
     const out = (
       await submit(
         datasetBody({
           boundaryId,
-          csvText: toCsv([...base, ...base]), // every row duplicated
+          csvText: toCsv([...base, ...base.slice(0, 5)]),
           admissionPolicyId: strict.policyId,
         }),
       )
