@@ -132,25 +132,60 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     expect(rows).toHaveLength(1);
   });
 
-  it("5c · the derived identity is the table's PRIMARY KEY, so a second row cannot exist", async () => {
-    // Test 5 proves the application lookup refuses. This proves the refusal does not DEPEND on it.
-    // `idempotency_key` is the primary key of pilot_dataset_submissions, so even with the lookup gone
-    // the second INSERT raises a unique violation and no second row is written — the duplicate stays a
-    // duplicate. Demonstrated rather than reasoned: EP-24's NC-24 disabled the lookup and the repeat
-    // was still refused 409, with the generic uniqueness message in place of NH-DC-4003.
+  it("5c · the database itself refuses a second row for the same derived identity", async () => {
+    // Test 5 proves the APPLICATION refuses. This proves the refusal does not DEPEND on it.
     //
-    // It is asserted here because no HTTP route exposes submissions, so the browser journey cannot see
-    // this consequence at all. Its absence from the schema would make the browser's duplicate proof
-    // rest on one layer while claiming two.
-    const primaryKey = await prisma.$queryRaw<Array<{ conname: string; cols: string }>>`
-      SELECT c.conname::text AS conname,
-             string_agg(a.attname::text, ',' ORDER BY a.attname) AS cols
-        FROM pg_constraint c
-        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
-       WHERE c.conrelid = 'pilot_dataset_submissions'::regclass AND c.contype = 'p'
-       GROUP BY c.conname`;
-    expect(primaryKey).toHaveLength(1);
-    expect(primaryKey[0]!.cols).toBe("idempotency_key");
+    // `findSubmission` is one layer; `idempotency_key` being the primary key of
+    // pilot_dataset_submissions is another, and they fail independently. EP-24's NC-24 disabled the
+    // lookup and the repeat was STILL refused 409 — carrying the generic uniqueness message in place
+    // of NH-DC-4003. This test pins the mechanism that did the refusing there, by exercising the
+    // consequence rather than reading the schema: a second INSERT under the same key is rejected and
+    // no second row appears.
+    //
+    // It lives here because no HTTP route exposes submissions, so the browser journey cannot observe
+    // this consequence at all. Without it the browser's duplicate proof would rest on one layer while
+    // the documentation claims two.
+    const payload = body();
+    expect((await post(payload)).statusCode).toBe(200);
+    const [stored] = await prisma.pilotDatasetSubmissionRecord.findMany({
+      where: { boundaryId: payload.boundaryId },
+    });
+    expect(stored).toBeDefined();
+
+    const row = (over: Record<string, unknown>) => ({
+      idempotencyKey: stored!.idempotencyKey,
+      boundaryId: stored!.boundaryId,
+      datasetId: `${stored!.datasetId}-again`,
+      contractVersion: stored!.contractVersion,
+      datasetFingerprint: stored!.datasetFingerprint,
+      accepted: true,
+      usable: true,
+      dataRows: 1,
+      acceptedRows: 1,
+      rejectedRows: 0,
+      warnedRows: 0,
+      findingCodes: [],
+      submittedByActorId: "second-writer@company",
+      submittedByRole: "operator",
+      ...over,
+    });
+
+    // The same key, written directly — bypassing every application check there is.
+    await expect(prisma.pilotDatasetSubmissionRecord.create({ data: row({}) })).rejects.toMatchObject({
+      code: "P2002",
+    });
+    expect(
+      await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } }),
+    ).toBe(1);
+
+    // The discriminator, so the rejection above cannot be mistaken for "this table refuses writes".
+    // Identical row, DIFFERENT key: accepted. So what the database refused was the reused identity.
+    await prisma.pilotDatasetSubmissionRecord.create({
+      data: row({ idempotencyKey: `${stored!.idempotencyKey}-distinct` }),
+    });
+    expect(
+      await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: payload.boundaryId } }),
+    ).toBe(2);
   });
 
   it("5b · the same bytes under a DIFFERENT tenant are not a duplicate", async () => {

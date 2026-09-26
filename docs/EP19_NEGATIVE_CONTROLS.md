@@ -121,6 +121,7 @@ done. The test has to disagree with that too, so it is controlled separately.
 | NC-24 | The application duplicate lookup (`pilotIntakeService.ts`) | `if (false && prior !== null)` | **2** — the 409 becomes the generic uniqueness message, `NH-DC-4003` gone | caught |
 | NC-25 | The 409 reaching the operator (`apiClient.ts`) | `"conflict"` removed from `SAFE_TO_SHOW_VERBATIM` | **1** — only the screen check; the server still refuses correctly | caught |
 | NC-26 | The repeat actually being a repeat (`journey.mjs`) | `REPEAT_CSV_PATH = FROZEN_CSV_PATH` | **4** — incl. a **second execution**: `before=1 after=2` | caught |
+| NC-27 | The database constraint behind test 5c | `ALTER TABLE pilot_dataset_submissions DROP CONSTRAINT …_pkey` on a scratch database | 1 — the same-key INSERT *succeeds*: "promise resolved instead of rejecting" | caught |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -311,11 +312,22 @@ duplicate. Two consequences, both recorded rather than tidied away:
 
 `idempotency_key` is the **primary key** of `pilot_dataset_submissions`, so a second row cannot exist
 even with the application lookup gone. NC-24 proves this empirically: with `findSubmission`'s refusal
-disabled the repeat was **still refused 409** — but with the generic *"duplicate: a uniqueness
-constraint was violated"* message instead of `NH-DC-4003`. That is exactly why the browser pins the
-**contract's code** rather than "a 409", and why `pilotIntake.test.ts` test **5c** asserts the primary
-key from the live schema: the browser cannot see submission rows at all, so without 5c the duplicate
-proof would rest on one layer while claiming two.
+disabled the repeat was **still refused 409** — but carrying the generic *"duplicate: a uniqueness
+constraint was violated"* message instead of `NH-DC-4003`. **What remained enforcing the refusal was the
+primary key**, and that is exactly why the browser pins the **contract's code and mechanism** rather than
+"a 409": a check satisfied by any 409 would have stayed green through NC-24 and credited the contract
+with a refusal the database made.
+
+`pilotIntake.test.ts` **5c** pins that second layer by **exercising the consequence, not reading the
+schema**: after a successful submission it writes a second row directly under the same key, bypassing
+every application check, and asserts the write is rejected (`P2002`) with the row count still 1. It then
+writes the identical row under a *different* key and asserts that one is accepted — so the rejection
+cannot be mistaken for "this table refuses writes". **NC-27** confirms the test is pinned to the real
+constraint rather than to metadata: with `pilot_dataset_submissions_pkey` dropped on a scratch database,
+the same-key insert *succeeds* and 5c fails with "promise resolved instead of rejecting".
+
+The browser cannot see submission rows at all, so without 5c the duplicate proof would rest on one layer
+while the documentation claimed two.
 
 ### Why the consequence check is evidence rather than corroboration
 
@@ -326,9 +338,15 @@ works: `before=1 after=2 followedThrough=true`. A second governed work item real
 
 ### Signatures
 
-NC-24 **2** failures (the response code and the screen) · NC-25 **1** (the screen only — the server
-refused correctly, the operator was told something else) · NC-26 **4** (byte identity, the response, the
-screen, and the second execution). Three mutations, three sets, no overlap.
+What makes these attributable is the **named check and the causal mechanism**, not the arithmetic — equal
+counts would be fine if the mechanisms were still distinct:
+
+* **NC-24** — the response check and the screen check. Mechanism: the application lookup is gone, the
+  primary key refuses instead, and the contract's code vanishes from a refusal that still happens.
+* **NC-25** — the screen check alone. Mechanism: the server refuses correctly and `apiClient` replaces
+  its sentence with the generic one, so the operator is told something else.
+* **NC-26** — byte identity, the response, the screen, and the second execution. Mechanism: it is not a
+  repeat at all, so nothing refuses it and the governed run produces a second work item.
 
 ### What this does not claim
 

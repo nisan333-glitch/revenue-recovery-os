@@ -87,9 +87,19 @@ identity that is accepted.
 
 **Not observable from the browser:** that no second submission **row** was written. No route exposes
 submissions — the pilot routes are POST `/pilot/datasets`, the admission-policy and governance routes,
-and GET/POST `/pilot/assessments` — and adding one would be a product affordance, not a test. That half
-rests on `idempotency_key` being the table's **primary key**, asserted from the live schema by
-`pilotIntake.test.ts` **5c**, alongside test 5's "exactly one row".
+and GET/POST `/pilot/assessments` — and adding one would be a product affordance, not a test.
+
+So the claim rests on **three named layers, and the third is not browser-proven**:
+
+| # | Layer | Evidence |
+|---|---|---|
+| 1 | the exact-byte repeat reaches the real server and receives the genuine **`NH-DC-4003`** 409, wired correctly to the screen | **browser** |
+| 2 | the repeat creates **no second execution** | **server-backed**, the boundary's execution list read before and after |
+| 3 | **no second submission row** can exist for that identity | **database**, `pilotIntake.test.ts` 5c — a direct second write under the same key is rejected `P2002`, count stays 1, and the identical row under a *different* key is accepted |
+
+Layer 3 exercises the **consequence**, not the schema text: NC-27 drops
+`pilot_dataset_submissions_pkey` on a scratch database and the same-key insert then succeeds, failing 5c.
+Nothing in this matrix describes layer 3 as browser-proven.
 
 **An open question this slice surfaced and did not resolve.** The label is part of the identity and is
 supplied by the uploader, so byte-identical data re-submitted under a new label is accepted and can be
