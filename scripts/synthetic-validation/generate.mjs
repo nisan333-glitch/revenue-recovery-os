@@ -453,6 +453,60 @@ for (const g of GAPS) {
   });
 }
 
+// ══ 11 · BUSINESS LEAKAGE — a SECOND register, independent of what NH computes ════════════════════
+//
+// `expected_amount_minor` is what NH's semantics should produce. It is not the same question as "how
+// much money would a revenue operator say is leaking here", and conflating them is how a product scores
+// precision 1.000 while covering a fraction of real leakage.
+//
+// So every scenario also carries `business_leakage_minor`: the operator's answer, from the narrative.
+// Where the two differ, the difference IS the finding. Notably:
+//
+//   * an unpaid invoice from a customer who activated on time — NH counts nothing, an operator counts
+//     the invoice;
+//   * activated exactly at the bar with the invoice unpaid — same disagreement, at the boundary;
+//   * cancelled or refunded — NH reports the value as excluded, an operator counts nothing, and here
+//     NH is the one being careful;
+//   * a one-cent remainder — NH counts a cent, an operator counts nothing;
+//   * the six out-of-capability classes — an operator counts all of it, NH cannot see any of it.
+const BUSINESS_LEAKAGE = {
+  // representable, and NH agrees
+  activation_stall_unpaid_invoice: (s) => s.expected_amount_minor,
+  activation_stall_partial_payment: (s) => (s.ambiguity ? 0 : s.expected_amount_minor),
+  // representable, and NH deliberately counts nothing — the coverage disagreements
+  unpaid_invoice_without_activation_stall: () => 930_000,
+  near_miss_exact_threshold: () => 550_000,
+  // NH reports a value; an operator would not call it leakage
+  stalled_but_terminal_state: () => 0,
+  stalled_unresolvable_payment_evidence: () => 0,
+  activation_stall_invoice_settled: () => 0,
+  // not leakage at all
+  near_miss_inside_window: () => 0,
+  legitimate_variation: () => 0,
+  terminal_state_after_cutoff: (s) => s.expected_amount_minor,
+  not_a_leakage_defective_row: () => 0,
+  not_a_leakage_duplicate_cycle: () => 0,
+  not_a_leakage_outside_declared_window: () => 0,
+  control_healthy: () => 0,
+};
+for (let i = 0; i < truth.length; i += 1) {
+  const s = truth[i];
+  const rule = BUSINESS_LEAKAGE[s.leakage_class];
+  const business = s.in_capability === false
+    ? s.expected_amount_minor          // the planted narrative amount; no row exists for it
+    : rule
+      ? rule(s)
+      : 0;
+  truth[i] = Object.freeze({
+    ...s,
+    business_leakage_minor: business,
+    business_class: s.in_capability === false ? s.leakage_class : s.leakage_class,
+    representable: s.in_capability !== false,
+    nh_can_detect: s.in_capability !== false && s.expected_amount_minor > 0
+      && ["observedUnpaid", "partialOutstanding"].includes(s.expected_bucket),
+  });
+}
+
 // ── Emit ──────────────────────────────────────────────────────────────────────────────────────────
 //
 // THREE datasets, because run v1 proved two scenarios cannot share a file with the others.

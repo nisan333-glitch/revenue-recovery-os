@@ -6,6 +6,7 @@
 // predictions were wrong in two places and both are kept in `prediction-v1.json`.
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
 const DIR = "e2e/fixtures/synthetic-validation";
 const fail = [];
@@ -163,12 +164,41 @@ const prediction = {
 };
 writeFileSync(`${DIR}/prediction.json`, `${JSON.stringify(prediction, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 
-const freeze = createHash("sha256");
-for (const d of truth.datasets) freeze.update(csvOf[d.name]);
-freeze.update(readFileSync(`${DIR}/ground-truth.json`)).update(JSON.stringify(prediction));
-const digest = freeze.digest("hex");
-writeFileSync(`${DIR}/FROZEN.txt`, `datasets+groundtruth+prediction sha256=${digest}\nfrozen before the v2 NH run\n`,
-  { encoding: "utf8", mode: 0o600 });
+// ── 7 · THE FREEZE ────────────────────────────────────────────────────────────────────────────────
+// Everything that could be quietly adjusted after seeing a result is covered: the dataset bytes, the
+// manifest, the prediction, the SCRIPTS that produced them, the commit they were produced at, and the
+// run parameters. `run.mjs` and `score.mjs` both re-verify this digest before doing anything, so an
+// edited experiment cannot be run or scored without the mismatch being reported.
+const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+const scriptHashes = {};
+for (const f of ["generate.mjs", "verify.mjs", "run.mjs", "score.mjs", "browser-confirm.mjs"]) {
+  scriptHashes[f] = sha(readFileSync(`scripts/synthetic-validation/${f}`));
+}
+let gitHead = "unavailable";
+try { gitHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(); } catch { /* not a repo */ }
+
+const frozen = {
+  frozenAt: new Date().toISOString(),
+  note: "Written BEFORE any NH run. run.mjs and score.mjs verify this file and refuse to proceed on a mismatch.",
+  gitHead,
+  runParameters: {
+    asOf: truth.asOf,
+    stallThresholdDays: truth.stallThresholdDays,
+    currency: truth.currency,
+    seed: truth.seed,
+    provenanceCoverage: truth.provenanceCoverage,
+    admissionPolicyPermissive: prediction.admissionPolicyPermissive,
+    admissionPolicyStrict: prediction.admissionPolicyStrict,
+  },
+  datasets: truth.datasets.map((d) => ({ name: d.name, rowCount: d.rowCount, sha256: d.sha256 })),
+  groundTruthSha256: sha(readFileSync(`${DIR}/ground-truth.json`)),
+  predictionSha256: sha(Buffer.from(`${JSON.stringify(prediction, null, 2)}\n`)),
+  scriptSha256: scriptHashes,
+};
+// The composite digest is over the whole record, so a change to ANY part of it is detectable.
+frozen.compositeSha256 = sha(Buffer.from(JSON.stringify(frozen)));
+writeFileSync(`${DIR}/FROZEN.json`, `${JSON.stringify(frozen, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+const digest = frozen.compositeSha256;
 
 console.log("");
 for (const p of prediction.datasets) {

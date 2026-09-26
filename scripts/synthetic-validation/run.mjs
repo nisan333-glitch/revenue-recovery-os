@@ -9,6 +9,7 @@
 // The path is the one the browser drives: propose the bar as the operator, activate it as a steward,
 // upload, then schedule and poll. Nothing is bypassed. A stage that refuses is recorded as a refusal.
 import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { resolve, dirname } from "node:path";
@@ -24,6 +25,35 @@ if (!process.env.DATABASE_URL) {
   process.exit(2);
 }
 
+
+// ── The freeze gate ───────────────────────────────────────────────────────────────────────────────
+// Refuse to proceed unless the experiment is byte-for-byte the one that was frozen before any NH run.
+// This is what makes "no adjusting the experiment after seeing the result" enforceable rather than
+// promised: the datasets, the manifest, the prediction, every script and the commit are all covered.
+function verifyFreeze(dir) {
+  const frozen = JSON.parse(readFileSync(`${dir}/FROZEN.json`, "utf8"));
+  const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+  const problems = [];
+  const { compositeSha256, ...record } = frozen;
+  if (sha(Buffer.from(JSON.stringify(record))) !== compositeSha256) problems.push("FROZEN.json itself was edited");
+  for (const d of frozen.datasets) {
+    if (sha(readFileSync(`${dir}/${d.name}.csv`)) !== d.sha256) problems.push(`${d.name}.csv changed since the freeze`);
+  }
+  if (sha(readFileSync(`${dir}/ground-truth.json`)) !== frozen.groundTruthSha256) problems.push("ground-truth.json changed since the freeze");
+  if (sha(readFileSync(`${dir}/prediction.json`)) !== frozen.predictionSha256) problems.push("prediction.json changed since the freeze");
+  for (const [file, want] of Object.entries(frozen.scriptSha256)) {
+    if (sha(readFileSync(`scripts/synthetic-validation/${file}`)) !== want) problems.push(`${file} changed since the freeze`);
+  }
+  if (problems.length) {
+    console.error(`FREEZE VIOLATION — refusing to proceed:\n  ${problems.join("\n  ")}`);
+    console.error("Re-freeze deliberately with verify.mjs if the change is intended, and say so in the report.");
+    process.exit(3);
+  }
+  console.log(`freeze verified · composite=${compositeSha256.slice(0, 16)}… gitHead=${frozen.gitHead.slice(0, 8)}`);
+  return frozen;
+}
+
+const frozen = verifyFreeze(DIR);
 const truth = JSON.parse(readFileSync(`${DIR}/ground-truth.json`, "utf8"));
 const prediction = JSON.parse(readFileSync(`${DIR}/prediction.json`, "utf8"));
 
@@ -140,7 +170,7 @@ async function uploadAndAssess(boundaryId, policyId, datasetName, label) {
 const api = startApi([A, B]);
 const out = {
   runId: RUN_ID, startedAt: new Date().toISOString(),
-  frozen: readFileSync(`${DIR}/FROZEN.txt`, "utf8").trim(),
+  frozen: { compositeSha256: frozen.compositeSha256, gitHead: frozen.gitHead, runParameters: frozen.runParameters },
   bars: {}, runs: [],
 };
 try {

@@ -6,8 +6,42 @@
 // with the wrong amount is a monetary variance, not a detection failure, and collapsing the two into
 // one "accuracy" number would hide exactly the defect worth finding.
 import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const DIR = "e2e/fixtures/synthetic-validation";
+
+// ── The freeze gate ───────────────────────────────────────────────────────────────────────────────
+// Refuse to proceed unless the experiment is byte-for-byte the one that was frozen before any NH run.
+// This is what makes "no adjusting the experiment after seeing the result" enforceable rather than
+// promised: the datasets, the manifest, the prediction, every script and the commit are all covered.
+function verifyFreeze(dir) {
+  const frozen = JSON.parse(readFileSync(`${dir}/FROZEN.json`, "utf8"));
+  const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+  const problems = [];
+  const { compositeSha256, ...record } = frozen;
+  if (sha(Buffer.from(JSON.stringify(record))) !== compositeSha256) problems.push("FROZEN.json itself was edited");
+  for (const d of frozen.datasets) {
+    if (sha(readFileSync(`${dir}/${d.name}.csv`)) !== d.sha256) problems.push(`${d.name}.csv changed since the freeze`);
+  }
+  if (sha(readFileSync(`${dir}/ground-truth.json`)) !== frozen.groundTruthSha256) problems.push("ground-truth.json changed since the freeze");
+  if (sha(readFileSync(`${dir}/prediction.json`)) !== frozen.predictionSha256) problems.push("prediction.json changed since the freeze");
+  for (const [file, want] of Object.entries(frozen.scriptSha256)) {
+    if (sha(readFileSync(`scripts/synthetic-validation/${file}`)) !== want) problems.push(`${file} changed since the freeze`);
+  }
+  if (problems.length) {
+    console.error(`FREEZE VIOLATION — refusing to proceed:\n  ${problems.join("\n  ")}`);
+    console.error("Re-freeze deliberately with verify.mjs if the change is intended, and say so in the report.");
+    process.exit(3);
+  }
+  console.log(`freeze verified · composite=${compositeSha256.slice(0, 16)}… gitHead=${frozen.gitHead.slice(0, 8)}`);
+  return frozen;
+}
+
+// BLIND SCORING. This file reads ground truth, the prediction and NH's raw output, and writes exactly
+// one file: score.json. It never writes ground truth or the prediction, and it never derives either
+// from NH's answer. The freeze gate above makes that checkable rather than merely stated — if scoring
+// had edited the truth, the digest would no longer match.
+const frozen = verifyFreeze(DIR);
 const truth = JSON.parse(readFileSync(`${DIR}/ground-truth.json`, "utf8"));
 const prediction = JSON.parse(readFileSync(`${DIR}/prediction.json`, "utf8"));
 const raw = JSON.parse(readFileSync(`${DIR}/raw-output.json`, "utf8"));
@@ -49,7 +83,7 @@ function decode(bucket, totalMinor, scenarioIds) {
   };
 }
 
-const report = { scoredAt: new Date().toISOString(), runId: raw.runId, frozen: raw.frozen, datasets: [] };
+const report = { scoredAt: new Date().toISOString(), runId: raw.runId, frozen: raw.frozen, freezeVerifiedAtScoring: frozen.compositeSha256, datasets: [] };
 
 for (const run of raw.runs) {
   const pred = prediction.datasets.find((d) => d.dataset === run.dataset);
@@ -172,6 +206,57 @@ for (const run of raw.runs) {
   report.datasets.push(entry);
 }
 
+// ══ THE THIRD RESULT — CAPABILITY COVERAGE ════════════════════════════════════════════════════════
+//
+// Detection accuracy answers "does NH correctly find what it is able to find". Monetary accuracy answers
+// "is the amount right". Neither answers "how much of real revenue leakage can this product see at all",
+// and without the third a product can score precision 1.000 while covering a fraction of the problem.
+//
+// Computed from the INDEPENDENT business register (`business_leakage_minor`), which was written from the
+// narratives and never from NH's semantics. Nothing here is allowed to disappear because it is
+// "out of capability" — that is precisely the number being measured.
+{
+  const classes = new Map();
+  for (const s of truth.scenarios) {
+    if (s.business_leakage_minor === 0 && s.representable !== false) continue; // not leakage in anyone's reading
+    const k = s.leakage_class;
+    const prev = classes.get(k) ?? { leakage_class: k, businessLeakageMinor: 0, representable: s.representable, nhCanDetect: false, missingColumns: s.missing_columns ?? null };
+    prev.businessLeakageMinor += s.business_leakage_minor;
+    prev.representable = prev.representable && s.representable;
+    prev.nhCanDetect = prev.nhCanDetect || s.nh_can_detect === true;
+    classes.set(k, prev);
+  }
+  const all = [...classes.values()].sort((a, b) => b.businessLeakageMinor - a.businessLeakageMinor);
+  const total = all.reduce((a, c) => a + c.businessLeakageMinor, 0);
+  const detectable = all.filter((c) => c.nhCanDetect);
+  const representableNotDetected = all.filter((c) => c.representable && !c.nhCanDetect);
+  const notRepresentable = all.filter((c) => !c.representable);
+  const sum = (xs) => xs.reduce((a, c) => a + c.businessLeakageMinor, 0);
+
+  report.capabilityCoverage = {
+    question: "Of the business revenue leakage planted, how much can this product see at all?",
+    businessLeakageClasses: all.length,
+    classesNHCanDetect: detectable.length,
+    classesRepresentableButNotDetected: representableNotDetected.length,
+    classesNotRepresentable: notRepresentable.length,
+    classCoverage: Number((detectable.length / all.length).toFixed(4)),
+    totalBusinessLeakageMinor: total,
+    detectableValueMinor: sum(detectable),
+    representableButNotDetectedValueMinor: sum(representableNotDetected),
+    notRepresentableValueMinor: sum(notRepresentable),
+    valueCoverage: Number((sum(detectable) / total).toFixed(4)),
+    breakdown: all.map((c) => ({
+      leakage_class: c.leakage_class,
+      businessLeakageMinor: c.businessLeakageMinor,
+      status: c.nhCanDetect ? "DETECTED BY NH"
+        : c.representable ? "REPRESENTABLE BUT NOT DETECTED — a scope decision, not a schema limit"
+        : "NOT REPRESENTABLE — the data contract declares no column that could carry the signal",
+      missingColumns: c.missingColumns,
+    })),
+    note: "Separate from detection accuracy and from monetary accuracy on purpose. High precision on a narrow surface is still a narrow surface.",
+  };
+}
+
 report.outOfCapability = {
   registerMinor: prediction.outOfCapabilityMinor,
   scenarios: truth.scenarios.filter((s) => s.in_capability === false)
@@ -199,5 +284,15 @@ for (const d of report.datasets) {
   console.log(`detection: TP=${d.detection.truePositives} FN=${d.detection.falseNegatives} misplaced=${d.detection.misplaced} FP=${d.detection.falsePositives} trueNegativeRows=${d.detection.trueNegativeRows} precision=${d.detection.precision} recall=${d.detection.recall}`);
   console.log(`monetary: groundTruth=${usd(d.monetary.groundTruthInDatasetMinor)} nhHeadline=${usd(d.monetary.nhDetectedOpportunityMinor)} headline+partial=${usd(d.monetary.nhHeadlinePlusPartialMinor)} variance=${usd(d.monetary.varianceVsGroundTruthMinor)}`);
 }
-console.log(`\nout-of-capability register (no rows exist): ${usd(report.outOfCapability.registerMinor)} across ${report.outOfCapability.scenarios.length} classes`);
+const cc = report.capabilityCoverage;
+console.log(`\n══ CAPABILITY COVERAGE — the third result ══`);
+console.log(`business leakage classes planted : ${cc.businessLeakageClasses}`);
+console.log(`  detected by NH                 : ${cc.classesNHCanDetect}  (${usd(cc.detectableValueMinor)})`);
+console.log(`  representable, NOT detected     : ${cc.classesRepresentableButNotDetected}  (${usd(cc.representableButNotDetectedValueMinor)})`);
+console.log(`  NOT representable at all       : ${cc.classesNotRepresentable}  (${usd(cc.notRepresentableValueMinor)})`);
+console.log(`total business leakage planted   : ${usd(cc.totalBusinessLeakageMinor)}`);
+console.log(`CLASS coverage ${(cc.classCoverage * 100).toFixed(1)}%   VALUE coverage ${(cc.valueCoverage * 100).toFixed(1)}%`);
+for (const b of cc.breakdown) {
+  console.log(`  ${usd(b.businessLeakageMinor).padStart(12)}  ${b.leakage_class.padEnd(40)} ${b.status}`);
+}
 console.log(`\nscore written to ${DIR}/score.json`);
