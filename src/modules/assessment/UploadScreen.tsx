@@ -27,7 +27,6 @@ export interface UploadScreenProps {
   termsError: string | null;
   asOf: string;
   currency: string;
-  setCurrency: (c: string) => void;
   locale: DateLocale | "";
   setLocale: (l: DateLocale | "") => void;
   amountFormat: AmountFormat | "";
@@ -143,25 +142,21 @@ export function UploadScreen(props: UploadScreenProps) {
               <option value="">select an activated definition</option>
               {props.governedTerms.map((t) => (
                 <option key={t.termsRef} value={t.termsRef} disabled={!t.mayMeasure}>
-                  {t.termsRef} — asOf {t.asOf}, N {t.stallThresholdDays}
+                  {t.termsRef} — asOf {t.asOf}, N {t.stallThresholdDays}, {t.currency}
                   {t.mayMeasure ? "" : ` (${t.state ?? "no state"} — measures nothing)`}
                 </option>
               ))}
             </select>
           </label>
           <div className="block">
-            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Cut-off and threshold</span>
+            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Cut-off, threshold and currency</span>
             <div className="text-[12px] text-slate-300">
               {props.analysisTermsRef
-                ? `asOf ${props.asOf} · N ${props.n} days · governed, not editable here`
+                ? `asOf ${props.asOf} · N ${props.n} days · ${props.currency} · governed, not editable here`
                 : "no definition selected — nothing can be measured"}
             </div>
           </div>
-          <label className="block">
-            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Currency</span>
-            <input className="num-input w-full" value={props.currency}
-              onChange={(e) => props.setCurrency(e.target.value.toUpperCase())} />
-          </label>
+
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Ambiguous date locale</span>
             <select className="num-input w-full" value={props.locale} onChange={(e) => props.setLocale(e.target.value as DateLocale | "")}>

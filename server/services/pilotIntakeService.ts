@@ -71,15 +71,13 @@ export interface PilotDatasetRequest {
   readonly datasetId: string;
   readonly declaredVersion: string;
   readonly csvText: string;
-  readonly policy: {
-    readonly currency: string;
-  };
   /**
-   * EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION defines this reading — the cut-off and the stall
-   * threshold. They are no longer request parameters: `asOf` decides what information exists and
-   * `stallThresholdDays` decides what "stalled" MEANS, so a requester who could state them would be
-   * defining the measurement they benefit from. Omitting the reference is not "use a default"; there
-   * is no default, and the submission is refused.
+   * EP-26b · WHICH GOVERNED ASSESSMENT POLICY defines this reading — the cut-off, the stall threshold
+   * and the currency, as one registered version. None of the three is a request parameter any more:
+   * `asOf` decides what information exists, `stallThresholdDays` decides what "stalled" MEANS, and the
+   * currency decides which rows count at all, so a requester who could state any of them would be
+   * defining the measurement they benefit from. Omitting the reference is not "use a default"; there is
+   * no default, and the submission is refused.
    */
   readonly analysisTermsId?: string;
   readonly analysisTermsVersion?: string;
@@ -225,7 +223,7 @@ export async function submitPilotDataset(
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
-  // EP-26 · THE ANALYSIS TERMS COME FROM THE REGISTER, NEVER FROM THE REQUEST. This is a 403 rather
+  // EP-26b · THE WHOLE ASSESSMENT POLICY COMES FROM THE REGISTER, NEVER FROM THE REQUEST. A 403 rather
   // than a dataset verdict on purpose: an ungoverned cut-off is not a property of the file, and
   // answering NOT_ASSESSABLE would tell the customer their data is unfit when what is unauthorized is
   // their choice of definition. Refused before the bytes are parsed — nothing is measured under terms
@@ -240,7 +238,7 @@ export async function submitPilotDataset(
   }
   const governedTerms = resolvedTerms.stored.terms;
 
-  // Only the currency is still the caller's to state: it describes the file, not the reading of it.
+  // Built entirely from the registered row. There is no caller-supplied field left in it.
   let policy;
   try {
     policy = makePolicy({
@@ -248,10 +246,13 @@ export async function submitPilotDataset(
       policyVersion: governedTerms.termsVersion,
       stallThresholdDays: governedTerms.stallThresholdDays,
       asOf: governedTerms.asOf,
-      currency: request.policy.currency,
+      currency: governedTerms.currency,
     });
-  } catch {
-    throw new ForbiddenError("assessment policy is invalid (currency)");
+  } catch (e) {
+    // UNREACHABLE BY CONSTRUCTION: every value came from a registered row that the store already
+    // rebuilt through `makeAnalysisTerms`. Checked rather than asserted away, and rethrown rather than
+    // reported as a caller error — there is no longer any caller input here to blame.
+    throw e;
   }
 
   const submission: DatasetSubmission = {

@@ -106,7 +106,6 @@ describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () =
     datasetId: `ds-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText,
-    policy: ASSESSMENT,
     ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
   });

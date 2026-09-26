@@ -55,7 +55,6 @@ export function Assessment() {
   const [governedTerms, setGovernedTerms] = useState<readonly GovernedAnalysisTermsRow[]>([]);
   const [analysisTermsRef, setAnalysisTermsRef] = useState("");
   const [termsError, setTermsError] = useState<string | null>(null);
-  const [currency, setCurrency] = useState("USD");
   const [locale, setLocale] = useState<DateLocale | "">("");
   const [amountFormat, setAmountFormat] = useState<AmountFormat | "">("");
   // EP-26 · Kept as a write-only record of which mapping produced the current preview. Its one
@@ -89,6 +88,10 @@ export function Assessment() {
   // refuses the submission regardless.
   const n = selectedTerms?.stallThresholdDays ?? 0;
   const asOf = selectedTerms?.asOf ?? "";
+  // EP-26b · The currency is governed too, so it is derived here rather than typed anywhere. The empty
+  // string is not a default currency: `makePolicy` refuses it, so the local preview simply cannot run
+  // until a definition is cited — which is the same answer the server gives.
+  const currency = selectedTerms?.currency ?? "";
 
   // The MENU of definitions governance has approved for this boundary. Reading it is not choosing:
   // every row was activated by someone else, and a row that is not ACTIVE arrives marked as such.
@@ -170,7 +173,6 @@ export function Assessment() {
           datasetId,
           csvText: text,
           provenance,
-          currency,
           locale: locale || undefined,
           amountFormat: amountFormat || undefined,
           analysisTermsId: selectedTerms?.termsId,
@@ -278,7 +280,6 @@ export function Assessment() {
           termsError={termsError}
           asOf={asOf}
           currency={currency}
-          setCurrency={setCurrency}
           locale={locale}
           setLocale={setLocale}
           amountFormat={amountFormat}

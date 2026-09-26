@@ -315,13 +315,15 @@ five scripts, which regenerate every artifact from the recorded seed and paramet
 which therefore carries every figure in full. `FROZEN.json` records the commit the scripts were frozen
 against; the scripts are committed byte-for-byte as frozen, so the freeze still verifies against them.
 
-**These scripts predate EP-26 and will not run against the current server.** They send
-`policy: { stallThresholdDays, asOf, currency }`, and the transport now refuses both of those fields: the
-cut-off and the stall threshold are a governed definition, cited by reference
-([`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md)). They are left **exactly as frozen**,
-because editing any of the five invalidates `FROZEN.json` by design and would make this report's figures
-unreproducible from the artifacts it was scored against. Re-running the validation under the governed path
-is a deliberate re-freeze and a new run — not an edit to this one. Nothing about the results below changes:
+**These scripts predate EP-26/EP-26b and will not run against the current server.** They send
+`policy: { stallThresholdDays, asOf, currency }`, and the request no longer has a `policy` object at all:
+the cut-off, the stall threshold and the currency are one governed AssessmentPolicy, cited by reference
+([`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md)).
+
+**They are left exactly as frozen, and this evidence is preserved as it stands.** Editing any of the five
+invalidates `FROZEN.json` by design and would make the figures below unreproducible from the artifacts they
+were scored against. Making the validation run under the governed path is therefore **a new freeze and a new
+validation run**, recorded separately — never an edit to this one. Nothing about the results below changes:
 they were produced by the server as it stood at `117ded4`, and the freeze is what says so.
 
 ```

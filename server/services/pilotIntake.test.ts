@@ -18,7 +18,8 @@ import {
   toCsv,
 } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION, INTAKE_LIMITS } from "../../src/contract/pilotDataContract";
-import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS, TEST_ANALYSIS_TERMS } from "../test/governedTerms";
+import { makePolicy } from "../../src/assessment/policy";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
@@ -36,7 +37,6 @@ function body(over: Record<string, unknown> = {}) {
     datasetId: `dataset-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(12),
-    policy: POLICY,
     ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
@@ -221,8 +221,16 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
       boundary: { boundaryId: payload.boundaryId as string, datasetId: payload.datasetId as string },
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: payload.csvText as string,
-      policy: POLICY,
-    ...GOVERNED_TERMS_FIELDS,
+      // The contract validator takes a real AssessmentPolicy, not the governed reference the HTTP
+      // request carries — so it is built here from the SAME registered definition the service will
+      // resolve, which is what makes the derived key the one the product computes.
+      policy: makePolicy({
+        policyId: TEST_ANALYSIS_TERMS.termsId,
+        policyVersion: TEST_ANALYSIS_TERMS.termsVersion,
+        stallThresholdDays: TEST_ANALYSIS_TERMS.stallThresholdDays,
+        asOf: TEST_ANALYSIS_TERMS.asOf,
+        currency: TEST_ANALYSIS_TERMS.currency,
+      }),
       provenance: SYNTHETIC_PROVENANCE,
     });
 

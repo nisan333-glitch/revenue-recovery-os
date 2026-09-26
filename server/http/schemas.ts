@@ -210,7 +210,7 @@ export const pilotDatasetSchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "policy", "provenance"],
+    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "provenance"],
     properties: {
       boundaryId: { type: "string", minLength: 1, maxLength: 256 },
       datasetId: { type: "string", minLength: 1, maxLength: 256 },
@@ -220,20 +220,14 @@ export const pilotDatasetSchema = {
       amountFormat: { type: "string", enum: ["US", "EU"] },
       admissionPolicyId: { type: "string", minLength: 1, maxLength: 256 },
       admissionPolicyVersion: { type: "string", minLength: 1, maxLength: 32 },
-      // EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION defines this reading. The transport refuses the
-      // cut-off and the stall threshold outright (`additionalProperties: false` on `policy`), so there
-      // is no wire format in which a requester can state what the assessment measures. The service
-      // refuses an absent reference too — this is the outer of two fail-closed gates, not the only one.
+      // EP-26b · WHICH GOVERNED ASSESSMENT POLICY defines this reading — and nothing else. The `policy`
+      // object is GONE from the request, not merely narrowed: the cut-off, the stall threshold and the
+      // currency are all registered, so there is no wire format in which a requester can state any part
+      // of what the assessment measures. `additionalProperties: false` on the body then makes sending
+      // one a 400. The service refuses an absent reference too — this is the outer of two fail-closed
+      // gates, never the only one.
       analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
       analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
-      policy: {
-        type: "object",
-        additionalProperties: false,
-        required: ["currency"],
-        properties: {
-          currency: { type: "string", minLength: 3, maxLength: 3 },
-        },
-      },
       provenance: {
         type: "object",
         additionalProperties: false,
@@ -287,7 +281,7 @@ export const schedulePilotAssessmentSchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "policy", "provenance"],
+    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "provenance"],
     properties: {
       boundaryId: { type: "string", minLength: 1, maxLength: 256 },
       datasetId: { type: "string", minLength: 1, maxLength: 256 },
@@ -296,20 +290,14 @@ export const schedulePilotAssessmentSchema = {
       locale: { type: "string", enum: ["MDY", "DMY"] },
       amountFormat: { type: "string", enum: ["US", "EU"] },
       recoveryCaseId: { type: "string", minLength: 1, maxLength: 256 },
-      // EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION defines this reading. The transport refuses the
-      // cut-off and the stall threshold outright (`additionalProperties: false` on `policy`), so there
-      // is no wire format in which a requester can state what the assessment measures. The service
-      // refuses an absent reference too — this is the outer of two fail-closed gates, not the only one.
+      // EP-26b · WHICH GOVERNED ASSESSMENT POLICY defines this reading — and nothing else. The `policy`
+      // object is GONE from the request, not merely narrowed: the cut-off, the stall threshold and the
+      // currency are all registered, so there is no wire format in which a requester can state any part
+      // of what the assessment measures. `additionalProperties: false` on the body then makes sending
+      // one a 400. The service refuses an absent reference too — this is the outer of two fail-closed
+      // gates, never the only one.
       analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
       analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
-      policy: {
-        type: "object",
-        additionalProperties: false,
-        required: ["currency"],
-        properties: {
-          currency: { type: "string", minLength: 3, maxLength: 3 },
-        },
-      },
       provenance: {
         type: "object",
         additionalProperties: false,

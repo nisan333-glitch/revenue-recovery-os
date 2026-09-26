@@ -132,7 +132,6 @@ export interface ScheduleAssessmentParams {
   readonly datasetId: string;
   readonly csvText: string;
   readonly provenance: DatasetProvenance;
-  readonly currency: string;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
   /**
@@ -154,9 +153,7 @@ export function schedulePilotAssessment(
     datasetId: params.datasetId,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: params.csvText,
-    // EP-26 · The cut-off and the threshold are NOT sent. The server resolves them from its own
-    // register of governed definitions; this names which one, and nothing more.
-    policy: { currency: params.currency },
+    // EP-26b · NO `policy` OBJECT IS SENT AT ALL. Nothing about what this run measures comes from here.
     ...(params.analysisTermsId ? { analysisTermsId: params.analysisTermsId } : {}),
     ...(params.analysisTermsVersion ? { analysisTermsVersion: params.analysisTermsVersion } : {}),
     provenance: params.provenance,

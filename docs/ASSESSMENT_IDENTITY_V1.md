@@ -76,7 +76,7 @@ held constant**, can change the outcome.
 | `datasetFingerprint` | `sha256(csvText)` | it *is* the data |
 | `locale` (`MDY`/`DMY`) | operator-supplied | feeds `normalizeDate`; `03/04/2026` is 3 April or 4 March, so dates, stall outcomes and row parseability all change |
 | `amountFormat` (`US`/`EU`) | operator-supplied | feeds `normalizeAmount`; `1.234,56` is 1234.56 or 1.23456 — the monetary values themselves change |
-| `currency` | operator-supplied | a row whose currency differs from the policy's is excluded outright, so a EUR file judged as USD loses every row |
+| `currency` | **governed since EP-26b** — registered, not supplied | a row whose currency differs from the policy's is excluded outright, so a EUR file judged as USD loses every row. That it changes *which rows count* is why it joined the governed AssessmentPolicy rather than staying a request field |
 | `asOf` | operator-supplied **— only once governed** | changes which cycles are Deviations |
 | `stallThresholdDays` | operator-supplied **— only once governed** | changes what "stalled" means |
 
@@ -106,9 +106,9 @@ should likewise grant a re-assessment is **not decided here** and needs its own 
 
 Binding order. Each step is a prerequisite for the next.
 
-1. ~~**Governance for analysis terms.**~~ **BUILT 2026-09-26 (EP-26)** —
-   [`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md). `asOf` and `stallThresholdDays` are now a
-   registered, versioned definition: proposed by one identity, activated by another, append-only, with a
+1. ~~**Governance for analysis terms.**~~ **BUILT 2026-09-26 (EP-26, EP-26b)** —
+   [`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md). `asOf`, `stallThresholdDays` **and
+   `currency`** are now one registered, versioned AssessmentPolicy: proposed by one identity, activated by another, append-only, with a
    stated reason, and **removed from the request entirely** — the transport refuses both fields. One
    correction to what this step was expected to contain: it does **not** carry the admission bar's temporal
    anti-tuning rule (`activatedAt > firstSeenAt`), because that would forbid the re-reading the decision

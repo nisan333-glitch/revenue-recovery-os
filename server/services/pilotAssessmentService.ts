@@ -46,7 +46,7 @@ import { mayEvaluate, whyCannotEvaluate, type PolicyState } from "../../src/cont
 import { makePolicy } from "../../src/assessment/policy";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
-import { ForbiddenError, NotFoundError } from "../http/errors";
+import { NotFoundError } from "../http/errors";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
 import { findSubmission } from "../persistence/pilotDatasetStore";
@@ -70,14 +70,11 @@ export interface SchedulePilotAssessmentRequest {
   readonly datasetId: string;
   readonly declaredVersion: string;
   readonly csvText: string;
-  readonly policy: {
-    readonly currency: string;
-  };
   /**
-   * EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION this execution is measured under. Not a value pair:
-   * `asOf` and `stallThresholdDays` define what is being measured, so they are proposed by one identity
-   * and activated by another. An absent, unknown, draft, frozen or retired reference is refused with
-   * NH-AX-1010 — there is no default and no fallback.
+   * EP-26b · WHICH GOVERNED ASSESSMENT POLICY this execution is measured under. Not a set of values:
+   * `asOf`, `stallThresholdDays` and the currency together define what is being measured, so they are
+   * proposed by one identity and activated by another. An absent, unknown, draft, frozen or retired
+   * reference is refused with NH-AX-1010 — there is no default and no fallback.
    */
   readonly analysisTermsId?: string;
   readonly analysisTermsVersion?: string;
@@ -162,7 +159,7 @@ export async function schedulePilotAssessment(
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
-  // ── 1 · The definition, from the register ─────────────────────────────────────────────────────
+  // ── 1 · The whole definition, from the register ───────────────────────────────────────────────
   // Resolved BEFORE the bytes are parsed. The terms decide what the run measures, so a run under
   // terms nobody approved must not happen at all — not even far enough to report a count. The
   // governed ids become the binding's `assessmentPolicyId`/`assessmentPolicyVersion`, so a change of
@@ -184,10 +181,13 @@ export async function schedulePilotAssessment(
       policyVersion: governedTerms.termsVersion,
       stallThresholdDays: governedTerms.stallThresholdDays,
       asOf: governedTerms.asOf,
-      currency: request.policy.currency,
+      currency: governedTerms.currency,
     });
-  } catch {
-    throw new ForbiddenError("assessment policy is invalid (currency)");
+  } catch (e) {
+    // UNREACHABLE BY CONSTRUCTION: every value came from a registered row that the store already
+    // rebuilt through `makeAnalysisTerms`. Checked rather than asserted away, and rethrown rather than
+    // reported as a caller error — there is no longer any caller input here to blame.
+    throw e;
   }
 
   const submissionInput: DatasetSubmission = {

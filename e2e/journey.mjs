@@ -44,6 +44,7 @@ const AS_OF = "2026-03-01";
 const TERMS_ID = `journey-terms-${randomUUID().slice(0, 8)}`;
 const TERMS_VERSION = "1.0.0";
 const STALL_N = "30";
+const CURRENCY = "USD";
 
 const results = [];
 let failures = 0;
@@ -342,6 +343,7 @@ try {
     await page.getByLabel("Terms version").fill(TERMS_VERSION);
     await page.getByLabel("Analysis as-of date").fill(AS_OF);
     await page.getByLabel("Stall threshold N (days)").fill(STALL_N);
+    await page.getByLabel("Assessment currency").fill(CURRENCY);
     await page.getByLabel("Reason for this terms act").fill("journey fixture: a second tenant's cut-off");
     await page.getByRole("button", { name: /^Propose terms as / }).click();
     await page.getByLabel("Analysis terms state").getByText("DRAFT", { exact: true })
@@ -362,6 +364,7 @@ try {
   await page.getByLabel("Terms version").fill(TERMS_VERSION);
   await page.getByLabel("Analysis as-of date").fill(AS_OF);
   await page.getByLabel("Stall threshold N (days)").fill(STALL_N);
+  await page.getByLabel("Assessment currency").fill(CURRENCY);
   await page.getByLabel("Reason for this terms act").fill("journey fixture: the quarter cut-off");
 
   const proposeTerms = page.getByRole("button", { name: /^Propose terms as / });
@@ -413,9 +416,10 @@ try {
   // EP-26 · NO CUT-OFF AND NO THRESHOLD ON THIS SCREEN. Asserted as an absence, because the guard this
   // slice adds is precisely the removal of a lever: if either input came back, a requester could define
   // the measurement again and every server-side assertion would still pass.
-  check("the upload screen offers NO way to type a cut-off or a stall threshold",
+  check("the upload screen offers NO way to type a cut-off, a stall threshold or a currency",
     (await page.getByLabel("Analysis as-of date").count()) === 0 &&
-    (await page.getByLabel("Stall threshold N (days)").count()) === 0);
+    (await page.getByLabel("Stall threshold N (days)").count()) === 0 &&
+    (await page.getByLabel("Currency", { exact: true }).count()) === 0);
   // The boundary must be set before the menu of governed definitions can load for it.
   await page.getByLabel("Dataset label").fill(JOURNEY_DATASET_LABEL);
   await page.getByLabel("Contract system of record").fill("synthetic-crm");

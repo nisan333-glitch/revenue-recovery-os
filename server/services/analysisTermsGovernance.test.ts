@@ -23,6 +23,8 @@ import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy"
 import { SCENARIO_POLICY } from "../../src/contract/syntheticPilotDataset";
 import { hashAnalysisTerms, makeAnalysisTerms } from "../../src/contract/analysisTerms";
 import { proposeAnalysisTerms } from "./pilotAnalysisTermsService";
+import { submitPilotDataset } from "./pilotIntakeService";
+import { schedulePilotAssessment } from "./pilotAssessmentService";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
@@ -116,7 +118,6 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     datasetId: `ds-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(40),
-    policy: { currency: "USD" },
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   });
@@ -215,15 +216,24 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     expect(sched.json().refusal.code).toBe("NH-AX-1010");
   });
 
-  it("5 · THE VALUES CANNOT BE SENT AT ALL — the transport rejects them", async () => {
-    // This is the load-bearing test. Everything else guards a path; this proves there is no path.
-    // If `additionalProperties: false` were ever relaxed on `policy`, a requester could state the
-    // cut-off again and every assertion above would still pass.
+  it("5 · THE VALUES CANNOT BE SENT AT ALL — the transport rejects every one of them", async () => {
+    // THE LOAD-BEARING TEST. Everything else guards a path; this proves there is no path. NC-31 removes
+    // `additionalProperties: false` and EVERY OTHER TEST IN THIS FILE STILL PASSES while a requester can
+    // once again state the definition the figure is measured under.
+    //
+    // EP-26b · the `policy` object is gone from the request entirely, so sending one in ANY shape is a
+    // 400 — including the bare `{ currency }` that was legal one commit ago.
     const boundaryId = await governedBoundary();
     for (const smuggled of [
+      { policy: { stallThresholdDays: 1 } },
+      { policy: { asOf: "2020-01-01" } },
+      { policy: { currency: "EUR" } },
+      { policy: { currency: "USD" } },
+      { policy: { stallThresholdDays: 0, asOf: "2099-12-31", currency: "JPY" } },
+      // Not only under `policy`: the body itself refuses unknown properties, so there is no second door.
       { stallThresholdDays: 1 },
       { asOf: "2020-01-01" },
-      { stallThresholdDays: 0, asOf: "2099-12-31" },
+      { currency: "EUR" },
     ]) {
       for (const url of ["/pilot/datasets", "/pilot/assessments"]) {
         const res = await app.inject({
@@ -235,7 +245,7 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
               analysisTermsId: TERMS.termsId,
               analysisTermsVersion: TERMS.termsVersion,
             }),
-            policy: { currency: "USD", ...smuggled },
+            ...smuggled,
           },
         });
         expect(res.statusCode, `${url} ${JSON.stringify(smuggled)}`).toBe(400);
@@ -640,6 +650,50 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
         boundaryId,
       ),
     ).rejects.toThrow(/currency_shape/);
+  });
+
+  it("22 · the SERVICE ignores a smuggled value even if the transport ever let one through", async () => {
+    // Two doors, tested separately. NC-37 reopens the transport and fails test 5; but with the transport
+    // shut, NOTHING tested whether the service would prefer a body-supplied value — so NC-38, which
+    // makes the service read one, could only be reached by reopening the transport too, and failed the
+    // same test. A guard that can only be tested through another guard is not independently measured.
+    //
+    // So this calls the service directly, past the schema, with a currency that differs from the
+    // registered one. The registered value must win, because the register is the record of the decision.
+    const boundaryId = await governedBoundary();
+    const policyId = await withAdmissionBar(boundaryId);
+    const actor = { actorId: OPERATOR["x-actor-id"], role: "operator" as const, boundaryIds: Object.freeze(["*"]) };
+
+    const result = await submitPilotDataset(actor, {
+      boundaryId,
+      datasetId: `ds-${uid()}`,
+      declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+      csvText: syntheticPilotCsv(40),
+      provenance: SYNTHETIC_PROVENANCE,
+      analysisTermsId: TERMS.termsId,
+      analysisTermsVersion: TERMS.termsVersion,
+      admissionPolicyId: policyId,
+      admissionPolicyVersion: "1.0.0",
+      // Not in the type. Present at runtime, which is exactly the shape a relaxed schema would deliver.
+      ...({ policy: { currency: "JPY", asOf: "2099-12-31", stallThresholdDays: 0 } } as object),
+    });
+    expect(result.accepted).toBe(true);
+
+    // The execution binding is where the definition actually lands, so that is where it is checked.
+    const scheduled = await schedulePilotAssessment(actor, {
+      boundaryId,
+      datasetId: result.datasetId,
+      declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+      csvText: syntheticPilotCsv(40),
+      provenance: SYNTHETIC_PROVENANCE,
+      analysisTermsId: TERMS.termsId,
+      analysisTermsVersion: TERMS.termsVersion,
+      ...({ policy: { currency: "JPY", asOf: "2099-12-31", stallThresholdDays: 0 } } as object),
+    });
+    expect(scheduled.scheduled).toBe(true);
+    expect(scheduled.binding?.assessmentPolicy.currency).toBe("USD");
+    expect(scheduled.binding?.assessmentPolicy.asOf).toBe(TERMS.asOf);
+    expect(scheduled.binding?.assessmentPolicy.stallThresholdDays).toBe(TERMS.stallThresholdDays);
   });
 
   it("17 · the hash is a witness of the definition, recomputable from the read", async () => {

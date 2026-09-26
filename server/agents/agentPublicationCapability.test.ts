@@ -251,9 +251,9 @@ describe.skipIf(!HAS_DB)("EP-17 · a full assessment-only run with no fabricated
       datasetId: `ds-${uid()}`,
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: syntheticPilotCsv(40),
-      policy: { currency: "USD" },
-      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
-      // activates them for this boundary through the two-identity lifecycle before submitting.
+      // EP-26b · No `policy` object: the cut-off, the stall threshold and the currency are the
+      // registered definition, which the suite activates for this boundary through the two-identity
+      // lifecycle before submitting. The request names it and nothing more.
       ...GOVERNED_TERMS_FIELDS,
       provenance: SYNTHETIC_PROVENANCE,
     };

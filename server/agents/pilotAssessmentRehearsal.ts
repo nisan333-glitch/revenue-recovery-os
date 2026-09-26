@@ -179,10 +179,10 @@ export async function runPilotAssessmentRehearsal(
     );
     if (activated.state !== "ACTIVE") throw new Error("activation did not put the policy in force");
 
-    // 3 · EP-26 · The ANALYSIS TERMS go through the same two identities. The cut-off and the stall
-    // threshold decide what the assessment measures, so they are proposed by the customer side and
-    // activated by governance exactly as the fitness bar is — and the rehearsal shows that, rather
-    // than sending two numbers in the submission body.
+    // 3 · EP-26b · The ASSESSMENT POLICY goes through the same two identities. The cut-off, the stall
+    // threshold and the currency decide what the assessment measures, so they are proposed by the
+    // customer side and activated by governance exactly as the fitness bar is — and the rehearsal shows
+    // that, rather than sending the values in the submission body.
     const termsId = `SYNTHETIC-terms-${runId.slice(0, 8)}`;
     const proposedTerms = await call<{ termsRef: string; state: string }>(
       origin, "POST", "/api/pilot/analysis-terms", OPERATOR,
@@ -206,7 +206,6 @@ export async function runPilotAssessmentRehearsal(
       datasetId: `SYNTHETIC-ds-${runId.slice(0, 8)}`,
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: syntheticPilotCsv(40),
-      policy: { currency: "USD" },
       analysisTermsId: termsId,
       analysisTermsVersion: "1.0.0",
       provenance: SYNTHETIC_PROVENANCE,

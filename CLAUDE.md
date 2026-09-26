@@ -118,10 +118,15 @@ outcome was known* — which they currently escape:
 > new cut-off or stall definition and obtain a fresh assessment on their own authority.
 
 **Order of work, binding:** the governance mechanism for analysis terms comes **first**; the identity
-derivation changes only after it exists. **That mechanism was built on 2026-09-26** — `asOf` and
-`stallThresholdDays` are now a registered, versioned definition, proposed by one identity and activated by
-another, and they are no longer request parameters at all
-([`docs/ANALYSIS_TERMS_GOVERNANCE.md`](docs/ANALYSIS_TERMS_GOVERNANCE.md)). The derivation is still
+derivation changes only after it exists. **That mechanism was built on 2026-09-26** — `asOf`,
+`stallThresholdDays` **and `currency`** are now one registered, versioned AssessmentPolicy, proposed by one
+identity and activated by another, and the request carries no `policy` object at all
+([`docs/ANALYSIS_TERMS_GOVERNANCE.md`](docs/ANALYSIS_TERMS_GOVERNANCE.md)). The currency is in the governed
+set because a row in another currency is excluded rather than converted, so it decides which rows count. The
+temporal guard is that the version must be ACTIVE when it is used — **not** the admission bar's
+`activatedAt > firstSeenAt` rule, which would forbid the later re-reading the decision above permits. The
+fail-closed enforcement is a **breaking, tightening** change; its major bump is deferred to land with the
+derivation and its migration, because the contract reference sits inside the idempotency key. The derivation is still
 unchanged, the contract stays at its current major, and no migration is written: the remaining
 prerequisite is the §10 two-major compatibility decision. Full treatment and the field-by-field classification are
 in [`docs/ASSESSMENT_IDENTITY_V1.md`](docs/ASSESSMENT_IDENTITY_V1.md). This is a pilot-data trust rule

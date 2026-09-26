@@ -70,10 +70,10 @@ export interface PilotIntakeParams {
   readonly csvText: string;
   readonly provenance: DatasetProvenance;
   /**
-   * EP-26 · PREFLIGHT ONLY. The browser needs a cut-off and a threshold to render its local preview,
-   * and it takes them from the GOVERNED definition it read back from the server. They are never sent:
-   * the server resolves the definition from its own register, so a value typed here can change what
-   * the preview shows and nothing about what the server measures.
+   * EP-26b · PREFLIGHT ONLY, all three of them. The browser needs a cut-off, a threshold and a currency
+   * to render its local preview, and it takes them from the GOVERNED definition it read back from the
+   * server. They are never sent: the server resolves the whole policy from its own register, so a value
+   * here can change what the preview shows and nothing about what the server measures.
    */
   readonly stallThresholdDays: number;
   readonly asOf: string;
@@ -134,9 +134,8 @@ export function submitPilotDataset(params: PilotIntakeParams, actor: DevActor): 
     datasetId: params.datasetId,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: params.csvText,
-    // EP-26 · The cut-off and the threshold are NOT sent. The server resolves them from its own
-    // register of governed definitions; this names which one, and nothing more.
-    policy: { currency: params.currency },
+    // EP-26b · NO `policy` OBJECT IS SENT AT ALL. The cut-off, the threshold and the currency are the
+    // registered definition; this names which one, and nothing more.
     ...(params.analysisTermsId ? { analysisTermsId: params.analysisTermsId } : {}),
     ...(params.analysisTermsVersion ? { analysisTermsVersion: params.analysisTermsVersion } : {}),
     provenance: params.provenance,

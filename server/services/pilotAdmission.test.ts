@@ -53,10 +53,9 @@ function datasetBody(over: Record<string, unknown> = {}) {
     datasetId: `dataset-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(40),
-    policy: { currency: "USD" },
-      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
-      // activates them for this boundary through the two-identity lifecycle before submitting.
-      ...GOVERNED_TERMS_FIELDS,
+    // EP-26b · No `policy` object: the cut-off, the stall threshold and the currency are the registered
+    // definition, activated for this boundary through the two-identity lifecycle before submitting.
+    ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };

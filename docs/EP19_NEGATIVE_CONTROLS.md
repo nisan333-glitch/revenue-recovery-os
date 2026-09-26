@@ -465,5 +465,24 @@ gone, so it fails even when the fields are restored as `readOnly` — a read-onl
 one after a careless refactor, and the claim being made is that the screen offers no way to state a
 cut-off at all.
 
-**Scope:** governance for `asOf` and `stallThresholdDays` only. No change to the identity derivation, no
-contract major bump, no migration of existing submissions, no change to tenant or OIDC semantics.
+### EP-26b · `currency` joins the governed definition (NC-37 … NC-39)
+
+| # | Guard removed | What failed |
+|---|---|---|
+| NC-37 | The request may carry a `policy` object again (transport) | **1** — test 5 only |
+| NC-38 | The **services** prefer a body-supplied currency over the registered one | **1** — test 22 only |
+| NC-39 | The schedule builds the policy from a body-supplied `asOf` | **1** — test 22 only |
+
+**NC-38 is why test 22 exists.** Removing the service-side guard *while the transport door was shut* could
+not be reached at all: to make the service see a body value, the schema had to be reopened too — so NC-38
+failed **test 5**, the transport's test, and said nothing about the service. A guard that can only be tested
+through another guard is not independently measured. Test 22 therefore calls `submitPilotDataset` and
+`schedulePilotAssessment` **directly**, past the schema, with a conflicting currency, cut-off and threshold,
+and asserts the registered values are what reach the execution binding. With that test in place NC-38 and
+NC-39 each fail it alone, and NC-37 still fails test 5 alone.
+
+**Scope:** governance for `asOf`, `stallThresholdDays` and `currency` — the whole AssessmentPolicy. No change
+to the identity derivation, no contract major bump, no migration of existing submissions, no change to tenant
+or OIDC semantics. **The fail-closed enforcement is a breaking, tightening change**, recorded as such in
+[`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md) → *The version bump this change needs, and
+does not have yet*; it is explicitly **not** classified as minor merely because `NH-AX-1010` would be.
