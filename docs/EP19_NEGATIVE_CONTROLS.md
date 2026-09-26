@@ -114,6 +114,7 @@ done. The test has to disagree with that too, so it is controlled separately.
 | NC-17 | The UI activates as a **steward** (`ActivatePilotPolicy`) | `move()` sends the transition as `proposer` | **5** in the journey — `an activated bar may judge a dataset` first | caught |
 | NC-18 | The UI submits intake as a **`SubmitPilotDataset`** holder (`Assessment.tsx`) | `runGovernedExecution` schedules as `STEWARD` | **6** in the journey — completion, then `count=0` executions | caught |
 | NC-19 | The audit panel itself — proof that the **old** assertion was vacuous | `{false && currentGovernance && …}` on the panel's render guard | the 3 new checks (the old one still **passed**) | caught |
+| NC-20 | The halt's own safety property — `haltIf(true, …)` forced on the **green** path | proves a halt with nothing failed is itself recorded as a failure | 1 — `the harness halted with no recorded failure to justify it` | caught |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -203,6 +204,28 @@ so the run ended with `2/2 recorded checks passed` and a bare `Timeout` — the 
 attributable to nothing. Each now degrades and is followed by a named check that samples the DOM, so a
 refused act is reported as *that* check failing. The same pass removed a `check("an admitted dataset
 leaves the upload screen", true)` — a literal `true`, recorded as a PASS for a condition never sampled.
+
+### NC-17 terminates instead of timing out
+
+NC-17 originally recorded its five intended failures and then died on
+`locator.click: Timeout 30000ms exceeded` — a real failure, attributed to nothing. The cause is
+structural, not flaky: with the bar stuck in DRAFT the server answers `NOT_ASSESSABLE`, the gate blocks,
+and `Pilot readiness →` is never rendered, so the first action of the next section can only spend its
+timeout. The *evidence* was never in doubt; the way the run ended was uninformative.
+
+`haltIf` now ends the run at that junction with the reason printed, both where it happens and in the
+summary. It is a termination, not a rescue:
+
+* it is **not** a catch — it swallows no error and suppresses no failure;
+* it passes nothing. Unreached checks are reported as unreached, never as passes;
+* it **cannot fire on a healthy journey**, because it refuses to halt unless a check has already been
+  recorded as failed. **NC-20 proves that is not merely asserted:** forcing `haltIf(true, …)` on the
+  green path records `the harness halted with no recorded failure to justify it` and the run reports
+  `JOURNEY FAILED`. A halt can never silently truncate a passing run.
+
+NC-17 after the change: the same five failures, `HALTED` with its reason, `JOURNEY FAILED (5
+problem(s))`, exit 1, no bare timeout — and the attribution is unchanged, since the audit panel still
+prints `PROPOSED unassigned-operator@company (operator)` with no `ACTIVATED` event at all.
 
 **Not controlled, because it cannot be:** refusal of an unauthorized user *inside* the UI. No
 role-forbidden act is reachable from the screens — governance hard-codes the steward for

@@ -43,6 +43,7 @@ const AS_OF = "2026-03-01";
 
 const results = [];
 let failures = 0;
+let halted = null;
 function check(name, ok, detail = "") {
   results.push({ name, ok });
   if (!ok) failures += 1;
@@ -50,6 +51,36 @@ function check(name, ok, detail = "") {
 }
 function checkEqual(name, actual, expected) {
   check(name, actual === expected, actual === expected ? "" : `expected ${expected}, got ${actual}`);
+}
+
+// ── Structural unreachability ──────────────────────────────────────────────────────────────────────
+// A stage can depend on a condition that, if unmet, makes every later step STRUCTURALLY unreachable —
+// not merely likely to fail. `Pilot readiness →` is the case in hand: with no ACTIVE admission bar the
+// server answers NOT_ASSESSABLE, the gate blocks, and the button is never rendered, so clicking it can
+// only spend its 30s timeout and die. NC-17 — activation rewired to an identity lacking
+// `ActivatePilotPolicy` — lands exactly there: it recorded its intended authorization failures and then
+// fell into a bare `locator.click: Timeout 30000ms exceeded`, an abort with no stated reason.
+//
+// `haltIf` ends the run at that point, deliberately, with the reason printed. Three properties make it
+// a termination rather than a way to go quiet:
+//
+//   * it is NOT a catch — it swallows no error and suppresses no failure;
+//   * it passes nothing. The unreached checks are reported as unreached, never as passes;
+//   * it CANNOT fire on a healthy journey. It refuses to halt unless a check has already been
+//     recorded as failed, so the cause is on the record before the stop — and a halt requested with
+//     a clean record is itself recorded as a failure of this harness.
+class JourneyHalted extends Error {
+  constructor(reason) {
+    super(reason);
+    this.name = "JourneyHalted";
+  }
+}
+function haltIf(unreachable, reason) {
+  if (!unreachable) return;
+  if (failures === 0) {
+    check(`the harness halted with no recorded failure to justify it — ${reason}`, false);
+  }
+  throw new JourneyHalted(reason);
 }
 
 // ── Fixture ────────────────────────────────────────────────────────────────────────────────────────
@@ -281,7 +312,14 @@ try {
   // this check never reported at all. Both halves are now the assertion.
   const readiness = page.getByRole("button", { name: "Pilot readiness →" });
   await readiness.waitFor({ timeout: 30_000 }).catch(() => undefined);
-  check("an admitted dataset leaves the upload screen", await readiness.isVisible());
+  const admitted = await readiness.isVisible();
+  check("an admitted dataset leaves the upload screen", admitted);
+  // The gate between "a dataset was admitted" and everything that inspects a run. Sections 4-10 read
+  // a cohort, a preview, an execution and a ledger that only exist downstream of an admitted dataset,
+  // and the first of them clicks this very button. Without it there is nothing to assert against and
+  // no way to reach the assertions, so the journey stops here with the cause already recorded above.
+  haltIf(!admitted, "no dataset was admitted, so the cohort, preview, governed execution and ledger " +
+    "steps have no run to inspect and the button that opens them is not on the page");
 
   // ── 4 · The browser's own figure is reachable, and is labelled a preview ─────────────────────────
   await readiness.click();
@@ -540,8 +578,15 @@ try {
   check("the page made no request outside its own origin", external.length === 0, external.slice(0, 3).join(", "));
   check("no uncaught page error occurred", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));
 } catch (error) {
-  failures += 1;
-  console.error(`FAIL · harness error · ${error instanceof Error ? error.stack : String(error)}`);
+  if (error instanceof JourneyHalted) {
+    // Not a harness error: a stop this harness asked for, after recording why. `failures` is already
+    // non-zero (haltIf guarantees it), so the run still reports FAILED — it just reports it truthfully.
+    halted = error.message;
+    console.error(`HALTED · ${error.message}`);
+  } else {
+    failures += 1;
+    console.error(`FAIL · harness error · ${error instanceof Error ? error.stack : String(error)}`);
+  }
 } finally {
   if (browser) await browser.close().catch(() => undefined);
   stop(ui);
@@ -558,6 +603,11 @@ console.log(`\n${passed}/${results.length} recorded checks passed`);
 if (unrecorded > 0) {
   console.log(`${unrecorded} harness error(s) — the journey did not finish, so the checks after the`);
   console.log("failure point never ran. This is a FAILURE, not a partial pass.");
+}
+if (halted) {
+  console.log(`HALTED after the recorded failure above: ${halted}.`);
+  console.log("The remaining steps were structurally unreachable, so they never ran and are NOT");
+  console.log("counted as passes. This is a FAILURE, not a partial pass.");
 }
 console.log(failures === 0 ? "JOURNEY PASSED" : `JOURNEY FAILED (${failures} problem(s))`);
 process.exit(failures === 0 ? 0 : 1);
