@@ -189,7 +189,7 @@ export async function runPilotAssessmentRehearsal(
       {
         boundaryId,
         rationale: "synthetic rehearsal — an invented cut-off, not a benchmark",
-        terms: { termsId, termsVersion: "1.0.0", asOf: "2026-04-15", stallThresholdDays: 30 },
+        terms: { termsId, termsVersion: "1.0.0", asOf: "2026-04-15", stallThresholdDays: 30, currency: "USD" },
       },
     );
     if (proposedTerms.state !== "DRAFT") throw new Error("proposed analysis terms must start as a DRAFT");

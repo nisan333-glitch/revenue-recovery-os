@@ -34,6 +34,7 @@ export interface AnalysisTermsGovernanceView {
   readonly termsHash: string;
   readonly asOf: string;
   readonly stallThresholdDays: number;
+  readonly currency: string;
   readonly calculationMethodVersion: string;
   readonly state: PolicyState | null;
   readonly proposedBy: string | null;
@@ -50,6 +51,7 @@ export interface GovernedAnalysisTermsRow {
   readonly termsVersion: string;
   readonly asOf: string;
   readonly stallThresholdDays: number;
+  readonly currency: string;
   readonly termsHash: string;
   readonly state: PolicyState | null;
   /** True only for ACTIVE. Mirrors the server; never widens it. */
@@ -82,6 +84,7 @@ export function proposeAnalysisTerms(
       readonly termsVersion: string;
       readonly asOf: string;
       readonly stallThresholdDays: number;
+      readonly currency: string;
     };
     readonly rationale: string;
   },

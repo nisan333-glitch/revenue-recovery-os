@@ -25,13 +25,20 @@
 // governance object may act is the same question for both and forking it would let the two drift.
 import { sha256Hex } from "../assessment/fingerprint";
 import { ASSESSMENT_CALC_VERSION } from "../assessment/policy";
+import { isSupportedCurrency, SUPPORTED_CURRENCIES } from "../domain/money";
 
 /**
- * One registered, versioned analysis-terms tuple.
+ * One registered, versioned analysis-terms tuple — **the governed AssessmentPolicy**.
  *
- * `asOf` and `stallThresholdDays` travel TOGETHER and are one object rather than two governed fields:
- * a stall definition is meaningless without the cut-off it is measured to, and governing them
- * separately would let an operator hold one fixed and walk the other.
+ * The three fields travel TOGETHER and are one object rather than three governed fields. A stall
+ * definition is meaningless without the cut-off it is measured to, and governing them separately would
+ * let an operator hold one fixed and walk the other. `currency` joins them because it is not merely a
+ * label on the money: a row whose currency differs from the policy's is **excluded outright**, so a
+ * file read as USD and the same file read as EUR are two different populations and two different
+ * figures. Anything that can change which rows count is part of the definition.
+ *
+ * Together these three are exactly the operator-supplied inputs to `makePolicy`, which is why the whole
+ * AssessmentPolicy can now be built from the register with nothing taken from the request.
  */
 export interface AnalysisTerms {
   readonly termsId: string;
@@ -40,6 +47,11 @@ export interface AnalysisTerms {
   readonly asOf: string;
   /** N: max days from expectation to observation before a cycle is a Deviation (stalled). */
   readonly stallThresholdDays: number;
+  /**
+   * Single currency per assessment. A row in another currency is excluded, never converted, so this
+   * decides which rows count at all — not how the total is displayed.
+   */
+  readonly currency: string;
   /**
    * The calculation method the terms were registered against. A build constant, not an operator
    * choice — recorded so a historical registration says which implementation it was blessed for.
@@ -55,6 +67,7 @@ export interface AnalysisTermsInput {
   readonly termsVersion: string;
   readonly asOf: string;
   readonly stallThresholdDays: number;
+  readonly currency: string;
   readonly calculationMethodVersion?: string;
 }
 
@@ -88,17 +101,35 @@ export function makeAnalysisTerms(input: AnalysisTermsInput): AnalysisTerms {
   if (!Number.isFinite(asOfDate.getTime()) || asOfDate.toISOString().slice(0, 10) !== input.asOf) {
     throw new Error(`AnalysisTerms: asOf must be a real calendar date (got ${JSON.stringify(input.asOf)})`);
   }
+  // Validated and normalised BEFORE the code can reach any money or formatting logic — and validated
+  // HERE rather than left to `makePolicy`, so a registration cannot record a currency that would only
+  // fail later, at the moment a dataset is being read.
+  if (!input.currency) throw new Error("AnalysisTerms: currency is required");
+  const currency = input.currency.trim().toUpperCase();
+  if (!isSupportedCurrency(currency)) {
+    throw new Error(
+      `AnalysisTerms: unsupported currency ${JSON.stringify(input.currency)} (supported: ${SUPPORTED_CURRENCIES.join(", ")})`,
+    );
+  }
   return Object.freeze({
     termsId,
     termsVersion,
     asOf: input.asOf,
     stallThresholdDays: input.stallThresholdDays,
+    currency,
     calculationMethodVersion: input.calculationMethodVersion ?? ASSESSMENT_CALC_VERSION,
   });
 }
 
-/** Version of the hashing scheme itself. A change here is a new scheme, not a re-grade. */
-export const ANALYSIS_TERMS_HASH_SCHEME = "nh-analysis-terms-v1";
+/**
+ * Version of the hashing scheme itself. A change here is a new scheme, not a re-grade.
+ *
+ * v1 → v2 because `currency` joined the definition. The scheme name is inside the hash, so a v1 hash
+ * can never equal a v2 hash of "the same" terms: a row registered under v1 no longer matches its stored
+ * witness and is **refused** as tampered rather than silently accepted under a new meaning. That is the
+ * intended behaviour — and it is why the field was added as a new scheme instead of appended quietly.
+ */
+export const ANALYSIS_TERMS_HASH_SCHEME = "nh-analysis-terms-v2";
 
 /**
  * Fixed field order — never object-key enumeration, so a round-trip through JSON cannot change the
@@ -112,6 +143,7 @@ function canonicalize(terms: AnalysisTerms): string {
     terms.calculationMethodVersion,
     terms.asOf,
     String(terms.stallThresholdDays),
+    terms.currency,
   ].join("\u0000");
 }
 

@@ -91,7 +91,7 @@ describe("EP-19 · the governance screen", () => {
     // And the definition's threshold is unseeded for the same reason the bar's are: a default cut-off
     // or a default N is a decision nobody made.
     const termsPanel = html.slice(
-      html.indexOf("Analysis terms — what the assessment measures"),
+      html.indexOf("Assessment policy — what the assessment measures"),
       html.indexOf("Every threshold must be stated deliberately"),
     );
     expect(termsPanel).toContain("Stall threshold N (days)");

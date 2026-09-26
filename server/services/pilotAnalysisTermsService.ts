@@ -46,6 +46,7 @@ export interface ProposeAnalysisTermsRequest {
     readonly termsVersion: string;
     readonly asOf: string;
     readonly stallThresholdDays: number;
+    readonly currency: string;
   };
   readonly rationale: string;
 }
@@ -84,7 +85,7 @@ export async function proposeAnalysisTerms(
   } catch {
     // Deliberately generic: the message must not echo a submitted value back into a response.
     throw new ForbiddenError(
-      "analysis terms are incomplete or out of range — a real cut-off date and a non-negative stall threshold are both required, and neither has a default",
+      "analysis terms are incomplete or out of range — a real cut-off date, a non-negative stall threshold and a supported currency are all required, and none of them has a default",
     );
   }
 
@@ -128,11 +129,18 @@ export async function proposeAnalysisTerms(
         `analysis terms ${analysisTermsRef(terms)} are already registered for this boundary — a change is a new version, never an edit`,
       );
     }
-    // Anything else — a blank rationale reaching the log's CHECK, for instance — is refused with
-    // NOTHING written. The generic wording keeps a submitted value out of the response.
-    throw new ForbiddenError(
-      "the analysis-terms proposal was refused: a definition and a stated reason are both required, and neither was recorded",
-    );
+    // A CONSTRAINT the database refused — a blank rationale reaching the log's CHECK, for instance — is
+    // a bad request, refused with NOTHING written. The wording stays generic so no submitted value is
+    // echoed back.
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      throw new ForbiddenError(
+        "the analysis-terms proposal was refused: a complete definition and a stated reason are both required, and neither was recorded",
+      );
+    }
+    // ANYTHING ELSE RETHROWS. An earlier version caught everything here and answered 403, which turned a
+    // missing column into "your proposal is invalid" and cost a debugging cycle to see through. A fault
+    // the caller cannot fix must not be dressed up as one they can.
+    throw e;
   }
   return Object.freeze({
     boundaryId: stored.boundaryId,
@@ -219,6 +227,7 @@ export async function readAnalysisTermsGovernance(
     termsHash: stored.termsHash,
     asOf: stored.terms.asOf,
     stallThresholdDays: stored.terms.stallThresholdDays,
+    currency: stored.terms.currency,
     calculationMethodVersion: stored.terms.calculationMethodVersion,
     state: governance.state,
     proposedBy: governance.proposedBy,
@@ -255,6 +264,7 @@ export async function listGovernedAnalysisTerms(actor: ActorContext, boundaryId:
         termsVersion: stored.terms.termsVersion,
         asOf: stored.terms.asOf,
         stallThresholdDays: stored.terms.stallThresholdDays,
+        currency: stored.terms.currency,
         termsHash: stored.termsHash,
         state: governance.state,
         mayMeasure: mayEvaluate(governance.state),

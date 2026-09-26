@@ -469,12 +469,14 @@ export const analysisTermsSchema = {
       terms: {
         type: "object",
         additionalProperties: false,
-        required: ["termsId", "termsVersion", "asOf", "stallThresholdDays"],
+        required: ["termsId", "termsVersion", "asOf", "stallThresholdDays", "currency"],
         properties: {
           termsId: { type: "string", minLength: 1, maxLength: 256 },
           termsVersion: { type: "string", minLength: 1, maxLength: 32 },
           asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
           stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
+          // Shape only. WHICH codes are supported is a domain decision, and the constructor answers it.
+          currency: { type: "string", minLength: 3, maxLength: 3 },
         },
       },
     },

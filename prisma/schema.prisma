@@ -369,6 +369,9 @@ model PilotAnalysisTermsRecord {
   /// Analysis cut-off (ISO date, stored as text so no timezone can shift the day).
   asOf                     String   @map("as_of")
   stallThresholdDays       Int      @map("stall_threshold_days")
+  /// Single currency per assessment. A row in another currency is excluded, never converted, so this
+  /// decides which rows count — which is why it is governed rather than supplied with the request.
+  currency                 String
   calculationMethodVersion String   @map("calculation_method_version")
   /// Deterministic hash of the DEFINITION. Stamped into every execution binding, so a historical run
   /// proves which cut-off and threshold it was measured under even if this row were ever altered.

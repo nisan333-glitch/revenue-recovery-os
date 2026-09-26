@@ -21,6 +21,7 @@ export const TEST_ANALYSIS_TERMS = Object.freeze({
   termsVersion: "1.0.0",
   asOf: "2026-04-15",
   stallThresholdDays: 30,
+  currency: "USD",
 });
 
 /** Two different actors, because the server compares actor ids and not merely roles. */

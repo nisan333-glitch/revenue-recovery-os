@@ -34,7 +34,13 @@ const STEWARD = { "x-actor-id": "gov@company", "x-actor-role": "steward" };
 const APPROVER = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-const TERMS = { termsId: "terms-q2", termsVersion: "1.0.0", asOf: "2026-04-15", stallThresholdDays: 30 };
+const TERMS = {
+  termsId: "terms-q2",
+  termsVersion: "1.0.0",
+  asOf: "2026-04-15",
+  stallThresholdDays: 30,
+  currency: "USD",
+};
 
 describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are governed, not chosen", () => {
   const app = buildApp({ sourceVerifier: fixtureVerifier });
@@ -163,6 +169,7 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     expect(view.state).toBe("ACTIVE");
     expect(view.asOf).toBe("2026-04-15");
     expect(view.stallThresholdDays).toBe(30);
+    expect(view.currency).toBe("USD");
     expect(view.proposedBy).toBe(OPERATOR["x-actor-id"]);
     expect(view.activatedBy).toBe(STEWARD["x-actor-id"]);
     expect(view.proposedBy).not.toBe(view.activatedBy);
@@ -366,7 +373,7 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     ] as const) {
       await expect(
         prisma.$executeRawUnsafe(
-          `INSERT INTO pilot_analysis_terms VALUES ($1,'t','1','${asOf}',${days},'m','sha256:x','a','operator',now())`,
+          `INSERT INTO pilot_analysis_terms (boundary_id,terms_id,terms_version,as_of,stall_threshold_days,currency,calculation_method_version,terms_hash,registered_by_actor_id,registered_by_role) VALUES ($1,'t','1','${asOf}',${days},'USD','m','sha256:x','a','operator')`,
           boundaryId,
         ),
       ).rejects.toThrow();
@@ -379,7 +386,7 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     // or restore that changed a value without recomputing the witness.
     const boundaryId = `pb-${uid()}`;
     await prisma.$executeRawUnsafe(
-      `INSERT INTO pilot_analysis_terms VALUES ($1,'terms-tampered','1.0.0','2026-04-15',30,'m','sha256:${"0".repeat(64)}','a','operator',now())`,
+      `INSERT INTO pilot_analysis_terms (boundary_id,terms_id,terms_version,as_of,stall_threshold_days,currency,calculation_method_version,terms_hash,registered_by_actor_id,registered_by_role) VALUES ($1,'terms-tampered','1.0.0','2026-04-15',30,'USD','m','sha256:${"0".repeat(64)}','a','operator')`,
       boundaryId,
     );
     await prisma.pilotAnalysisTermsEventRecord.createMany({
@@ -442,7 +449,13 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     expect(repeat.created).toBe(false);
 
     // A later cut-off: proposed and activated by the two identities, exactly as the first was.
-    const later = { termsId: "terms-q3", termsVersion: "1.0.0", asOf: "2026-06-30", stallThresholdDays: 45 };
+    const later = {
+      termsId: "terms-q3",
+      termsVersion: "1.0.0",
+      asOf: "2026-06-30",
+      stallThresholdDays: 45,
+      currency: "USD",
+    };
     expect((await propose(boundaryId, later, OPERATOR, "half-year close")).statusCode).toBe(201);
     expect((await move("activate", boundaryId, STEWARD, later)).statusCode).toBe(200);
 
@@ -505,7 +518,13 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
 
   it("16 · the menu of definitions is readable by every role, and reports what may NOT measure", async () => {
     const boundaryId = await governedBoundary();
-    const draft = { termsId: "terms-draft", termsVersion: "1.0.0", asOf: "2026-01-31", stallThresholdDays: 7 };
+    const draft = {
+      termsId: "terms-draft",
+      termsVersion: "1.0.0",
+      asOf: "2026-01-31",
+      stallThresholdDays: 7,
+      currency: "EUR",
+    };
     expect((await propose(boundaryId, draft)).statusCode).toBe(201);
 
     for (const headers of [OPERATOR, STEWARD, APPROVER]) {
@@ -547,6 +566,82 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     expect((await propose(boundaryId)).statusCode).toBe(201);
   });
 
+  it("19 · the currency is part of the registered definition and of its witness", async () => {
+    // A row in another currency is EXCLUDED rather than converted, so the currency decides which rows
+    // count at all. Two definitions differing only in currency are therefore two definitions, with two
+    // hashes — and the register is where that choice now lives.
+    const boundaryId = await governedBoundary();
+    const inEuros = { ...TERMS, termsId: "terms-eur", currency: "EUR" };
+    expect((await propose(boundaryId, inEuros)).statusCode).toBe(201);
+    expect((await move("activate", boundaryId, STEWARD, inEuros)).statusCode).toBe(200);
+
+    const read = async (termsId: string) =>
+      (
+        await app.inject({
+          method: "GET",
+          url: `/pilot/analysis-terms/governance?boundaryId=${boundaryId}&termsId=${termsId}&termsVersion=1.0.0`,
+          headers: STEWARD,
+        })
+      ).json();
+    const usd = await read(TERMS.termsId);
+    const eur = await read("terms-eur");
+    expect(usd.currency).toBe("USD");
+    expect(eur.currency).toBe("EUR");
+    expect(usd.termsHash).not.toBe(eur.termsHash);
+
+    // The stored row carries it too — the register, not the request, is the record of the decision.
+    const row = await prisma.pilotAnalysisTermsRecord.findUniqueOrThrow({
+      where: {
+        boundaryId_termsId_termsVersion: { boundaryId, termsId: "terms-eur", termsVersion: "1.0.0" },
+      },
+    });
+    expect(row.currency).toBe("EUR");
+  });
+
+  it("20 · a currency the money core does not support cannot be registered at all", async () => {
+    const boundaryId = `pb-${uid()}`;
+    const refused = await propose(boundaryId, { ...TERMS, currency: "ZZZ" });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().message).toMatch(/supported currency/);
+    expect(await prisma.pilotAnalysisTermsRecord.count({ where: { boundaryId } })).toBe(0);
+
+    // And the transport refuses a value that is not even the right shape, before the domain sees it.
+    const malformed = await app.inject({
+      method: "POST",
+      url: "/pilot/analysis-terms",
+      headers: OPERATOR,
+      payload: { boundaryId, terms: { ...TERMS, currency: "US" }, rationale: "r" },
+    });
+    expect(malformed.statusCode).toBe(400);
+  });
+
+  it("21 · the DATABASE keeps the sentinel written for pre-EP-26b rows out of use", async () => {
+    // The migration backfills 'XXX' — ISO 4217's "no currency" — rather than guessing USD, and the
+    // domain constructor refuses it. So a row registered before the field existed reads as UNUSABLE
+    // instead of being silently assessed as dollars, and the table being append-only means the answer
+    // is a new proposal rather than an edit.
+    const boundaryId = `pb-${uid()}`;
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO pilot_analysis_terms (boundary_id,terms_id,terms_version,as_of,stall_threshold_days,currency,calculation_method_version,terms_hash,registered_by_actor_id,registered_by_role) VALUES ($1,'terms-legacy','1.0.0','2026-04-15',30,'XXX','m','sha256:x','a','operator')`,
+      boundaryId,
+    );
+    // Reading it through the store must fail loudly rather than yield a usable definition.
+    const listed = await app.inject({
+      method: "GET",
+      url: `/pilot/analysis-terms/list?boundaryId=${boundaryId}`,
+      headers: OPERATOR,
+    });
+    expect(listed.statusCode).toBe(500);
+
+    // A shape violation is refused by the CHECK, so the sentinel is the ONLY non-code value possible.
+    await expect(
+      prisma.$executeRawUnsafe(
+        `INSERT INTO pilot_analysis_terms (boundary_id,terms_id,terms_version,as_of,stall_threshold_days,currency,calculation_method_version,terms_hash,registered_by_actor_id,registered_by_role) VALUES ($1,'terms-bad','1.0.0','2026-04-15',30,'usd','m','sha256:x','a','operator')`,
+        boundaryId,
+      ),
+    ).rejects.toThrow(/currency_shape/);
+  });
+
   it("17 · the hash is a witness of the definition, recomputable from the read", async () => {
     const boundaryId = await governedBoundary();
     const view = (
@@ -562,6 +657,7 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
         termsVersion: TERMS.termsVersion,
         asOf: view.asOf,
         stallThresholdDays: view.stallThresholdDays,
+        currency: view.currency,
         calculationMethodVersion: view.calculationMethodVersion,
       }),
     );

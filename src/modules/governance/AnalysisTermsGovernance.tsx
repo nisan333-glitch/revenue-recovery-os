@@ -42,6 +42,7 @@ export function AnalysisTermsGovernance() {
   const [termsVersion, setTermsVersion] = useState("1.0.0");
   const [asOf, setAsOf] = useState("");
   const [stallThresholdDays, setStallThresholdDays] = useState("");
+  const [currency, setCurrency] = useState("");
   const [rationale, setRationale] = useState("");
   const [governance, setGovernance] = useState<AnalysisTermsGovernanceView | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -66,8 +67,15 @@ export function AnalysisTermsGovernance() {
   if (stallThresholdDays.trim() !== "" && days > MAX_STALL_THRESHOLD_DAYS) {
     defects.push(`stallThresholdDays: must be at most ${MAX_STALL_THRESHOLD_DAYS}`);
   }
+  if (currency.trim() !== "" && !/^[A-Za-z]{3}$/.test(currency.trim())) {
+    defects.push("currency: must be a three-letter ISO code");
+  }
   const complete =
-    identified && asOf.trim() !== "" && stallThresholdDays.trim() !== "" && rationale.trim() !== "";
+    identified &&
+    asOf.trim() !== "" &&
+    stallThresholdDays.trim() !== "" &&
+    currency.trim() !== "" &&
+    rationale.trim() !== "";
   const mayPropose = complete && defects.length === 0 && !busy;
 
   function invalidateSelection(nextBoundary: string, nextId: string, nextVersion: string): void {
@@ -122,6 +130,7 @@ export function AnalysisTermsGovernance() {
             termsVersion: termsVersion.trim(),
             asOf: asOf.trim(),
             stallThresholdDays: days,
+            currency: currency.trim().toUpperCase(),
           },
           rationale: rationale.trim(),
         },
@@ -146,12 +155,14 @@ export function AnalysisTermsGovernance() {
   return (
     <div>
       <Panel className="mb-4 p-5">
-        <div className="mb-1 text-sm font-semibold text-slate-200">Analysis terms — what the assessment measures</div>
+        <div className="mb-1 text-sm font-semibold text-slate-200">Assessment policy — what the assessment measures</div>
         <div className="mb-3 text-[12px] text-slate-400">
           The as-of cut-off decides what information exists; the stall threshold decides what{" "}
-          <span className="text-slate-300">stalled</span> means. Together they are the definition a figure
-          is measured under, so they are proposed by one identity and activated by another — never typed
-          into the upload that benefits from the result. Changing either is a new version.
+          <span className="text-slate-300">stalled</span> means; the currency decides which rows count at
+          all, because a row in another currency is excluded rather than converted. Together the three are
+          the definition a figure is measured under, so they are proposed by one identity and activated by
+          another — never typed into the upload that benefits from the result. Changing any of them is a
+          new version.
         </div>
 
         <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -178,7 +189,7 @@ export function AnalysisTermsGovernance() {
           </label>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-4">
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Analysis as-of date</span>
             <input type="date" className="num-input w-full" value={asOf} onChange={(e) => setAsOf(e.target.value)} />
@@ -187,6 +198,11 @@ export function AnalysisTermsGovernance() {
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Stall threshold N (days)</span>
             <input type="number" min={0} className="num-input w-full" value={stallThresholdDays}
               onChange={(e) => setStallThresholdDays(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Assessment currency</span>
+            <input className="num-input w-full" value={currency}
+              onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Reason for this terms act</span>
@@ -237,7 +253,8 @@ export function AnalysisTermsGovernance() {
           <div className="mt-3 text-[12px] text-slate-400">
             <div>
               asOf <span className="text-slate-200">{currentGovernance.asOf}</span> · N{" "}
-              <span className="text-slate-200">{currentGovernance.stallThresholdDays}</span> days · terms{" "}
+              <span className="text-slate-200">{currentGovernance.stallThresholdDays}</span> days ·{" "}
+              <span className="text-slate-200">{currentGovernance.currency}</span> · terms{" "}
               <span className="text-slate-200">{currentGovernance.termsRef}</span>
             </div>
             <div className="mt-1 break-all">witness {currentGovernance.termsHash}</div>

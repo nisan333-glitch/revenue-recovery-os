@@ -11,13 +11,20 @@ import {
 } from "./analysisTerms";
 import { ASSESSMENT_CALC_VERSION } from "../assessment/policy";
 
-const VALID = { termsId: "terms-q3", termsVersion: "1.0.0", asOf: "2026-06-30", stallThresholdDays: 30 };
+const VALID = {
+  termsId: "terms-q3",
+  termsVersion: "1.0.0",
+  asOf: "2026-06-30",
+  stallThresholdDays: 30,
+  currency: "USD",
+};
 
 describe("EP-26 · analysis terms — the governed definition of what an assessment measures", () => {
   it("1 · accepts a complete tuple and stamps the build's calculation method", () => {
     const terms = makeAnalysisTerms(VALID);
     expect(terms.asOf).toBe("2026-06-30");
     expect(terms.stallThresholdDays).toBe(30);
+    expect(terms.currency).toBe("USD");
     expect(terms.calculationMethodVersion).toBe(ASSESSMENT_CALC_VERSION);
     expect(analysisTermsRef(terms)).toBe("terms-q3@1.0.0");
     expect(Object.isFrozen(terms)).toBe(true);
@@ -32,6 +39,29 @@ describe("EP-26 · analysis terms — the governed definition of what an assessm
     expect(() =>
       makeAnalysisTerms({ ...VALID, stallThresholdDays: undefined as unknown as number }),
     ).toThrow(/stallThresholdDays/);
+    expect(() => makeAnalysisTerms({ ...VALID, currency: undefined as unknown as string })).toThrow(
+      /currency is required/,
+    );
+  });
+
+  it("2b · refuses a currency the money core does not support, and normalises the ones it does", () => {
+    // Validated HERE, not left to `makePolicy`: a registration must not be able to record a currency
+    // that would only fail later, at the moment a dataset is being read under it.
+    expect(() => makeAnalysisTerms({ ...VALID, currency: "ZZZ" })).toThrow(/unsupported currency/);
+    // 'XXX' is ISO 4217's "no currency" and is the sentinel the EP-26b migration writes for any row
+    // registered before the field existed. It must be REFUSED, so such a row reads as unusable rather
+    // than being quietly assessed as dollars.
+    expect(() => makeAnalysisTerms({ ...VALID, currency: "XXX" })).toThrow(/unsupported currency/);
+    expect(makeAnalysisTerms({ ...VALID, currency: " eur " }).currency).toBe("EUR");
+  });
+
+  it("2c · the currency is part of the DEFINITION, because it decides which rows count", () => {
+    // A row whose currency differs from the policy's is excluded outright rather than converted, so the
+    // same file read as USD and read as EUR are two different populations and two different figures.
+    // That makes the currency a governed term, not a display preference.
+    const usd = makeAnalysisTerms(VALID);
+    const eur = makeAnalysisTerms({ ...VALID, currency: "EUR" });
+    expect(usd.currency).not.toBe(eur.currency);
   });
 
   it("3 · refuses a threshold that is negative, fractional or absurd", () => {
@@ -59,9 +89,11 @@ describe("EP-26 · analysis terms — the governed definition of what an assessm
     const base = await hashAnalysisTerms(makeAnalysisTerms(VALID));
     const laterCutOff = await hashAnalysisTerms(makeAnalysisTerms({ ...VALID, asOf: "2026-07-31" }));
     const otherThreshold = await hashAnalysisTerms(makeAnalysisTerms({ ...VALID, stallThresholdDays: 31 }));
+    const otherCurrency = await hashAnalysisTerms(makeAnalysisTerms({ ...VALID, currency: "EUR" }));
     expect(base).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(laterCutOff).not.toBe(base);
     expect(otherThreshold).not.toBe(base);
+    expect(otherCurrency).not.toBe(base);
     // A different label on the same definition is also a different registration — the reference is
     // part of what a decision cites, so it must be part of what the hash covers.
     expect(await hashAnalysisTerms(makeAnalysisTerms({ ...VALID, termsVersion: "1.0.1" }))).not.toBe(base);
@@ -69,7 +101,9 @@ describe("EP-26 · analysis terms — the governed definition of what an assessm
 
   it("6 · the hash is stable across construction order and a JSON round-trip", async () => {
     const a = makeAnalysisTerms(VALID);
-    const b = makeAnalysisTerms(JSON.parse(JSON.stringify({ ...VALID, stallThresholdDays: 30, asOf: "2026-06-30" })));
+    const b = makeAnalysisTerms(
+      JSON.parse(JSON.stringify({ ...VALID, stallThresholdDays: 30, asOf: "2026-06-30", currency: "USD" })),
+    );
     expect(await hashAnalysisTerms(a)).toBe(await hashAnalysisTerms(b));
     expect(await analysisTermsHashMatches(b, await hashAnalysisTerms(a))).toBe(true);
   });
@@ -81,8 +115,20 @@ describe("EP-26 · analysis terms — the governed definition of what an assessm
     expect(left).not.toBe(right);
   });
 
-  it("8 · the scheme name is part of the hash, so a future scheme cannot collide with this one", () => {
-    expect(ANALYSIS_TERMS_HASH_SCHEME).toBe("nh-analysis-terms-v1");
+  it("8 · the scheme name is part of the hash, so one scheme's hash can never equal another's", async () => {
+    // v2 because `currency` joined the definition. A row registered under v1 therefore no longer matches
+    // its stored witness and is refused as tampered — which is the intended answer, not a regression: its
+    // recorded meaning is genuinely incomplete, and the fix is a new proposal, not a silent re-read.
+    expect(ANALYSIS_TERMS_HASH_SCHEME).toBe("nh-analysis-terms-v2");
+    // Proved rather than asserted: the scheme string is inside the canonical form, so the same three
+    // values under a different scheme name cannot produce the same digest.
+    const { createHash } = await import("node:crypto");
+    const underV1 = `sha256:${createHash("sha256")
+      .update(
+        ["nh-analysis-terms-v1", VALID.termsId, VALID.termsVersion, ASSESSMENT_CALC_VERSION, VALID.asOf, "30", "USD"].join("\u0000"),
+      )
+      .digest("hex")}`;
+    expect(await hashAnalysisTerms(makeAnalysisTerms(VALID))).not.toBe(underV1);
   });
 
   it("9 · a mismatched hash reads as false rather than being recomputed and accepted", async () => {
