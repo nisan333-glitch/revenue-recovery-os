@@ -17,6 +17,7 @@ import { AgentRuntime } from "./runtime";
 import { createPilotAssessmentAgent, PILOT_ASSESSMENT_AGENT_ID } from "./pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "./prismaTaskDatabase";
 import type { AgentPolicySnapshot } from "./types";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -60,6 +61,8 @@ describe.skipIf(!HAS_DB)("EP-16 · assessment execution under duplication, concu
    */
   async function scheduled(over: { csvText?: string; policyOver?: Record<string, unknown> } = {}) {
     const boundaryId = `pb-${uid()}`;
+    // EP-26 · Governed analysis terms first: nothing is measured under a definition nobody approved.
+    await ensureGovernedTerms(boundaryId);
     const policy = {
       policyId: `pol-${uid()}`,
       policyVersion: "1.0.0",
@@ -94,7 +97,10 @@ describe.skipIf(!HAS_DB)("EP-16 · assessment execution under duplication, concu
       datasetId: `ds-${uid()}`,
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: over.csvText ?? syntheticPilotCsv(40),
-      policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+      policy: { currency: "USD" },
+      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
+      // activates them for this boundary through the two-identity lifecycle before submitting.
+      ...GOVERNED_TERMS_FIELDS,
       provenance: SYNTHETIC_PROVENANCE,
     };
     const submitted = (await app.inject({

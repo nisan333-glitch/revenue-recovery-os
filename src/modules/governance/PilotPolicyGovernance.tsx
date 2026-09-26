@@ -30,6 +30,7 @@ import {
   type PolicyGovernanceView,
 } from "../../data/pilotPolicyClient";
 import { STEWARD, operatorActorFor } from "../../data/devActor";
+import { AnalysisTermsGovernance } from "./AnalysisTermsGovernance";
 
 // NOTHING IS SEEDED HERE ANY MORE. This form used to open with a full set of plausible thresholds,
 // described as "a starting point for a conversation". The trouble with a seeded bar is that it anchors
@@ -215,6 +216,10 @@ export function PilotPolicyGovernance() {
         activation by the actor who proposed the policy is refused, by identity as well as by role.
       </Panel>
 
+      {/* EP-26 · The other governed object on this screen. Separate panel, separate identity space:
+          an act on the fitness bar is never an act on the definition of "stalled". */}
+      <AnalysisTermsGovernance />
+
       <Panel className="mb-4 p-5">
         <div className="mb-3 text-sm font-semibold text-slate-200">1 · Which policy</div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -315,7 +320,9 @@ export function PilotPolicyGovernance() {
       </Panel>
 
       <Panel className="mb-4 p-5">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
+        {/* EP-26 · Labelled, because the screen now shows TWO governed objects and their state words are
+            the same words. An unscoped assertion on "ACTIVE" could be satisfied by the other panel. */}
+        <div aria-label="Admission bar state" className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-slate-200">3 · Lifecycle</span>
           <Pill tone={stateTone(state)}>{state ?? "not proposed"}</Pill>
           {mayJudge(state) ? (

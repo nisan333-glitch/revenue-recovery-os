@@ -16,6 +16,11 @@ import * as auditService from "./audit/auditService";
 import * as pilotIntakeService from "./services/pilotIntakeService";
 import * as pilotAssessmentService from "./services/pilotAssessmentService";
 import type { SchedulePilotAssessmentRequest } from "./services/pilotAssessmentService";
+import * as pilotAnalysisTermsService from "./services/pilotAnalysisTermsService";
+import type {
+  AnalysisTermsTransitionRequest,
+  ProposeAnalysisTermsRequest,
+} from "./services/pilotAnalysisTermsService";
 import type {
   PilotDatasetRequest,
   RegisterAdmissionPolicyRequest,
@@ -38,6 +43,10 @@ import {
   candidatePromotionSchema,
   pilotDatasetSchema,
   admissionPolicySchema,
+  analysisTermsGovernanceQuerySchema,
+  analysisTermsListQuerySchema,
+  analysisTermsSchema,
+  analysisTermsTransitionSchema,
   policyTransitionSchema,
   policyGovernanceQuerySchema,
   schedulePilotAssessmentSchema,
@@ -222,6 +231,61 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
           req.query.policyVersion,
         ),
       );
+    },
+  );
+
+  // EP-26 · ANALYSIS-TERMS GOVERNANCE. The cut-off and the stall threshold define what an assessment
+  // MEASURES, which makes them more load-bearing than the fitness bar — and until now they arrived in
+  // a request body. Same split as the bar: the customer side proposes, governance activates, and no
+  // actor may do both halves of one version.
+  app.post<{ Body: ProposeAnalysisTermsRequest }>(
+    "/pilot/analysis-terms",
+    { schema: analysisTermsSchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.code(201).send(await pilotAnalysisTermsService.proposeAnalysisTerms(actor, req.body));
+    },
+  );
+
+  for (const [path, transition] of transitions) {
+    app.post<{ Body: AnalysisTermsTransitionRequest }>(
+      `/pilot/analysis-terms/${path}`,
+      { schema: analysisTermsTransitionSchema },
+      async (req, reply) => {
+        const actor = await resolveActor(req, options.identityResolver);
+        return reply
+          .code(200)
+          .send(await pilotAnalysisTermsService.transitionAnalysisTerms(actor, transition, req.body));
+      },
+    );
+  }
+
+  // Governed read: who proposed a definition, who put it in force, when and why. AuditRead only.
+  app.get<{ Querystring: { boundaryId: string; termsId: string; termsVersion: string } }>(
+    "/pilot/analysis-terms/governance",
+    { schema: analysisTermsGovernanceQuerySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(
+        await pilotAnalysisTermsService.readAnalysisTermsGovernance(
+          actor,
+          req.query.boundaryId,
+          req.query.termsId,
+          req.query.termsVersion,
+        ),
+      );
+    },
+  );
+
+  // The MENU of definitions someone else approved — the opposite of a lever. Every role may read it,
+  // because an operator who cannot see the cut-off their data will be read at cannot tell what the
+  // figure they are shown means.
+  app.get<{ Querystring: { boundaryId: string } }>(
+    "/pilot/analysis-terms/list",
+    { schema: analysisTermsListQuerySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(await pilotAnalysisTermsService.listGovernedAnalysisTerms(actor, req.query.boundaryId));
     },
   );
 

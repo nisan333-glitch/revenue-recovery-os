@@ -48,6 +48,16 @@ import { Prisma } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../http/errors";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
+import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
+
+/**
+ * EP-26 · The stable phrase a refused submission carries when the analysis terms are not governed.
+ *
+ * Not an NH-DC-#### code: those are the DATA contract, and this refusal says nothing about the data.
+ * Not an NH-AX-#### code either — nothing is being executed yet. It is an authorization refusal, and
+ * the UI may show it verbatim because `forbidden` is in the client's safe-to-display set.
+ */
+export const ANALYSIS_TERMS_REFUSAL = "analysis terms are not governed";
 import { findSubmission, recordSubmission } from "../persistence/pilotDatasetStore";
 
 export interface PilotDatasetRequest {
@@ -62,10 +72,17 @@ export interface PilotDatasetRequest {
   readonly declaredVersion: string;
   readonly csvText: string;
   readonly policy: {
-    readonly stallThresholdDays: number;
-    readonly asOf: string;
     readonly currency: string;
   };
+  /**
+   * EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION defines this reading — the cut-off and the stall
+   * threshold. They are no longer request parameters: `asOf` decides what information exists and
+   * `stallThresholdDays` decides what "stalled" MEANS, so a requester who could state them would be
+   * defining the measurement they benefit from. Omitting the reference is not "use a default"; there
+   * is no default, and the submission is refused.
+   */
+  readonly analysisTermsId?: string;
+  readonly analysisTermsVersion?: string;
   readonly provenance: DatasetProvenance;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
@@ -208,16 +225,33 @@ export async function submitPilotDataset(
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
-  // A malformed policy is the caller's error, and its message must not echo customer data.
+  // EP-26 · THE ANALYSIS TERMS COME FROM THE REGISTER, NEVER FROM THE REQUEST. This is a 403 rather
+  // than a dataset verdict on purpose: an ungoverned cut-off is not a property of the file, and
+  // answering NOT_ASSESSABLE would tell the customer their data is unfit when what is unauthorized is
+  // their choice of definition. Refused before the bytes are parsed — nothing is measured under terms
+  // nobody approved, not even to produce a rejection count.
+  const resolvedTerms = await resolveGovernedAnalysisTerms(
+    boundaryId,
+    request.analysisTermsId,
+    request.analysisTermsVersion,
+  );
+  if (!resolvedTerms.ok) {
+    throw new ForbiddenError(`${ANALYSIS_TERMS_REFUSAL}: ${resolvedTerms.reason}`);
+  }
+  const governedTerms = resolvedTerms.stored.terms;
+
+  // Only the currency is still the caller's to state: it describes the file, not the reading of it.
   let policy;
   try {
     policy = makePolicy({
-      stallThresholdDays: request.policy.stallThresholdDays,
-      asOf: request.policy.asOf,
+      policyId: governedTerms.termsId,
+      policyVersion: governedTerms.termsVersion,
+      stallThresholdDays: governedTerms.stallThresholdDays,
+      asOf: governedTerms.asOf,
       currency: request.policy.currency,
     });
   } catch {
-    throw new ForbiddenError("assessment policy is invalid (stall threshold, as-of date or currency)");
+    throw new ForbiddenError("assessment policy is invalid (currency)");
   }
 
   const submission: DatasetSubmission = {

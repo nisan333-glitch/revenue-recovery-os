@@ -1,7 +1,9 @@
 # Assessment identity — what makes a submission the same, and what makes it new
 
-**Status: decided at the constitution level on 2026-09-26. NOT yet implemented.** The code still derives
-the old identity. Nothing in this document describes current behaviour except where it says so
+**Status: decided at the constitution level on 2026-09-26. The identity derivation is NOT yet
+implemented; its first prerequisite is.** The code still derives the old identity. Step 1 below —
+governance for the analysis terms — was built on 2026-09-26 and is documented in
+[`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md). Nothing in this document describes current behaviour except where it says so
 explicitly. The binding summary is in [`CLAUDE.md`](../CLAUDE.md) → *Assessment identity and
 analysis-terms governance decision*.
 
@@ -104,9 +106,14 @@ should likewise grant a re-assessment is **not decided here** and needs its own 
 
 Binding order. Each step is a prerequisite for the next.
 
-1. **Governance for analysis terms.** `asOf` and `stallThresholdDays` must be proposable and activatable
-   the way the admission bar is, with pre-registration that a later choice cannot backdate. Until this
-   exists, the decided identity cannot be implemented, because two of its fields would be ungoverned.
+1. ~~**Governance for analysis terms.**~~ **BUILT 2026-09-26 (EP-26)** —
+   [`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md). `asOf` and `stallThresholdDays` are now a
+   registered, versioned definition: proposed by one identity, activated by another, append-only, with a
+   stated reason, and **removed from the request entirely** — the transport refuses both fields. One
+   correction to what this step was expected to contain: it does **not** carry the admission bar's temporal
+   anti-tuning rule (`activatedAt > firstSeenAt`), because that would forbid the re-reading the decision
+   above explicitly permits. The guarantee is structural instead — a new definition yields a new execution
+   identity and cannot re-grade an existing finding. The reasoning is in that document.
 2. **A decision on the two-major compatibility window.** §10 of the data contract promises that two
    majors are supported concurrently for at least one pilot cycle. That promise has **no
    implementation**: the version check rejects any different major outright. Honouring it is larger work

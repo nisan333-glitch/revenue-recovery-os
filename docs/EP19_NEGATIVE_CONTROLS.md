@@ -426,3 +426,44 @@ with `requireBoundaryAccess` **deleted** — exactly the vacuity NC-19 was writt
 on the path that matters is the OIDC resolver (`verifiedIdentity.ts`, `parseBoundaryClaim` over
 `nh_boundaries`), which needs an HTTPS issuer and a JWKS endpoint. End-to-end proof waits for that; it is
 not being claimed in the meantime, and the dev identity switch is **not** evidence of authentication.
+
+## EP-26 · Analysis-terms governance (NC-29 … NC-36)
+
+The cut-off and the stall threshold define what an assessment **measures**, and they used to arrive in a
+request body. Eight guards, removed one at a time against a fresh PostgreSQL, each failing a named test
+that is attributable to it. Every file restored afterwards and checksummed (`md5sum -c`, all matched).
+
+| # | Guard removed | What failed |
+|---|---|---|
+| NC-29 | The intake resolves the terms from the register (falls back to a hardcoded default instead) | **6** — tests 1, 4, 6, 7, 8, 12 |
+| NC-30 | The schedule-time refusal `NH-AX-1010` | **2** — tests 4 and 6, the two that assert the code |
+| NC-31 | `additionalProperties: false` on the request's `policy` — the two values are accepted again | **1** — test 5 only |
+| NC-32 | Separation of duties on the terms lifecycle | **1** — test 3 only |
+| NC-33 | The stored-hash-matches-definition check | **1** — test 12 only |
+| NC-34 | The transaction around propose (register + PROPOSED event) | **1** — test 18 only |
+| NC-35 | The append-only DB triggers on both tables | **1** — test 10 only |
+| NC-36 | The two free-entry fields put back on the **upload** screen | the journey's *"the upload screen offers NO way to type a cut-off or a stall threshold"* — 85/86 |
+
+**NC-31 is the load-bearing control.** With the transport accepting `stallThresholdDays` and `asOf` again,
+**every other test still passes** — the register exists, the lifecycle works, the two identities are
+enforced — and a requester can once again state the definition the figure is measured under. That is why
+test 5 exists and why it asserts the refusal on *both* endpoints with three smuggling shapes each. A
+governance mechanism with an open side door is not one.
+
+**NC-34 is the instructive one, and it failed to fail on the first attempt.** The transaction was added
+after test 15 caught a real defect: a whitespace-only rationale passed the transport, wrote the definition
+row, and only then failed the lifecycle log's CHECK — leaving a version that occupies its own
+`(boundary, id, version)` forever, derives no state, and blocks the legitimate proposal of that version
+while measuring nothing. The fix included a transport guard (`pattern: "\S"`), which then made the orphan
+path unreachable over HTTP — so removing the transaction broke **nothing**, and the guard was
+defence-in-depth with no test able to fail without it. Test **18** calls the service directly, which is a
+real public entry point (the rehearsal agent uses it), and now catches it. Recorded because a guard nobody
+can break is a guard nobody has measured.
+
+**NC-36 asserts an absence,** which is unusual and deliberate. The check looks for the two labels being
+gone, so it fails even when the fields are restored as `readOnly` — a read-only input today is an editable
+one after a careless refactor, and the claim being made is that the screen offers no way to state a
+cut-off at all.
+
+**Scope:** governance for `asOf` and `stallThresholdDays` only. No change to the identity derivation, no
+contract major bump, no migration of existing submissions, no change to tenant or OIDC semantics.

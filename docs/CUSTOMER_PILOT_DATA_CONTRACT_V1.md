@@ -168,13 +168,16 @@ the observation, not a gap, and warning about it would bury the real signals.
   > (`pilot_dataset_sightings`) is keyed on boundary and fingerprint **only**, so the two mechanisms
   > disagree about what "the same dataset" means.
   >
-  > **Status (2026-09-26): decided, not built.** The identity is to contain the stable identity of the
+  > **Status (2026-09-26): decided; its first prerequisite is built, the derivation is not.** The identity is to contain the stable identity of the
   > data plus only parameters whose change materially changes the meaning or result-space of the
   > assessment; descriptive and operator-controlled metadata never determine identity. The analysis
   > terms (`asOf`, `stallThresholdDays`) may create a new assessment of the same extract **only once
-  > they are pre-registered and governed the way the admission bar is** — which they are not yet. So the
-  > derivation is unchanged, this major version is unchanged, and no migration exists. Governance for
-  > the analysis terms comes first. Field-by-field classification and the binding order of work:
+  > they are pre-registered and governed the way the admission bar is** — and as of 2026-09-26 they are:
+  > they are a registered, versioned definition, proposed by one identity and activated by another, and
+  > they are no longer request parameters at all
+  > ([`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md)). The derivation is still unchanged,
+  > this major version is unchanged, and no migration exists — the remaining prerequisite is the §10
+  > two-major compatibility decision. Field-by-field classification and the binding order of work:
   > [`ASSESSMENT_IDENTITY_V1.md`](ASSESSMENT_IDENTITY_V1.md). §10 classifies a change to identity
   > derivation as a **major** bump, and that still applies when the work is done.
   >

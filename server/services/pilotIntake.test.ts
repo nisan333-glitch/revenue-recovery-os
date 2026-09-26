@@ -18,6 +18,7 @@ import {
   toCsv,
 } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION, INTAKE_LIMITS } from "../../src/contract/pilotDataContract";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
@@ -25,7 +26,9 @@ const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "oper
 const APPROVER = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-const POLICY = { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" };
+// EP-26 · Only the currency is still the caller's to state. The cut-off and the stall threshold are a
+// governed definition, cited by reference; `GOVERNED_TERMS_FIELDS` is that reference.
+const POLICY = { currency: "USD" };
 
 function body(over: Record<string, unknown> = {}) {
   return {
@@ -34,6 +37,7 @@ function body(over: Record<string, unknown> = {}) {
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(12),
     policy: POLICY,
+    ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };
@@ -49,8 +53,16 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     await prisma.$disconnect();
   });
 
-  const post = (payload: unknown, headers: Record<string, string> = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  /**
+   * EP-26 · Every submission now names a GOVERNED analysis-terms version, so the suite activates one for
+   * whichever boundary the payload carries — through the two-identity lifecycle, not a seam. Opting out
+   * is how the refusal is tested; see `analysisTermsGovernance.test.ts`.
+   */
+  const post = async (payload: unknown, headers: Record<string, string> = OPERATOR) => {
+    const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+    if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  };
 
   it("1 · a valid synthetic upload is accepted, usable, and recorded once", async () => {
     const payload = body();
@@ -210,6 +222,7 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: payload.csvText as string,
       policy: POLICY,
+    ...GOVERNED_TERMS_FIELDS,
       provenance: SYNTHETIC_PROVENANCE,
     });
 
@@ -322,6 +335,10 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     });
     await scoped.ready();
     try {
+      // EP-26 · Both boundaries get governed terms, so neither answer can come from the terms gate:
+      // tenant-a's 200 is a real admission and tenant-b's 403 is a real boundary refusal.
+      await ensureGovernedTerms("tenant-a");
+      await ensureGovernedTerms("tenant-b");
       const own = await scoped.inject({
         method: "POST", url: "/pilot/datasets", headers: OPERATOR,
         payload: body({ boundaryId: "tenant-a" }) as object,
@@ -333,6 +350,9 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
         payload: body({ boundaryId: "tenant-b" }) as object,
       });
       expect(other.statusCode).toBe(403);
+      // ...and refused for the RIGHT reason. Without this the test would also pass if the analysis-terms
+      // gate had refused it, which says nothing about tenant isolation.
+      expect(other.json().message).toMatch(/boundary/i);
       expect(other.json().message).toMatch(/not authorized for this boundary/i);
       // Refused before anything was validated or written.
       expect(await prisma.pilotDatasetSubmissionRecord.count({ where: { boundaryId: "tenant-b" } })).toBe(0);
@@ -391,8 +411,10 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
   it("10 · an unauthorized role and an unauthenticated caller are both refused", async () => {
     // An approver may never submit customer data for assessment (least privilege, unchanged).
     expect((await post(body(), APPROVER)).statusCode).toBe(403);
+    const unauthenticated = body();
+    await ensureGovernedTerms(unauthenticated.boundaryId);
     expect(
-      (await app.inject({ method: "POST", url: "/pilot/datasets", payload: body() as object })).statusCode,
+      (await app.inject({ method: "POST", url: "/pilot/datasets", payload: unauthenticated as object })).statusCode,
     ).toBe(401);
   });
 

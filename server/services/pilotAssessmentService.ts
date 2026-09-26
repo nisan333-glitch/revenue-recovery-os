@@ -59,6 +59,7 @@ import {
   listExecutions,
   type ExecutionRecord,
 } from "../persistence/pilotExecutionStore";
+import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
 import { PILOT_ASSESSMENT_AGENT_ID } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import type { AgentTaskStore } from "../agents/types";
@@ -70,10 +71,16 @@ export interface SchedulePilotAssessmentRequest {
   readonly declaredVersion: string;
   readonly csvText: string;
   readonly policy: {
-    readonly stallThresholdDays: number;
-    readonly asOf: string;
     readonly currency: string;
   };
+  /**
+   * EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION this execution is measured under. Not a value pair:
+   * `asOf` and `stallThresholdDays` define what is being measured, so they are proposed by one identity
+   * and activated by another. An absent, unknown, draft, frozen or retired reference is refused with
+   * NH-AX-1010 — there is no default and no fallback.
+   */
+  readonly analysisTermsId?: string;
+  readonly analysisTermsVersion?: string;
   readonly provenance: DatasetProvenance;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
@@ -155,15 +162,32 @@ export async function schedulePilotAssessment(
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
+  // ── 1 · The definition, from the register ─────────────────────────────────────────────────────
+  // Resolved BEFORE the bytes are parsed. The terms decide what the run measures, so a run under
+  // terms nobody approved must not happen at all — not even far enough to report a count. The
+  // governed ids become the binding's `assessmentPolicyId`/`assessmentPolicyVersion`, so a change of
+  // definition yields a DIFFERENT execution identity and can never re-grade an existing finding.
+  const resolvedTerms = await resolveGovernedAnalysisTerms(
+    boundaryId,
+    request.analysisTermsId,
+    request.analysisTermsVersion,
+  );
+  if (!resolvedTerms.ok) {
+    return refused(boundaryId, "analysis_terms_not_governed", resolvedTerms.reason);
+  }
+  const governedTerms = resolvedTerms.stored.terms;
+
   let policy;
   try {
     policy = makePolicy({
-      stallThresholdDays: request.policy.stallThresholdDays,
-      asOf: request.policy.asOf,
+      policyId: governedTerms.termsId,
+      policyVersion: governedTerms.termsVersion,
+      stallThresholdDays: governedTerms.stallThresholdDays,
+      asOf: governedTerms.asOf,
       currency: request.policy.currency,
     });
   } catch {
-    throw new ForbiddenError("assessment policy is invalid (stall threshold, as-of date or currency)");
+    throw new ForbiddenError("assessment policy is invalid (currency)");
   }
 
   const submissionInput: DatasetSubmission = {

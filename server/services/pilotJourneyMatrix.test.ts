@@ -29,6 +29,7 @@ import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy"
 import { AgentRuntime } from "../agents/runtime";
 import { createPilotAssessmentAgent } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -36,7 +37,9 @@ const STEWARD = { "x-actor-id": "gov@company", "x-actor-role": "steward" };
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 /** The same as-of the scenario expectations were written against. */
-const ASSESSMENT = { stallThresholdDays: 30, asOf: "2026-03-01", currency: "USD" };
+// EP-26 · Currency only. The cut-off and the threshold are the governed definition this suite activates
+// per boundary (asOf 2026-03-01, N 30) and cites by reference at the top level of the request, not here.
+const ASSESSMENT = { currency: "USD" };
 
 describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () => {
   const app = buildApp({ sourceVerifier: fixtureVerifier });
@@ -104,17 +107,25 @@ describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () =
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText,
     policy: ASSESSMENT,
+    ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
   });
 
-  const submit = (body: object, policyId: string) =>
-    app.inject({
+  const submit = async (body: object, policyId: string) => {
+    const boundaryId = (body as { boundaryId?: string }).boundaryId;
+    if (boundaryId) await ensureGovernedTerms(boundaryId, { asOf: "2026-03-01" });
+    return app.inject({
       method: "POST", url: "/pilot/datasets", headers: OPERATOR,
       payload: { ...body, admissionPolicyId: policyId, admissionPolicyVersion: "1.0.0" },
     });
+  };
 
-  const schedule = (body: object) =>
-    app.inject({ method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: body });
+  const schedule = async (body: object) => {
+    const boundaryId = (body as { boundaryId?: string }).boundaryId;
+    // The matrix reads as of 2026-03-01, which is the definition this boundary gets.
+    if (boundaryId) await ensureGovernedTerms(boundaryId, { asOf: "2026-03-01" });
+    return app.inject({ method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: body });
+  };
 
   const read = (boundaryId: string, executionId: string) =>
     app.inject({
@@ -254,6 +265,9 @@ describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () =
   it("answers NOT_ASSESSABLE when no policy is named at all", async () => {
     const { boundaryId } = await boundaryWithActivePolicy();
     const body = datasetBody(boundaryId, syntheticScenario("valid").csvText);
+    // Governed terms ARE active here: the NOT_ASSESSABLE below must come from the missing admission
+    // policy, not from the analysis-terms gate.
+    await ensureGovernedTerms(boundaryId, { asOf: "2026-03-01" });
     const submitted = (await app.inject({
       method: "POST", url: "/pilot/datasets", headers: OPERATOR, payload: body,
     })).json();

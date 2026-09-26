@@ -1,6 +1,7 @@
 import type { DatasetProvenance } from "../../contract/pilotDataContract";
 import { PILOT_DATA_CONTRACT_VERSION, INTAKE_LIMITS } from "../../contract/pilotDataContract";
 import type { PilotIntakeResult } from "../../data/pilotIntakeClient";
+import type { GovernedAnalysisTermsRow } from "../../data/pilotAnalysisTermsClient";
 import { ValidationReportPanel } from "./ValidationReportPanel";
 import type { DateLocale } from "../../assessment/dateNormalize";
 import type { AmountFormat } from "../../assessment/amountNormalize";
@@ -15,9 +16,16 @@ export const MAX_CSV_BYTES = INTAKE_LIMITS.maxBytes;
 
 export interface UploadScreenProps {
   n: number;
-  setN: (n: number) => void;
+  /**
+   * EP-26 · Read-only. N and the cut-off come from the GOVERNED analysis-terms version selected below;
+   * there is no setter, because a screen that could set them would let the party who benefits from the
+   * figure define what it measures.
+   */
+  governedTerms: readonly GovernedAnalysisTermsRow[];
+  analysisTermsRef: string;
+  setAnalysisTermsRef: (ref: string) => void;
+  termsError: string | null;
   asOf: string;
-  setAsOf: (d: string) => void;
   currency: string;
   setCurrency: (c: string) => void;
   locale: DateLocale | "";
@@ -110,16 +118,45 @@ export function UploadScreen(props: UploadScreenProps) {
 
       <Panel className="mb-4 p-5">
         <div className="mb-3 text-sm font-semibold text-slate-200">2 · Assessment policy</div>
+        {props.termsError && (
+          <div role="alert" className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-200">
+            {props.termsError}
+          </div>
+        )}
+        {props.governedTerms.length === 0 && !props.termsError && (
+          <div className="mb-3 text-[12px] text-amber-200">
+            No analysis-terms version has been activated for this boundary, so nothing can be measured. Propose
+            one and have governance activate it on the Governance screen. There is no default cut-off.
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {/* EP-26 · These were two free-entry fields: a number box for N and a date picker for the
+              cut-off. Together they decide what "stalled" MEANS and what information exists, so the
+              requester could define the measurement they benefit from. They are now a reference to a
+              version someone else activated. A definition that is not ACTIVE is shown WITH ITS STATE
+              rather than hidden, because "frozen" and "never existed" are different answers. */}
           <label className="block">
-            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Stall threshold N (days)</span>
-            <input type="number" min={0} className="num-input w-full" value={props.n}
-              onChange={(e) => props.setN(Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
+            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Governed analysis terms</span>
+            <select aria-label="Governed analysis terms" className="num-input w-full"
+              value={props.analysisTermsRef}
+              onChange={(e) => props.setAnalysisTermsRef(e.target.value)}>
+              <option value="">select an activated definition</option>
+              {props.governedTerms.map((t) => (
+                <option key={t.termsRef} value={t.termsRef} disabled={!t.mayMeasure}>
+                  {t.termsRef} — asOf {t.asOf}, N {t.stallThresholdDays}
+                  {t.mayMeasure ? "" : ` (${t.state ?? "no state"} — measures nothing)`}
+                </option>
+              ))}
+            </select>
           </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Analysis as-of date</span>
-            <input type="date" className="num-input w-full" value={props.asOf} onChange={(e) => props.setAsOf(e.target.value)} />
-          </label>
+          <div className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Cut-off and threshold</span>
+            <div className="text-[12px] text-slate-300">
+              {props.analysisTermsRef
+                ? `asOf ${props.asOf} · N ${props.n} days · governed, not editable here`
+                : "no definition selected — nothing can be measured"}
+            </div>
+          </div>
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">Currency</span>
             <input className="num-input w-full" value={props.currency}

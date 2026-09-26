@@ -40,6 +40,10 @@ const BOUNDARY = `journey-${randomUUID().slice(0, 8)}`;
 const POLICY_ID = `journey-bar-${randomUUID().slice(0, 8)}`;
 const POLICY_VERSION = "1.0.0";
 const AS_OF = "2026-03-01";
+// EP-26 · The governed analysis terms this run reads under. A definition, not two form fields.
+const TERMS_ID = `journey-terms-${randomUUID().slice(0, 8)}`;
+const TERMS_VERSION = "1.0.0";
+const STALL_N = "30";
 
 const results = [];
 let failures = 0;
@@ -242,32 +246,33 @@ try {
   // `act` performs after the write — a read that needs `AuditRead`. So the wait degrades instead of
   // throwing: if the read is refused, this must be a RECORDED failure attributable to this check, not
   // a harness abort that ends the run with nothing said about anything downstream (the NC-7 lesson).
-  await page.getByText("DRAFT", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const barState = page.getByLabel("Admission bar state");
+  await barState.getByText("DRAFT", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
   check("a proposed bar is DRAFT and judges nothing",
-    (await page.getByText("DRAFT", { exact: true }).isVisible()) &&
-    (await page.getByText("judges nothing").isVisible()));
+    (await barState.getByText("DRAFT", { exact: true }).isVisible()) &&
+    (await barState.getByText("judges nothing").isVisible()));
 
   // ── 2 · Governance: a DIFFERENT identity puts it in force ────────────────────────────────────────
   await activateButton.click();
-  await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  await barState.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
   check("an activated bar may judge a dataset",
-    (await page.getByText("ACTIVE", { exact: true }).isVisible()) &&
-    (await page.getByText("may judge a dataset").isVisible()));
+    (await barState.getByText("ACTIVE", { exact: true }).isVisible()) &&
+    (await barState.getByText("may judge a dataset").isVisible()));
 
   // A lifecycle belongs to one exact boundary, policy id and version. Editing any of them must
   // immediately hide the old ACTIVE verdict — the state, the "may judge" pill and the hash together.
   const policyIdInput = page.getByLabel("Policy id", { exact: true });
   await policyIdInput.fill(`${POLICY_ID}-other`);
   check("changing policy identity hides the old ACTIVE verdict",
-    (await page.getByText("not proposed", { exact: true }).isVisible()) &&
-    !(await page.getByText("may judge a dataset").count()) &&
+    (await barState.getByText("not proposed", { exact: true }).isVisible()) &&
+    !(await barState.getByText("may judge a dataset").count()) &&
     !(await page.getByText("Policy hash", { exact: false }).count()));
   // Restoring the identity does NOT restore the verdict: it has to be read again, deliberately.
   await policyIdInput.fill(POLICY_ID);
   check("restoring the identity still requires an explicit re-read",
-    await page.getByText("not proposed", { exact: true }).isVisible());
-  await page.getByRole("button", { name: "Read lifecycle" }).click();
-  await page.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await barState.getByText("not proposed", { exact: true }).isVisible());
+  await page.getByRole("button", { name: "Read lifecycle", exact: true }).click();
+  await barState.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
   check("an explicit re-read restores the ACTIVE verdict for the selected identity",
     (await page.getByText("ACTIVE", { exact: true }).isVisible()) &&
     (await page.getByText("may judge a dataset").isVisible()));
@@ -303,12 +308,115 @@ try {
     auditText.includes("two different identities, which is the point.") &&
     !auditText.includes("the same identity, which the server should not have allowed."));
 
+  /**
+   * Cite the governed definition on the upload screen.
+   *
+   * A SELECTION, not two values: the menu is the set of definitions governance activated, and the option
+   * carries its own as-of and N so the operator can see what they are citing. The wait is for the menu to
+   * arrive — it is fetched per boundary — and it DEGRADES rather than throwing, so a failure here is a
+   * recorded check attributable to this step instead of a harness abort (the NC-7 lesson).
+   */
+  async function selectGovernedTerms() {
+    const menu = page.getByLabel("Governed analysis terms");
+    const option = `${TERMS_ID}@${TERMS_VERSION}`;
+    await menu
+      .locator(`option[value="${option}"]`)
+      .waitFor({ state: "attached", timeout: 15_000 })
+      .catch(() => undefined);
+    await menu.selectOption(option).catch(() => undefined);
+    return option;
+  }
+
+  /**
+   * Give a boundary its own ACTIVE analysis-terms version, through the screen, as the two identities.
+   *
+   * Needed because a definition belongs to ONE boundary: a second tenant does not inherit the first
+   * tenant's cut-off, which is the same isolation the admission bar has. Driving it through the UI here
+   * rather than calling the API keeps the cross-boundary section honest — the boundary really is usable.
+   */
+  async function governTermsFor(boundaryId) {
+    await page.goto(UI_BASE, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Pilot Policy Governance" }).click();
+    await page.getByLabel("Analysis-terms tenant").fill(boundaryId);
+    await page.getByLabel("Terms id").fill(TERMS_ID);
+    await page.getByLabel("Terms version").fill(TERMS_VERSION);
+    await page.getByLabel("Analysis as-of date").fill(AS_OF);
+    await page.getByLabel("Stall threshold N (days)").fill(STALL_N);
+    await page.getByLabel("Reason for this terms act").fill("journey fixture: a second tenant's cut-off");
+    await page.getByRole("button", { name: /^Propose terms as / }).click();
+    await page.getByLabel("Analysis terms state").getByText("DRAFT", { exact: true })
+      .waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await page.getByRole("button", { name: /^Activate terms as / }).click();
+    await page.getByLabel("Analysis terms state").getByText("ACTIVE", { exact: true })
+      .waitFor({ timeout: 15_000 }).catch(() => undefined);
+  }
+
+  // ── 2b · EP-26 · The analysis terms are governed, and the UI offers no way around it ────────────
+  //
+  // The server-side suite proves the rule; only a browser can prove there is no LEVER — that the two
+  // fields an operator used to type are gone from the screen that benefits from the figure. This is the
+  // class of defect this branch keeps finding: a rule can be correct while the UI still offers a way
+  // past it.
+  await page.getByLabel("Analysis-terms tenant").fill(BOUNDARY);
+  await page.getByLabel("Terms id").fill(TERMS_ID);
+  await page.getByLabel("Terms version").fill(TERMS_VERSION);
+  await page.getByLabel("Analysis as-of date").fill(AS_OF);
+  await page.getByLabel("Stall threshold N (days)").fill(STALL_N);
+  await page.getByLabel("Reason for this terms act").fill("journey fixture: the quarter cut-off");
+
+  const proposeTerms = page.getByRole("button", { name: /^Propose terms as / });
+  const activateTerms = page.getByRole("button", { name: /^Activate terms as / });
+  const termsProposer = (await proposeTerms.textContent())?.replace("Propose terms as ", "").trim() ?? "";
+  const termsSteward = (await activateTerms.textContent())?.replace("Activate terms as ", "").trim() ?? "";
+  check(
+    "proposing and activating the DEFINITION are offered as two different identities",
+    termsProposer !== "" && termsSteward !== "" && termsProposer !== termsSteward,
+    `${termsProposer} vs ${termsSteward}`,
+  );
+
+  // An out-of-range threshold must name the field rather than silently disabling the button.
+  await page.getByLabel("Stall threshold N (days)").fill("4000");
+  const termsDefect = page.getByLabel("Analysis terms errors").getByText(/stallThresholdDays: must be at most/);
+  await termsDefect.waitFor({ state: "visible", timeout: 10_000 }).catch(() => undefined);
+  check("an out-of-range stall threshold names the field and blocks the proposal",
+    (await termsDefect.isVisible()) && !(await proposeTerms.isEnabled()));
+  await page.getByLabel("Stall threshold N (days)").fill(STALL_N);
+
+  await proposeTerms.click();
+  const termsState = page.getByLabel("Analysis terms state");
+  // Wait for DRAFT itself. "measures nothing" is the default reading of an unread selection, so waiting
+  // on that sentence would be satisfied before the proposal was recorded — a wait that waits for nothing.
+  await termsState.getByText("DRAFT", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  check("a proposed definition is DRAFT and measures nothing",
+    (await termsState.getByText("DRAFT", { exact: true }).isVisible()) &&
+    (await termsState.getByText("measures nothing").isVisible()));
+
+  await activateTerms.click();
+  await termsState.getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  check("an activated definition may measure a dataset",
+    (await termsState.getByText("ACTIVE", { exact: true }).isVisible()) &&
+    (await termsState.getByText("measures a dataset").isVisible()));
+
+  // Read from the SERVER's own proposedBy/activatedBy comparison, not from the button labels — the
+  // NC-19 lesson, applied to the new panel rather than trusted to generalise.
+  const termsAudit = await page.getByLabel("Analysis terms lifecycle").innerText();
+  check("the server recorded two DIFFERENT identities for the definition's two acts",
+    termsAudit.includes("two different identities, which is the point.") &&
+    !termsAudit.includes("the same identity, which the server should not have allowed."),
+    termsAudit.slice(0, 120));
+
   // ── 3 · Assessment: intake and admission ────────────────────────────────────────────────────────
   await page.getByRole("button", { name: "Revenue Opportunity Assessment" }).click();
   await page.getByLabel("Admission policy id").fill(POLICY_ID);
   await page.getByLabel("Admission policy version").fill(POLICY_VERSION);
-  await page.getByLabel("Analysis as-of date").fill(AS_OF);
   await page.getByLabel("Pilot boundary").fill(BOUNDARY);
+  // EP-26 · NO CUT-OFF AND NO THRESHOLD ON THIS SCREEN. Asserted as an absence, because the guard this
+  // slice adds is precisely the removal of a lever: if either input came back, a requester could define
+  // the measurement again and every server-side assertion would still pass.
+  check("the upload screen offers NO way to type a cut-off or a stall threshold",
+    (await page.getByLabel("Analysis as-of date").count()) === 0 &&
+    (await page.getByLabel("Stall threshold N (days)").count()) === 0);
+  // The boundary must be set before the menu of governed definitions can load for it.
   await page.getByLabel("Dataset label").fill(JOURNEY_DATASET_LABEL);
   await page.getByLabel("Contract system of record").fill("synthetic-crm");
   await page.getByLabel("Billing system of record").fill("synthetic-billing");
@@ -318,6 +426,7 @@ try {
   await page.getByLabel("Extracted at (UTC)").fill("2026-03-01T00:00:00.000Z");
   await page.getByLabel("Coverage start").fill("2026-01-01");
   await page.getByLabel("Coverage end").fill("2026-03-31");
+  await selectGovernedTerms();
 
   // The server's own receipt for this submission, kept for the repeat section below: its
   // `idempotencyKey` is what the repeat has to collide with. Captured here rather than reconstructed,
@@ -509,7 +618,6 @@ try {
     await page.getByRole("button", { name: "Revenue Opportunity Assessment" }).click();
     await page.getByLabel("Admission policy id").fill(POLICY_ID);
     await page.getByLabel("Admission policy version").fill(POLICY_VERSION);
-    await page.getByLabel("Analysis as-of date").fill(AS_OF);
     await page.getByLabel("Pilot boundary").fill(BOUNDARY);
     await page.getByLabel("Dataset label").fill(datasetLabel);
     await page.getByLabel("Contract system of record").fill("synthetic-crm");
@@ -520,6 +628,7 @@ try {
     await page.getByLabel("Extracted at (UTC)").fill("2026-03-01T00:00:00.000Z");
     await page.getByLabel("Coverage start").fill("2026-01-01");
     await page.getByLabel("Coverage end").fill("2026-03-31");
+    await selectGovernedTerms();
   }
 
   for (const scenario of RISK_SCENARIOS) {
@@ -736,8 +845,15 @@ try {
   // Neither is a tenant-isolation claim and neither may be read as one: dev-header actors receive
   // boundaryIds ["*"], so nothing here tests access control. This is key derivation, nothing more.
   const submitOnce = async (label, boundaryId) => {
+    // EP-26 · A different boundary needs its own activated definition before it can measure anything —
+    // exactly as it needs its own admission bar. Governed first, through the screen.
+    if (boundaryId !== BOUNDARY) await governTermsFor(boundaryId);
     await openIntakeScreen(label);
-    if (boundaryId !== BOUNDARY) await page.getByLabel("Pilot boundary").fill(boundaryId);
+    if (boundaryId !== BOUNDARY) {
+      await page.getByLabel("Pilot boundary").fill(boundaryId);
+      // Editing the boundary reloads the menu and clears the selection by design, so cite it again.
+      await selectGovernedTerms();
+    }
     const reply = page.waitForResponse(
       (r) => r.url().includes("/api/pilot/datasets") && r.request().method() === "POST",
       { timeout: 30_000 },
@@ -784,7 +900,7 @@ try {
     await page.getByLabel("Policy id").fill(POLICY_ID);
     await page.getByLabel("Policy version").fill(POLICY_VERSION);
     await page.getByLabel("Rationale (required on every act)").fill("journey freeze/resume");
-    await page.getByRole("button", { name: "Read lifecycle" }).click();
+    await page.getByRole("button", { name: "Read lifecycle", exact: true }).click();
   };
 
   // Scoped to the lifecycle panel, NOT the page: `FROZEN` is both a state and a transition, so it
@@ -802,7 +918,7 @@ try {
   haltIf(!wasActive, "the bar was not ACTIVE before the freeze, so a later FROZEN reading would not " +
     "show that freezing changed anything");
 
-  await page.getByRole("button", { name: "Freeze" }).click();
+  await page.getByRole("button", { name: "Freeze", exact: true }).click();
   await lifecycle().getByText("FROZEN", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
   // The state, the verdict and the guidance together. The verdict is the one that matters: a pill
   // reading FROZEN beside "may judge a dataset" would be a screen contradicting itself.
@@ -870,7 +986,7 @@ try {
   // The button is labelled "Resume"; the TRANSITION it records is `UNFROZEN`. Asserting the screen's
   // word and the server's word separately is deliberate — they are allowed to differ, and the audit
   // check below is against the server's.
-  await page.getByRole("button", { name: "Resume" }).click();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
   await lifecycle().getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
   check("resuming a frozen bar restores ACTIVE and its authority to judge",
     (await lifecycle().getByText("ACTIVE", { exact: true }).isVisible()) &&

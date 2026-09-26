@@ -179,13 +179,36 @@ export async function runPilotAssessmentRehearsal(
     );
     if (activated.state !== "ACTIVE") throw new Error("activation did not put the policy in force");
 
-    // 3 · Submit the synthetic dataset and have it judged against that bar.
+    // 3 · EP-26 · The ANALYSIS TERMS go through the same two identities. The cut-off and the stall
+    // threshold decide what the assessment measures, so they are proposed by the customer side and
+    // activated by governance exactly as the fitness bar is — and the rehearsal shows that, rather
+    // than sending two numbers in the submission body.
+    const termsId = `SYNTHETIC-terms-${runId.slice(0, 8)}`;
+    const proposedTerms = await call<{ termsRef: string; state: string }>(
+      origin, "POST", "/api/pilot/analysis-terms", OPERATOR,
+      {
+        boundaryId,
+        rationale: "synthetic rehearsal — an invented cut-off, not a benchmark",
+        terms: { termsId, termsVersion: "1.0.0", asOf: "2026-04-15", stallThresholdDays: 30 },
+      },
+    );
+    if (proposedTerms.state !== "DRAFT") throw new Error("proposed analysis terms must start as a DRAFT");
+
+    const activatedTerms = await call<{ state: string }>(
+      origin, "POST", "/api/pilot/analysis-terms/activate", STEWARD,
+      { boundaryId, termsId, termsVersion: "1.0.0", rationale: "synthetic rehearsal activation" },
+    );
+    if (activatedTerms.state !== "ACTIVE") throw new Error("activation did not put the analysis terms in force");
+
+    // 4 · Submit the synthetic dataset, judged against that bar and read under those terms.
     const datasetRequest = {
       boundaryId,
       datasetId: `SYNTHETIC-ds-${runId.slice(0, 8)}`,
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: syntheticPilotCsv(40),
-      policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+      policy: { currency: "USD" },
+      analysisTermsId: termsId,
+      analysisTermsVersion: "1.0.0",
       provenance: SYNTHETIC_PROVENANCE,
     };
     const submitted = await call<{

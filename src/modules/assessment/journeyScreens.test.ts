@@ -81,8 +81,22 @@ describe("EP-19 · the governance screen", () => {
     expect(html).toContain("The system has no default for any of them");
     expect(html).toMatch(/absence is never read as no limit/i);
     // Every numeric box empty, and all eight of them present.
-    expect(html).toMatch(/value=""[^>]*type="number"|type="number"[^>]*value=""/);
-    expect((html.match(/type="number"/g) ?? []).length).toBe(8);
+    //
+    // EP-26 · Scoped to the ADMISSION panel. The screen now carries a second governed object whose own
+    // stall-threshold box is also a number input, so an unscoped count would rise to nine and the
+    // assertion would stop meaning "the bar has all eight and none is seeded".
+    const barPanel = html.slice(html.indexOf("Every threshold must be stated deliberately"));
+    expect(barPanel).toMatch(/value=""[^>]*type="number"|type="number"[^>]*value=""/);
+    expect((barPanel.match(/type="number"/g) ?? []).length).toBe(8);
+    // And the definition's threshold is unseeded for the same reason the bar's are: a default cut-off
+    // or a default N is a decision nobody made.
+    const termsPanel = html.slice(
+      html.indexOf("Analysis terms — what the assessment measures"),
+      html.indexOf("Every threshold must be stated deliberately"),
+    );
+    expect(termsPanel).toContain("Stall threshold N (days)");
+    expect((termsPanel.match(/type="number"[^>]*value=""|value=""[^>]*type="number"/g) ?? []).length).toBe(1);
+    expect(termsPanel).toMatch(/type="date"[^>]*value=""|value=""[^>]*type="date"/);
     expect(html).toMatch(/disabled=""[^>]*>Propose as/);
   });
 

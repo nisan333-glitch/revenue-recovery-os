@@ -1,10 +1,14 @@
 // Revenue Opportunity Assessment — thin-slice container. Session-only React state (nothing is
 // persisted; refreshing clears it). It does NOT use the Recovery/Proof state — it is fully isolated.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AssessmentResult, ColumnMapping } from "../../assessment/types";
 import type { DateLocale } from "../../assessment/dateNormalize";
 import type { AmountFormat } from "../../assessment/amountNormalize";
 import { runAssessment } from "./runAssessment";
+import {
+  listGovernedAnalysisTerms,
+  type GovernedAnalysisTermsRow,
+} from "../../data/pilotAnalysisTermsClient";
 import { planColumnMapping, type MappingPlan } from "../../assessment/assess";
 import { UploadScreen } from "./UploadScreen";
 import { ColumnMappingScreen } from "./ColumnMappingScreen";
@@ -45,12 +49,19 @@ type Step = "upload" | "mapping" | "quality" | "readiness" | "observed" | "execu
 
 export function Assessment() {
   const [csvText, setCsvText] = useState<string | null>(null);
-  const [n, setN] = useState(30);
-  const [asOf, setAsOf] = useState("2026-03-01");
+  // EP-26 · N and the cut-off are no longer state this screen owns. They are read from the GOVERNED
+  // analysis-terms version the operator cites, so the values below are derived, never typed. The
+  // defaults that used to live here — N = 30, asOf = 2026-03-01 — were a definition nobody decided.
+  const [governedTerms, setGovernedTerms] = useState<readonly GovernedAnalysisTermsRow[]>([]);
+  const [analysisTermsRef, setAnalysisTermsRef] = useState("");
+  const [termsError, setTermsError] = useState<string | null>(null);
   const [currency, setCurrency] = useState("USD");
   const [locale, setLocale] = useState<DateLocale | "">("");
   const [amountFormat, setAmountFormat] = useState<AmountFormat | "">("");
-  const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  // EP-26 · Kept as a write-only record of which mapping produced the current preview. Its one
+  // reader was the removed "re-run with N" path; the mapping a governed execution used comes from
+  // the server's binding, not from here.
+  const [, setMapping] = useState<ColumnMapping | null>(null);
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
   const [plan, setPlan] = useState<MappingPlan | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
@@ -71,6 +82,44 @@ export function Assessment() {
   const [execution, setExecution] = useState<AssessmentExecutionView | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
+
+  const selectedTerms = governedTerms.find((t) => t.termsRef === analysisTermsRef) ?? null;
+  // Fail-closed for the LOCAL PREVIEW too: with no governed definition selected there is no cut-off to
+  // preview against, so the preview uses values that cannot be mistaken for a reading — and the server
+  // refuses the submission regardless.
+  const n = selectedTerms?.stallThresholdDays ?? 0;
+  const asOf = selectedTerms?.asOf ?? "";
+
+  // The MENU of definitions governance has approved for this boundary. Reading it is not choosing:
+  // every row was activated by someone else, and a row that is not ACTIVE arrives marked as such.
+  useEffect(() => {
+    const boundary = boundaryId.trim();
+    if (!boundary) {
+      setGovernedTerms([]);
+      setAnalysisTermsRef("");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listGovernedAnalysisTerms(boundary, operatorActorFor(null));
+        if (cancelled) return;
+        setTermsError(null);
+        setGovernedTerms(list.terms);
+        // Never auto-select: a pre-filled definition is a definition chosen by the code, and the
+        // operator must be seen to cite one. An empty list leaves the selection empty and blocks.
+        setAnalysisTermsRef((current) => (list.terms.some((t) => t.termsRef === current) ? current : ""));
+      } catch (e) {
+        if (cancelled) return;
+        setGovernedTerms([]);
+        setAnalysisTermsRef("");
+        setTermsError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [boundaryId]);
 
   async function run(text: string, useN: number, useMapping: ColumnMapping | undefined): Promise<void> {
     setError(null);
@@ -121,11 +170,11 @@ export function Assessment() {
           datasetId,
           csvText: text,
           provenance,
-          stallThresholdDays: n,
-          asOf,
           currency,
           locale: locale || undefined,
           amountFormat: amountFormat || undefined,
+          analysisTermsId: selectedTerms?.termsId,
+          analysisTermsVersion: selectedTerms?.termsVersion,
         },
         actor,
       );
@@ -173,6 +222,10 @@ export function Assessment() {
           currency,
           locale: locale || undefined,
           amountFormat: amountFormat || undefined,
+          // EP-26 · Which governed definition the SERVER reads under. The two values above never leave
+          // the browser: they drive the local preview only, and they came from this same definition.
+          analysisTermsId: selectedTerms?.termsId,
+          analysisTermsVersion: selectedTerms?.termsVersion,
           // Without this the server has no bar to judge against, returns NOT_ASSESSABLE, and the gate
           // blocks. Before EP-19 the UI never sent it, so the flow could not leave this screen at all.
           admissionPolicyId: admissionPolicyId.trim() || undefined,
@@ -214,19 +267,16 @@ export function Assessment() {
     void run(pendingCsv, n, { ...plan.mapping, ...choices });
   }
 
-  async function changeN(newN: number): Promise<void> {
-    setN(newN);
-    if (csvText) await run(csvText, newN, mapping ?? undefined); // reuse the same mapping; failures surface via `error`
-  }
-
   return (
     <div>
       {step === "upload" && (
         <UploadScreen
           n={n}
-          setN={setN}
+          governedTerms={governedTerms}
+          analysisTermsRef={analysisTermsRef}
+          setAnalysisTermsRef={setAnalysisTermsRef}
+          termsError={termsError}
           asOf={asOf}
-          setAsOf={setAsOf}
           currency={currency}
           setCurrency={setCurrency}
           locale={locale}
@@ -267,7 +317,6 @@ export function Assessment() {
           result={result}
           n={n}
           error={error}
-          onChangeN={(newN) => void changeN(newN)}
           onBack={() => setStep("upload")}
           onNext={() => setStep("readiness")}
         />

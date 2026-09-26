@@ -10,6 +10,7 @@ import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
 import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -42,7 +43,10 @@ function datasetBody(over: Record<string, unknown> = {}) {
     datasetId: `ds-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(40),
-    policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+    policy: { currency: "USD" },
+      // EP-26 · The cut-off and the stall threshold are governed, not request fields. The suite
+      // activates them for this boundary through the two-identity lifecycle before submitting.
+      ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };
@@ -70,8 +74,11 @@ describe.skipIf(!HAS_DB)("EP-15 · admission policy governance", () => {
       payload: { boundaryId, policyId, policyVersion, rationale: "reviewed" } as object,
     });
 
-  const submit = (payload: unknown, headers = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  const submit = async (payload: unknown, headers = OPERATOR) => {
+      const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+      if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  };
 
   /** Propose + activate, the normal two-actor path. */
   async function activated(boundaryId: string, over: Record<string, unknown> = {}) {

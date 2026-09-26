@@ -220,13 +220,17 @@ export const pilotDatasetSchema = {
       amountFormat: { type: "string", enum: ["US", "EU"] },
       admissionPolicyId: { type: "string", minLength: 1, maxLength: 256 },
       admissionPolicyVersion: { type: "string", minLength: 1, maxLength: 32 },
+      // EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION defines this reading. The transport refuses the
+      // cut-off and the stall threshold outright (`additionalProperties: false` on `policy`), so there
+      // is no wire format in which a requester can state what the assessment measures. The service
+      // refuses an absent reference too — this is the outer of two fail-closed gates, not the only one.
+      analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
       policy: {
         type: "object",
         additionalProperties: false,
-        required: ["stallThresholdDays", "asOf", "currency"],
+        required: ["currency"],
         properties: {
-          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
-          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
           currency: { type: "string", minLength: 3, maxLength: 3 },
         },
       },
@@ -292,13 +296,17 @@ export const schedulePilotAssessmentSchema = {
       locale: { type: "string", enum: ["MDY", "DMY"] },
       amountFormat: { type: "string", enum: ["US", "EU"] },
       recoveryCaseId: { type: "string", minLength: 1, maxLength: 256 },
+      // EP-26 · WHICH GOVERNED ANALYSIS-TERMS VERSION defines this reading. The transport refuses the
+      // cut-off and the stall threshold outright (`additionalProperties: false` on `policy`), so there
+      // is no wire format in which a requester can state what the assessment measures. The service
+      // refuses an absent reference too — this is the outer of two fail-closed gates, not the only one.
+      analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
       policy: {
         type: "object",
         additionalProperties: false,
-        required: ["stallThresholdDays", "asOf", "currency"],
+        required: ["currency"],
         properties: {
-          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
-          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
           currency: { type: "string", minLength: 3, maxLength: 3 },
         },
       },
@@ -436,6 +444,79 @@ export const policyTransitionSchema = {
       policyVersion: { type: "string", minLength: 1, maxLength: 32 },
       rationale: { type: "string", minLength: 1, maxLength: 2000 },
     },
+  },
+} as const;
+
+/**
+ * EP-26 · Propose an analysis-terms version.
+ *
+ * `rationale` is required for the same reason it is on an admission policy: governance is asked to put
+ * a definition in force on the strength of its stated reasoning, and a cut-off with no reason given
+ * cannot be reviewed. There is no `calculationMethodVersion` here — it is a build constant, not an
+ * operator choice, so letting a request state it would invite a definition blessed for an
+ * implementation that never ran it.
+ */
+export const analysisTermsSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "terms", "rationale"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      // Not merely non-empty: `minLength` alone accepts "   ", which is not a stated reason. The DB
+      // CHECK would refuse it either way — this refuses it at the edge, with a 400 instead of a 500.
+      rationale: { type: "string", minLength: 1, maxLength: 2000, pattern: "\\S" },
+      terms: {
+        type: "object",
+        additionalProperties: false,
+        required: ["termsId", "termsVersion", "asOf", "stallThresholdDays"],
+        properties: {
+          termsId: { type: "string", minLength: 1, maxLength: 256 },
+          termsVersion: { type: "string", minLength: 1, maxLength: 32 },
+          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
+        },
+      },
+    },
+  },
+} as const;
+
+/** EP-26 · Activate, freeze, resume or retire one analysis-terms version. */
+export const analysisTermsTransitionSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "termsId", "termsVersion", "rationale"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      termsId: { type: "string", minLength: 1, maxLength: 256 },
+      termsVersion: { type: "string", minLength: 1, maxLength: 32 },
+      rationale: { type: "string", minLength: 1, maxLength: 2000, pattern: "\\S" },
+    },
+  },
+} as const;
+
+/** EP-26 · Governed read of one analysis-terms version's lifecycle. */
+export const analysisTermsGovernanceQuerySchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "termsId", "termsVersion"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      termsId: { type: "string", minLength: 1, maxLength: 256 },
+      termsVersion: { type: "string", minLength: 1, maxLength: 32 },
+    },
+  },
+} as const;
+
+/** EP-26 · The definitions a boundary may cite, with their values and their lifecycle state. */
+export const analysisTermsListQuerySchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId"],
+    properties: { boundaryId: { type: "string", minLength: 1, maxLength: 256 } },
   },
 } as const;
 

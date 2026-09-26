@@ -70,7 +70,7 @@ describe("EP-19 · an unreachable server is an error, never a result", () => {
       ["schedule", schedulePilotAssessment(
         {
           boundaryId: "b", datasetId: "d", csvText: "x", provenance: SYNTHETIC_PROVENANCE,
-          stallThresholdDays: 30, asOf: "2026-03-01", currency: "USD",
+          currency: "USD", analysisTermsId: "terms-1", analysisTermsVersion: "1.0.0",
         },
         ACTOR,
       )],

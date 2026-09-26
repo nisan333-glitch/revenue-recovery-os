@@ -118,8 +118,12 @@ outcome was known* — which they currently escape:
 > new cut-off or stall definition and obtain a fresh assessment on their own authority.
 
 **Order of work, binding:** the governance mechanism for analysis terms comes **first**; the identity
-derivation changes only after it exists. Until then the derivation is unchanged, the contract stays at
-its current major, and no migration is written. Full treatment and the field-by-field classification are
+derivation changes only after it exists. **That mechanism was built on 2026-09-26** — `asOf` and
+`stallThresholdDays` are now a registered, versioned definition, proposed by one identity and activated by
+another, and they are no longer request parameters at all
+([`docs/ANALYSIS_TERMS_GOVERNANCE.md`](docs/ANALYSIS_TERMS_GOVERNANCE.md)). The derivation is still
+unchanged, the contract stays at its current major, and no migration is written: the remaining
+prerequisite is the §10 two-major compatibility decision. Full treatment and the field-by-field classification are
 in [`docs/ASSESSMENT_IDENTITY_V1.md`](docs/ASSESSMENT_IDENTITY_V1.md). This is a pilot-data trust rule
 and does not turn any observed amount into a proven figure.
 
