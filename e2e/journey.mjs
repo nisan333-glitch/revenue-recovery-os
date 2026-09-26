@@ -89,9 +89,16 @@ function haltIf(unreachable, reason) {
 // `npm run test:journey` writes these first, via `scripts/write-journey-fixture.ts`, so the bytes
 // come from the same generator the server matrix uses rather than a copy pasted in here.
 const CSV_PATH = join(ROOT, "e2e/fixtures/journey.synthetic.csv");
-if (!existsSync(CSV_PATH)) {
-  console.error("missing journey fixture — run `npm run fixture:journey` first (test:journey does).");
-  process.exit(2);
+// A SECOND dataset for the frozen-policy section, from the same generator at a different size.
+// `deriveIdempotencyKey(boundary, sha256(csvText))` keys a submission by its exact bytes, and the
+// journey has already submitted CSV_PATH successfully for this boundary — re-uploading it is refused
+// as a duplicate submission, a different rule, which would surface instead of the governance refusal.
+const FROZEN_CSV_PATH = join(ROOT, "e2e/fixtures/journey.frozen.synthetic.csv");
+for (const path of [CSV_PATH, FROZEN_CSV_PATH]) {
+  if (!existsSync(path)) {
+    console.error("missing journey fixture — run `npm run fixture:journey` first (test:journey does).");
+    process.exit(2);
+  }
 }
 const { policy: SCENARIO_POLICY, scenarios: RISK_SCENARIOS } = JSON.parse(
   readFileSync(join(ROOT, "e2e/fixtures/journey.fixture.json"), "utf8"),
@@ -470,14 +477,22 @@ try {
     }
   }
 
-  for (const scenario of RISK_SCENARIOS) {
+  /**
+   * A fresh assessment screen with the provenance declaration filled in.
+   *
+   * Extracted because the frozen-policy section below needs the identical thirteen fields: two copies
+   * would drift, and a drifted copy is how a section ends up asserting against a form the product no
+   * longer has. `page.goto` first — navigating away unmounts `Assessment` (App.tsx renders screens
+   * conditionally), so every upload genuinely starts from an empty screen.
+   */
+  async function openIntakeScreen(datasetLabel) {
     await page.goto(UI_BASE, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "Revenue Opportunity Assessment" }).click();
     await page.getByLabel("Admission policy id").fill(POLICY_ID);
     await page.getByLabel("Admission policy version").fill(POLICY_VERSION);
     await page.getByLabel("Analysis as-of date").fill(AS_OF);
     await page.getByLabel("Pilot boundary").fill(BOUNDARY);
-    await page.getByLabel("Dataset label").fill(`matrix-${scenario.id}-${randomUUID().slice(0, 8)}`);
+    await page.getByLabel("Dataset label").fill(datasetLabel);
     await page.getByLabel("Contract system of record").fill("synthetic-crm");
     await page.getByLabel("Billing system of record").fill("synthetic-billing");
     await page.getByLabel("Product/telemetry source").fill("synthetic-telemetry");
@@ -486,6 +501,10 @@ try {
     await page.getByLabel("Extracted at (UTC)").fill("2026-03-01T00:00:00.000Z");
     await page.getByLabel("Coverage start").fill("2026-01-01");
     await page.getByLabel("Coverage end").fill("2026-03-31");
+  }
+
+  for (const scenario of RISK_SCENARIOS) {
+    await openIntakeScreen(`matrix-${scenario.id}-${randomUUID().slice(0, 8)}`);
 
     const serverReply = scenario.expected.usableForAssessment
       ? page.waitForResponse(
@@ -573,7 +592,126 @@ try {
     (await page.locator("main").getByText("server-verified").count()) === 0);
   await page.unroute("**/api/pilot/datasets");
 
-  // ── 10 · Egress and page health ──────────────────────────────────────────────────────────────────
+  // ── 10 · A frozen bar stops judging, and freezing is not decorative ─────────────────────────────
+  //
+  // WHAT IS PROVABLE HERE, AND WHAT IS NOT. The server enforces the frozen state in TWO independent
+  // places: at intake (`pilotIntakeService.ts`, which refuses admission) and again at schedule time
+  // (`pilotAssessmentService.ts`, `NH-AX-1007 policy_not_active`, re-checked on a dataset admitted
+  // while the bar was still ACTIVE). Only the first is reachable from this UI. `App.tsx` renders
+  // screens conditionally, so going to the governance screen UNMOUNTS `Assessment` and discards the
+  // admitted dataset; on return the same file is refused earlier, at intake. A browser test aimed at
+  // the schedule-time rule would therefore observe the intake refusal and credit it to the wrong
+  // rule — so it is not attempted. That rule stays covered at service level.
+  //
+  // This runs last of the data sections deliberately: everything above needs the bar ACTIVE, and
+  // section 9's refusal has to stay a TRANSPORT refusal rather than a governance one.
+  const readLifecycle = async () => {
+    await page.goto(UI_BASE, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Pilot Policy Governance" }).click();
+    await page.getByLabel("Boundary (tenant)").fill(BOUNDARY);
+    await page.getByLabel("Policy id").fill(POLICY_ID);
+    await page.getByLabel("Policy version").fill(POLICY_VERSION);
+    await page.getByLabel("Rationale (required on every act)").fill("journey freeze/resume");
+    await page.getByRole("button", { name: "Read lifecycle" }).click();
+  };
+
+  // Scoped to the lifecycle panel, NOT the page: `FROZEN` is both a state and a transition, so it
+  // appears in the state pill AND in the audit trail below. An unscoped `getByText("FROZEN")` resolves
+  // two elements and Playwright's strict mode throws — and a `.first()` would be a guess about which.
+  const lifecycle = () => page.getByText("3 · Lifecycle", { exact: true }).locator("..");
+
+  await readLifecycle();
+  // PRECONDITION. Every check below describes a transition away from ACTIVE, so if the lifecycle read
+  // did not land the section would be asserting against a blank screen. Nothing here may pass on one.
+  await lifecycle().getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const wasActive = (await lifecycle().getByText("ACTIVE", { exact: true }).isVisible()) &&
+    (await lifecycle().getByText("may judge a dataset").isVisible());
+  check("the bar this journey has been judging against is ACTIVE before it is frozen", wasActive);
+  haltIf(!wasActive, "the bar was not ACTIVE before the freeze, so a later FROZEN reading would not " +
+    "show that freezing changed anything");
+
+  await page.getByRole("button", { name: "Freeze" }).click();
+  await lifecycle().getByText("FROZEN", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  // The state, the verdict and the guidance together. The verdict is the one that matters: a pill
+  // reading FROZEN beside "may judge a dataset" would be a screen contradicting itself.
+  check("a frozen bar reads FROZEN and judges nothing",
+    (await lifecycle().getByText("FROZEN", { exact: true }).isVisible()) &&
+    (await lifecycle().getByText("judges nothing").isVisible()) &&
+    !(await lifecycle().getByText("may judge a dataset").count()) &&
+    (await page.getByText("Paused by pilot governance. It judges nothing until it is resumed.").isVisible()));
+
+  // Scoped to the audit panel, as sections 1-2 are — the server's append-only record, not the buttons.
+  const frozenAudit = ((await page.getByText("Who decided what", { exact: false }).locator("..")
+    .innerText().catch(() => "")) || "").replace(/\s+/g, " ");
+  check("the audit trail records the FROZEN transition against the steward who made it",
+    frozenAudit.includes("FROZEN") && frozenAudit.includes(bareId(stewardName)),
+    frozenAudit.slice(-160));
+
+  // Everything below needs the bar to be FROZEN. If the freeze was refused the bar is still ACTIVE, so
+  // the dataset is ADMITTED, the flow leaves Upload on its own and the report panel unmounts — the
+  // "frozen refusal" checks would then be waiting for a panel that cannot appear. NC-21 lands exactly
+  // there, so the run stops here with the cause already recorded above rather than spending a timeout.
+  const isFrozen = await lifecycle().getByText("FROZEN", { exact: true }).isVisible();
+  haltIf(!isFrozen, "the bar is not FROZEN, so there is no frozen state for an intake refusal to come " +
+    "from and an admitted dataset would leave the upload screen instead");
+
+  // THE OUTCOME CHECK. A state pill is a claim about governance; this is whether governance bites.
+  await openIntakeScreen(`frozen-${randomUUID().slice(0, 8)}`);
+  const frozenReply = page.waitForResponse(
+    (r) => r.url().includes("/api/pilot/datasets") && r.request().method() === "POST",
+    { timeout: 30_000 },
+  );
+  await page.setInputFiles('input[type="file"]', FROZEN_CSV_PATH);
+  // Degrading, not throwing. If the frozen state stops being enforced the dataset is ADMITTED, the flow
+  // leaves Upload on its own and this panel unmounts — so a bare wait would abort the run and report
+  // `65/65 recorded checks passed` with the refusal check never printed. NC-22 lands exactly there, and
+  // the failure has to be attributable to the named check below, not to a timeout.
+  await page.getByText("Data contract validation", { exact: true })
+    .waitFor({ timeout: 30_000 }).catch(() => undefined);
+  const frozenBody = await frozenReply.then((r) => (r.ok() ? r.json() : null)).catch(() => null);
+  const frozenText = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+  // Two checks, not one, so the controls are distinguishable. Removing the intake gate (NC-22) admits
+  // the dataset and unmounts the panel, failing BOTH. Breaking only the state label (NC-23) leaves the
+  // refusal intact and fails only the second — which is the difference between "governance stopped it"
+  // and "the operator can see what stopped it".
+  //
+  // `server-verified` matters: this is the server refusing admission, NOT the local preflight path.
+  // Reading a preflight refusal as a governance refusal is the mistake `cc9029e` made in reverse.
+  check("a frozen bar refuses the dataset at intake and keeps it on the upload screen",
+    frozenText.includes("server-verified") &&
+    frozenText.includes("the policy is frozen by pilot governance and may not judge new datasets") &&
+    (await page.getByRole("button", { name: "Pilot readiness →" }).count()) === 0);
+  check("the refusal names WHICH lifecycle state stopped it, not merely that something did",
+    frozenText.includes("frozen by governance"));
+  // The server's payload, not the screen's wording — the two must agree about which state refused.
+  check("the server reported the frozen state for that refusal",
+    frozenBody?.admissionPolicyState === "FROZEN",
+    `admissionPolicyState=${String(frozenBody?.admissionPolicyState)}`);
+
+  // Resuming. ONLY the state round-trip is asserted: `policyGovernanceState` takes the LATEST
+  // activation (ACTIVATED or UNFROZEN) as `activatedAt`, so after a resume the anti-tuning rule
+  // (`activatedAt > firstSeenAt`) correctly refuses any dataset first seen before it. "It judges
+  // again" is therefore FALSE for every dataset this run has already submitted, and no check here
+  // claims otherwise — that is a pre-registration rule, not a frozen-policy one.
+  await readLifecycle();
+  await lifecycle().getByText("FROZEN", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  // The button is labelled "Resume"; the TRANSITION it records is `UNFROZEN`. Asserting the screen's
+  // word and the server's word separately is deliberate — they are allowed to differ, and the audit
+  // check below is against the server's.
+  await page.getByRole("button", { name: "Resume" }).click();
+  await lifecycle().getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  check("resuming a frozen bar restores ACTIVE and its authority to judge",
+    (await lifecycle().getByText("ACTIVE", { exact: true }).isVisible()) &&
+    (await lifecycle().getByText("may judge a dataset").isVisible()) &&
+    !(await lifecycle().getByText("judges nothing").count()));
+  const resumedAudit = ((await page.getByText("Who decided what", { exact: false }).locator("..")
+    .innerText().catch(() => "")) || "").replace(/\s+/g, " ");
+  check("the audit trail records the resume as its own act, leaving the freeze in place",
+    resumedAudit.includes("UNFROZEN") && resumedAudit.includes("FROZEN") &&
+    resumedAudit.includes(bareId(stewardName)),
+    resumedAudit.slice(-160));
+
+  // ── 11 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
   check("the page made no request outside its own origin", external.length === 0, external.slice(0, 3).join(", "));
   check("no uncaught page error occurred", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));

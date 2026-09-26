@@ -27,9 +27,9 @@ Three details are worth knowing before changing any of it:
 
 This covers the nine CSV scenarios: valid, all rejected, one valid row, duplicate collisions,
 narrow coverage, local timestamp, undated refund, overpayment and point in time partial payments.
-Repeats, concurrent claims, frozen policy, halted case and retention are covered by the PostgreSQL
-server suites, **not** by a browser scenario in this change. Their browser behaviour is still
-outstanding and must not be described as covered by this matrix.
+Repeats, concurrent claims, halted case and retention are covered by the PostgreSQL server suites,
+**not** by a browser scenario in this change. Their browser behaviour is still outstanding and must not
+be described as covered by this matrix. Frozen policy is covered in part — see below for which part.
 
 ## Roles — the wiring is covered, the refusal is not
 
@@ -55,6 +55,33 @@ NC-16 → NC-18 rewire the lifecycle read, the activation and the intake submiss
 `AuditRead`, `ActivatePilotPolicy` and `SubmitPilotDataset` respectively; each makes the journey fail on
 named checks. **Not proven:** an unauthorized user being refused *in the UI*. No role-forbidden act is
 reachable from the screens, so observing that would need an act-as affordance this change does not add.
+
+## Frozen policy — the intake refusal is proven, the schedule-time re-check is not
+
+A freeze must not be decorative, and the server makes sure of it in **two independent places**. Only
+one of them can be reached from this UI, and the difference matters enough to state plainly:
+
+* **Intake** (`pilotIntakeService.ts`) refuses admission while the bar is not ACTIVE. **Proven in the
+  browser:** a steward freezes the bar this journey has been judging against, then a fresh synthetic
+  dataset is uploaded and the screen shows the server's own sentence — *the policy is frozen by pilot
+  governance and may not judge new datasets* — beside the state `frozen by governance`, marked
+  `server-verified`, with no next step offered. The server's payload is checked too
+  (`admissionPolicyState === "FROZEN"`), so the screen's wording and the server's answer must agree.
+* **Schedule** (`pilotAssessmentService.ts`, `NH-AX-1007`) re-checks governance *now*, on a dataset
+  admitted while the bar was still ACTIVE. **Not provable here.** `App.tsx` renders screens
+  conditionally, so going to the governance screen to freeze **unmounts `Assessment`** and discards the
+  admitted dataset; on return the same file is refused earlier, at intake. A test aimed at the
+  schedule-time rule would observe the intake refusal and credit it to the wrong rule. It keeps its
+  service-level coverage instead.
+
+The freeze itself is read out of the **server's append-only audit trail**, not off the buttons — the
+`FROZEN` transition attributed to the steward who made it — exactly as the two governance halves are.
+
+**Resuming is asserted as a state round-trip only:** back to `ACTIVE`, `may judge a dataset` restored,
+`UNFROZEN` recorded beside the earlier `FROZEN`. It is deliberately **not** claimed that a previously
+submitted dataset would now be judged: a resume re-blesses the bar, so `activatedAt` moves and the
+anti-tuning rule correctly refuses anything first seen before it. The button says *Resume*; the
+transition the server records is `UNFROZEN`; both are asserted, separately.
 
 ## Tenant access — not provable in this browser path
 

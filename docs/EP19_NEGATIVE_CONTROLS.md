@@ -115,6 +115,9 @@ done. The test has to disagree with that too, so it is controlled separately.
 | NC-18 | The UI submits intake as a **`SubmitPilotDataset`** holder (`Assessment.tsx`) | `runGovernedExecution` schedules as `STEWARD` | **6** in the journey — completion, then `count=0` executions | caught |
 | NC-19 | The audit panel itself — proof that the **old** assertion was vacuous | `{false && currentGovernance && …}` on the panel's render guard | the 3 new checks (the old one still **passed**) | caught |
 | NC-20 | The halt's own safety property — `haltIf(true, …)` forced on the **green** path | proves a halt with nothing failed is itself recorded as a failure | 1 — `the harness halted with no recorded failure to justify it` | caught |
+| NC-21 | Freezing is a **steward** act (`PilotPolicyGovernance.tsx`) | `move()` sends only `FROZEN` as `proposer` | **2** + a deliberate halt — the bar stays ACTIVE, no `FROZEN` event | caught |
+| NC-22 | The intake gate on a non-ACTIVE bar (`pilotIntakeService.ts`) | `if (false && !mayEvaluate(governance.state))` | **2** — the frozen dataset is admitted and leaves Upload | caught |
+| NC-23 | The refusal names **which** state stopped it (`PolicyStatePill`) | every lifecycle state labelled `active` | **1** — only the state-naming check | caught |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -165,8 +168,8 @@ the last scenario was a refused one.
   function) were negative-controlled in EP-16, EP-17 and EP-18 — 6 controls each — and are unchanged
   by this branch. They were not re-run.
 * **The nine CSV scenarios** are exercised in the browser matrix in `EP20_BROWSER_MATRIX.md`.
-  Browser coverage of repeats, concurrent claims, frozen policy, halted case and retention remains
-  outstanding. A transport failure on upload IS covered (NC-15). Role **wiring** is covered by
+  Browser coverage of repeats, concurrent claims, halted case and retention remains
+  outstanding; frozen policy is covered in part (NC-21 → NC-23, above). A transport failure on upload IS covered (NC-15). Role **wiring** is covered by
   NC-16 → NC-18; **tenant isolation is not, and cannot be on this path** — see below.
 
 ## NC-16 → NC-19 · role wiring, and the vacuous assertion they replaced
@@ -231,6 +234,48 @@ prints `PROPOSED unassigned-operator@company (operator)` with no `ACTIVATED` eve
 role-forbidden act is reachable from the screens — governance hard-codes the steward for
 activate/freeze/retire and the operator for propose; assessment hard-codes the operator — so observing
 an in-UI refusal would require an act-as affordance, which this slice deliberately does not add.
+
+## NC-21 → NC-23 · a frozen bar, and the frozen rule the browser cannot reach
+
+The server enforces the frozen state in **two independent places**, and only one is reachable from
+this UI:
+
+| Where | Refusal | Browser-reachable |
+|---|---|---|
+| Intake (`pilotIntakeService.ts`, `!mayEvaluate(governance.state)`) | the `whyCannotEvaluate` sentence | **yes** |
+| Schedule, re-checked *now* (`pilotAssessmentService.ts`) | `NH-AX-1007 policy_not_active` | **no** |
+
+`App.tsx` renders screens conditionally, so navigating to the governance screen **unmounts
+`Assessment`** and discards the admitted dataset. To freeze you must leave; on return the same file is
+refused *earlier*, at intake. A browser test aimed at the schedule-time rule would therefore observe
+the intake refusal and credit it to the wrong rule — so it is not attempted. That rule keeps its
+service-level coverage (`pilotPolicyGovernance.test.ts`, "a RETIRED or FROZEN policy judges nothing").
+
+The three controls are deliberately **distinguishable**, because a control that fails the same way as
+its neighbour proves only that something broke:
+
+* **NC-21** — freezing sent as the operator: the bar stays ACTIVE, so the state check and the audit
+  check fail and the run halts before the intake step (which would otherwise wait 30s for a panel that
+  cannot appear, since an admitted dataset leaves Upload).
+* **NC-22** — the intake gate removed: the frozen dataset is **admitted**, failing both the refusal and
+  the state-naming check. Note what does **not** fail: `the server reported the frozen state for that
+  refusal` still passes, because the server still *reports* `FROZEN` — it has merely stopped acting on
+  it. That is precisely why the refusal is asserted separately from the state.
+* **NC-23** — only the state label broken: the refusal stands, and just the state-naming check fails.
+  The difference between "governance stopped it" and "the operator can see what stopped it".
+
+**A second fixture was needed, and the reason is itself a rule.** The frozen-intake check cannot reuse
+`journey.synthetic.csv`: `deriveIdempotencyKey(boundary, sha256(csvText))` keys a submission by its
+exact bytes, and the journey has already submitted those bytes for this boundary, so a re-upload is
+refused as a **duplicate submission** — a different rule, which would surface instead of the governance
+refusal under test. `journey.frozen.synthetic.csv` is the same generator at a different row count; no
+row is hand-written.
+
+**Resuming is asserted as a state round-trip only.** `policyGovernanceState` takes the **latest**
+activation — `ACTIVATED` *or* `UNFROZEN` — as `activatedAt`, so after a resume the anti-tuning rule
+(`activatedAt > firstSeenAt`) correctly refuses any dataset first seen before it. "It judges again" is
+**false** for every dataset this run has already submitted, and no check claims otherwise: that is a
+pre-registration rule, not a frozen-policy one.
 
 ## Tenant isolation is not browser-provable on this path
 
