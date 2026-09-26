@@ -132,6 +132,27 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     expect(rows).toHaveLength(1);
   });
 
+  it("5c · the derived identity is the table's PRIMARY KEY, so a second row cannot exist", async () => {
+    // Test 5 proves the application lookup refuses. This proves the refusal does not DEPEND on it.
+    // `idempotency_key` is the primary key of pilot_dataset_submissions, so even with the lookup gone
+    // the second INSERT raises a unique violation and no second row is written — the duplicate stays a
+    // duplicate. Demonstrated rather than reasoned: EP-24's NC-24 disabled the lookup and the repeat
+    // was still refused 409, with the generic uniqueness message in place of NH-DC-4003.
+    //
+    // It is asserted here because no HTTP route exposes submissions, so the browser journey cannot see
+    // this consequence at all. Its absence from the schema would make the browser's duplicate proof
+    // rest on one layer while claiming two.
+    const primaryKey = await prisma.$queryRaw<Array<{ conname: string; cols: string }>>`
+      SELECT c.conname::text AS conname,
+             string_agg(a.attname::text, ',' ORDER BY a.attname) AS cols
+        FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+       WHERE c.conrelid = 'pilot_dataset_submissions'::regclass AND c.contype = 'p'
+       GROUP BY c.conname`;
+    expect(primaryKey).toHaveLength(1);
+    expect(primaryKey[0]!.cols).toBe("idempotency_key");
+  });
+
   it("5b · the same bytes under a DIFFERENT tenant are not a duplicate", async () => {
     const csvText = syntheticPilotCsv(6);
     const datasetId = `shared-${uid()}`;

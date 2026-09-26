@@ -20,7 +20,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const API_PORT = Number(process.env.JOURNEY_API_PORT ?? 4000);
@@ -90,10 +90,19 @@ function haltIf(unreachable, reason) {
 // come from the same generator the server matrix uses rather than a copy pasted in here.
 const CSV_PATH = join(ROOT, "e2e/fixtures/journey.synthetic.csv");
 // A SECOND dataset for the frozen-policy section, from the same generator at a different size.
-// `deriveIdempotencyKey(boundary, sha256(csvText))` keys a submission by its exact bytes, and the
-// journey has already submitted CSV_PATH successfully for this boundary — re-uploading it is refused
-// as a duplicate submission, a different rule, which would surface instead of the governance refusal.
+// EP-23 claimed this was forced by the duplicate rule; section 10 shows it was not, because the
+// idempotency key includes the dataset LABEL and the frozen section supplies a fresh one. It stays
+// because distinct bytes leave no reading under which section 11 could be observing a duplicate.
 const FROZEN_CSV_PATH = join(ROOT, "e2e/fixtures/journey.frozen.synthetic.csv");
+// The bytes the repeats section re-uploads. It is CSV_PATH — the whole point is that they are the SAME
+// bytes the server already accepted — and it exists as its own name only so NC-26 can point it at a
+// different file and demonstrate that the section's claim really rests on exact-byte identity rather
+// than on "uploading a similar CSV". A harness that cannot be made to fail is not evidence.
+const REPEAT_CSV_PATH = CSV_PATH;
+// The dataset label the first upload uses, reused verbatim by the repeat. It has to be a known value
+// rather than a fresh uuid, because the idempotency identity is derived from
+// (boundaryId, datasetId, sha256(csvText)) — the LABEL is part of it. See section 10.
+const JOURNEY_DATASET_LABEL = `journey-${randomUUID().slice(0, 8)}`;
 for (const path of [CSV_PATH, FROZEN_CSV_PATH]) {
   if (!existsSync(path)) {
     console.error("missing journey fixture — run `npm run fixture:journey` first (test:journey does).");
@@ -300,7 +309,7 @@ try {
   await page.getByLabel("Admission policy version").fill(POLICY_VERSION);
   await page.getByLabel("Analysis as-of date").fill(AS_OF);
   await page.getByLabel("Pilot boundary").fill(BOUNDARY);
-  await page.getByLabel("Dataset label").fill(`journey-${randomUUID().slice(0, 8)}`);
+  await page.getByLabel("Dataset label").fill(JOURNEY_DATASET_LABEL);
   await page.getByLabel("Contract system of record").fill("synthetic-crm");
   await page.getByLabel("Billing system of record").fill("synthetic-billing");
   await page.getByLabel("Product/telemetry source").fill("synthetic-telemetry");
@@ -310,7 +319,17 @@ try {
   await page.getByLabel("Coverage start").fill("2026-01-01");
   await page.getByLabel("Coverage end").fill("2026-03-31");
 
+  // The server's own receipt for this submission, kept for the repeat section below: its
+  // `idempotencyKey` is what the repeat has to collide with. Captured here rather than reconstructed,
+  // because a key the harness derived itself would prove only that the harness can hash.
+  const firstIntake = page.waitForResponse(
+    (r) => r.url().includes("/api/pilot/datasets") && r.request().method() === "POST",
+    { timeout: 30_000 },
+  );
   await page.setInputFiles('input[type="file"]', CSV_PATH);
+  const firstIntakeBody = await firstIntake
+    .then((r) => (r.ok() ? r.json() : null))
+    .catch(() => null);
 
   // Admitted ⇒ the flow leaves Upload on its own. Before EP-19 it could not, because the UI never
   // sent an admission policy id and the server therefore always answered NOT_ASSESSABLE.
@@ -592,7 +611,160 @@ try {
     (await page.locator("main").getByText("server-verified").count()) === 0);
   await page.unroute("**/api/pilot/datasets");
 
-  // ── 10 · A frozen bar stops judging, and freezing is not decorative ─────────────────────────────
+  // ── 10 · Repeating the same upload creates no second governed consequence ───────────────────────
+  //
+  // THE INVARIANT, read from code rather than assumed:
+  //
+  //   datasetFingerprint = sha256(csvText)                    src/contract/validateDataset.ts:229
+  //   idempotencyKey     = sha256(… , boundaryId, datasetId, datasetFingerprint)            :538-542
+  //   prior              = findSubmission(key, boundaryId)         pilotIntakeService.ts:256
+  //   prior !== null     -> throw ConflictError("NH-DC-4003: … already submitted on <date>")  -> 409
+  //
+  // NOTE THE THIRD INPUT. The identity is (boundaryId, datasetId, fingerprint) — NOT boundary + bytes.
+  // `datasetId` is the free-text "Dataset label" the uploader types (UploadScreen.tsx:158), so the same
+  // bytes re-submitted under a different label are a DIFFERENT identity and are accepted. Checks 6a/6b
+  // below measure both halves of that scope rather than describing it. This matters beyond the test:
+  // the label is supplied by the party who benefits from the number, which is why it is reported rather
+  // than worked around here. Changing the derivation is a constitution question, not a test fix.
+  //
+  // REFUSE, not reuse: no prior report comes back, the caller gets an error. And `idempotency_key` is
+  // the PRIMARY KEY of `pilot_dataset_submissions`, so a second row cannot exist even if that lookup
+  // were deleted — the insert would raise P2002 and become a GENERIC 409. Two independent layers,
+  // which is why check 3 below pins `NH-DC-4003` specifically rather than "some 409".
+  //
+  // WHY THIS RUNS HERE. Every other reason this upload could be refused is excluded by placement:
+  // CSV_PATH was admitted in section 3, so a prior submission genuinely exists; the bar is ACTIVE and
+  // was activated (section 2) BEFORE this dataset was first seen (section 3), so the anti-tuning rule
+  // cannot fire; no freeze has happened yet (that is section 11); and the file is the valid fixture.
+  // The `NH-DC-4003` assertion then proves it rather than trusting the ordering.
+  //
+  // NOT PROVABLE HERE: that no second submission ROW was written. No route exposes submissions — the
+  // pilot routes are POST /pilot/datasets, the admission-policy and governance routes, and GET/POST
+  // /pilot/assessments — and adding one would be a product affordance, not a test. That half rests on
+  // the primary key and on `pilotIntake.test.ts` test 5. What the browser CAN show is that no second
+  // governed WORK ITEM appeared, which is checked against the server's own execution list.
+  const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const firstBytes = readFileSync(CSV_PATH);
+  const repeatBytes = readFileSync(REPEAT_CSV_PATH);
+
+  // PRECONDITION 1 — the first submission actually succeeded, evidenced by the server's own receipt.
+  // Without this the refusal below could be a 409 about a submission that never happened.
+  const firstKey = typeof firstIntakeBody?.idempotencyKey === "string" ? firstIntakeBody.idempotencyKey : "";
+  check("the first upload was accepted and the server issued an idempotency identity for it",
+    firstKey !== "" && firstIntakeBody?.boundaryId === BOUNDARY,
+    `key=${firstKey.slice(0, 16)}… boundary=${String(firstIntakeBody?.boundaryId)}`);
+
+  // PRECONDITION 2 — the bytes really are identical. The whole claim is about EXACT byte identity, so
+  // this is measured and printed: if a fixture ever changes, this fails loudly instead of the section
+  // quietly degrading into "uploading a similar CSV", which would prove nothing about idempotency.
+  check("the bytes about to be re-uploaded are byte-identical to the accepted ones",
+    sha256(firstBytes) === sha256(repeatBytes) && firstBytes.length === repeatBytes.length,
+    `${sha256(firstBytes).slice(0, 16)}… vs ${sha256(repeatBytes).slice(0, 16)}…`);
+
+  // PRECONDITION 3 — how many governed work items exist BEFORE the repeat. Read from the server, so
+  // check 5 compares two server readings rather than one reading and an assumption.
+  const countExecutions = async () => {
+    const res = await page.evaluate(async ([boundaryId, actorId]) => {
+      const r = await fetch(`/api/pilot/assessments?boundaryId=${encodeURIComponent(boundaryId)}`, {
+        headers: { "x-actor-id": actorId, "x-actor-role": "operator" },
+      });
+      return { status: r.status, body: r.ok ? await r.json() : await r.text() };
+    }, [BOUNDARY, proposerId]);
+    return { status: res.status, count: Array.isArray(res.body) ? res.body.length : -1 };
+  };
+  const before = await countExecutions();
+  check("the execution list is readable, so the count below is a real reading and not a default",
+    before.status === 200 && before.count >= 1, `status=${before.status} count=${before.count}`);
+
+  // THE REPEAT. Same bytes, same boundary AND the same dataset label — all three inputs of the
+  // identity. A fresh label here would silently make this a new submission, and the section would be
+  // testing nothing; that is exactly the mistake this run caught on its first attempt.
+  await openIntakeScreen(JOURNEY_DATASET_LABEL);
+  const repeatReply = page.waitForResponse(
+    (r) => r.url().includes("/api/pilot/datasets") && r.request().method() === "POST",
+    { timeout: 30_000 },
+  );
+  await page.setInputFiles('input[type="file"]', REPEAT_CSV_PATH);
+  const repeatRes = await repeatReply
+    .then(async (r) => ({ status: r.status(), text: await r.text() }))
+    .catch(() => ({ status: -1, text: "" }));
+
+  // 3 · From the RESPONSE, not the screen. `NH-DC-4003` is emitted by duplicate detection and by
+  // nothing else, so this simultaneously proves the repeat was recognised AND rules out every other
+  // refusal reason — frozen policy, anti-tuning, a contract rejection, an authorization refusal.
+  check("the repeat is refused 409 and the server names the duplicate-submission code",
+    repeatRes.status === 409 && repeatRes.text.includes("NH-DC-4003"),
+    `status=${repeatRes.status} body=${repeatRes.text.slice(0, 120)}`);
+
+  // 4 · THE WIRING. `conflict` is in apiClient's SAFE_TO_SHOW_VERBATIM, so the server's own sentence
+  // is what the operator reads. No server test can see whether that actually reaches the screen.
+  // Asserted with it: no next step is offered, and no stale `server-verified` verdict is left behind —
+  // a duplicate shown beside a valid-looking report for the file that was NOT accepted is the failure
+  // mode worth having (the NC-15 lesson, on a different path).
+  await page.getByText(/^Error:/).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const repeatScreen = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+  check("the screen shows the server's duplicate sentence, with no next step and no stale verdict",
+    repeatScreen.includes("NH-DC-4003") &&
+    repeatScreen.includes("already submitted") &&
+    (await page.getByRole("button", { name: "Pilot readiness →" }).count()) === 0 &&
+    (await page.locator("main").getByText("server-verified").count()) === 0,
+    repeatScreen.slice(0, 160));
+
+  // 5 · The consequence, read back from the server.
+  //
+  // An upload on its own never creates an execution — only "Run governed execution" does — so a bare
+  // count comparison here would be true whatever happened, which is corroboration dressed up as
+  // evidence. So where the guard has FAILED and the repeat was admitted, the section follows it
+  // through to the governed run, which is where a second work item would actually appear. That is what
+  // makes this check able to fail: NC-26 admits the repeat, runs it, and a second execution shows up.
+  const repeatAdmitted = (await page.getByRole("button", { name: "Pilot readiness →" }).count()) > 0;
+  if (repeatAdmitted) {
+    await page.getByRole("button", { name: "Pilot readiness →" }).click();
+    await page.getByRole("button", { name: "Observed result →" }).click();
+    await page.getByRole("button", { name: "Run governed execution" }).click();
+    await page.getByText("Completed — an observation was recorded")
+      .waitFor({ timeout: 90_000 }).catch(() => undefined);
+  }
+  const after = await countExecutions();
+  check("repeating the upload created no second governed work item",
+    after.status === 200 && after.count === before.count,
+    `before=${before.count} after=${after.count} followedThrough=${repeatAdmitted}`);
+
+  // 6 · KEY SCOPE, measured on both movable inputs. These run AFTER the count check above, because
+  // each one submits successfully and would otherwise pollute it.
+  //
+  // Neither is a tenant-isolation claim and neither may be read as one: dev-header actors receive
+  // boundaryIds ["*"], so nothing here tests access control. This is key derivation, nothing more.
+  const submitOnce = async (label, boundaryId) => {
+    await openIntakeScreen(label);
+    if (boundaryId !== BOUNDARY) await page.getByLabel("Pilot boundary").fill(boundaryId);
+    const reply = page.waitForResponse(
+      (r) => r.url().includes("/api/pilot/datasets") && r.request().method() === "POST",
+      { timeout: 30_000 },
+    );
+    await page.setInputFiles('input[type="file"]', REPEAT_CSV_PATH);
+    return reply.then(async (r) => ({ status: r.status(), text: await r.text() }))
+      .catch(() => ({ status: -1, text: "" }));
+  };
+
+  // 6a · THE FINDING. Same bytes, same boundary, a DIFFERENT label — accepted. So "a byte-identical
+  // re-upload is refused" is true only while the uploader keeps the label; renaming the dataset defeats
+  // duplicate detection. The label is operator-supplied, so this is measured and reported, not fixed
+  // here. `NH-DC-4003` asserted ABSENT: it is admitted, not refused for some other reason.
+  const relabelled = await submitOnce(`relabelled-${randomUUID().slice(0, 8)}`, BOUNDARY);
+  check("the same bytes under a different DATASET LABEL are not a repeat — the label is part of the identity",
+    relabelled.status === 200 && !relabelled.text.includes("NH-DC-4003"),
+    `status=${relabelled.status}`);
+
+  // 6b · Same bytes, same label, a different boundary — also not a repeat. Together with 6a this shows
+  // the refusal above was about this boundary having seen this file under this label, rather than the
+  // file being blacklisted anywhere it appears.
+  const elsewhere = await submitOnce(JOURNEY_DATASET_LABEL, `${BOUNDARY}-elsewhere`);
+  check("the same bytes under a different boundary are not a repeat — the identity is boundary-scoped",
+    elsewhere.status === 200 && !elsewhere.text.includes("NH-DC-4003"),
+    `status=${elsewhere.status}`);
+
+  // ── 11 · A frozen bar stops judging, and freezing is not decorative ─────────────────────────────
   //
   // WHAT IS PROVABLE HERE, AND WHAT IS NOT. The server enforces the frozen state in TWO independent
   // places: at intake (`pilotIntakeService.ts`, which refuses admission) and again at schedule time
@@ -711,7 +883,7 @@ try {
     resumedAudit.includes(bareId(stewardName)),
     resumedAudit.slice(-160));
 
-  // ── 11 · Egress and page health ──────────────────────────────────────────────────────────────────
+  // ── 12 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
   check("the page made no request outside its own origin", external.length === 0, external.slice(0, 3).join(", "));
   check("no uncaught page error occurred", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));

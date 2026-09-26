@@ -118,6 +118,9 @@ done. The test has to disagree with that too, so it is controlled separately.
 | NC-21 | Freezing is a **steward** act (`PilotPolicyGovernance.tsx`) | `move()` sends only `FROZEN` as `proposer` | **2** + a deliberate halt — the bar stays ACTIVE, no `FROZEN` event | caught |
 | NC-22 | The intake gate on a non-ACTIVE bar (`pilotIntakeService.ts`) | `if (false && !mayEvaluate(governance.state))` | **2** — the frozen dataset is admitted and leaves Upload | caught |
 | NC-23 | The refusal names **which** state stopped it (`PolicyStatePill`) | every lifecycle state labelled `active` | **1** — only the state-naming check | caught |
+| NC-24 | The application duplicate lookup (`pilotIntakeService.ts`) | `if (false && prior !== null)` | **2** — the 409 becomes the generic uniqueness message, `NH-DC-4003` gone | caught |
+| NC-25 | The 409 reaching the operator (`apiClient.ts`) | `"conflict"` removed from `SAFE_TO_SHOW_VERBATIM` | **1** — only the screen check; the server still refuses correctly | caught |
+| NC-26 | The repeat actually being a repeat (`journey.mjs`) | `REPEAT_CSV_PATH = FROZEN_CSV_PATH` | **4** — incl. a **second execution**: `before=1 after=2` | caught |
 
 Each file restored byte-identically and checked with `md5sum -c`, as every other control here does. The
 browser journey checks the same wording end to end and needs a PostgreSQL-backed run.
@@ -169,7 +172,7 @@ the last scenario was a refused one.
   by this branch. They were not re-run.
 * **The nine CSV scenarios** are exercised in the browser matrix in `EP20_BROWSER_MATRIX.md`.
   Browser coverage of repeats, concurrent claims, halted case and retention remains
-  outstanding; frozen policy is covered in part (NC-21 → NC-23, above). A transport failure on upload IS covered (NC-15). Role **wiring** is covered by
+  outstanding; frozen policy and repeats are each covered in part (NC-21 → NC-26, above). A transport failure on upload IS covered (NC-15). Role **wiring** is covered by
   NC-16 → NC-18; **tenant isolation is not, and cannot be on this path** — see below.
 
 ## NC-16 → NC-19 · role wiring, and the vacuous assertion they replaced
@@ -264,18 +267,74 @@ its neighbour proves only that something broke:
 * **NC-23** — only the state label broken: the refusal stands, and just the state-naming check fails.
   The difference between "governance stopped it" and "the operator can see what stopped it".
 
-**A second fixture was needed, and the reason is itself a rule.** The frozen-intake check cannot reuse
-`journey.synthetic.csv`: `deriveIdempotencyKey(boundary, sha256(csvText))` keys a submission by its
-exact bytes, and the journey has already submitted those bytes for this boundary, so a re-upload is
-refused as a **duplicate submission** — a different rule, which would surface instead of the governance
-refusal under test. `journey.frozen.synthetic.csv` is the same generator at a different row count; no
-row is hand-written.
+**A second fixture is used — and the reason EP-23 gave for it was wrong.** EP-23 stated that the
+frozen-intake check *could not* reuse `journey.synthetic.csv`, because `deriveIdempotencyKey` keys a
+submission by boundary and bytes. It does not: the key also includes `boundary.datasetId`, the free-text
+dataset label (`validateDataset.ts:538-542`), and the frozen section supplies a fresh label — so the same
+bytes would have been a different identity and would have been accepted. **The fixture was never forced
+by that rule.** It stays because distinct bytes leave no reading under which the frozen section could be
+observing a duplicate refusal instead of a governance one. Retracted here rather than quietly reworded;
+EP-24 §"the label is part of the identity" is where the real derivation is measured.
 
 **Resuming is asserted as a state round-trip only.** `policyGovernanceState` takes the **latest**
 activation — `ACTIVATED` *or* `UNFROZEN` — as `activatedAt`, so after a resume the anti-tuning rule
 (`activatedAt > firstSeenAt`) correctly refuses any dataset first seen before it. "It judges again" is
 **false** for every dataset this run has already submitted, and no check claims otherwise: that is a
 pre-registration rule, not a frozen-policy one.
+
+## NC-24 → NC-26 · repeating the same upload, and the label nobody had measured
+
+### The invariant, as the code actually has it
+
+```
+datasetFingerprint = sha256(csvText)                                  validateDataset.ts:229
+idempotencyKey     = sha256(…, boundaryId, datasetId, datasetFingerprint)         :538-542
+prior              = findSubmission(key, boundaryId)                pilotIntakeService.ts:256
+prior !== null     -> ConflictError("NH-DC-4003: … already submitted on <date>")  -> 409
+```
+
+**Refuse, not reuse** — no prior report comes back. And the identity has **three** inputs, not two:
+`datasetId` is the free-text "Dataset label" the uploader types (`UploadScreen.tsx:158`).
+
+**This was discovered by the test failing, not by reading carefully enough.** The first run of the
+section used a fresh label for the repeat and the server answered **200** — a new identity, not a
+duplicate. Two consequences, both recorded rather than tidied away:
+
+1. the browser section now reuses the label verbatim, so it tests the contract that exists;
+2. **the same bytes re-submitted under a different label are accepted**, create a second submission, and
+   — followed through — a second execution. The label is supplied by the party who benefits from the
+   number. Whether that is acceptable is a constitution question, not a test fix, and it is reported as
+   an open question rather than patched here. Checks 6a and 6b **measure** both movable inputs
+   (label, boundary) instead of describing them.
+
+### Two layers, and they are distinguishable
+
+`idempotency_key` is the **primary key** of `pilot_dataset_submissions`, so a second row cannot exist
+even with the application lookup gone. NC-24 proves this empirically: with `findSubmission`'s refusal
+disabled the repeat was **still refused 409** — but with the generic *"duplicate: a uniqueness
+constraint was violated"* message instead of `NH-DC-4003`. That is exactly why the browser pins the
+**contract's code** rather than "a 409", and why `pilotIntake.test.ts` test **5c** asserts the primary
+key from the live schema: the browser cannot see submission rows at all, so without 5c the duplicate
+proof would rest on one layer while claiming two.
+
+### Why the consequence check is evidence rather than corroboration
+
+An upload alone never creates an execution — only *Run governed execution* does — so comparing execution
+counts across a refused upload would be true whatever happened. So where the guard has failed and the
+repeat is admitted, the section **follows it through to the governed run**. NC-26 is what proves that
+works: `before=1 after=2 followedThrough=true`. A second governed work item really did appear.
+
+### Signatures
+
+NC-24 **2** failures (the response code and the screen) · NC-25 **1** (the screen only — the server
+refused correctly, the operator was told something else) · NC-26 **4** (byte identity, the response, the
+screen, and the second execution). Three mutations, three sets, no overlap.
+
+### What this does not claim
+
+Duplicate **submission** is not duplicate **rows inside a CSV**, not in-dataset **cycle collision**
+(NC-8/NC-9), not **concurrency**, not **anti-tuning**. Five separate rules. These are **sequential**
+repeats and say nothing whatever about concurrent ones.
 
 ## Tenant isolation is not browser-provable on this path
 

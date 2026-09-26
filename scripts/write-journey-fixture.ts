@@ -13,11 +13,15 @@ import { SCENARIO_POLICY, syntheticPilotCsv, syntheticScenarios, SYNTHETIC_PROVE
 const ROW_COUNT = 24;
 // A SECOND dataset, from the same generator at a different size, for the frozen-policy section.
 //
-// It cannot reuse `journey.synthetic.csv`. `deriveIdempotencyKey(boundary, sha256(csvText))` keys a
-// submission by its exact bytes, and the journey has already submitted those bytes successfully for
-// this boundary — a re-upload is refused as a DUPLICATE SUBMISSION, which is a different rule and
-// would surface as a conflict error rather than the governance refusal under test. Different row
-// count, same generator, so nothing here is hand-written or invented.
+// CORRECTION (EP-24). EP-23 justified this file by claiming the idempotency key is derived from
+// (boundary, sha256(csvText)), so that re-uploading `journey.synthetic.csv` would be refused as a
+// duplicate. THAT WAS WRONG: the key also includes `boundary.datasetId` — the free-text dataset label
+// (`validateDataset.ts:538-542`) — and the frozen section supplies a fresh label, so the same bytes
+// would have been a different identity and accepted. This file was never required by that rule.
+//
+// It stays because distinct bytes keep the frozen section's refusal unambiguous: there is then no
+// reading under which a duplicate rule could be the thing being observed. Different row count, same
+// generator, so nothing here is hand-written or invented.
 const FROZEN_ROW_COUNT = 26;
 const directory = "e2e/fixtures";
 await mkdir(directory, { recursive: true });

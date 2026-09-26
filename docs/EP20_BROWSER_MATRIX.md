@@ -27,9 +27,9 @@ Three details are worth knowing before changing any of it:
 
 This covers the nine CSV scenarios: valid, all rejected, one valid row, duplicate collisions,
 narrow coverage, local timestamp, undated refund, overpayment and point in time partial payments.
-Repeats, concurrent claims, halted case and retention are covered by the PostgreSQL server suites,
-**not** by a browser scenario in this change. Their browser behaviour is still outstanding and must not
-be described as covered by this matrix. Frozen policy is covered in part — see below for which part.
+Concurrent claims, halted case and retention are covered by the PostgreSQL server suites, **not** by a
+browser scenario in this change. Their browser behaviour is still outstanding and must not be described
+as covered by this matrix. Frozen policy and repeats are each covered in part — see below for which part.
 
 ## Roles — the wiring is covered, the refusal is not
 
@@ -55,6 +55,52 @@ NC-16 → NC-18 rewire the lifecycle read, the activation and the intake submiss
 `AuditRead`, `ActivatePilotPolicy` and `SubmitPilotDataset` respectively; each makes the journey fail on
 named checks. **Not proven:** an unauthorized user being refused *in the UI*. No role-forbidden act is
 reachable from the screens, so observing that would need an act-as affordance this change does not add.
+
+## Repeats — recognition and surfacing proven, the second row not observable
+
+The identity a repeat collides with is derived from **three** inputs, not two:
+
+```
+idempotencyKey = sha256(…, boundaryId, datasetId, sha256(csvText))    validateDataset.ts:538-542
+```
+
+`datasetId` is the free-text **Dataset label** the uploader types (`UploadScreen.tsx:158`). The browser
+section measures all three rather than describing them: the repeat reuses the boundary, the label **and**
+the bytes, and two discriminators then show that changing either movable input produces a *different*
+identity that is accepted.
+
+**Proven in the browser**, each with a server-backed precondition:
+
+* the first upload succeeded and the server issued an idempotency identity for it (its own receipt, not
+  a key the harness derived);
+* the bytes being re-sent are **byte-identical** — sha256 compared and printed, so a fixture change
+  cannot silently downgrade this into "uploading a similar CSV";
+* the repeat is refused **409** naming **`NH-DC-4003`**, asserted from the *response*. That code is
+  emitted by duplicate detection and nothing else, which rules out frozen policy, anti-tuning, a contract
+  rejection and an authorization refusal in one assertion;
+* the **screen** shows the server's own sentence — `conflict` is in `apiClient`'s
+  `SAFE_TO_SHOW_VERBATIM`, so the server's words are what the operator reads — with no next step offered
+  and **no stale `server-verified` verdict** left beside the refusal;
+* **no second governed work item.** Where the repeat is (wrongly) admitted the section follows it
+  through to the governed run, because an upload alone never creates an execution and a bare count
+  comparison would otherwise be true whatever happened.
+
+**Not observable from the browser:** that no second submission **row** was written. No route exposes
+submissions — the pilot routes are POST `/pilot/datasets`, the admission-policy and governance routes,
+and GET/POST `/pilot/assessments` — and adding one would be a product affordance, not a test. That half
+rests on `idempotency_key` being the table's **primary key**, asserted from the live schema by
+`pilotIntake.test.ts` **5c**, alongside test 5's "exactly one row".
+
+**An open question this slice surfaced and did not resolve.** The label is part of the identity and is
+supplied by the uploader, so byte-identical data re-submitted under a new label is accepted and can be
+assessed again. The rejection code's own wording — *"a byte-identical re-upload is recognised and
+refused so the same exposure is not assessed twice"* — reads as though boundary and bytes should be
+enough. Whether the derivation should include an operator-supplied field is a constitution question and
+is raised as one, not patched inside a test.
+
+**Boundaries:** duplicate submission is a different rule from duplicate rows inside a CSV, from
+in-dataset cycle collision, from concurrency and from anti-tuning. These repeats are **sequential** and
+prove nothing about concurrent ones.
 
 ## Frozen policy — the intake refusal is proven, the schedule-time re-check is not
 
