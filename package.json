@@ -9,6 +9,7 @@
     "dev": "vite",
     "dev:server": "vite-node server/index.ts",
     "ingest:csv": "npm run build:server && node dist-server/server/agents/secureCsvIngestionCli.js",
+    "emit:signals": "npm run build:server && node dist-server/server/services/governedSignalEmitterCli.js",
     "pilot:synthetic": "npm run build:server && node dist-server/server/agents/syntheticPilotCli.js",
     "pilot:assessment": "npm run build:server && node dist-server/server/agents/pilotAssessmentRehearsalCli.js",
     "pilot:purge-inputs": "npm run build:server && node dist-server/server/services/pilotInputRetentionCli.js",
