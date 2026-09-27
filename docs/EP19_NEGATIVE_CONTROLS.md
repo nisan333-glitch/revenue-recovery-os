@@ -527,6 +527,7 @@ change, no migration of existing submissions beyond adding and backfilling one n
 | NC-46 | The governed policy values (`currency`, `asOf`, `stallThresholdDays`) dropped | **2** — pure test 9, and DB test 6 |
 | NC-47 | The **full** contract version in place of the major | **1** — the golden vector, 9c |
 | NC-48 | The scheme string left at `nh-pilot-dataset-v1` | **1** — the golden vector, 9c |
+| NC-49 | `datasetId` back in the derivation, measured in the **browser** | the journey's inverted 6a — 85/86 |
 
 **NC-47 and NC-48 initially failed to fail, and that is the most useful thing this set produced.** Every
 identity assertion in the suite compared one derived key with another derived the same way, so a change that
@@ -565,6 +566,15 @@ boundary carrying the identical bar; `pilotPolicyGovernance` 5 varies the bytes;
 under a different governed AssessmentPolicy — so the guarantee is proved on the harder case; and
 `pilotIntake` 7b took per-run boundary names, because fixed names plus deterministic bytes now derive a stable
 key and the suite would only have passed on a virgin database.
+
+**The browser discriminator is inverted, and NC-49 proves it is not vacuous.** Journey section 6a used to
+assert *"the same bytes under a different DATASET LABEL are not a repeat — the label is part of the
+identity"* and passed on a 200. That was a true measurement of a real defect; the wording is retracted in
+place rather than quietly reworded, as the EP-24 retraction was. It now asserts 409 carrying `NH-DC-4003`,
+read from the response, and NC-49 restores the label to the derivation to show the check fails when the
+defect returns. 6b — the same bytes under a different boundary ⇒ accepted — still passes, which is what
+makes each half mean something: 6a alone could be satisfied by a system that refused every repeat upload
+anywhere.
 
 **Scope:** the derivation and the major bump. `calculationMethodVersion` stays out and explicitly open. No
 migration SQL, no column change; historical rows keep their keys.

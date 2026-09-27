@@ -867,18 +867,26 @@ try {
       .catch(() => ({ status: -1, text: "" }));
   };
 
-  // 6a · THE FINDING. Same bytes, same boundary, a DIFFERENT label — accepted. So "a byte-identical
-  // re-upload is refused" is true only while the uploader keeps the label; renaming the dataset defeats
-  // duplicate detection. The label is operator-supplied, so this is measured and reported, not fixed
-  // here. `NH-DC-4003` asserted ABSENT: it is admitted, not refused for some other reason.
+  // 6a · EP-28 · THE DEFECT, CLOSED — and this check is INVERTED from what it asserted before.
+  //
+  // It used to read: "the same bytes under a different DATASET LABEL are not a repeat — the label is part of
+  // the identity", passing on a 200 with NH-DC-4003 absent. That was a true measurement of a real defect:
+  // renaming the dataset defeated duplicate detection, so "a byte-identical re-upload is refused" held only
+  // while the uploader kept the label, and the party who benefits from the number controlled the identity.
+  // The old wording is retracted here rather than quietly reworded, exactly as the EP-24 retraction was.
+  //
+  // The v2 submission identity drops the label, so the same bytes in the same boundary under ANY name are the
+  // same submission. Asserted from the RESPONSE and pinned to the contract's own code, so it cannot pass on a
+  // refusal that happens to be some other rule's.
   const relabelled = await submitOnce(`relabelled-${randomUUID().slice(0, 8)}`, BOUNDARY);
-  check("the same bytes under a different DATASET LABEL are not a repeat — the label is part of the identity",
-    relabelled.status === 200 && !relabelled.text.includes("NH-DC-4003"),
+  check("the same bytes under a different DATASET LABEL are now a REPEAT — the label is not the identity",
+    relabelled.status === 409 && relabelled.text.includes("NH-DC-4003"),
     `status=${relabelled.status}`);
 
-  // 6b · Same bytes, same label, a different boundary — also not a repeat. Together with 6a this shows
-  // the refusal above was about this boundary having seen this file under this label, rather than the
-  // file being blacklisted anywhere it appears.
+  // 6b · Same bytes, same label, a different boundary — NOT a repeat. Together with 6a this shows
+  // the refusal above was about THIS BOUNDARY having seen these bytes, rather than the file being
+  // blacklisted wherever it appears. The pair is what makes each half mean something: 6a alone could be
+  // satisfied by a system that refuses every repeat upload anywhere.
   const elsewhere = await submitOnce(JOURNEY_DATASET_LABEL, `${BOUNDARY}-elsewhere`);
   check("the same bytes under a different boundary are not a repeat — the identity is boundary-scoped",
     elsewhere.status === 200 && !elsewhere.text.includes("NH-DC-4003"),
