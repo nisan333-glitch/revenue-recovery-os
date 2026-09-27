@@ -469,6 +469,30 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     expect((await propose(boundaryId, later, OPERATOR, "half-year close")).statusCode).toBe(201);
     expect((await move("activate", boundaryId, STEWARD, later)).statusCode).toBe(200);
 
+    // EP-28 · RE-SUBMIT FIRST, and that is a strengthening rather than a detour. The submission identity now
+    // contains the governed policy, so the same bytes under the new definition are a DIFFERENT submission —
+    // which means the admission verdict is re-computed under the new cut-off instead of an old verdict
+    // authorising a run it never judged. Before this, one admission decision could authorise executions under
+    // any number of definitions: the same defect as "a decision made under one contract cannot authorise
+    // execution under another", one level down. The re-submission is accepted (not a duplicate) precisely
+    // because the definition changed.
+    const reSubmitted = (
+      await submit(
+        datasetBody(boundaryId, {
+          datasetId,
+          csvText,
+          analysisTermsId: later.termsId,
+          analysisTermsVersion: later.termsVersion,
+          admissionPolicyId: policyId,
+          admissionPolicyVersion: "1.0.0",
+        }),
+      )
+    ).json();
+    expect(reSubmitted.accepted).toBe(true);
+    expect(reSubmitted.admission.outcome).toBe("ADMISSIBLE");
+    // A NEW submission identity — the same bytes and the same label, a different definition.
+    expect(reSubmitted.idempotencyKey).not.toBe(firstRun.binding.datasetFingerprint);
+
     const secondRun = (
       await schedule(
         datasetBody(boundaryId, {
@@ -479,6 +503,7 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
         }),
       )
     ).json();
+    expect(secondRun.refusal, JSON.stringify(secondRun.refusalDetail)).toBeNull();
     expect(secondRun.scheduled).toBe(true);
     expect(secondRun.created).toBe(true);
     // A DIFFERENT execution: the definition is inside the binding, so it cannot re-grade the first.

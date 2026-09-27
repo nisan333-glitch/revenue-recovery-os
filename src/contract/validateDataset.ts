@@ -26,6 +26,7 @@ import { epochDay } from "../assessment/dateNormalize";
 import {
   INTAKE_LIMITS,
   PILOT_DATA_CONTRACT_FIELDS,
+  PILOT_DATA_CONTRACT_ID,
   PILOT_DATA_CONTRACT_REF,
   PILOT_DATA_CONTRACT_VERSION,
   contractField,
@@ -227,7 +228,17 @@ export async function validatePilotDataset(submission: DatasetSubmission): Promi
   const { boundary, provenance, policy } = submission;
 
   const datasetFingerprint = await sha256Hex(submission.csvText);
-  const idempotencyKey = await deriveIdempotencyKey(boundary, datasetFingerprint);
+  const idempotencyKey = await deriveIdempotencyKey({
+    boundary,
+    datasetFingerprint,
+    // As DECLARED. `undefined` means the adapter may auto-detect, and "auto" is itself a distinct choice:
+    // two submissions that differ only in whether they PINNED the locale are two different readings.
+    dateLocale: submission.adapterOptions?.locale ?? "auto",
+    amountFormat: submission.adapterOptions?.amountFormat ?? "auto",
+    asOf: policy.asOf,
+    stallThresholdDays: policy.stallThresholdDays,
+    currency: policy.currency,
+  });
 
   // ── Version: refuse anything this build cannot faithfully interpret ─────────────────────────────
   if (parseContractVersion(submission.declaredVersion) === null) {
@@ -523,21 +534,71 @@ function frozenReport(
 
 // ── 9 · Duplicate and idempotency handling ────────────────────────────────────────────────────────
 
-const IDEMPOTENCY_DERIVATION = "nh-pilot-dataset-v1";
+/**
+ * EP-28 · v2. The change of scheme IS the change of derivation, and it is deliberately visible: a v1 key
+ * and a v2 key can never collide, so nothing silently inherits a verdict computed under the old identity.
+ */
+const IDEMPOTENCY_DERIVATION = "nh-pilot-dataset-v2";
+
+/** Everything the submission identity is derived over. See `deriveIdempotencyKey`. */
+export interface SubmissionIdentityInput {
+  readonly boundary: TenantBoundary;
+  readonly datasetFingerprint: string;
+  /** `"MDY" | "DMY" | "auto"` — as DECLARED, not as auto-detected. */
+  readonly dateLocale: string;
+  /** `"US" | "EU" | "auto"` — as DECLARED. */
+  readonly amountFormat: string;
+  /** The GOVERNED assessment policy this reading is measured under (EP-26b). */
+  readonly asOf: string;
+  readonly stallThresholdDays: number;
+  readonly currency: string;
+}
 
 /**
- * Deterministic submission key: contract + tenant + dataset label + exact file bytes.
+ * Deterministic submission key: the stable identity of the DATA, plus every parameter whose change
+ * materially changes what the data means.
  *
- * Re-uploading the identical extract under the same tenant yields the identical key, so an ingestion
- * pipeline can recognise and drop the repeat instead of double-counting it. Change one byte of the
- * file and the key changes — which is the desired behaviour, because a changed file is a different
- * dataset and deserves a fresh decision rather than inheriting the previous one's verdict.
+ * WHAT CHANGED IN v2, AND WHY. v1 derived over `(contract ref, boundaryId, datasetId, fingerprint)`, where
+ * `datasetId` is the free-text label the uploader types. So byte-identical data in the same boundary could
+ * be submitted and assessed again by RENAMING it — the party who benefits from the number controlled the
+ * identity, which is precisely what the trust invariant forbids. The label is gone. In its place are the
+ * parameters that genuinely change the answer:
+ *
+ *   • `dateLocale` — `03/04/2026` is 3 April or 4 March. Dates, stall outcomes and row parseability change.
+ *   • `amountFormat` — `1.234,56` is 1234.56 or 1.23456. The monetary values themselves change.
+ *   • `currency`, `asOf`, `stallThresholdDays` — the governed AssessmentPolicy. A row in another currency is
+ *     excluded rather than converted, the cut-off decides what information exists, and the threshold decides
+ *     what "stalled" means. None of the three is caller-supplied any more (EP-26b), so including them grants
+ *     a re-assessment only through a definition someone else activated.
+ *
+ * Deliberately NOT here: `mappingId`, because it is derived from the bytes and would duplicate the
+ * fingerprint; `provenance`, because it can only flip a dataset from rejected to accepted and a rejected
+ * dataset writes no row; the admission policy, because anti-tuning already forbids what including it would
+ * enable; `declaredVersion`, because declaring an older supported minor is interpreted identically.
+ * `calculationMethodVersion` stays out and remains explicitly UNDECIDED — see docs/ASSESSMENT_IDENTITY_V1.md.
+ *
+ * THE VERSION COMPONENT IS THE MAJOR, NOT THE FULL VERSION. v1 embedded `id@1.1.0`, so a PATCH bump reset
+ * every identity — which contradicts §10's own minor promise ("a dataset valid under X.Y is still valid
+ * under X.(Y+1)") and was never intentional: the commit that bumped 1.0.0 → 1.1.0 reasoned "no previously
+ * valid dataset newly rejected" while introducing duplicate detection in the same act. A MAJOR may redefine
+ * what a field means, so majors must not share an identity space; a patch may not, so patches must.
  *
  * The boundary is inside the key, so two tenants uploading byte-identical files never collide.
  */
-export async function deriveIdempotencyKey(boundary: TenantBoundary, datasetFingerprint: string): Promise<string> {
+export async function deriveIdempotencyKey(input: SubmissionIdentityInput): Promise<string> {
+  const major = parseContractVersion(PILOT_DATA_CONTRACT_VERSION)?.major ?? "unparseable";
   const digest = await sha256Hex(
-    [IDEMPOTENCY_DERIVATION, PILOT_DATA_CONTRACT_REF, boundary.boundaryId, boundary.datasetId, datasetFingerprint].join("\u0000"),
+    [
+      IDEMPOTENCY_DERIVATION,
+      `${PILOT_DATA_CONTRACT_ID}@major-${major}`,
+      input.boundary.boundaryId,
+      input.datasetFingerprint,
+      input.dateLocale,
+      input.amountFormat,
+      input.currency,
+      input.asOf,
+      String(input.stallThresholdDays),
+    ].join("\u0000"),
   );
   return `pds_${digest}`;
 }

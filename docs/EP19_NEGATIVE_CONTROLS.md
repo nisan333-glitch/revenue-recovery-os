@@ -517,3 +517,54 @@ attributable to the version and to nothing else.
 
 **Scope:** the compatibility window and its audit trail. No contract version bump, no identity derivation
 change, no migration of existing submissions beyond adding and backfilling one nullable column.
+
+## EP-28 · The C3 submission identity, as contract 2.0.0 (NC-44 … NC-48)
+
+| # | Guard removed | What failed |
+|---|---|---|
+| NC-44 | `datasetId` back in the derivation — the defect restored | **3** — pure test 9, and DB tests 1 and 10 |
+| NC-45 | `dateLocale` and `amountFormat` dropped | **3** — pure test 9, and DB tests 4 and 5 |
+| NC-46 | The governed policy values (`currency`, `asOf`, `stallThresholdDays`) dropped | **2** — pure test 9, and DB test 6 |
+| NC-47 | The **full** contract version in place of the major | **1** — the golden vector, 9c |
+| NC-48 | The scheme string left at `nh-pilot-dataset-v1` | **1** — the golden vector, 9c |
+
+**NC-47 and NC-48 initially failed to fail, and that is the most useful thing this set produced.** Every
+identity assertion in the suite compared one derived key with another derived the same way, so a change that
+moved *all* of them together was invisible: swapping the major for the full version, or reverting the scheme
+string, left the entire suite green. A derivation with no absolute anchor is not pinned at all — and a comment
+in test 9b had claimed test 9 would catch it, which was wrong and is struck in place.
+
+**Test 9c is the anchor:** fixed inputs, one pinned digest. Changing that value means the identity of every
+dataset changes, which §10 classifies as a **major** bump — so editing the constant to make a red test green
+would be exactly the silent re-identification the two-ledger rules forbid, and the test says so. With it in
+place both controls fail on it alone.
+
+**Two test premises of mine were also wrong, and were corrected against the code rather than around it** —
+neither was a product defect:
+
+* **`amountFormat`** is consulted by `normalizeAmount` in exactly ONE branch: a single separator with a
+  three-digit tail. The synthetic fixture emits `<major>.00`, so US and EU read it identically and the report
+  was rightly unchanged. The test now builds a row containing `1.200` and asserts the three readings that
+  value really produces — EU 40 accepted with no findings, US 39 accepted with `NH-DC-2007` (three fractional
+  digits in a two-digit currency, which `Money` refuses to round), auto 39 accepted with `NH-DC-2008`. A
+  declared interpretation changes the accepted population *and* the reason a row was refused. An earlier
+  comment claiming `1.234,56` differs by format was factually wrong — both separators present means
+  format-independent — and is struck.
+* **Provenance:** `validateProvenance` refuses a required field that is missing or not a boolean, so
+  `assertedIndependentOfBeneficiary: false` is a valid declaration producing no finding — the contract
+  *records* the customer's assertion rather than demanding an answer. `SYNTHETIC_PROVENANCE` already carries
+  `false`, so the two submissions were identical and the second was rightly a duplicate; and
+  `extractionMethod: ""` is refused by the transport with a 400 before the validator sees it. The test now
+  uses a **reversed coverage window**, which passes the schema and is refused by the contract with
+  `NH-DC-1009` at dataset level.
+
+**Four pre-existing suites were adapted, not weakened.** Each had leaned on a fresh dataset label to obtain a
+fresh identity — the exact lever C3 removes. `pilotAdmission` 9 (evaluator determinism) moved to a second
+boundary carrying the identical bar; `pilotPolicyGovernance` 5 varies the bytes; `pilotPolicyGovernance` 8
+(anti-tuning) now re-enters through the **one legitimate re-submission route that remains** — the same bytes
+under a different governed AssessmentPolicy — so the guarantee is proved on the harder case; and
+`pilotIntake` 7b took per-run boundary names, because fixed names plus deterministic bytes now derive a stable
+key and the suite would only have passed on a virgin database.
+
+**Scope:** the derivation and the major bump. `calculationMethodVersion` stays out and explicitly open. No
+migration SQL, no column change; historical rows keep their keys.

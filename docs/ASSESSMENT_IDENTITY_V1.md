@@ -1,9 +1,9 @@
 # Assessment identity — what makes a submission the same, and what makes it new
 
-**Status: decided at the constitution level on 2026-09-26. The identity derivation is NOT yet
-implemented; its first prerequisite is.** The code still derives the old identity. Step 1 below —
-governance for the analysis terms — was built on 2026-09-26 and is documented in
-[`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md). Nothing in this document describes current behaviour except where it says so
+**Status: DECIDED and IMPLEMENTED. The derivation changed on 2026-09-27 (EP-28) as contract 2.0.0.**
+All three prerequisites in the binding order are complete: step 1 — governance for the analysis terms —
+[`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md); step 2 — §10's two-major window —
+[`CONTRACT_DUAL_MAJOR_V1.md`](CONTRACT_DUAL_MAJOR_V1.md); step 3 — this derivation, below. Nothing in this document describes current behaviour except where it says so
 explicitly. The binding summary is in [`CLAUDE.md`](../CLAUDE.md) → *Assessment identity and
 analysis-terms governance decision*.
 
@@ -127,14 +127,55 @@ Binding order. Each step is a prerequisite for the next.
 
    That document also answers, from evidence, two questions this one left open — see its §5 and §6, and the
    corrections below.
-3. **The derivation change itself**, as a major contract version, with the migration questions below
-   answered explicitly.
+3. ~~**The derivation change itself**~~ **DONE 2026-09-27 (EP-28), as contract 2.0.0.** The implemented
+   form, scheme `nh-pilot-dataset-v2`:
 
-## Migration questions to answer in step 3
+   ```
+   pds_sha256(
+     "nh-pilot-dataset-v2" ∥ "<contract id>@major-<N>" ∥ boundaryId ∥ datasetFingerprint
+       ∥ dateLocale ∥ amountFormat ∥ currency ∥ asOf ∥ stallThresholdDays
+   )
+   ```
+
+   `datasetId` is gone — the defect. The three governed fields come from the register, never the request
+   (EP-26b). `mappingId`, `provenance`, the admission policy and `declaredVersion` stay out for the reasons
+   already given above. **`calculationMethodVersion` remains explicitly OPEN and is still not in the
+   identity** — this slice preserved its current state rather than deciding it.
+
+   **Granularity finding, reviewable on its own.** The version component is the **major**, not the full
+   version. v1 embedded `id@1.1.0`, so a *patch* bump reset every identity — which contradicts §10's own
+   minor promise (*"a dataset valid under X.Y is still valid under X.(Y+1)"*), and §6 of
+   [`CONTRACT_DUAL_MAJOR_V1.md`](CONTRACT_DUAL_MAJOR_V1.md) established with positive evidence that the
+   granularity was never intentional. A major may redefine what a field means, so majors must not share an
+   identity space; a patch may not, so patches must.
+
+   **Workflow consequence, discovered by running the suites and documented rather than worked around.**
+   Because the governed policy is inside the *submission* identity, an extract re-read under new terms must
+   be **re-submitted** before it can be scheduled — the admission decision is looked up by the same key.
+   That is a **strengthening**: an admission verdict computed under one definition no longer authorises an
+   execution under another, which was the same defect as *"a decision made under one contract cannot
+   authorise execution under another"*, one level down. It is also exactly what the required test below
+   describes (*different governed terms ⇒ accepted*, at submission).
+
+   **The derivation is now pinned by a golden vector** (`pilotDataContract.test.ts` **9c**). This was added
+   because negative controls NC-47 and NC-48 — the full version in place of the major, and the scheme string
+   left at v1 — initially **failed to fail**: every other assertion compared one derived key with another
+   derived the same way, so a change that moved all of them together was invisible. A derivation with no
+   absolute anchor is not pinned at all.
+
+## Migration questions — ANSWERED (EP-28)
+
+No migration SQL exists and none is needed: no column changed, and historical rows keep the keys they were
+written with. The answers below are the ones step 3 was required to give.
 
 * Historical keys are never rewritten — the table is append-only. Under any new derivation, an
   already-submitted dataset derives a **new** key and is no longer recognised as a duplicate of its own
-  past submission: **one re-assessment per historical dataset at the cutover.**
+  past submission: **one re-assessment per historical dataset at the cutover.** **CONFIRMED BY TEST
+  (EP-28)** — `identityDerivation.test.ts` **9** writes a row under the v1 key, submits the identical bytes
+  under the identical label, and asserts it is *accepted*; the historical row survives untouched with its
+  own `contractVersion`/`declaredVersion`; and the free re-assessment is **exactly one**, because the second
+  attempt under v2 is refused `NH-DC-4003` like any other repeat. Asserted either way, as required, rather
+  than left to be discovered in production.
 * **This is not a new behaviour.** The implemented contract reference is already inside the identity, so
   the previous minor bump already had exactly this effect. Whether that was intended, or is a second
   unexamined consequence of version-in-identity, is itself unanswered. **ANSWERED (EP-27): incidental, with
@@ -151,8 +192,15 @@ Binding order. Each step is a prerequisite for the next.
   resets **once** at the cutover, and in exchange the derivation permanently removes the operator-supplied
   label from the identity. Reasoning: [`CONTRACT_DUAL_MAJOR_V1.md`](CONTRACT_DUAL_MAJOR_V1.md) §5.
 * No backfill is required for correctness; one would be required only for the dual-key behaviour.
+  **CONFIRMED (EP-28):** no migration SQL was written and no column changed.
 
-## Tests required before the change lands
+## Tests required before the change lands — ALL PRESENT (EP-28)
+
+`src/contract/pilotDataContract.test.ts` **9** (the label no longer moves the identity; every
+meaning-changing field does; "auto" is its own choice), **9b** (major-granularity, and the cutover
+consequence), **9c** (the golden vector); and `server/services/identityDerivation.test.ts` **1-11** for the
+DB-backed half. The list below is the original requirement, kept verbatim as the record of what was asked.
+
 
 Same bytes + different label ⇒ duplicate · same bytes + different `locale` / `amountFormat` / `currency`
 ⇒ accepted, **and the report demonstrably differs**, not merely the key · same bytes + different governed

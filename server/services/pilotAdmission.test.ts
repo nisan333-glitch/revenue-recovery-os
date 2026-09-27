@@ -233,10 +233,17 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     await register(boundaryId, policy);
     const csvText = syntheticPilotCsv(30);
 
-    // Two DIFFERENT dataset ids so the idempotency guard does not intercept the second submission —
-    // what is being tested is the evaluator's determinism, not the duplicate rule.
-    const a = (await submit(datasetBody({ boundaryId, csvText, datasetId: `d-${uid()}`, admissionPolicyId: policy.policyId }))).json();
-    const b = (await submit(datasetBody({ boundaryId, csvText, datasetId: `d-${uid()}`, admissionPolicyId: policy.policyId }))).json();
+    // EP-28 · This used to use two DIFFERENT dataset ids so the idempotency guard would not intercept the
+    // second submission. That trick is exactly what the v2 identity removes — the label no longer varies the
+    // key — so identical bytes in one boundary are now a duplicate and the second call would return 409.
+    //
+    // What is under test is the EVALUATOR'S DETERMINISM, not the duplicate rule, so the second evaluation
+    // moves to a second boundary carrying the identical bar. Same bytes, same thresholds, two tenants: the
+    // claim is unchanged and it no longer depends on a route the identity now forbids.
+    const otherBoundaryId = `pilot-boundary-${uid()}`;
+    await register(otherBoundaryId, policy);
+    const a = (await submit(datasetBody({ boundaryId, csvText, admissionPolicyId: policy.policyId }))).json();
+    const b = (await submit(datasetBody({ boundaryId: otherBoundaryId, csvText, admissionPolicyId: policy.policyId }))).json();
 
     expect(JSON.stringify(a.admission.checks)).toBe(JSON.stringify(b.admission.checks));
     expect(a.admission.rates).toEqual(b.admission.rates);

@@ -24,7 +24,7 @@
 // Case → Evidence → Approval path, by a human, under the trust gates that already exist.
 
 /** Semantic version of the contract itself. Consumers pin, compare and negotiate on this. */
-export const PILOT_DATA_CONTRACT_VERSION = "1.1.0";
+export const PILOT_DATA_CONTRACT_VERSION = "2.0.0";
 
 /** Stable identity of this contract, stamped into every report and manifest. */
 export const PILOT_DATA_CONTRACT_ID = "nh.customer-pilot-data-contract";
@@ -571,6 +571,14 @@ export function parseContractVersion(version: string): ParsedVersion | null {
  */
 export const MAJOR_ROW_SEMANTICS: Readonly<Record<number, readonly number[]>> = Object.freeze({
   1: Object.freeze([]),
+  /**
+   * EP-28 · Major 2 declares major 1's ROW SEMANTICS IDENTICAL, and that is a claim about the customer's
+   * export, checked field by field before it was written here: 2.0.0 adds no field, removes none, renames
+   * none, redefines no field's meaning and tightens no row-level rule. What it changes is the submission
+   * IDENTITY and the request ENVELOPE — neither of which a 1.x CSV can be wrong about. So a 1.x export is
+   * still accepted, which is what §10 promised, and this is the first entry the window has ever had.
+   */
+  2: Object.freeze([1]),
 });
 
 /** Does `implementedMajor` declare `declaredMajor`'s row semantics identical to its own? */

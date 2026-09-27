@@ -257,7 +257,8 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
 
   it("6 · a NEWER version is still refused at intake, and writes no row", async () => {
     // `acceptsNewerThanImplemented: false`. The two-major window opens backwards only — a build never
-    // guesses at a contract it does not implement.
+    // guesses at a contract it does not implement. EP-28 · the probe is 3.0.0 now: 2.0.0 became the
+    // implemented version, so using it here would have quietly stopped testing anything.
     const boundaryId = `pb-${uid()}`;
     await ensureGovernedTerms(boundaryId);
     const res = await app.inject({
@@ -267,7 +268,7 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
       payload: {
         boundaryId,
         datasetId: `ds-${uid()}`,
-        declaredVersion: "2.0.0",
+        declaredVersion: "3.0.0",
         csvText: syntheticPilotCsv(40),
         provenance: SYNTHETIC_PROVENANCE,
         ...GOVERNED_TERMS_FIELDS,

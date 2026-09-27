@@ -336,26 +336,32 @@ describe.skipIf(!HAS_DB)("EP-13 · customer pilot intake (server-authoritative)"
     // key isolation but never exercise denial. Production identities are scoped (an OIDC token's
     // boundary claim rejects "*" outright), so this mounts an app with a scoped resolver and checks
     // the refusal that actually protects a customer.
+    // EP-28 · The boundary names are per-run now. They used to be the fixed strings "tenant-a"/"tenant-b",
+    // which was fine while a fresh dataset label produced a fresh identity — the v2 identity drops the label,
+    // so identical bytes in a fixed boundary derive the SAME key on every run of this suite and the second
+    // run would be refused as a duplicate. A test that only passes on a virgin database is not isolated.
+    const held = `tenant-held-${uid()}`;
+    const unheld = `tenant-unheld-${uid()}`;
     const scoped = buildApp({
       sourceVerifier: fixtureVerifier,
       identityResolver: async () =>
-        Object.freeze({ actorId: "scoped@company", role: "operator" as const, boundaryIds: Object.freeze(["tenant-a"]) }),
+        Object.freeze({ actorId: "scoped@company", role: "operator" as const, boundaryIds: Object.freeze([held]) }),
     });
     await scoped.ready();
     try {
       // EP-26 · Both boundaries get governed terms, so neither answer can come from the terms gate:
-      // tenant-a's 200 is a real admission and tenant-b's 403 is a real boundary refusal.
-      await ensureGovernedTerms("tenant-a");
-      await ensureGovernedTerms("tenant-b");
+      // the held boundary's 200 is a real admission and the unheld one's 403 is a real boundary refusal.
+      await ensureGovernedTerms(held);
+      await ensureGovernedTerms(unheld);
       const own = await scoped.inject({
         method: "POST", url: "/pilot/datasets", headers: OPERATOR,
-        payload: body({ boundaryId: "tenant-a" }) as object,
+        payload: body({ boundaryId: held }) as object,
       });
       expect(own.statusCode).toBe(200); // its own boundary is fine
 
       const other = await scoped.inject({
         method: "POST", url: "/pilot/datasets", headers: OPERATOR,
-        payload: body({ boundaryId: "tenant-b" }) as object,
+        payload: body({ boundaryId: unheld }) as object,
       });
       expect(other.statusCode).toBe(403);
       // ...and refused for the RIGHT reason. Without this the test would also pass if the analysis-terms

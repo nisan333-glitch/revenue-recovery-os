@@ -168,16 +168,20 @@ the observation, not a gap, and warning about it would bury the real signals.
   > (`pilot_dataset_sightings`) is keyed on boundary and fingerprint **only**, so the two mechanisms
   > disagree about what "the same dataset" means.
   >
-  > **Status (2026-09-26): decided; its first prerequisite is built, the derivation is not.** The identity is to contain the stable identity of the
+  > **Status (2026-09-27): DECIDED AND IMPLEMENTED as contract 2.0.0.** The identity contains the stable identity of the
   > data plus only parameters whose change materially changes the meaning or result-space of the
   > assessment; descriptive and operator-controlled metadata never determine identity. The analysis
   > terms (`asOf`, `stallThresholdDays`, and since EP-26b `currency`) may create a new assessment of the
-  > same extract **only once they are pre-registered and governed the way the admission bar is** — and as
-  > of 2026-09-26 they are: one registered, versioned AssessmentPolicy, proposed by one identity and
-  > activated by another, with no `policy` object in the request at all
-  > ([`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md)). The derivation is still unchanged,
-  > this major version is unchanged, and no migration exists — the remaining prerequisite is the §10
-  > two-major compatibility decision. Field-by-field classification and the binding order of work:
+  > same extract **only once they are pre-registered and governed the way the admission bar is** — and they
+  > are: one registered, versioned AssessmentPolicy, proposed by one identity and activated by another, with
+  > no `policy` object in the request at all
+  > ([`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md)). **The derivation itself changed on
+  > 2026-09-27 under this major version**: the operator-supplied dataset label is out, and the parameters
+  > that change what the data means are in. The version component is the **major**, so a patch or minor bump
+  > no longer resets every identity. One consequence, stated rather than buried: an extract re-read under new
+  > governed terms must be **re-submitted**, because the admission decision is looked up by the same
+  > identity — a verdict computed under one definition does not authorise an execution under another.
+  > Field-by-field classification and the binding order of work:
   > [`ASSESSMENT_IDENTITY_V1.md`](ASSESSMENT_IDENTITY_V1.md). §10 classifies a change to identity
   > derivation as a **major** bump, and that still applies when the work is done.
   >
@@ -195,19 +199,21 @@ Semver on the contract itself.
 | minor | add an optional/recommended field, add a synonym, add a narrower code, relax a rule |
 | **major** | add/promote a required field · remove or rename a field · **change the meaning of a field even with an identical name** · tighten a rule · change identity derivation |
 
-> **A major-class tightening is in the code and this version does not yet reflect it (2026-09-26).** The
-> assessment policy — `asOf`, `stallThresholdDays`, `currency` — is now a governed, registered version, and
-> the request carries **no `policy` object at all**: a caller that supplied those values is refused at the
-> transport. By the table above that is a **tightened rule**, which is a **major** bump, and it is recorded
-> as one here rather than classified as minor because the new refusal code `NH-AX-1010` would on its own be
-> a minor addition.
+> **2.0.0 (2026-09-27) carries two major-class changes, together and deliberately.** They landed under one
+> version because the second one's consequence had to be decided before either could ship:
 >
-> The bump is deliberately **deferred**, not skipped: `PILOT_DATA_CONTRACT_REF` is inside the idempotency
-> key, so bumping it grants a free re-assessment to every historical dataset — an open question in
-> [`ASSESSMENT_IDENTITY_V1.md`](ASSESSMENT_IDENTITY_V1.md). The tightening and the identity derivation
-> therefore land under **one** major version together with that migration decision, which is the order the
-> constitution already fixed. Until then this document's version understates what the code requires.
-> Governance detail: [`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md).
+> 1. **A tightened rule.** The assessment policy — `asOf`, `stallThresholdDays`, `currency` — is a governed,
+>    registered version, and the request carries **no `policy` object at all**: a caller that supplied those
+>    values is refused at the transport. Recorded as major rather than minor even though the new refusal code
+>    `NH-AX-1010` would on its own be a minor addition.
+> 2. **A changed identity derivation.** The operator-supplied dataset label no longer varies the submission
+>    identity; the parameters that change what the data means do. **One re-assessment per historical dataset
+>    at the cutover**, because an already-submitted dataset derives a new key — asserted by test, with the
+>    historical rows untouched and the free re-assessment limited to exactly one.
+>
+> Governance detail: [`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md). Derivation, the
+> granularity finding and the answered migration questions:
+> [`ASSESSMENT_IDENTITY_V1.md`](ASSESSMENT_IDENTITY_V1.md).
 
 A dataset declaring an older minor of the same major is accepted and its version recorded. A **newer**
 version than the build implements is **refused** (`NH-DC-5001`), never interpreted optimistically.
