@@ -48,6 +48,8 @@ import {
 } from "../../src/contract/executionCodes";
 import { mayEvaluate, whyCannotEvaluate, type PolicyState } from "../../src/contract/policyLifecycle";
 import { makePolicy } from "../../src/assessment/policy";
+import { observedSummary } from "../../src/assessment/observed";
+import { splitCohorts } from "../../src/assessment/cohort";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
 import { NotFoundError } from "../http/errors";
@@ -64,6 +66,11 @@ import {
   type ExecutionRecord,
 } from "../persistence/pilotExecutionStore";
 import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
+import {
+  deriveStagedAttributions,
+  resolveSignalStagingConfig,
+  type SignalStagingConfig,
+} from "./governedSignalStaging";
 import { PILOT_ASSESSMENT_AGENT_ID } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import type { AgentTaskStore } from "../agents/types";
@@ -144,6 +151,22 @@ export interface PilotAssessmentDeps {
   /** Injectable so the queue can be driven directly in tests; production uses the Postgres store. */
   readonly taskStore?: AgentTaskStore;
   readonly now?: () => number;
+  /**
+   * EP-31 · Staging configuration for the governed signal bridge. `null` means off, which is the
+   * default: absent here resolves from the environment, where unset is also off.
+   */
+  readonly signalStaging?: SignalStagingConfig | null;
+}
+
+/**
+ * Resolved ONCE per process, not per request, so a misconfiguration is a startup failure rather than a
+ * server that silently stages nothing. `resolveSignalStagingConfig` throws on a non-boolean switch and on
+ * an allowlisted boundary with no usable HMAC key.
+ */
+let cachedSignalStaging: SignalStagingConfig | null | undefined;
+function defaultSignalStagingConfig(): SignalStagingConfig | null {
+  if (cachedSignalStaging === undefined) cachedSignalStaging = resolveSignalStagingConfig(process.env);
+  return cachedSignalStaging;
 }
 
 /**
@@ -313,6 +336,29 @@ export async function schedulePilotAssessment(
     hashExecutionInput(input),
   ]);
 
+  // ── 6b · EP-31 · Stage the per-account at-risk attribution, if this boundary is enrolled ────────
+  //
+  // HERE AND NOWHERE ELSE, because this is the last moment the account identity exists:
+  // `projectExecutionInput` above has already replaced it with an ordinal whose mapping is not stored
+  // and not recoverable, and the worker reads only that projection. The rows are written inside the
+  // execution's own transaction below, so if the execution cannot be created no attribution exists —
+  // and therefore no candidate can ever be derived from one.
+  //
+  // THIS IS NOT A CANDIDATE. Nothing lists these rows in a review queue and nothing can promote them.
+  // Only the emitter, and only once the execution has reached `completed`, turns them into signals. The
+  // execution is the governed artefact; the candidate is strictly downstream of it.
+  //
+  // Off unless the boundary is explicitly enrolled — `mayStage` requires both the master switch and the
+  // allowlist — so the default is an empty list and no behaviour change at all.
+  const stagingConfig = deps.signalStaging ?? defaultSignalStagingConfig();
+  const attributions = deriveStagedAttributions(
+    stagingConfig,
+    boundaryId,
+    report.acceptedCycles,
+    policy,
+    observedSummary(splitCohorts(report.acceptedCycles, policy).stalled, policy),
+  );
+
   const { execution, created } = await createExecutionIfAbsent({
     executionId,
     binding,
@@ -321,6 +367,7 @@ export async function schedulePilotAssessment(
     inputHash,
     scheduledByActorId: actor.actorId,
     scheduledByRole: actor.role,
+    attributions,
   });
 
   // ── 7 · Enqueue ────────────────────────────────────────────────────────────────────────────────

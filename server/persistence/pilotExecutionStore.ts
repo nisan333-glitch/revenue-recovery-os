@@ -100,6 +100,25 @@ export interface CreateExecutionInput {
   readonly inputHash: string;
   readonly scheduledByActorId: string;
   readonly scheduledByRole: string;
+  /**
+   * EP-31 · Per-account at-risk attribution, staged in THIS transaction.
+   *
+   * In here rather than in a call of its own because the ordering is the guarantee: if the execution
+   * cannot be written, no attribution may exist either, and therefore no candidate can ever be derived
+   * from one. A separate write could leave staged rows for an execution that was never created.
+   *
+   * Absent or empty when staging is off for the boundary — which is the default.
+   */
+  readonly attributions?: readonly StagedAttributionRow[];
+}
+
+/** One staged row. `sourceRef` is a pseudonym; the raw account identifier never reaches this layer. */
+export interface StagedAttributionRow {
+  readonly sourceRef: string;
+  readonly amountAtRiskMinor: number;
+  readonly currency: string;
+  readonly contributingCycleCount: number;
+  readonly attributionRule: string;
 }
 
 /**
@@ -155,6 +174,22 @@ export async function createExecutionIfAbsent(
           inputHash: input.inputHash,
         },
       });
+      // EP-31 · Staged in the SAME transaction as the execution and its input. If anything above or
+      // below fails, these rows do not exist — which is what makes "no candidate without a governed
+      // execution" true of the database rather than of the application's good intentions.
+      if (input.attributions && input.attributions.length > 0) {
+        await tx.pilotAssessmentEntityAttributionRecord.createMany({
+          data: input.attributions.map((attribution) => ({
+            executionId: input.executionId,
+            boundaryId: b.boundaryId,
+            sourceRef: attribution.sourceRef,
+            amountAtRiskMinor: BigInt(attribution.amountAtRiskMinor),
+            currency: attribution.currency,
+            contributingCycleCount: attribution.contributingCycleCount,
+            attributionRule: attribution.attributionRule,
+          })),
+        });
+      }
       await appendExecutionEvent(
         {
           executionId: input.executionId,

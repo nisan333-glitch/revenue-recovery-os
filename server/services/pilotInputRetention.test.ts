@@ -234,6 +234,36 @@ describe.skipIf(!HAS_DB)("EP-17 · purging an execution input", () => {
     expect(purge.terminalGraceHours).toBe(0);
   });
 
+  it("EP-31 · purges the staged attribution under the SAME authorization, not a second one", async () => {
+    // The staged per-account attribution is pseudonymised customer-derived data of the same class as the
+    // input, so it must leave by the same governed route. A second authorization could drift and leave
+    // one table behind; a table with no route at all would be a retention hole.
+    //
+    // The row is inserted directly rather than through the bridge: where it came from is irrelevant to
+    // the retention question, and this keeps the test about the purge.
+    const { boundaryId, executionId } = await scheduled();
+    expect((await runtime().runNext(agent, `w-${uid()}`, boundaryId))?.status).toBe("succeeded");
+    await prisma.pilotAssessmentEntityAttributionRecord.create({
+      data: {
+        executionId,
+        boundaryId,
+        sourceRef: `hmac-sha256:${"e".repeat(64)}`,
+        amountAtRiskMinor: 123_456n,
+        currency: "USD",
+        contributingCycleCount: 2,
+        attributionRule: "nh-entity-attribution-v1",
+      },
+    });
+    expect(await prisma.pilotAssessmentEntityAttributionRecord.count({ where: { executionId } })).toBe(1);
+
+    const report = await purgeEligibleInputs(steward([boundaryId]), { boundaryId, env: ELAPSED });
+    expect(report.purged).toBe(1);
+    expect(await prisma.pilotAssessmentEntityAttributionRecord.count({ where: { executionId } })).toBe(0);
+    expect(await prisma.pilotAssessmentExecutionInputRecord.count({ where: { executionId } })).toBe(0);
+    // One authorization covered both, and it is on the record.
+    expect(await prisma.pilotAssessmentInputPurgeRecord.count({ where: { executionId } })).toBe(1);
+  });
+
   it("retains a COMPLETED execution's input while the grace period is unelapsed", async () => {
     const { boundaryId, executionId } = await scheduled();
     await runtime().runNext(agent, `w-${uid()}`, boundaryId);
@@ -522,13 +552,31 @@ describe.skipIf(!HAS_DB)("EP-17 · purging an execution input", () => {
   // ── TRUNCATE is no longer a way around any of this ─────────────────────────────────────────────
 
   it.each([
-    "pilot_assessment_executions",
     "pilot_assessment_execution_inputs",
     "pilot_assessment_execution_events",
     "pilot_assessment_findings",
     "pilot_assessment_input_purges",
+    // EP-31 · The staged attribution is covered by the same statement-level guard as the rest.
+    "pilot_assessment_entity_attributions",
   ])("rejects TRUNCATE on %s", async (table) => {
     await expect(prisma.$executeRawUnsafe(`TRUNCATE TABLE "${table}"`)).rejects.toThrow(/append-only/i);
+  });
+
+  /**
+   * `pilot_assessment_executions` is refused for TWO reasons now, and both are asserted because the
+   * first one pre-empts the second.
+   *
+   * EP-31 added a foreign key from `pilot_assessment_entity_attributions`, so PostgreSQL refuses a plain
+   * TRUNCATE before any trigger runs — a stronger refusal, but one that says nothing about the
+   * append-only trigger. Asserting only that would have quietly stopped exercising the trigger, so the
+   * CASCADE case is here to keep doing it: CASCADE gets past the foreign key and then meets the
+   * statement-level guards on this table and on the referencing one.
+   */
+  it("rejects TRUNCATE on pilot_assessment_executions — by the foreign key, and by the trigger under CASCADE", async () => {
+    await expect(prisma.$executeRawUnsafe(`TRUNCATE TABLE "pilot_assessment_executions"`))
+      .rejects.toThrow(/cannot truncate a table referenced in a foreign key constraint/i);
+    await expect(prisma.$executeRawUnsafe(`TRUNCATE TABLE "pilot_assessment_executions" CASCADE`))
+      .rejects.toThrow(/append-only/i);
   });
 
   it("still has every row after the refused truncations", async () => {

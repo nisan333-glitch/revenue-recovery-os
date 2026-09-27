@@ -465,6 +465,43 @@ model PilotAssessmentExecutionInputRecord {
   @@map("pilot_assessment_execution_inputs")
 }
 
+/// EP-31 · One account's at-risk total within one execution, staged for the governed signal emitter.
+///
+/// WHAT THIS IS, AND WHAT IT IS NOT. A derivation artefact, not a claim. It is written in the same
+/// transaction as the execution it belongs to — so if that transaction fails there is no execution and no
+/// attribution — and it is NEVER a candidate: nothing lists it in a review queue and nothing can promote
+/// it. Only the emitter, and only for an execution that reached `completed`, turns these rows into
+/// CandidateSignals. That ordering is the point: the execution is the governed artefact and the candidate
+/// is downstream of it.
+///
+/// IDENTITY IS PSEUDONYMOUS, ALWAYS. `source_ref` is `hmac-sha256:<digest>` over
+/// (boundary ‖ the customer's own account id) using the same scheme and key as secure CSV ingestion. The
+/// raw account identifier is NEVER written here. That also makes the pseudonym stable for one account
+/// across re-exports — it depends on nothing but the boundary and the account id, not on row order, row
+/// count, file bytes, `asOf` or the execution — which is what stops one account becoming two candidates.
+///
+/// Pseudonymised customer-derived data, of the same class as the execution input, so the same governed
+/// retention and purge policy applies to it under the same `execution_id` keying.
+///
+/// Append-only: the amount a signal was derived from can never be edited after the fact.
+model PilotAssessmentEntityAttributionRecord {
+  executionId            String   @map("execution_id")
+  boundaryId             String   @map("boundary_id")
+  /// `hmac-sha256:<64 hex>` — never a raw identifier.
+  sourceRef              String   @map("source_ref")
+  amountAtRiskMinor      BigInt   @map("amount_at_risk_minor")
+  currency               String
+  /// How many stalled cycles contributed, so one figure is never mistaken for one invoice.
+  contributingCycleCount Int      @map("contributing_cycle_count")
+  /// The rule version that produced the figure. A change is a new rule, never a silent re-grade.
+  attributionRule        String   @map("attribution_rule")
+  derivedAt              DateTime @default(now()) @map("derived_at")
+
+  @@id([executionId, sourceRef], map: "pilot_assessment_entity_attributions_pkey")
+  @@index([boundaryId, executionId], map: "pilot_assessment_entity_attributions_boundary_idx")
+  @@map("pilot_assessment_entity_attributions")
+}
+
 /// EP-16 · Append-only lifecycle log for one execution. State is DERIVED from these rows.
 model PilotAssessmentExecutionEventRecord {
   id          String   @id(map: "pilot_assessment_execution_events_pkey")
