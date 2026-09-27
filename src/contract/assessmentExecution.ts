@@ -17,6 +17,14 @@
 // Revenue, or a financial claim, and nothing here creates a Recovery Case. The agent that runs an
 // execution deliberately emits zero CandidateSignals, so the automatic path into case creation is
 // structurally absent rather than merely unused.
+//
+// EP-31 · THAT REMAINS TRUE, AND IS NO LONGER THE WHOLE PICTURE. A separate governed emitter can now
+// turn a COMPLETED execution's staged per-account attribution into `pending_review` candidates — see
+// `docs/GOVERNED_DETECTION_V1.md`. The sentence above still holds literally: this agent emits none, and
+// its boundaries test still proves it. What changed is that the pilot lane is no longer a dead end, and
+// the route out of it is off by default, enrolled per boundary, gated on `completed`, unable to write to
+// anything here, and still incapable of creating a Case without an accepted review by a second identity
+// or a Proof without a locked baseline, case-scoped evidence and an approver who is not the owner.
 import { assess } from "../assessment/assess";
 import { SAAS_ADAPTER_ID, SAAS_ADAPTER_VERSION } from "../assessment/adapters/saasActivation";
 import { sha256Hex } from "../assessment/fingerprint";
