@@ -16,7 +16,7 @@ request body, chosen by the party who benefits from the figure.
 They are exactly the operator-supplied inputs to `makePolicy`, which is why the **whole AssessmentPolicy**
 is now built from the register and the request carries **no `policy` object at all**.
 
-Meanwhile the admission bar, which only decides whether a dataset is *fit to judge at all*, already required
+Meanwhile the admission bar, which decides whether a dataset is *fit to judge at all*, already required
 a proposal by one identity and an activation by another, with a stated reason, an append-only log and an
 anti-tuning check. The system governed the smaller decision and left the larger one to whoever sent the
 request. Trust Invariant rule 2 — *the baseline and recovery definition were established before the outcome
@@ -63,6 +63,24 @@ temporal:**
 A second reading of the same extract is therefore possible, and it is a **second, separately governed,
 separately identified run standing beside the first** — which is still there, still saying what it said. That
 is test **13**, which asserts two execution ids, two bindings, and the first stored execution unchanged.
+
+### The two objects are separately governed but NOT independent (added 2026-09-27)
+
+The table above is about **governance**, and it is correct about governance. It should not be read as saying
+the two objects do not interact, because they do, in one direction that matters:
+
+> `evaluateAdmission(report, assessmentPolicy, admissionPolicy)`
+> (`src/contract/admissionGate.ts:207`) computes the bar's own lifecycle-coverage measurement through
+> `splitCohorts(cycles, assessmentPolicy)`. **So an admission verdict is a property of
+> `(extract, governed terms)`, never of the extract alone, and every `requiredLifecycleStates` entry is
+> terms-relative.** A later cut-off empties `undetermined`; an earlier one empties `stalled`.
+
+This is *why* EP-28 putting the governed terms inside the submission identity was already the right call — the
+admission decision is keyed per `(extract, terms)` because that is what it is about. The sentence simply had
+not been written down, and EP-29 ran into it from the far side. Investigated, with the measurements, in
+[`ADMISSION_TERMS_COUPLING.md`](ADMISSION_TERMS_COUPLING.md). **The anti-tuning rule still holds across a
+re-reading** — the dataset sighting is keyed on the fingerprint, so `firstSeenAt` is preserved and a bar
+activated afterwards cannot judge it; confirmed by execution, no lever. No remedy has been chosen.
 
 ## What is reused, and what is deliberately separate
 

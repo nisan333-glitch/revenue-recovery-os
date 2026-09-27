@@ -35,9 +35,16 @@ identity is attributable to the **product**, not to a new sample.
 * **The governed re-reading route is blocked by the fitness bar in the obvious case.** Re-reading the same
   extract under a later cut-off was admitted as a new submission — and then refused by the admission bar with
   `NH-AG-2007`, because moving the cut-off forward a month emptied the `undetermined` lifecycle state the bar
-  requires. The route the constitution decision explicitly permits therefore does not complete end to end
-  under a bar that requires all three lifecycle states. **This is reported, not repaired.** No threshold,
+  requires. ~~The route the constitution decision explicitly permits therefore does not complete end to end
+  under a bar that requires all three lifecycle states.~~ **This is reported, not repaired.** No threshold,
   policy, bar or expected value was adjusted after seeing it.
+
+  > **⚠ CORRECTED 2026-09-27 — see §10 for the full correction and
+  > [`ADMISSION_TERMS_COUPLING.md`](ADMISSION_TERMS_COUPLING.md) for the investigation.** The refusal above is
+  > real and reproducible, but the bar that caused it was written by **this experiment** and by nothing else
+  > in the repository. Under the bar the product itself uses, the same re-reading is admitted and its
+  > execution **completes**. **The route does complete end to end.** What is actually wrong is a latent
+  > configuration trap and an undocumented invariant, not a blocked route.
 
 **And the capability gap is unchanged: 65.4% of planted business leakage remains invisible to this product.**
 Nothing in EP-26, EP-27 or EP-28 widened the detection surface, and nothing in them was supposed to. Four
@@ -422,12 +429,38 @@ own identity and its own admission decision. But the **fitness** bar then refuse
 moving the cut-off forward one month resolved the single planted `undetermined` cycle, and the bar requires
 `stalled`, `reference` **and** `undetermined` to be present among the accepted rows.
 
-**Why this is a real finding and not an artifact of the dataset.** It is *sharpened* by the dataset having
+**Why this is a real finding and not an artifact of the dataset.** ~~It is *sharpened* by the dataset having
 exactly one undetermined cycle, but the mechanism is general: `undetermined` means "the deadline has not yet
 been reached at the cut-off", so a later cut-off systematically **empties** that state. Any bar that requires
-`undetermined` will refuse a sufficiently late re-reading of any extract. The two governed objects interact in
-a way neither was designed against: the definition of *when* is governed independently of the bar that
+`undetermined` will refuse a sufficiently late re-reading of any extract.~~ The two governed objects interact
+in a way neither was designed against: the definition of *when* is governed independently of the bar that
 requires evidence of *not yet*.
+
+> **⚠ STRUCK 2026-09-27, and struck rather than reworded.** The sentences above are half right, and the half
+> that is wrong is the conclusion. The **mechanism** is general — proved from `cohort.ts:33-46`, where
+> `undetermined` is monotone non-increasing in `asOf` and empty once `asOf ≥ max(expectationAt) + N` — and
+> that part stands. But **generality of a mechanism is not exposure of a product**, and this paragraph let the
+> one slide into the other. **Nothing in the product requires `undetermined`:** `SCENARIO_POLICY`
+> (`syntheticPilotDataset.ts:269`), the rehearsal agent (`pilotAssessmentRehearsal.ts:166`) and every server
+> and contract test bar use `["stalled", "reference"]` — the bar that produced this refusal was written by
+> **this experiment** (`verify.mjs:160,167`) and by nothing else.
+>
+> Measured afterwards on a fresh database, with the expectation stated first: under the product's own bar the
+> same re-reading is **ADMISSIBLE**, is scheduled, and its execution **completes with a finding** (stalled 17,
+> undetermined 0, `observedUnpaid` $35,750.63 — a $4,100.00 delta traced to scenario **S19** alone). **So the
+> governed re-reading route does complete end to end**, and the sentence below it — *"the route the
+> constitution decision explicitly permits therefore does not complete end to end"* — is withdrawn as a
+> statement about the product. It remains true of a bar that requires all three states.
+>
+> What survives, and is the part worth keeping, is stated properly in
+> [`ADMISSION_TERMS_COUPLING.md`](ADMISSION_TERMS_COUPLING.md): **an admission verdict is a property of
+> `(extract, governed terms)`, never of the extract alone**, so every lifecycle-coverage requirement is
+> terms-relative — symmetrically, a bar requiring `stalled` breaks under a sufficiently *early* cut-off. The
+> residual defect is a latent **configuration trap**, not a blocked route. The anti-tuning rule was also
+> confirmed to hold across a re-reading, by execution: **no lever exists.**
+>
+> **No measured figure in this report changed**, and neither freeze was touched. This sharpens an
+> overstatement; it withdraws no measurement.
 
 **What was deliberately not done.** The bar's `requiredLifecycleStates` was **not** relaxed, the cut-off was
 **not** moved closer, the dataset was **not** given a second undetermined cycle, and the expectation was
@@ -512,6 +545,11 @@ a finding.
 
 1. **§10 — the governed re-reading is blocked by the fitness bar** (`NH-AG-2007`). The one genuinely new
    finding. A product/constitution decision is required and is **not** taken here.
+   **⚠ Corrected 2026-09-27:** ~~blocked~~ — the route completes under the product's own bar; the defect is a
+   latent **configuration trap** (`undetermined` is requirable, terms-relative, and disowned by the code's own
+   rationale) plus an invariant nobody had written down: *an admission verdict is a property of
+   `(extract, governed terms)`.* Investigated in [`ADMISSION_TERMS_COUPLING.md`](ADMISSION_TERMS_COUPLING.md);
+   the remedy is still **not** chosen.
 2. **The detection surface is one rule.** `classifyStall` is the whole detector. `renewal_at_risk`,
    `usage_adoption_decline`, `expansion_stalled`, `discount_leakage`, `dunning_failure` and
    `credit_note_misapplied` — **$65,100.00** — have no column that could carry them (§4). Unchanged from
