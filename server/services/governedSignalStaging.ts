@@ -28,6 +28,7 @@ import {
 import type { ExpectationCycle } from "../../src/assessment/types";
 import type { AssessmentPolicy } from "../../src/assessment/policy";
 import type { Money } from "../../src/domain/money";
+import { leakInstanceIdentityStatus } from "../../src/contract/leakInstanceIdentity";
 
 export const SIGNAL_EMITTER_ENABLED_VARIABLE = "NH_PILOT_SIGNAL_EMITTER_ENABLED";
 export const SIGNAL_EMITTER_BOUNDARIES_VARIABLE = "NH_PILOT_SIGNAL_EMITTER_BOUNDARIES";
@@ -108,24 +109,43 @@ export function stagedSourceRef(sourceRefKey: string, boundaryId: string, entity
   return `hmac-sha256:${digest}`;
 }
 
-/** Thrown when the per-account figures do not sum to the aggregate. Stops the write rather than staging. */
-export class AttributionReconciliationError extends Error {
-  constructor(readonly expectedMinor: number, readonly actualMinor: number) {
-    super(
-      `staged attribution does not reconcile with the assessment total (expected ${expectedMinor}, got ${actualMinor}); ` +
-        "no attribution was staged",
-    );
-    this.name = "AttributionReconciliationError";
-  }
+/**
+ * Why candidate-capable staging did not happen. A NAMED outcome, never a thrown error.
+ *
+ * `boundary_not_enrolled` is the ordinary case and not a fault at all.
+ * `leak_instance_identity_unavailable` is the standing blocker under the current contract.
+ * `attribution_did_not_reconcile` was a THROWN error before EP-31c, which meant a divergence between the
+ * per-account figures and the aggregate would abort the whole schedule request — a candidate-side fault
+ * taking an ordinary assessment with it. It is fatal to staging and to nothing else now.
+ */
+export type CandidateStagingBlockedReason =
+  | "boundary_not_enrolled"
+  | "leak_instance_identity_unavailable"
+  | "attribution_did_not_reconcile";
+
+export interface CandidateStagingDecision {
+  readonly staged: boolean;
+  readonly reason: CandidateStagingBlockedReason | null;
+  /** A sentence naming the cause. Never echoes a customer value. */
+  readonly detail: string;
+  /** ALWAYS empty when `staged` is false. There is no partial staging. */
+  readonly attributions: readonly StagedAttribution[];
+}
+
+function blocked(reason: CandidateStagingBlockedReason, detail: string): CandidateStagingDecision {
+  return Object.freeze({ staged: false, reason, detail, attributions: Object.freeze([]) });
 }
 
 /**
- * Derive the rows to stage for one execution, or an empty list when staging is off for this boundary.
+ * Decide what to stage for one execution — and NEVER THROW.
  *
- * THE RECONCILIATION IS CHECKED HERE, not only in the tests. If the per-account figures ever stopped
- * summing to `observedUnpaid + partialOutstanding`, the two computations would have diverged — and
- * candidates nobody can tie back to the finding are worse than no candidates. So the mismatch throws and
- * nothing is staged.
+ * THE INVARIANT THIS FILE EXISTS TO KEEP: *ordinary assessment may complete without leak-instance
+ * identity; candidate-capable staging may not.* So every way this can decline is a typed, named result
+ * that the caller records beside a perfectly normal execution. Throwing would convert a candidate-side
+ * limitation into an assessment availability failure, which is the one outcome the design forbids.
+ *
+ * The order of the checks is the order of their cost, and each is reported in its own right rather than
+ * collapsed into "nothing was staged".
  */
 export function deriveStagedAttributions(
   config: SignalStagingConfig | null,
@@ -133,24 +153,55 @@ export function deriveStagedAttributions(
   cycles: readonly ExpectationCycle[],
   policy: AssessmentPolicy,
   aggregate: { readonly observedUnpaid: Money; readonly partialOutstanding: Money },
-): readonly StagedAttribution[] {
-  if (!mayStage(config, boundaryId)) return Object.freeze([]);
-  const result: EntityAttributionResult = attributeByEntity(cycles, policy);
-  if (!attributionReconciles(result, aggregate.observedUnpaid, aggregate.partialOutstanding)) {
-    throw new AttributionReconciliationError(
-      aggregate.observedUnpaid.minor + aggregate.partialOutstanding.minor,
-      result.totalAtRisk.minor,
+): CandidateStagingDecision {
+  if (!mayStage(config, boundaryId)) {
+    return blocked(
+      "boundary_not_enrolled",
+      "this boundary is not enrolled for candidate-capable staging, which is the default",
     );
   }
-  return Object.freeze(
-    result.attributions.map((attribution) =>
-      Object.freeze({
-        sourceRef: stagedSourceRef(config!.sourceRefKey, boundaryId, attribution.entityId),
-        amountAtRiskMinor: attribution.amountAtRisk.minor,
-        currency: attribution.amountAtRisk.currency,
-        contributingCycleCount: attribution.contributingCycleCount,
-        attributionRule: result.rule,
-      }),
+
+  // RECONCILIATION IS CHECKED BEFORE THE IDENTITY GATE, on purpose.
+  //
+  // The attribution does not depend on the occurrence key at all — `attributeByEntity` groups by
+  // `entityId`, and the leak-instance identity would only ever enter at `stagedSourceRef`, which is
+  // reached solely in the `staged: true` branch below. So computing it here builds nothing under an
+  // unproven key, and putting the identity gate first would instead turn this check into dead code behind
+  // a permanent block: a divergence between the per-account figures and the assessment total would stop
+  // being reported for as long as identity is unavailable. It stays live.
+  const result: EntityAttributionResult = attributeByEntity(cycles, policy);
+  if (!attributionReconciles(result, aggregate.observedUnpaid, aggregate.partialOutstanding)) {
+    // Fatal to staging, and to nothing else: candidates nobody can tie back to the finding are worse
+    // than no candidates, but the finding itself is unaffected and the execution completes.
+    return blocked(
+      "attribution_did_not_reconcile",
+      `the per-account figures do not sum to the assessment total (expected ` +
+        `${aggregate.observedUnpaid.minor + aggregate.partialOutstanding.minor}, got ${result.totalAtRisk.minor})`,
+    );
+  }
+
+  // THE STANDING BLOCKER, and the last word on whether anything is staged. Under the current data
+  // contract this is always taken: no declared field can establish a stable obligation identity, so no
+  // row may be written under a key that cannot tell one occurrence from the next.
+  const identity = leakInstanceIdentityStatus();
+  if (!identity.establishable) {
+    return blocked("leak_instance_identity_unavailable", identity.detail);
+  }
+
+  return Object.freeze({
+    staged: true,
+    reason: null,
+    detail: "candidate-capable attribution staged",
+    attributions: Object.freeze(
+      result.attributions.map((attribution) =>
+        Object.freeze({
+          sourceRef: stagedSourceRef(config!.sourceRefKey, boundaryId, attribution.entityId),
+          amountAtRiskMinor: attribution.amountAtRisk.minor,
+          currency: attribution.amountAtRisk.currency,
+          contributingCycleCount: attribution.contributingCycleCount,
+          attributionRule: result.rule,
+        }),
+      ),
     ),
-  );
+  });
 }

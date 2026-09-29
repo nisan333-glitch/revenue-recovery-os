@@ -34,6 +34,7 @@ import type { CandidateSignal } from "../agents/types";
 import { executionStatus, findExecution } from "../persistence/pilotExecutionStore";
 import { PLAYBOOK } from "../../src/domain/recommendation";
 import { sha256Hex } from "../../src/assessment/fingerprint";
+import { leakInstanceIdentityStatus } from "../../src/contract/leakInstanceIdentity";
 
 /** The agent identity this emitter publishes under, and the version stamped into every signal. */
 export const SIGNAL_EMITTER_AGENT_ID = "pilot-signal-emitter";
@@ -52,6 +53,14 @@ export const EMITTED_RECOVERY_TYPE = "ActivationMissed" as const;
 
 /** Version of the signal derivation itself. A change here is a new derivation, never a re-grade. */
 const SIGNAL_DERIVATION_SCHEME = "nh-pilot-signal-v1";
+
+/** Restated on every result, including a blocked one, so no exit can read as a money figure. */
+const CLAIM_BOUNDARY = Object.freeze({
+  atRiskOnly: true as const,
+  constitutesProof: false as const,
+  constitutesRevenue: false as const,
+  createsRecoveryCase: false as const,
+});
 
 export interface GovernedSignalEmissionOptions {
   readonly boundaryId: string;
@@ -86,6 +95,15 @@ export interface EmissionRefusal {
 
 export interface GovernedSignalEmissionResult {
   readonly boundaryId: string;
+  /**
+   * EP-31c · When false, NOTHING was emitted because a stable leak-instance identity cannot be
+   * established under the current data contract, and `identityBlockedDetail` says so. Checked HERE and
+   * not only at staging: a row inserted by any other route — a hand-written INSERT, a build that predates
+   * the staging guard, a restore — must not become a candidate either. Defense in depth means two
+   * independent refusals, not one guard read twice.
+   */
+  readonly leakInstanceIdentityEstablishable: boolean;
+  readonly identityBlockedDetail: string | null;
   readonly executionsExamined: number;
   readonly executionsEmitted: number;
   readonly candidatesCreated: number;
@@ -188,6 +206,26 @@ export async function emitGovernedSignals(
   const now = options.now ?? (() => new Date());
   const limit = options.limit ?? 100;
 
+  // THE INDEPENDENT GUARD. Asked before any staged row is read, so the answer cannot depend on what the
+  // staging path happened to write — which is what makes it a second refusal rather than an echo of the
+  // first. A NAMED result, never a throw: emission declining must not look like a failure of anything
+  // upstream, and the governed assessment it reads from is untouched either way.
+  const identity = leakInstanceIdentityStatus();
+  if (!identity.establishable) {
+    return Object.freeze({
+      boundaryId,
+      leakInstanceIdentityEstablishable: false,
+      identityBlockedDetail: identity.detail,
+      executionsExamined: 0,
+      executionsEmitted: 0,
+      candidatesCreated: 0,
+      candidatesAlreadyPresent: 0,
+      refused: Object.freeze([]),
+      skipped: Object.freeze([]),
+      claimBoundary: CLAIM_BOUNDARY,
+    });
+  }
+
   const staged = await prisma.pilotAssessmentEntityAttributionRecord.findMany({
     where: { boundaryId },
     orderBy: [{ executionId: "asc" }, { sourceRef: "asc" }],
@@ -278,17 +316,14 @@ export async function emitGovernedSignals(
 
   return Object.freeze({
     boundaryId,
+    leakInstanceIdentityEstablishable: true,
+    identityBlockedDetail: null,
     executionsExamined,
     executionsEmitted,
     candidatesCreated,
     candidatesAlreadyPresent,
     refused: Object.freeze(refused),
     skipped: Object.freeze(skipped),
-    claimBoundary: Object.freeze({
-      atRiskOnly: true as const,
-      constitutesProof: false as const,
-      constitutesRevenue: false as const,
-      createsRecoveryCase: false as const,
-    }),
+    claimBoundary: CLAIM_BOUNDARY,
   });
 }

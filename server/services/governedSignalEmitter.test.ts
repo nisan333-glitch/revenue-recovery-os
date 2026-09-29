@@ -25,6 +25,10 @@ import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import { TransactionalCaseCandidateStore } from "../agents/postgresCaseCandidateStore";
 import { PLAYBOOK } from "../../src/domain/recommendation";
 import type { RecoveryTypeAdmissionPolicy } from "../agents/admission";
+import {
+  LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL,
+  leakInstanceIdentityStatus,
+} from "../../src/contract/leakInstanceIdentity";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -104,67 +108,67 @@ describe.skipIf(!HAS_DB)("EP-31 · the governed signal emitter", () => {
       method: "GET", url: `/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, headers: OPERATOR,
     })).json();
 
-  // ══ The gate ═════════════════════════════════════════════════════════════════════════════════════
+  // ══ CONTROL 2 · the identity gate, and the bypass it must survive ════════════════════════════════
 
-  it("1 · a QUEUED execution emits nothing, and the review queue stays empty", async () => {
-    const boundaryId = `ep31e-queued-${uid()}`;
+  it("1 · a COMPLETED execution emits NOTHING: identity is blocked, and the reason is named", async () => {
+    const boundaryId = `ep31c-e-blocked-${uid()}`;
     await scheduleStaged(boundaryId, await admitted(boundaryId));
-    const result = await emitGovernedSignals({ boundaryId, policies: policies() });
-    expect(result.candidatesCreated).toBe(0);
-    expect(result.skipped).toEqual([
-      { executionId: expect.any(String), reason: "not_completed", state: "queued" },
-    ]);
-    expect(await queue(boundaryId)).toEqual([]);
-  });
-
-  it("2 · a COMPLETED execution emits one candidate per staged account", async () => {
-    const boundaryId = `ep31e-ok-${uid()}`;
-    const result = await scheduleStaged(boundaryId, await admitted(boundaryId));
     expect((await completeWorker(boundaryId))?.status).toBe("succeeded");
 
-    const staged = await prisma.pilotAssessmentEntityAttributionRecord.count({
-      where: { executionId: result.executionId! },
-    });
-    expect(staged).toBeGreaterThan(0);
-
     const emission = await emitGovernedSignals({ boundaryId, policies: policies() });
-    expect(emission.executionsEmitted).toBe(1);
-    expect(emission.candidatesCreated).toBe(staged);
+    expect(emission.leakInstanceIdentityEstablishable).toBe(false);
+    expect(emission.identityBlockedDetail).toBe(LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL);
+    expect(emission.candidatesCreated).toBe(0);
+    expect(emission.executionsExamined).toBe(0);
     expect(emission.claimBoundary).toEqual({
       atRiskOnly: true, constitutesProof: false, constitutesRevenue: false, createsRecoveryCase: false,
     });
-
-    const items = await queue(boundaryId);
-    expect(items).toHaveLength(staged);
-    for (const item of items) {
-      expect(item.status).toBe("pending_review");
-      expect(item.signal.recoveryType).toBe(EMITTED_RECOVERY_TYPE);
-      expect(item.signal.detectorVersion).toBe(SIGNAL_EMITTER_DETECTOR_VERSION);
-      expect(item.signal.sourceRef).toMatch(/^hmac-sha256:[a-f0-9]{64}$/);
-      // Derived, not supplied: the proof event comes from the PLAYBOOK and the cut-off from the terms.
-      expect(item.signal.expectedProofEvent).toBe(PLAYBOOK[EMITTED_RECOVERY_TYPE].expectedProofEvent);
-      expect(item.signal.observedAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
-      expect(item.signal.amountAtRiskMinor).toBeGreaterThan(0);
-      expect(item.agentId).toBe(SIGNAL_EMITTER_AGENT_ID);
-    }
-    // No raw identifier reached the candidate table.
-    expect(JSON.stringify(items)).not.toMatch(/synthetic-account/i);
+    expect(await queue(boundaryId)).toEqual([]);
   });
 
-  it("3 · re-running emits NO second candidate — idempotent through the dedupe key", async () => {
-    const boundaryId = `ep31e-idem-${uid()}`;
+  it("2 · CONTROL 2 · BYPASSING staging by inserting a row by hand still yields ZERO candidates", async () => {
+    // Defense in depth, and the reason the emitter asks the identity question itself rather than trusting
+    // that staging wrote nothing. A row reaching the table by ANY other route — a hand-written INSERT, a
+    // build predating the staging guard, a restore — must not become a candidate.
+    const boundaryId = `ep31c-e-bypass-${uid()}`;
+    const scheduled = await scheduleStaged(boundaryId, await admitted(boundaryId));
+    expect((await completeWorker(boundaryId))?.status).toBe("succeeded");
+
+    await prisma.pilotAssessmentEntityAttributionRecord.create({
+      data: {
+        executionId: scheduled.executionId!, boundaryId,
+        sourceRef: `hmac-sha256:${"b".repeat(64)}`, amountAtRiskMinor: 500_000n, currency: "USD",
+        contributingCycleCount: 1, attributionRule: "nh-entity-attribution-v1",
+      },
+    });
+    // The row is really there — otherwise this proves nothing.
+    expect(await prisma.pilotAssessmentEntityAttributionRecord.count({
+      where: { executionId: scheduled.executionId! },
+    })).toBe(1);
+
+    const emission = await emitGovernedSignals({ boundaryId, policies: policies() });
+    expect(emission.leakInstanceIdentityEstablishable).toBe(false);
+    expect(emission.identityBlockedDetail).toBe(LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL);
+    expect(emission.candidatesCreated).toBe(0);
+    expect(await queue(boundaryId)).toEqual([]);
+    // No Case either, since no candidate exists to promote.
+    expect(await prisma.recoveryCaseRecord.count({ where: { boundaryId } })).toBe(0);
+  });
+
+  it("3 · the emitter NEVER throws for a blocked identity — it returns a named result", async () => {
+    const boundaryId = `ep31c-e-nothrow-${uid()}`;
     await scheduleStaged(boundaryId, await admitted(boundaryId));
     await completeWorker(boundaryId);
-    const first = await emitGovernedSignals({ boundaryId, policies: policies() });
-    const second = await emitGovernedSignals({ boundaryId, policies: policies() });
-    expect(first.candidatesCreated).toBeGreaterThan(0);
-    expect(second.candidatesCreated).toBe(0);
-    expect(second.candidatesAlreadyPresent).toBe(first.candidatesCreated);
-    expect(await queue(boundaryId)).toHaveLength(first.candidatesCreated);
+    await expect(emitGovernedSignals({ boundaryId, policies: policies() })).resolves.toMatchObject({
+      leakInstanceIdentityEstablishable: false,
+      candidatesCreated: 0,
+    });
   });
 
-  it("4 · the governed threshold is FAIL-CLOSED: no configured policy means refusal, not emission", async () => {
-    const boundaryId = `ep31e-nopolicy-${uid()}`;
+  it("4 · the governed threshold is still FAIL-CLOSED, and is checked before the identity gate", async () => {
+    // Order matters: a missing materiality floor is a configuration fault the operator must fix, and it
+    // must not be masked by the standing identity block.
+    const boundaryId = `ep31c-e-nopolicy-${uid()}`;
     await scheduleStaged(boundaryId, await admitted(boundaryId));
     await completeWorker(boundaryId);
     await expect(emitGovernedSignals({ boundaryId, policies: new Map() }))
@@ -172,77 +176,22 @@ describe.skipIf(!HAS_DB)("EP-31 · the governed signal emitter", () => {
     expect(await queue(boundaryId)).toEqual([]);
   });
 
-  it("5 · a signal below the governed materiality floor is REFUSED and reported, never silently dropped", async () => {
-    const boundaryId = `ep31e-floor-${uid()}`;
-    await scheduleStaged(boundaryId, await admitted(boundaryId));
-    await completeWorker(boundaryId);
-    // A floor above every synthetic amount: nothing is material, so nothing is admitted.
-    const emission = await emitGovernedSignals({ boundaryId, policies: policies(Number.MAX_SAFE_INTEGER) });
-    expect(emission.candidatesCreated).toBe(0);
-    expect(emission.refused.length).toBeGreaterThan(0);
-    expect(emission.refused[0]!.reason).toMatch(/below the governed threshold/i);
-    expect(await queue(boundaryId)).toEqual([]);
-  });
-
-  // ══ G2 · emission cannot damage the governed result ═══════════════════════════════════════════════
-
-  it("6 · G2 · a failure during emission leaves the execution COMPLETED and byte-identical", async () => {
-    const boundaryId = `ep31e-g2-${uid()}`;
-    const scheduled = await scheduleStaged(boundaryId, await admitted(boundaryId));
-    await completeWorker(boundaryId);
-    const executionId = scheduled.executionId!;
-
-    const view = async () =>
-      (await app.inject({
-        method: "GET", url: `/pilot/assessments/${executionId}?boundaryId=${encodeURIComponent(boundaryId)}`,
-        headers: OPERATOR,
-      })).json();
-    const before = await view();
-    expect(before.state).toBe("completed");
-
-    // Force a write in the MIDDLE of the batch to fail, through the injected store.
-    //
-    // An earlier version of this test monkey-patched `prisma.$queryRaw` and applied the original with
-    // `prisma` as the receiver — which routed the first INSERT onto the PARENT connection, where it
-    // committed outside the transaction. One candidate then survived and the test read that as a
-    // failure of atomicity. It was a failure of the harness: the injection had moved the write out of
-    // the transaction it was meant to be testing. Recorded because the wrong conclusion was one step
-    // away, and the honest seam is the store, exactly as the assessment service injects its task store.
-    let created = 0;
-    await expect(
-      emitGovernedSignals({
-        boundaryId,
-        policies: policies(),
-        candidateStoreFor: (tx) => {
-          const real = new TransactionalCaseCandidateStore(tx);
-          return {
-            async createIfAbsent(candidate) {
-              created += 1;
-              if (created > 1) throw new Error("injected candidate-write failure");
-              return real.createIfAbsent(candidate);
-            },
-          };
-        },
-      }),
-    ).rejects.toThrow(/injected/);
-    expect(created).toBeGreaterThan(1); // the failure really did land mid-batch
-
-    // The governed result is untouched, in every field that makes it attributable and reproducible.
-    const after = await view();
-    expect(after.state).toBe("completed");
-    expect(after.inputHash).toBe(before.inputHash);
-    expect(after.bindingHash).toBe(before.bindingHash);
-    expect(after.binding).toEqual(before.binding);
-    expect(after.finding.findingHash).toBe(before.finding.findingHash);
-    expect(after.finding.finding).toEqual(before.finding.finding);
-
-    // NO PARTIAL CANDIDATE: the batch is all-or-nothing.
-    expect(await queue(boundaryId)).toEqual([]);
-
-    // And a retry afterwards admits the full batch exactly once.
-    const retry = await emitGovernedSignals({ boundaryId, policies: policies() });
-    expect(retry.candidatesCreated).toBeGreaterThan(0);
-    expect(await queue(boundaryId)).toHaveLength(retry.candidatesCreated);
+  /**
+   * SUSPENDED COVERAGE, recorded rather than quietly dropped.
+   *
+   * These end-to-end properties were proved at `95dc2bb` and are unreachable while the identity gate holds,
+   * because every one of them needs a candidate to exist: one candidate per staged account; idempotent
+   * re-emission through the dedupe key; a below-floor signal reported in `refused`; mid-batch atomicity
+   * leaving the execution byte-identical; cross-export pseudonym stability producing no duplicate; and
+   * promotion refused 409 until a review accepts it.
+   *
+   * They are preserved in the EP-31 commits, not deleted from history, and they become reachable again
+   * when an authoritative leak-instance identity exists. Deliberately NOT preserved by adding an override
+   * that satisfies the gate: a seam capable of turning the gate off is precisely what this slice removes,
+   * and test coverage is not a reason to build one.
+   */
+  it("SUSPENDED · end-to-end candidate coverage awaits an authoritative leak-instance identity", () => {
+    expect(leakInstanceIdentityStatus().establishable).toBe(false);
   });
 
   it("7 · G2 · the emitter has NO write path to the execution, its events or its finding", () => {
@@ -269,64 +218,6 @@ describe.skipIf(!HAS_DB)("EP-31 · the governed signal emitter", () => {
     }
   });
 
-  // ══ G3 · one account is one candidate, across DIFFERENT exports ══════════════════════════════════
-
-  it("9 · G3 · a second, differently-shaped export of the same accounts yields NO duplicate candidate", async () => {
-    // The property that matters, and the one an ordinal-based reference would fail: the pseudonym depends
-    // on the boundary and the customer's own account id, so a re-export with rows reordered, rows
-    // removed and a different dataset label is still the same accounts — one candidate each, not two.
-    const boundaryId = `ep31e-reexport-${uid()}`;
-    const first = await admitted(boundaryId);
-
-    // A genuinely different file: reversed data rows and two fewer of them, so the bytes, the
-    // fingerprint, the submission identity and the execution id all differ.
-    const lines = (first.csvText as string).trimEnd().split("\n");
-    const reexport = [lines[0]!, ...lines.slice(1).reverse()].join("\n");
-    expect(reexport).not.toBe(first.csvText);
-
-    await scheduleStaged(boundaryId, first);
-    expect((await completeWorker(boundaryId))?.status).toBe("succeeded");
-    const afterFirst = await emitGovernedSignals({ boundaryId, policies: policies() });
-    expect(afterFirst.candidatesCreated).toBeGreaterThan(0);
-    const refsAfterFirst = new Set((await queue(boundaryId)).map((i: { signal: { sourceRef: string } }) => i.signal.sourceRef));
-
-    const second = { ...first, datasetId: `ds-${uid()}`, csvText: reexport };
-    const upload = await app.inject({
-      method: "POST", url: "/pilot/datasets", headers: OPERATOR,
-      // The bar must be named again: a submission that names none is judged under no policy at all and
-      // comes back NOT_ASSESSABLE. An earlier draft of this test omitted it and read that as a data
-      // problem with the re-export; the contract accepts both files identically.
-      payload: {
-        ...second,
-        admissionPolicyId: barFor.get(boundaryId),
-        admissionPolicyVersion: "1.0.0",
-      } as object,
-    });
-    expect(upload.statusCode).toBe(200);
-    // Asserted, not assumed: a re-export that failed admission would make the rest of this vacuous.
-    expect(upload.json().admission.outcome).toBe("ADMISSIBLE");
-    expect(upload.json().datasetFingerprint).not.toBe(undefined);
-    const scheduled = await scheduleStaged(boundaryId, second);
-    expect(scheduled.scheduled).toBe(true);
-    expect(typeof scheduled.executionId).toBe("string");
-    expect((await completeWorker(boundaryId))?.status).toBe("succeeded");
-
-    const staged = await prisma.pilotAssessmentEntityAttributionRecord.findMany({
-      where: { executionId: scheduled.executionId! },
-    });
-    expect(staged.length).toBeGreaterThan(0);
-    // Every account carried over from the first export reuses its reference — no new pseudonym.
-    const carriedOver = staged.filter((row) => refsAfterFirst.has(row.sourceRef));
-    expect(carriedOver.length).toBeGreaterThan(0);
-
-    const afterSecond = await emitGovernedSignals({ boundaryId, policies: policies() });
-    // Each carried-over account was recognised as already having a candidate, not duplicated.
-    expect(afterSecond.candidatesAlreadyPresent).toBeGreaterThanOrEqual(carriedOver.length);
-
-    const refs = (await queue(boundaryId)).map((i: { signal: { sourceRef: string } }) => i.signal.sourceRef);
-    expect(new Set(refs).size).toBe(refs.length); // no account appears twice
-  });
-
   it("10 · NC · the request body cannot supply the at-risk amount or anything else about the signal", async () => {
     // `additionalProperties: false` on the schedule body is what makes this a 400 rather than a field
     // someone later decides to honour. Every input to the case-admission gate is derived.
@@ -341,27 +232,4 @@ describe.skipIf(!HAS_DB)("EP-31 · the governed signal emitter", () => {
     }
   });
 
-  // ══ Where a candidate stops ══════════════════════════════════════════════════════════════════════
-
-  it("8 · a candidate is not a Case: promotion is refused until a review accepts it", async () => {
-    const boundaryId = `ep31e-promote-${uid()}`;
-    await scheduleStaged(boundaryId, await admitted(boundaryId));
-    await completeWorker(boundaryId);
-    await emitGovernedSignals({ boundaryId, policies: policies() });
-    const candidateId = (await queue(boundaryId))[0].candidateId;
-
-    const promote = () =>
-      app.inject({
-        method: "POST", url: `/agent-candidates/${candidateId}/promote`, headers: OPERATOR,
-        payload: { boundaryId } as object,
-      });
-    expect((await promote()).statusCode).toBe(409);
-
-    const review = await app.inject({
-      method: "POST", url: `/agent-candidates/${candidateId}/review`, headers: OPERATOR,
-      payload: { boundaryId, decision: "accepted", reason: "EP-31 emitter test" } as object,
-    });
-    expect(review.statusCode).toBe(201);
-    expect((await promote()).statusCode).toBe(201);
-  });
 });

@@ -69,6 +69,8 @@ import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
 import {
   deriveStagedAttributions,
   resolveSignalStagingConfig,
+  type CandidateStagingBlockedReason,
+  type CandidateStagingDecision,
   type SignalStagingConfig,
 } from "./governedSignalStaging";
 import { PILOT_ASSESSMENT_AGENT_ID } from "../agents/pilotAssessmentAgent";
@@ -111,6 +113,19 @@ export interface SchedulePilotAssessmentResponse {
   readonly refusal: ExecutionCodeSpec | null;
   /** Non-identifying context for the refusal. Never echoes a customer value. */
   readonly refusalDetail: string | null;
+  /**
+   * EP-31c · Whether candidate-capable attribution was staged for this execution, and if not, why.
+   *
+   * DELIBERATELY NOT `refusal`/`refusalDetail`. Those are the deterministic NH-AX-#### refusals of the
+   * EXECUTION, and putting a candidate-side outcome there would let `scheduled: true` sit beside a
+   * `refusal` — which reads as the assessment having been refused when it was not. No NH-AX code is
+   * invented for this: the execution vocabulary is unchanged.
+   *
+   * `staged: false` is the ordinary case. Under the current data contract it is ALWAYS false, with
+   * reason `leak_instance_identity_unavailable`, because no declared field can establish a stable
+   * obligation identity (`src/contract/leakInstanceIdentity.ts`). An assessment does not need one.
+   */
+  readonly candidateStaging: CandidateStagingDecisionSummary;
   readonly admissionPolicyState: PolicyState | null;
   readonly claimBoundary: {
     readonly observationOnly: true;
@@ -142,9 +157,27 @@ function refused(
     binding: null,
     refusal: executionCode(refusal),
     refusalDetail: detail,
+    // A refused schedule reaches no staging decision at all, and reporting `staged: false` with the
+    // boundary reason keeps the field total rather than nullable.
+    candidateStaging: Object.freeze({
+      staged: false,
+      reason: "boundary_not_enrolled" as const,
+      detail: "the schedule was refused before candidate-capable staging was considered",
+    }),
     admissionPolicyState,
     claimBoundary: CLAIM_BOUNDARY,
   });
+}
+
+/** The decision, without the staged rows: a response never carries customer-derived figures. */
+export interface CandidateStagingDecisionSummary {
+  readonly staged: boolean;
+  readonly reason: CandidateStagingBlockedReason | null;
+  readonly detail: string;
+}
+
+function stagingSummary(decision: CandidateStagingDecision): CandidateStagingDecisionSummary {
+  return Object.freeze({ staged: decision.staged, reason: decision.reason, detail: decision.detail });
 }
 
 export interface PilotAssessmentDeps {
@@ -351,7 +384,7 @@ export async function schedulePilotAssessment(
   // Off unless the boundary is explicitly enrolled — `mayStage` requires both the master switch and the
   // allowlist — so the default is an empty list and no behaviour change at all.
   const stagingConfig = deps.signalStaging ?? defaultSignalStagingConfig();
-  const attributions = deriveStagedAttributions(
+  const candidateStaging = deriveStagedAttributions(
     stagingConfig,
     boundaryId,
     report.acceptedCycles,
@@ -367,7 +400,7 @@ export async function schedulePilotAssessment(
     inputHash,
     scheduledByActorId: actor.actorId,
     scheduledByRole: actor.role,
-    attributions,
+    attributions: candidateStaging.attributions,
   });
 
   // ── 7 · Enqueue ────────────────────────────────────────────────────────────────────────────────
@@ -396,6 +429,7 @@ export async function schedulePilotAssessment(
     binding: execution.binding,
     refusal: null,
     refusalDetail: null,
+    candidateStaging: stagingSummary(candidateStaging),
     admissionPolicyState: governance.state,
     claimBoundary: CLAIM_BOUNDARY,
   });
