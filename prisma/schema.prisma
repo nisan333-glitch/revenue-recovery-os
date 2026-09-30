@@ -417,30 +417,30 @@ model PilotAnalysisTermsEventRecord {
 /// Append-only: DB triggers reject UPDATE and DELETE. There is no status column; the five states the
 /// UI shows are derived from the append-only event log.
 model PilotAssessmentExecutionRecord {
-  executionId              String   @id(map: "pilot_assessment_executions_pkey") @map("execution_id")
-  boundaryId               String   @map("boundary_id")
-  datasetFingerprint       String   @map("dataset_fingerprint")
-  admissionDecisionId      String   @map("admission_decision_id")
-  admissionPolicyId        String   @map("admission_policy_id")
-  admissionPolicyVersion   String   @map("admission_policy_version")
-  admissionPolicyHash      String   @map("admission_policy_hash")
-  contractVersion          String   @map("contract_version")
-  assessmentPolicyId       String   @map("assessment_policy_id")
-  assessmentPolicyVersion  String   @map("assessment_policy_version")
-  calculationMethodVersion String   @map("calculation_method_version")
-  asOf                     String   @map("as_of")
-  stallThresholdDays       Int      @map("stall_threshold_days")
-  currency                 String
-  mappingId                String   @map("mapping_id")
-  amountFormat             String   @map("amount_format")
-  dateLocale               String   @map("date_locale")
+  executionId               String   @id(map: "pilot_assessment_executions_pkey") @map("execution_id")
+  boundaryId                String   @map("boundary_id")
+  datasetFingerprint        String   @map("dataset_fingerprint")
+  admissionDecisionId       String   @map("admission_decision_id")
+  admissionPolicyId         String   @map("admission_policy_id")
+  admissionPolicyVersion    String   @map("admission_policy_version")
+  admissionPolicyHash       String   @map("admission_policy_hash")
+  contractVersion           String   @map("contract_version")
+  assessmentPolicyId        String   @map("assessment_policy_id")
+  assessmentPolicyVersion   String   @map("assessment_policy_version")
+  calculationMethodVersion  String   @map("calculation_method_version")
+  asOf                      String   @map("as_of")
+  stallThresholdDays        Int      @map("stall_threshold_days")
+  currency                  String
+  mappingId                 String   @map("mapping_id")
+  amountFormat              String   @map("amount_format")
+  dateLocale                String   @map("date_locale")
   /// Optional link to a governed recovery case. When set, that case's Halt blocks this execution.
-  recoveryCaseId           String?  @map("recovery_case_id")
-  bindingHash              String   @map("binding_hash")
-  inputHash                String   @map("input_hash")
-  scheduledByActorId       String   @map("scheduled_by_actor_id")
-  scheduledByRole          String   @map("scheduled_by_role")
-  scheduledAt              DateTime @default(now()) @map("scheduled_at")
+  recoveryCaseId            String?  @map("recovery_case_id")
+  bindingHash               String   @map("binding_hash")
+  inputHash                 String   @map("input_hash")
+  scheduledByActorId        String   @map("scheduled_by_actor_id")
+  scheduledByRole           String   @map("scheduled_by_role")
+  scheduledAt               DateTime @default(now()) @map("scheduled_at")
 
   @@unique([executionId, boundaryId], map: "pilot_assessment_executions_identity_boundary_unique")
   @@index([boundaryId, scheduledAt], map: "pilot_assessment_executions_boundary_idx")
@@ -563,4 +563,44 @@ model PilotAssessmentInputPurgeRecord {
   @@unique([executionId, boundaryId], map: "pilot_assessment_input_purges_identity_boundary_unique")
   @@index([boundaryId, purgedAt], map: "pilot_assessment_input_purges_boundary_idx")
   @@map("pilot_assessment_input_purges")
+}
+
+// ── Step 5 · Governed source-namespace authority ──────────────────────────────────────────────────
+
+/// Stable identity of one external system-of-record instance. NOT boundary-scoped and holding no customer
+/// data: per-tenant authority lives in PilotBoundarySourceSetRecord. Registering one grants nothing.
+model PilotSourceNamespaceRecord {
+  namespaceId         String   @id @map("namespace_id")
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@map("pilot_source_namespaces")
+}
+/// One governed version of a namespace. `label` is DESCRIPTIVE ONLY — never part of any identity, so a
+/// rename cannot mint a second identity for one system.
+model PilotSourceNamespaceVersionRecord {
+  namespaceId         String   @map("namespace_id")
+  namespaceVersion    String   @map("namespace_version")
+  label               String
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@id([namespaceId, namespaceVersion], map: "pilot_source_namespace_versions_pkey")
+  @@index([namespaceId, registeredAt], map: "pilot_source_namespace_versions_identity_idx")
+  @@map("pilot_source_namespace_versions")
+}
+model PilotSourceNamespaceEventRecord {
+  id               String   @id
+  namespaceId      String   @map("namespace_id")
+  namespaceVersion String   @map("namespace_version")
+  transition       String
+  actorId          String   @map("actor_id")
+  actorRole        String   @map("actor_role")
+  rationale        String
+  at               DateTime @default(now())
+
+  @@index([namespaceId, namespaceVersion, at], map: "pilot_source_namespace_events_identity_idx")
+  @@map("pilot_source_namespace_events")
 }
