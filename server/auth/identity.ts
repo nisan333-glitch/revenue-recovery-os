@@ -27,7 +27,16 @@ export type GovernedAction =
   | "RetirePilotPolicy" // EP-15: permanently end a policy version (governance)
   | "SchedulePilotAssessment" // EP-16: hand an ADMITTED dataset to a governed assessment execution
   | "ReadPilotAssessment" // EP-16: read an execution's state, lineage and finding
-  | "PurgeAssessmentInput"; // EP-17: collect an execution's pseudonymised input under the retention policy
+  | "PurgeAssessmentInput" // EP-17: collect an execution's pseudonymised input under the retention policy
+  // Step 5 · governed source authority. Three objects, one propose/activate split each, and NO new role:
+  // the customer side may propose which external system its data comes from, but only governance puts an
+  // authority in force — the same reason a bar you set for yourself cannot judge you.
+  | "ProposeSourceNamespace"
+  | "ActivateSourceNamespace"
+  | "ProposeBoundarySourceSet"
+  | "ActivateBoundarySourceSet"
+  | "ProposeDatasetSourceBinding"
+  | "ActivateDatasetSourceBinding";
 
 // Least-privilege matrix: which role may perform which governed action. There is no
 // "admin"/superuser role — nothing here grants a separation-of-duties bypass.
@@ -51,10 +60,12 @@ const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
   author: [
     "Author", "EstablishBaseline", "Intervene", "IngestEvidence", "SubmitPilotDataset",
     "ProposePilotPolicy", "SchedulePilotAssessment", "ReadPilotAssessment",
+    "ProposeSourceNamespace", "ProposeBoundarySourceSet", "ProposeDatasetSourceBinding",
   ],
   operator: [
     "Author", "EstablishBaseline", "Intervene", "IngestEvidence", "PromoteCandidate",
     "SubmitPilotDataset", "ProposePilotPolicy", "SchedulePilotAssessment", "ReadPilotAssessment",
+    "ProposeSourceNamespace", "ProposeBoundarySourceSet", "ProposeDatasetSourceBinding",
   ],
   approver: ["Approve", "AuditRead", "ReadPilotAssessment"],
   verifier: ["Verify", "AuditRead", "ReadPilotAssessment"],
@@ -64,6 +75,9 @@ const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
   steward: [
     "Flag", "Halt", "Exclude", "AuditRead", "ActivatePilotPolicy", "RetirePilotPolicy",
     "ReadPilotAssessment", "PurgeAssessmentInput",
+    // Step 5 · the steward decides which source authority is in force. It still cannot count, so this adds
+    // authority over provenance and no path to a number.
+    "ActivateSourceNamespace", "ActivateBoundarySourceSet", "ActivateDatasetSourceBinding",
   ],
 };
 
