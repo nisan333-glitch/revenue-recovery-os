@@ -643,3 +643,32 @@ model PilotBoundarySourceSetEventRecord {
   @@index([boundaryId, setId, setVersion, at], map: "pilot_boundary_source_set_events_identity_idx")
   @@map("pilot_boundary_source_set_events")
 }
+/// Explicit (boundary, dataset bytes) → namespace, with revisions. The whole history is kept so the
+/// resolver can tell "never bound" from "bound and retired" — the latter REFUSES rather than inheriting.
+model PilotDatasetSourceBindingRecord {
+  boundaryId          String   @map("boundary_id")
+  datasetFingerprint  String   @map("dataset_fingerprint")
+  revision            Int
+  namespaceId         String   @map("namespace_id")
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@id([boundaryId, datasetFingerprint, revision], map: "pilot_dataset_source_bindings_pkey")
+  @@index([boundaryId, datasetFingerprint, revision], map: "pilot_dataset_source_bindings_dataset_idx")
+  @@map("pilot_dataset_source_bindings")
+}
+model PilotDatasetSourceBindingEventRecord {
+  id                 String   @id
+  boundaryId         String   @map("boundary_id")
+  datasetFingerprint String   @map("dataset_fingerprint")
+  revision           Int
+  transition         String
+  actorId            String   @map("actor_id")
+  actorRole          String   @map("actor_role")
+  rationale          String
+  at                 DateTime @default(now())
+
+  @@index([boundaryId, datasetFingerprint, revision, at], map: "pilot_dataset_source_binding_events_identity_idx")
+  @@map("pilot_dataset_source_binding_events")
+}
