@@ -110,6 +110,23 @@ export interface CreateExecutionInput {
    * Absent or empty when staging is off for the boundary — which is the default.
    */
   readonly attributions?: readonly StagedAttributionRow[];
+  /**
+   * Step 5 · the governed source resolution, or null when none could be established.
+   *
+   * AUDIT LINEAGE ONLY. It is never part of `CandidateLeakInstanceIdentity`, and it is deliberately NOT in
+   * the hashed binding: `canonicalBinding` feeds both `hashExecutionBinding` and `deriveExecutionId`, whose
+   * result is the execution's identity AND its idempotency key, so putting it there would change every
+   * execution id and break replay.
+   */
+  readonly sourceResolution?: {
+    readonly sourceNamespaceId: string;
+    readonly sourceNamespaceVersion: string;
+    readonly sourceBindingMode: string;
+    readonly sourcePermittedSetId: string | null;
+    readonly sourcePermittedSetVersion: string | null;
+    readonly sourceBindingRevision: number | null;
+    readonly sourceResolutionHash: string;
+  } | null;
 }
 
 /** One staged row. `sourceRef` is a pseudonym; the raw account identifier never reaches this layer. */
@@ -160,6 +177,15 @@ export async function createExecutionIfAbsent(
           dateLocale: b.interpretation.dateLocale,
           recoveryCaseId: b.recoveryCaseId,
           bindingHash: input.bindingHash,
+          // Null for every historical row and for any submission no governed authority resolved. The
+          // column-level checks refuse a half-written lineage, so this is all-or-nothing by construction.
+          sourceNamespaceId: input.sourceResolution?.sourceNamespaceId ?? null,
+          sourceNamespaceVersion: input.sourceResolution?.sourceNamespaceVersion ?? null,
+          sourceBindingMode: input.sourceResolution?.sourceBindingMode ?? null,
+          sourcePermittedSetId: input.sourceResolution?.sourcePermittedSetId ?? null,
+          sourcePermittedSetVersion: input.sourceResolution?.sourcePermittedSetVersion ?? null,
+          sourceBindingRevision: input.sourceResolution?.sourceBindingRevision ?? null,
+          sourceResolutionHash: input.sourceResolution?.sourceResolutionHash ?? null,
           inputHash: input.inputHash,
           scheduledByActorId: input.scheduledByActorId,
           scheduledByRole: input.scheduledByRole,

@@ -66,6 +66,8 @@ import {
   type ExecutionRecord,
 } from "../persistence/pilotExecutionStore";
 import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
+import { readDatasetFirstSeenAt, readSourceGovernance } from "./sourceAuthorityService";
+import { resolveSourceNamespace, sourceResolutionHash } from "../../src/contract/sourceNamespace";
 import {
   deriveStagedAttributions,
   resolveSignalStagingConfig,
@@ -392,6 +394,33 @@ export async function schedulePilotAssessment(
     observedSummary(splitCohorts(report.acceptedCycles, policy).stalled, policy),
   );
 
+  // ── 6c · Step 5 · Resolve the GOVERNED source namespace for these bytes ─────────────────────────
+  //
+  // AUDIT LINEAGE, NOT A GATE ON ASSESSMENT. A submission that no governed authority resolves is assessed
+  // exactly as before and simply carries no lineage. That is EP-31c's invariant restated: an ordinary
+  // assessment may complete without source authority; candidate-capable work may not. A refusal is never
+  // turned into an execution refusal, so `scheduled: true` can never coexist with a fabricated `NH-AX-*`.
+  //
+  // The first sighting comes from the record the intake wrote BEFORE it resolved the admission bar, so the
+  // ordering rule compares authority against when these bytes actually arrived rather than against anything
+  // in this request.
+  const firstSeenAt = await readDatasetFirstSeenAt(boundaryId, binding.datasetFingerprint);
+  const resolution = firstSeenAt === null
+    ? ({ resolved: false, reason: "source_namespace_unresolved", detail: "these bytes have no recorded first sighting" } as const)
+    : resolveSourceNamespace({
+        boundaryId,
+        datasetFingerprint: binding.datasetFingerprint,
+        firstSeenAt,
+        declaredBillingSource: request.provenance.sourceSystems.billing,
+        ...(await readSourceGovernance(boundaryId, binding.datasetFingerprint)),
+      });
+  const sourceResolution = resolution.resolved
+    ? {
+        ...resolution.lineage,
+        sourceResolutionHash: await sourceResolutionHash(boundaryId, binding.datasetFingerprint, resolution.lineage),
+      }
+    : null;
+
   const { execution, created } = await createExecutionIfAbsent({
     executionId,
     binding,
@@ -401,6 +430,7 @@ export async function schedulePilotAssessment(
     scheduledByActorId: actor.actorId,
     scheduledByRole: actor.role,
     attributions: candidateStaging.attributions,
+    sourceResolution,
   });
 
   // ── 7 · Enqueue ────────────────────────────────────────────────────────────────────────────────

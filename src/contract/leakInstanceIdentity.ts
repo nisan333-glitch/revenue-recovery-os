@@ -101,10 +101,13 @@ export const LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL =
 // computed FROM it elsewhere (`leakInstanceSourceRef.ts`) — never the other way round. This module has
 // NO IMPORTS AT ALL, which is asserted structurally, so it cannot come to depend on either key layer.
 //
-// NOT YET REACHABLE. `SOURCE_NAMESPACE_RESOLUTION_AVAILABLE` is false: there is no governed registry that
-// can resolve an authoritative namespace, and the uploader's `provenance.sourceSystems.billing` is
-// free text with no authority. So the status predicate still refuses, now for two separately named
-// reasons rather than one. See docs/GOVERNED_DETECTION_V1.md.
+// ONE PREREQUISITE CLOSED, ONE STILL OPEN — and keeping them separately named is what makes that legible.
+// `SOURCE_NAMESPACE_RESOLUTION_AVAILABLE` is now TRUE: Step 5 built the governed registry, the per-boundary
+// permitted set and the per-dataset binding, so an authoritative namespace CAN be resolved, and the
+// uploader's `provenance.sourceSystems.billing` is cross-checked against it rather than believed.
+// `OBLIGATION_IDENTITY_FIELDS` is still empty, because the data contract declares no obligation-level
+// identifier — so the status predicate still refuses, now for exactly one reason instead of two. Closing the
+// namespace gap did not and could not close the contract gap. See docs/GOVERNED_DETECTION_V1.md.
 
 /** Version of the canonical derivation. A change here is a NEW scheme id, never a silent re-grade. */
 export const LEAK_INSTANCE_IDENTITY_SCHEME = "nh-leak-instance-v1";
@@ -118,7 +121,7 @@ export const LEAK_INSTANCE_IDENTITY_SCHEME = "nh-leak-instance-v1";
  * plus a governed per-submission binding must close. Collapsing them into one boolean would hide which
  * one is being worked on, and would let closing either look like closing both.
  */
-export const SOURCE_NAMESPACE_RESOLUTION_AVAILABLE = false;
+export const SOURCE_NAMESPACE_RESOLUTION_AVAILABLE = true;
 
 /** Every way leak-instance identity can be refused. Callers never invent wording of their own. */
 export type LeakInstanceIdentityRefusal =

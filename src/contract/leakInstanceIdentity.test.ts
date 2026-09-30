@@ -215,8 +215,12 @@ describe("EP-31d · canonical leak-instance identity", () => {
     // Today the contract gap is reported because it is the deeper one. The namespace gap is real and
     // separately addressable, and this asserts it exists as its own named reason rather than being
     // folded into the first — so closing one cannot look like closing both.
+    // Step 5 CLOSED the namespace prerequisite and did NOT close the contract one. That the predicate still
+    // refuses, and refuses for the REMAINING reason rather than the closed one, is the whole point of having
+    // named them separately: progress on one is visible without looking like progress on both.
     expect(OBLIGATION_IDENTITY_FIELDS).toEqual([]);
-    expect(SOURCE_NAMESPACE_RESOLUTION_AVAILABLE).toBe(false);
+    expect(SOURCE_NAMESPACE_RESOLUTION_AVAILABLE).toBe(true);
+    expect(leakInstanceIdentityStatus().establishable).toBe(false);
     expect(leakInstanceIdentityStatus().reason).toBe("leak_instance_identity_unavailable");
     expect(SOURCE_NAMESPACE_UNRESOLVED_DETAIL).toMatch(/no authority/);
     expect(SOURCE_NAMESPACE_UNRESOLVED_DETAIL).not.toBe(LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL);

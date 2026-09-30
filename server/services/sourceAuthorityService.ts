@@ -414,3 +414,21 @@ export async function readSourceGovernance(
   }
   return { bindingRevisions, permittedSets, namespaceVersions };
 }
+
+/**
+ * When this boundary FIRST saw these bytes, or null if it never has.
+ *
+ * Read from the sighting record the intake writes before it resolves the admission bar, so the ordering
+ * check compares governed authority against when the data actually arrived rather than against anything in
+ * the current request. Exposed here so the assessment service does not reach for `prisma` directly — it
+ * already talks to services and stores, and this keeps that boundary intact.
+ */
+export async function readDatasetFirstSeenAt(
+  boundaryId: string,
+  datasetFingerprint: string,
+): Promise<string | null> {
+  const row = await prisma.pilotDatasetSightingRecord.findUnique({
+    where: { boundaryId_datasetFingerprint: { boundaryId, datasetFingerprint } },
+  });
+  return row ? row.firstSeenAt.toISOString() : null;
+}
