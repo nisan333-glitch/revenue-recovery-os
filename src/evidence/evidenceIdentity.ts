@@ -29,6 +29,14 @@
 // manifest was ever tracked. A tracked evidence record attests to components verified on the date it was
 // written, and says so.
 import { sha256Hex } from "../assessment/fingerprint";
+// The canonical encoder moved to the domain layer once a SECOND caller needed it (the source-resolution
+// lineage in `src/contract/`). The contract layer may only import from `./`, `../assessment/` and
+// `../domain/` — a guard that exists to stop it quietly acquiring dependencies — so the shared code moved
+// to where it belongs rather than the rule widening to accommodate it. Re-exported here so this module
+// remains the single import site for evidence-identity work and its own tests are unaffected.
+import { canonicalValue, framed, NonCanonicalValueError } from "../domain/canonicalValue";
+
+export { canonicalValue, NonCanonicalValueError };
 
 /** Version of the identity derivation. A change here is a new scheme, never a silent re-grade. */
 export const EVIDENCE_IDENTITY_SCHEME = "nh-validation-evidence-v1";
@@ -63,63 +71,6 @@ export const EXCLUDED_METADATA: readonly string[] = Object.freeze([
 
 /** `unknown`, a 40-hex commit, or a 40-hex commit marked dirty. Nothing else is a revision. */
 export const REVISION_PATTERN = /^(unknown|[0-9a-f]{40}(-dirty)?)$/;
-
-export class NonCanonicalValueError extends Error {
-  constructor(path: string, detail: string) {
-    super(`evidence record is not canonical at ${path}: ${detail}`);
-    this.name = "NonCanonicalValueError";
-  }
-}
-
-const utf8 = new TextEncoder();
-const framed = (tag: string, value: string) => `${tag}${utf8.encode(value).length}:${value}`;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-/**
- * Canonical encoding of one value. RECURSIVE, and length-framed at every level.
- *
- * Object keys are sorted at EVERY DEPTH — a single-level sort would leave nested objects at the mercy of
- * insertion order, which is exactly the kind of accidental input `JSON.stringify` smuggles in. Arrays keep
- * their defined order, because order is meaning in a list of datasets.
- *
- * Length framing rather than separator-joining means no value can impersonate a delimiter, so the encoding
- * is injective without having to forbid characters that legitimately appear in customer-facing strings.
- *
- * Anything that is not a string, finite number, boolean, null, plain object or array is REJECTED. A `Date`,
- * a `BigInt`, `NaN`, `undefined` or a class instance each have more than one plausible serialisation, and an
- * identity built on a guess about which one is not an identity.
- */
-export function canonicalValue(value: unknown, path = "$"): string {
-  if (value === null) return "z";
-  if (typeof value === "string") return framed("s", value);
-  if (typeof value === "boolean") return value ? "bT" : "bF";
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new NonCanonicalValueError(path, `non-finite number (${value})`);
-    return framed("n", String(value));
-  }
-  if (Array.isArray(value)) {
-    const items = value.map((item, i) => canonicalValue(item, `${path}[${i}]`));
-    return `a${items.length}:${items.map((item) => framed("i", item)).join("")}`;
-  }
-  if (isPlainObject(value)) {
-    const keys = Object.keys(value).sort();
-    const parts = keys.map((key) => framed("k", key) + framed("v", canonicalValue(value[key], `${path}.${key}`)));
-    return `o${keys.length}:${parts.join("")}`;
-  }
-  const kind =
-    typeof value === "function" ? "function"
-    : typeof value === "symbol" ? "symbol"
-    : typeof value === "bigint" ? "bigint"
-    : typeof value === "undefined" ? "undefined"
-    : value instanceof Date ? "Date"
-    : "non-plain object";
-  throw new NonCanonicalValueError(path, `unsupported value type (${kind})`);
-}
 
 export interface EvidenceRecordInput {
   readonly systemUnderTestRevision: string;
