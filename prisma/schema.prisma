@@ -604,3 +604,42 @@ model PilotSourceNamespaceEventRecord {
   @@index([namespaceId, namespaceVersion, at], map: "pilot_source_namespace_events_identity_idx")
   @@map("pilot_source_namespace_events")
 }
+/// The versioned per-boundary permitted set. Versioned so an execution can STAMP which authority resolved
+/// it; a set derived from N rows would have no version to record.
+model PilotBoundarySourceSetRecord {
+  boundaryId          String   @map("boundary_id")
+  setId               String   @map("set_id")
+  setVersion          String   @map("set_version")
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@id([boundaryId, setId, setVersion], map: "pilot_boundary_source_sets_pkey")
+  @@index([boundaryId, registeredAt], map: "pilot_boundary_source_sets_boundary_idx")
+  @@map("pilot_boundary_source_sets")
+}
+/// Members of one set VERSION, referencing the STABLE namespace id. Which registered version of a member is
+/// in force is answered at resolution time by requiring exactly one ACTIVE version.
+model PilotBoundarySourceSetMemberRecord {
+  boundaryId  String @map("boundary_id")
+  setId       String @map("set_id")
+  setVersion  String @map("set_version")
+  namespaceId String @map("namespace_id")
+
+  @@id([boundaryId, setId, setVersion, namespaceId], map: "pilot_boundary_source_set_members_pkey")
+  @@map("pilot_boundary_source_set_members")
+}
+model PilotBoundarySourceSetEventRecord {
+  id         String   @id
+  boundaryId String   @map("boundary_id")
+  setId      String   @map("set_id")
+  setVersion String   @map("set_version")
+  transition String
+  actorId    String   @map("actor_id")
+  actorRole  String   @map("actor_role")
+  rationale  String
+  at         DateTime @default(now())
+
+  @@index([boundaryId, setId, setVersion, at], map: "pilot_boundary_source_set_events_identity_idx")
+  @@map("pilot_boundary_source_set_events")
+}
