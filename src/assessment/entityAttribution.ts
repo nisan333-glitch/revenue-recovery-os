@@ -50,6 +50,11 @@ export interface EntityAttributionResult {
 /**
  * Which states contribute, and how much each contributes.
  *
+ * EXPORTED so the leak-instance grain can import THIS rule rather than restate it. Two grains that each
+ * spelled the arithmetic out would be two definitions free to drift, and the property both of them rest
+ * on — that the per-row figures sum to the assessment total — would then be a coincidence rather than a
+ * consequence. Only the GROUPING KEY differs between the two; the contribution never does.
+ *
  * This mirrors `observedSummary` exactly (see `observed.ts`), and the exclusions are the point rather
  * than an omission:
  *
@@ -61,7 +66,7 @@ export interface EntityAttributionResult {
  *     at-risk claim would be asserting something the data does not support.
  *   • `NotYetDue` / `PaidOnTime` / `PaidLate` → nothing at risk.
  */
-function contribution(cycle: ExpectationCycle, policy: AssessmentPolicy): Money | null {
+export function cycleContribution(cycle: ExpectationCycle, policy: AssessmentPolicy): Money | null {
   const state = classifyPayment(cycle, policy.asOf);
   if (state === "Unpaid") return cycle.monetaryEvent.amount;
   if (state === "PartiallyPaid") {
@@ -97,7 +102,7 @@ export function attributeByEntity(
         `attributeByEntity: cross-currency cycle ${cycle.cycleId} (${cycle.currency} vs policy ${policy.currency})`,
       );
     }
-    const amount = contribution(cycle, policy);
+    const amount = cycleContribution(cycle, policy);
     if (amount === null) continue;
     const prior = totals.get(cycle.entityId);
     totals.set(cycle.entityId, {
@@ -135,9 +140,13 @@ export function attributeByEntity(
  * Exposed rather than left to the tests because the server asserts it at the moment it stages the
  * attribution: a mismatch there means the two computations have diverged, which must stop the write
  * rather than produce candidates nobody can tie back to the finding.
+ *
+ * The parameter is the MINIMAL shape this reads — `totalAtRisk` and nothing else — so the leak-instance
+ * grain checks itself against the same definition rather than through a cast. One reconciliation rule,
+ * both grains; a second copy of it would be a second thing that can drift.
  */
 export function attributionReconciles(
-  result: EntityAttributionResult,
+  result: { readonly totalAtRisk: Money },
   observedUnpaid: Money,
   partialOutstanding: Money,
 ): boolean {
