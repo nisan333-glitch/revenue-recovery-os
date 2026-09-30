@@ -438,6 +438,16 @@ model PilotAssessmentExecutionRecord {
   recoveryCaseId            String?  @map("recovery_case_id")
   bindingHash               String   @map("binding_hash")
   inputHash                 String   @map("input_hash")
+  // Step 5 · source-resolution lineage. AUDIT ONLY — never part of CandidateLeakInstanceIdentity, and
+  // deliberately outside `canonicalBinding` so the execution id and its idempotency key cannot move.
+  // Nullable because this table refuses UPDATE and holds historical rows: nothing is backfilled.
+  sourceNamespaceId         String?  @map("source_namespace_id")
+  sourceNamespaceVersion    String?  @map("source_namespace_version")
+  sourceBindingMode         String?  @map("source_binding_mode")
+  sourcePermittedSetId      String?  @map("source_permitted_set_id")
+  sourcePermittedSetVersion String?  @map("source_permitted_set_version")
+  sourceBindingRevision     Int?     @map("source_binding_revision")
+  sourceResolutionHash      String?  @map("source_resolution_hash")
   scheduledByActorId        String   @map("scheduled_by_actor_id")
   scheduledByRole           String   @map("scheduled_by_role")
   scheduledAt               DateTime @default(now()) @map("scheduled_at")
@@ -495,6 +505,10 @@ model PilotAssessmentEntityAttributionRecord {
   contributingCycleCount Int      @map("contributing_cycle_count")
   /// The rule version that produced the figure. A change is a new rule, never a silent re-grade.
   attributionRule        String   @map("attribution_rule")
+  /// Which pseudonymisation key produced `sourceRef`. NULL is refused at emission as
+  /// `source_ref_key_id_missing` rather than assumed current — nullable because this table is
+  /// append-only and holds historical rows, so no backfill is possible.
+  sourceRefKeyId         String?  @map("source_ref_key_id")
   derivedAt              DateTime @default(now()) @map("derived_at")
 
   @@id([executionId, sourceRef], map: "pilot_assessment_entity_attributions_pkey")
