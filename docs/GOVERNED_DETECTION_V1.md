@@ -1,5 +1,11 @@
 # Governed detection — when a pilot assessment may produce a recovery candidate
 
+> **⚠ Evidence note, added 2026-09-30.** This document makes no claim about the validation freezes, but it
+> cites `NH-AG-2007` observations that do carry an evidence layer. The **rule** is layer L4 — tracked code
+> with a tracked test — while any **end-to-end observation** of it is layer L3, read from `raw-output.json`,
+> whose tested product revision is `unknown` for both cycles. The ledger is in
+> `docs/SYNTHETIC_VALIDATION_2026-09-27.md`; stable evidence identities are tracked in `e2e/evidence/`.
+
 **Status: built 2026-09-27 (EP-31).** This is the bridge between the two lanes the decision memo
 ([`DECISION_MEMO_2026-09-27.md`](DECISION_MEMO_2026-09-27.md) §3) found did not meet. It adds **no new
 detection** and **no new domain object**: it connects the class the pilot assessment already finds to the

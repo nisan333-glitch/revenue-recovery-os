@@ -18,8 +18,10 @@ decision comes first — as `CLAUDE.md` requires.
 | | |
 |---|---|
 | Head | `37a2491` · working tree clean |
-| Freeze 2026-09-26 | `173714237da63c4b…` · `gitHead 117ded4d` · **INTACT** |
-| Freeze 2026-09-27 | `c042f004d8a7300e…` · `gitHead 5478a7d8` · **INTACT** |
+| ~~Freeze 2026-09-26~~ | ~~`173714237da63c4b…` · `gitHead 117ded4d` · **INTACT**~~ |
+| ~~Freeze 2026-09-27~~ | ~~`c042f004d8a7300e…` · `gitHead 5478a7d8` · **INTACT**~~ |
+| **⚠ Corrected 2026-09-30** | **`INTACT` was not a verification.** Those digests were produced by running `verify.mjs`, which *creates* a freeze — it rewrites `prediction.json` and `FROZEN.json` and stamps the current clock and HEAD. The composite covers `frozenAt`, so it changes on every run. Neither `gitHead` is the tested revision: both trees were dirty (`117ded4d` predates the generator its ground truth needs, `c15efd2`; `5478a7d8` predates its own scripts, `15771d5`), so **both cycles' tested revision is `unknown`**. |
+| **Stable evidence identities** (2026-09-30) | 2026-09-26: `nhev_be6cadfb…` · 2026-09-27: `nhev_c88b0371…` — tracked in `e2e/evidence/`, checked by `npm run verify:evidence`. Every component hash still matches; **no figure in this memo changes.** |
 | Regression at `37a2491` | `test` 513 (512+1 skipped without `DATABASE_URL`) · `test:ep2` 448 · journey 86/86 · purity · `tsc` · `build` · `build:server` |
 | CI | green, all four jobs |
 
@@ -105,6 +107,15 @@ argument about timing, not about correctness, and it does not make A right.
 * **C** would be the right model if the pair were not already bound. It is.
 * **D** was ruled out by EP-30: there is no contradiction for a second semantics to resolve.
 * **B** is last because it is the only option that would *weaken* an invariant.
+
+> **⚠ Evidence layer, added 2026-09-30.** The `NH-AG-2007` **rule** is L4 — tracked code
+> (`src/contract/admissionCodes.ts:113`) with a tracked assertion (`src/contract/admissionGate.test.ts:294`)
+> — so the reasoning in this memo that rests on what the rule *means* is unaffected. The **end-to-end
+> observation** it was noticed in is L3: read from `raw-output.json`, which needs a live server and
+> Postgres at a revision that is now `unknown`. That observation is **historically attested but not
+> independently reproducible from the preserved repository state.** It is not withdrawn — nothing
+> contradicts it — but the A–E decision below should be read as resting on the rule's semantics rather
+> than on a reproducible run. Ledger: `docs/SYNTHETIC_VALIDATION_2026-09-27.md`.
 
 ### Recommendation
 
@@ -342,7 +353,9 @@ Scope, in three reviewable commits:
 * A renewal obligation past `contract_end_at` at `asOf` with no `renewal_status` commitment is classified
   `stalled` by **unmodified** `classifyStall`; `git diff` on `src/assessment/cohort.ts` is empty.
 * `requiredLifecycleStates` semantics, the admission bar, the governed AssessmentPolicy, the C3 identity
-  derivation and both freezes are **untouched**; both composites re-verify INTACT.
+  derivation and both freezes are **untouched**; ~~both composites re-verify INTACT~~ **⚠ corrected
+  2026-09-30: re-running `verify.mjs` re-freezes rather than verifies, so that clause evidenced nothing.
+  The component hashes do all still match, and the stable `nhev_…` identities are now tracked.**
 * `PILOT_DATA_CONTRACT_VERSION` is `2.1.0`; a `1.x` and a `2.0.0` declaration both still admit
   (§10's window intact); the golden vector `pds_1bc639b3…` is **unchanged**, proving the identity derivation
   did not move.

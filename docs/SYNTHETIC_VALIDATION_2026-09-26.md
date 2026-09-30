@@ -106,6 +106,20 @@ its own output (`freezeVerifiedAtScoring`: `173714237da63c4b…`, identical to t
 altered ground truth or the prediction to fit the result, that digest would no longer match and the
 scorer would have refused to run at all.
 
+> **⚠ Corrected 2026-09-30.** The gate described above is real — `verifyFreeze` re-hashes every
+> dataset, the ground truth, the prediction and all five scripts and exits 3 on mismatch. Two things said
+> around it are not. **(1)** `freezeVerifiedAtScoring` is not an independent witness: `run.mjs:224` copies
+> the composite out of `FROZEN.json` and `score.mjs:96` inherits it from `raw-output.json`, so every
+> surviving copy traces to one origin and they corroborate one assertion rather than evidencing it. Their
+> agreement proves only that `FROZEN.json` was unaltered between the run and the scoring. **(2)** The
+> composite covers `frozenAt`, so it changes on every re-freeze and is a within-run digest, not a durable
+> identity; and `verify.mjs` *creates* freezes rather than checking them. This cycle's **tested revision is
+> `unknown`** — its recorded `gitHead 117ded4d` predates the generator its own ground truth `323f13b2…`
+> requires (`c15efd2`), so the tree was dirty. Stable identity from 2026-09-30:
+> `nhev_be6cadfb0eda46f0649d4d356babc80a512a72efe149ccd67c8ba21712cfeb7c`, tracked in `e2e/evidence/` and
+> checked by `npm run verify:evidence`. **No measured figure in this report changes**; see the evidence
+> ledger in `docs/SYNTHETIC_VALIDATION_2026-09-27.md` for which conclusions rest on which layer.
+
 ## 2 · Repository capabilities actually found
 
 **The pilot path has exactly one detector.** `classifyStall` — an observation after `asOf` is invisible;

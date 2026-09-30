@@ -75,7 +75,25 @@ throwaway script (not committed) drove the real path — propose terms as the op
 steward, propose the bar, activate the bar, upload, schedule, poll — against a **fresh** `nh_ag2007_test`
 database built with `prisma migrate deploy`, using the **frozen** `dataset.csv`
 (`214bae69…`) unchanged as input. **Every expectation below was written before the run.** Both freezes were
-verified INTACT before and after.
+~~verified INTACT before and after.~~
+
+> **⚠ Corrected 2026-09-30.** That clause was produced by running `verify.mjs`, which **creates** a freeze
+> rather than checking one — it rewrites `prediction.json` and `FROZEN.json` and stamps the current clock and
+> HEAD — so it evidenced nothing about the freezes being unchanged. What is true, and re-verified on
+> 2026-09-30: every component hash of both cycles still matches, including the `dataset.csv 214bae69…` this
+> investigation used as input, and a clean clone regenerates it byte-identically. Stable identities are now
+> tracked in `e2e/evidence/` (`npm run verify:evidence`).
+>
+> **This investigation's own evidence layer.** The B1/B2 matrix below is a **separate run** against a fresh
+> database, and its results live only in that run's output — layer **L3**: they need a live server and
+> Postgres, and this run's tested revision is **not established** either (the same `git rev-parse HEAD`
+> without a dirty-tree check applies; the header cites `37a2491`). So the matrix rows are **historically
+> attested but not independently reproducible from the preserved repository state.** They are not withdrawn.
+> The *conclusion* they support — that `NH-AG-2007` fired because of the experiment's own bar rather than a
+> product defect — rests on the rule's semantics, which is layer **L4**: tracked code
+> (`src/contract/admissionCodes.ts:113`) with a tracked assertion (`src/contract/admissionGate.test.ts:294`).
+> **That conclusion therefore stands; its end-to-end attestation is what drops a layer.** Full ledger in
+> `docs/SYNTHETIC_VALIDATION_2026-09-27.md`.
 
 | | Bar | Terms | Expected | **Observed** |
 |---|---|---|---|---|
