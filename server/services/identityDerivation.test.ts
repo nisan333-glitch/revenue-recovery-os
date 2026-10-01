@@ -291,7 +291,7 @@ describe.skipIf(!HAS_DB)("EP-28 · the submission identity is the data plus what
     expect(again.json().message).toContain("NH-DC-4003");
   });
 
-  it("10 · a 1.x DECLARATION is still accepted under the current major — §10's window, end to end", async () => {
+  it("10 · a 1.x DECLARATION is still accepted under 2.0.0 — §10's window, end to end", async () => {
     // EP-27 built the mechanism with an empty declaration; EP-28 opened it. This is the promise a customer
     // reads, measured through the real intake: an export built against the previous major still works.
     const boundaryId = await boundary();
@@ -300,18 +300,13 @@ describe.skipIf(!HAS_DB)("EP-28 · the submission identity is the data plus what
     expect(res.json().accepted).toBe(true);
     const row = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
     expect(row.declaredVersion).toBe("1.1.0");
-    // The IMPLEMENTED version, read from the constant rather than pinned to a literal. Pinning it meant a
-    // minor bump failed here for no reason: what this test is about is that the DECLARED version is kept
-    // distinct from the implemented one, not what the implemented one happens to be.
-    expect(row.contractVersion).toBe(PILOT_DATA_CONTRACT_VERSION);
+    expect(row.contractVersion).toBe("2.0.0");
 
-    // ...and the declaration does NOT move the identity: the same bytes declared as an OLDER SUPPORTED
-    // MINOR of the current major are a duplicate, because such a declaration is interpreted identically
-    // and must not buy a second reading. Since 2.1.0 this is a genuinely older minor rather than the
-    // current version, so it now exercises `acceptsOlderMinorOfSameMajor` instead of restating itself.
-    const asOlderMinor = await post(body({ boundaryId, declaredVersion: "2.0.0" }));
-    expect(asOlderMinor.statusCode).toBe(409);
-    expect(asOlderMinor.json().message).toContain("NH-DC-4003");
+    // ...and the declaration does NOT move the identity: the same bytes declared as 2.0.0 are a duplicate,
+    // because an older supported minor is interpreted identically and must not buy a second reading.
+    const asCurrent = await post(body({ boundaryId, declaredVersion: "2.0.0" }));
+    expect(asCurrent.statusCode).toBe(409);
+    expect(asCurrent.json().message).toContain("NH-DC-4003");
   });
 
   it("11 · the governed policy values reach the identity from the REGISTER, not from the caller", async () => {

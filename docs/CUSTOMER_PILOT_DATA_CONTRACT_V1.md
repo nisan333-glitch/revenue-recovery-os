@@ -47,25 +47,7 @@ cannot drift apart and tell a customer one thing while validating another.
 | `next_invoice_paid_at` | recommended | date | billing |
 | `paid_amount` | recommended | money | billing |
 | `refunded_at`, `cancelled_at` | recommended | date | billing |
-| `obligation_ref` | optional | identifier | billing |
 | `cycle_id`, `next_invoice_paid`, `refunded`, `cancelled`, `status`, `status_effective_at`, `is_test`, `plan`, `segment`, `product` | optional | — | any |
-
-> **`obligation_ref` (new in 2.1.0) — what it is for, and what it is not yet used for.** It is your billing
-> system's own identifier for the single billed obligation: the invoice itself, not the account and not the
-> subscription. Supply it if you have it. Today it is recorded and **reported back to you**; nothing in the
-> assessment reads it, no figure depends on it, and it does not identify anything. We are collecting it to
-> find out whether such a reference is actually unique, actually survives a correction, and actually
-> survives a reschedule — before anything is keyed on it.
->
-> It has **no synonyms**: only a column named `obligation_ref` is detected automatically. A differently
-> named column has to be mapped explicitly, and that mapping is recorded. We will not guess that
-> `invoice_number` is a stable identifier, because in many billing systems it is a display sequence that
-> gets re-issued when a document is corrected.
->
-> The value is compared as its **exact bytes after surrounding spaces are removed**. There is no case
-> folding and no Unicode normalization, so `INV-1` and `inv-1` are different, and two visually identical
-> strings with different Unicode encodings are also different. A value that is not a usable shape earns a
-> **warning**, never a rejection — your row still counts.
 
 Header synonyms (`customer_id`, `due_date`, `paid_at`, …) live in the adapter, which owns the SaaS
 dialect. The full table with per-field semantics is `PILOT_DATA_CONTRACT_FIELDS`.
@@ -216,19 +198,6 @@ Semver on the contract itself.
 | patch | wording, remediation text, docs — no acceptance change |
 | minor | add an optional/recommended field, add a synonym, add a narrower code, relax a rule |
 | **major** | add/promote a required field · remove or rename a field · **change the meaning of a field even with an identical name** · tighten a rule · change identity derivation |
-
-> **2.1.0 (2026-10-01) · MINOR, and nothing you already built stops working.** It adds the optional
-> `obligation_ref` field above. It qualifies as minor twice over: adding an optional field is minor
-> outright, and it *relaxes* a rule — a column by that name used to be rejected as undeclared, so a file
-> that 2.0 refused may now be accepted, and no file 2.0 accepted is now refused. Your submission
-> identifiers are unchanged, because they are derived over the **major** version only. A dataset declaring
-> `2.0.0` or `2.0.1` is still accepted and its declared version recorded.
->
-> What it deliberately does **not** change: how a billing cycle is identified. Two invoices of one
-> subscription still collide on the cycle key and are still both excluded — supplying `obligation_ref` does
-> not change that, because the collision is detected before the reference is read. Fixing it changes what an
-> existing field means and would reject exports that are valid today, so it is a **major** change we have
-> not made. Reasoning: [`OBLIGATION_IDENTITY_V1.md`](OBLIGATION_IDENTITY_V1.md).
 
 > **2.0.0 (2026-09-27) carries two major-class changes, together and deliberately.** They landed under one
 > version because the second one's consequence had to be decided before either could ship:

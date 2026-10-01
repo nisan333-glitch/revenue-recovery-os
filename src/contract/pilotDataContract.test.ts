@@ -21,9 +21,6 @@ import {
   PILOT_DATA_CONTRACT_ID,
   looksLikePii,
   parseContractVersion,
-  fieldsByRequirement,
-  isWellFormedObligationRef,
-  OBLIGATION_REF_PATTERN,
 } from "./pilotDataContract";
 import { ALL_REJECTION_CODES, EXCLUSION_REASON_CODES, rejectionCode } from "./rejectionCodes";
 import {
@@ -44,7 +41,7 @@ import {
 } from "./syntheticPilotDataset";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { SAAS_CANONICAL_FIELDS, SAAS_REQUIRED, SAAS_SYNONYMS } from "../assessment/adapters/saasActivation";
+import { SAAS_CANONICAL_FIELDS, SAAS_REQUIRED } from "../assessment/adapters/saasActivation";
 import { makePolicy } from "../assessment/policy";
 
 const policy = makePolicy({ stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD", excludedStatuses: [] });
@@ -172,17 +169,10 @@ describe("contract declaration", () => {
     expect(COMPATIBILITY_POLICY.acceptedPreviousMajors).toEqual([1]);
     expect(isSupportedContractVersion("1.1.0")).toBe(true);
     expect(isSupportedContractVersion("1.0.0")).toBe(true);
-    // 2.1.0 · An OLDER MINOR of the same major is accepted and its version recorded, which is what
-    // `acceptsOlderMinorOfSameMajor` promises and what makes a minor bump safe for a customer who has
-    // already built an export pipeline. 2.0.1 moved from "newer than implemented" to "older minor" the
-    // moment the constant went to 2.1.0 — that transition IS the promise being kept.
-    expect(COMPATIBILITY_POLICY.acceptsOlderMinorOfSameMajor).toBe(true);
-    expect(isSupportedContractVersion("2.0.1")).toBe(true);
     // Fail-closed everywhere else: a newer major, a newer minor or patch, an undeclared older major.
     expect(isSupportedContractVersion("3.0.0")).toBe(false);
     expect(isSupportedContractVersion("2.99.0")).toBe(false);
-    expect(isSupportedContractVersion("2.1.1")).toBe(false);
-    expect(isSupportedContractVersion("2.2.0")).toBe(false);
+    expect(isSupportedContractVersion("2.0.1")).toBe(false);
     expect(isSupportedContractVersion("0.9.0")).toBe(false);
     expect(isSupportedContractVersion("not-a-version")).toBe(false);
   });
@@ -642,122 +632,5 @@ describe("claim boundary — what a validated dataset may never become", () => {
     // … and the report still says provenance is customer-asserted. A claim never upgrades itself.
     expect(report.claimBoundary.provenanceIsCustomerAsserted).toBe(true);
     expect(report.claimBoundary.constitutesProof).toBe(false);
-  });
-});
-
-// ── 2.1.0 · obligation_ref is DECLARED but NOT identity-bearing ───────────────────────────────────
-//
-// The whole point of this block is that declaring a column must change nothing a customer already
-// relies on, and must not quietly make the system think obligation identity is solved. Each test below
-// is one way that could go wrong. Reasoning: docs/OBLIGATION_IDENTITY_V1.md.
-
-/** Append an `obligation_ref` column to an existing contract-valid CSV. */
-function withObligationRef(csv: string, refFor: (rowIndex: number) => string): string {
-  const lines = csv.replace(/\n$/, "").split("\n");
-  return (
-    [`${lines[0]},obligation_ref`, ...lines.slice(1).map((line, i) => `${line},${refFor(i)}`)].join("\n") + "\n"
-  );
-}
-
-describe("2.1.0 · obligation_ref", () => {
-  it("is OPTIONAL, never recommended — because `recommended` would move a governed admission threshold", () => {
-    const spec = contractField("obligation_ref");
-    expect(spec).toBeDefined();
-    expect(spec!.requirement).toBe("optional");
-    expect(spec!.kind).toBe("identifier");
-    expect(spec!.piiClass).toBe("identifier_pseudonymous");
-    expect(spec!.since).toBe("2.1.0");
-    // The load-bearing assertion. `fieldsByRequirement("recommended")` feeds `missingRecommendedColumns`,
-    // which the admission gate checks against a GOVERNED, version-pinned threshold. If this field ever
-    // became recommended, every existing export would gain one and a boundary sitting at its threshold
-    // would flip inadmissible with no remedy under anti-tuning.
-    expect(fieldsByRequirement("recommended")).not.toContain("obligation_ref");
-  });
-
-  it("has ZERO synonyms, and none of the four rejected names is registered anywhere", () => {
-    expect(SAAS_SYNONYMS["obligation_ref"]).toBeUndefined();
-    // Not merely absent from this field — absent from EVERY field, so none of them can be claimed by a
-    // neighbouring canonical either. `invoice_number` in particular is a display sequence that billing
-    // systems re-issue on correction, so it must never become identity-bearing by convenience.
-    const everySynonym = Object.values(SAAS_SYNONYMS).flatMap((list) => [...list]);
-    for (const rejected of ["invoice_id", "invoice_number", "billing_document_id", "obligation_id"]) {
-      expect(everySynonym).not.toContain(rejected);
-    }
-  });
-
-  it("changes NOTHING for an export that does not carry the column", async () => {
-    const csv = syntheticPilotCsv(8);
-    const report = await validatePilotDataset(submission(csv));
-    expect(report.accepted).toBe(true);
-    expect(report.usableForAssessment).toBe(true);
-    // No new finding of any kind appears on a dataset that never mentions the field.
-    expect(codesFor(report.rowFindings)).not.toContain("NH-DC-2022");
-    expect(codesFor(report.datasetFindings)).not.toContain("NH-DC-1010");
-    expect(report.columnMapping["obligation_ref"]).toBeUndefined();
-  });
-
-  it("is now ACCEPTED where it was previously rejected as an undeclared column — the relaxation", async () => {
-    const csv = withObligationRef(syntheticPilotCsv(8), (i) => `INV-${1000 + i}`);
-    const report = await validatePilotDataset(submission(csv));
-    // Before 2.1.0 this file failed minimization outright, because the contract rejects rather than
-    // ignores any column it does not declare.
-    expect(codesFor(report.datasetFindings)).not.toContain("NH-DC-1005");
-    expect(report.accepted).toBe(true);
-    expect(report.usableForAssessment).toBe(true);
-    expect(report.acceptedCycles.length).toBe(8);
-  });
-
-  it("warns on a malformed value and KEEPS the row — a non-identity field must not move a measured amount", async () => {
-    const good = withObligationRef(syntheticPilotCsv(8), (i) => `INV-${1000 + i}`);
-    const bad = withObligationRef(syntheticPilotCsv(8), (i) => (i === 0 ? "has a space" : `INV-${1000 + i}`));
-    const goodReport = await validatePilotDataset(submission(good));
-    const badReport = await validatePilotDataset(submission(bad));
-
-    expect(codesFor(badReport.rowFindings)).toContain("NH-DC-2022");
-    expect(rejectionCode("NH-DC-2022")!.severity).toBe("row_warning");
-    // The population is IDENTICAL. A warning that silently shrank the accepted set would be a rejection
-    // wearing a warning's label, and the measured amount would then depend on a field that identifies
-    // nothing yet.
-    expect(badReport.acceptedCycles.length).toBe(goodReport.acceptedCycles.length);
-    expect(badReport.counts.acceptedRows).toBe(goodReport.counts.acceptedRows);
-    expect(badReport.counts.rejectedRows).toBe(goodReport.counts.rejectedRows);
-    expect(badReport.usableForAssessment).toBe(true);
-  });
-
-  it("never echoes the reference value into a finding", async () => {
-    const csv = withObligationRef(syntheticPilotCsv(2), () => "not a valid ref at all");
-    const report = await validatePilotDataset(submission(csv));
-    const finding = report.rowFindings.find((f) => f.code === "NH-DC-2022");
-    expect(finding).toBeDefined();
-    expect(finding!.detail).not.toContain("not a valid ref");
-  });
-
-  it("leaves the duplicate-row equivalence relation exactly as it was", async () => {
-    // Adding a field changes the content key's VALUE (one more element) but must not change WHICH rows
-    // are considered identical. Two byte-identical rows are still a duplicate …
-    const rows = syntheticPilotRows(4);
-    const dupCsv = withObligationRef(toCsv([rows[0]!, rows[0]!, rows[1]!, rows[2]!]), () => "INV-SAME");
-    const dupReport = await validatePilotDataset(submission(dupCsv));
-    expect(codesFor(dupReport.rowFindings)).toContain("NH-DC-4001");
-
-    // … and two rows differing ONLY in the new field are not.
-    const distinctCsv = withObligationRef(toCsv([rows[0]!, rows[1]!]), (i) => `INV-${i}`);
-    const distinctReport = await validatePilotDataset(submission(distinctCsv));
-    expect(codesFor(distinctReport.rowFindings)).not.toContain("NH-DC-4001");
-  });
-
-  it("bounds the shape syntactically, and claims nothing more than that", () => {
-    expect(isWellFormedObligationRef("")).toBe(true); // optional: absence is not malformation
-    expect(isWellFormedObligationRef("INV-2026-001")).toBe(true);
-    expect(isWellFormedObligationRef("ar/invoice:42.1_b")).toBe(true);
-    expect(isWellFormedObligationRef("a".repeat(128))).toBe(true);
-    expect(isWellFormedObligationRef("a".repeat(129))).toBe(false);
-    expect(isWellFormedObligationRef("-leading-separator")).toBe(false);
-    expect(isWellFormedObligationRef("has a space")).toBe(false);
-    expect(isWellFormedObligationRef(" INV-1")).toBe(false); // the pipeline trims; this would be refused anyway
-    expect(isWellFormedObligationRef("INV\u00001")).toBe(false);
-    // The pattern is narrower than the 256-byte component bound in leakInstanceIdentity.ts, so it is the
-    // binding constraint — but a value satisfying it is NOT thereby an identity.
-    expect(OBLIGATION_REF_PATTERN.source).toContain("{0,127}");
   });
 });
