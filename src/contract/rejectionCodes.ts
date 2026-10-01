@@ -293,6 +293,21 @@ export const ROW_CODES = Object.freeze({
     remediation: "Correct the declared window or the export. A dataset must not contain rows it claims not to cover.",
     since: "1.0.0",
   }),
+  /**
+   * A WARNING, deliberately, and not a rejection — in 2.1.0 `obligation_ref` carries no weight. Rejecting
+   * the row would drop it from the population and so would change a measured amount on the strength of a
+   * field that is explicitly not identity-bearing yet. Tightening this to a rejection belongs to the MAJOR
+   * change that makes the reference identity-bearing, where a previously accepted row newly failing IS the
+   * declared consequence. See docs/OBLIGATION_IDENTITY_V1.md.
+   */
+  OBLIGATION_REF_MALFORMED: code({
+    code: "NH-DC-2022",
+    severity: "row_warning",
+    title: "The obligation reference is not a usable identifier shape.",
+    remediation:
+      "Supply the billing system's own identifier for the invoice, using letters, digits, dot, underscore, colon, slash or hyphen, starting with a letter or digit, at most 128 characters. The value is recorded for observation only and is not yet used to identify anything.",
+    since: "2.1.0",
+  }),
 });
 
 // ── 3xxx · Minimization and PII ───────────────────────────────────────────────────────────────────

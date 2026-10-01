@@ -42,6 +42,14 @@ export const SAAS_CANONICAL_FIELDS: readonly string[] = [
   "currency",
   "subscription_id",
   "cycle_id",
+  // EP-32 pre-flight · The billing system's own identifier for the single billed obligation. Declared here
+  // because the contract declares it and the two vocabularies must never fork. It has NO SYNONYMS, by
+  // decision: `invoice_number` is a display sequence commonly re-issued on correction, `billing_document_id`
+  // may name a credit or debit memo, `obligation_id` is our vocabulary rather than an export header, and
+  // `invoice_id` is unestablished on every property an identity needs. A non-canonical header therefore
+  // reaches this field only through an explicit operator mapping, which `mappingId` records — an automatic
+  // synonym would be an unrecorded decision made by us. See docs/OBLIGATION_IDENTITY_V1.md.
+  "obligation_ref",
   "activation_at",
   "next_invoice_paid_at",
   "next_invoice_paid",
@@ -228,6 +236,20 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
   for (const k of ["plan", "segment", "product"]) {
     if ((c[k] ?? "").trim() !== "") attributes[k] = c[k]!.trim();
   }
+  // obligation_ref travels as an ATTRIBUTE and goes nowhere near `cycleId`.
+  //
+  // THIS IS THE WHOLE POINT, so it is stated where the temptation is. Putting it into the precedence chain
+  // above would fix defect D2 (two cycles of one subscription mutually excluding each other) by changing
+  // what `cycleId` MEANS for datasets that are valid today — which changes which rows are excluded, and so
+  // rejects rows that are accepted now. That is a MAJOR contract change by the contract's own rule, and it
+  // is not authorised here. The reference is recorded so its real-world behaviour can be OBSERVED before
+  // anything is keyed on it: nothing in the assessment reads it, and `OBLIGATION_IDENTITY_FIELDS` stays
+  // empty, so candidate emission still refuses. See docs/OBLIGATION_IDENTITY_V1.md.
+  //
+  // Safe by construction downstream: `projectExecutionInput` allow-lists exactly `paid_timing` and drops
+  // every other attribute, so this cannot move `deriveExecutionId` or any execution binding hash.
+  const obligationRef = (c["obligation_ref"] ?? "").trim();
+  if (obligationRef !== "") attributes["obligation_ref"] = obligationRef;
   if (paidAmount === null && (c["next_invoice_paid_at"] ?? "").trim() === "" && parseBool(c["next_invoice_paid"] ?? "") === true) {
     attributes["paid_timing"] = "unknown_from_bool";
   }

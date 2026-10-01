@@ -339,3 +339,52 @@ describe("EP-16 · the refusal catalogue is total and stable", () => {
     }
   });
 });
+
+// ── 2.1.0 · obligation_ref cannot reach the execution identity ─────────────────────────────────────
+//
+// The additive contract change puts a new value on `cycle.attributes`. `deriveExecutionId` is BOTH the
+// execution's identity AND its idempotency key, so if a new attribute could reach it, every execution id
+// would move the moment a customer added the column — replay idempotency would break and the frozen
+// cycles' recorded ids would stop being reproducible. The projection's attribute allow-list is what makes
+// that impossible; these tests pin the allow-list rather than trusting it.
+
+describe("2.1.0 · the projection's attribute allow-list", () => {
+  const withRef = cycle({
+    attributes: {
+      plan: "enterprise-acme",
+      segment: "named-account-acme",
+      paid_timing: "unknown_from_bool",
+      obligation_ref: "INV-2026-0001",
+    },
+  });
+  const withoutRef = cycle();
+
+  it("drops obligation_ref, keeping ONLY paid_timing", () => {
+    const projected = projectExecutionInput([withRef]);
+    expect(projected.cycles[0]!.attributes).toEqual({ paid_timing: "unknown_from_bool" });
+    expect(Object.keys(projected.cycles[0]!.attributes)).not.toContain("obligation_ref");
+  });
+
+  it("produces a BYTE-IDENTICAL projection whether or not the reference is present", () => {
+    expect(canonicalExecutionInput(projectExecutionInput([withRef]))).toBe(
+      canonicalExecutionInput(projectExecutionInput([withoutRef])),
+    );
+  });
+
+  it("leaves the input hash, the binding hash and the execution id untouched", async () => {
+    expect(await hashExecutionInput(projectExecutionInput([withRef]))).toBe(
+      await hashExecutionInput(projectExecutionInput([withoutRef])),
+    );
+    // The binding never saw cycle attributes to begin with; asserted so a future edit that "helpfully"
+    // adds lineage to the binding fails here instead of silently re-keying every execution.
+    expect(await hashExecutionBinding(BINDING)).toBe(await hashExecutionBinding(BINDING));
+    expect(await deriveExecutionId(BINDING)).toBe(await deriveExecutionId(BINDING));
+  });
+
+  it("drops ANY attribute that is not on the allow-list, not merely this one", () => {
+    const projected = projectExecutionInput([
+      cycle({ attributes: { paid_timing: "unknown_from_bool", some_future_field: "x", another: "y" } }),
+    ]);
+    expect(projected.cycles[0]!.attributes).toEqual({ paid_timing: "unknown_from_bool" });
+  });
+});

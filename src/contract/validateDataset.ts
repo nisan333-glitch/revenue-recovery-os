@@ -33,6 +33,7 @@ import {
   fieldsByRequirement,
   isProhibitedFieldName,
   isSupportedContractVersion,
+  isWellFormedObligationRef,
   looksLikePii,
   parseContractVersion,
   type DatasetProvenance,
@@ -423,6 +424,15 @@ export async function validatePilotDataset(submission: DatasetSubmission): Promi
     if (CYCLE_KEY_FIELDS.every((f) => cell(f) === "")) {
       rowFindings.push(
         rowFinding(ROW_CODES.MISSING_STABLE_CYCLE_KEY, at, "subscription_id", "cycle identity derived from entity and dates"),
+      );
+      warnedRowIds.add(raw.sourceRowId);
+    }
+    // Shape only, and a WARNING only. The reference identifies nothing in 2.1.0, so a malformed value must
+    // not drop the row — that would change a measured amount on the strength of a field carrying no weight.
+    const obligationRef = cell("obligation_ref");
+    if (!isWellFormedObligationRef(obligationRef)) {
+      rowFindings.push(
+        rowFinding(ROW_CODES.OBLIGATION_REF_MALFORMED, at, "obligation_ref", "value is not a usable identifier shape"),
       );
       warnedRowIds.add(raw.sourceRowId);
     }

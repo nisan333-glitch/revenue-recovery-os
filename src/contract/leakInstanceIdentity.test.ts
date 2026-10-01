@@ -16,6 +16,9 @@ import {
   leakInstanceIdentityStatus,
   type CandidateLeakInstanceIdentity,
 } from "./leakInstanceIdentity";
+// Imported HERE and not in leakInstanceIdentity.ts, which has NO IMPORTS AT ALL by design (asserted
+// structurally below). A test may cross that line; the module may not.
+import { contractField } from "./pilotDataContract";
 
 describe("EP-31c · leak-instance identity", () => {
   it("1 · is NOT establishable under the contract this build implements", () => {
@@ -228,5 +231,58 @@ describe("EP-31d · canonical leak-instance identity", () => {
     for (const detail of [SOURCE_NAMESPACE_UNRESOLVED_DETAIL, LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL]) {
       expect(detail).not.toMatch(/@|\d{4}-\d{2}-\d{2}/);
     }
+  });
+});
+
+// ── 2.1.0 · A DECLARED COLUMN IS NOT A DECLARED IDENTITY ───────────────────────────────────────────
+//
+// This is the safety invariant of the staged 2.1.0 change, and it exists because the failure it guards
+// against is an easy and tempting one: `obligation_ref` is now a real contract field carried onto every
+// cycle, so adding its name to `OBLIGATION_IDENTITY_FIELDS` would be a one-word edit that silently flips
+// `establishable` to true and enables candidate emission — on a field whose uniqueness, immutability and
+// behaviour across a correction or a reschedule are ALL still unknown, and in a system where two genuine
+// obligations of one subscription are still mutually excluded upstream (defect D2).
+//
+// So the test is not "the array happens to be empty". It is "the array is empty DESPITE the column
+// existing", stated against the contract itself, with the two reasons named.
+//
+// Full reasoning and the conditions under which this may change: docs/OBLIGATION_IDENTITY_V1.md.
+
+describe("2.1.0 · obligation_ref is declared but NOT identity-bearing", () => {
+  it("the contract declares the column …", () => {
+    expect(contractField("obligation_ref")).toBeDefined();
+    expect(contractField("obligation_ref")!.requirement).toBe("optional");
+  });
+
+  it("… and the identity list is STILL empty, so emission still refuses", () => {
+    expect(OBLIGATION_IDENTITY_FIELDS).toEqual([]);
+    expect(OBLIGATION_IDENTITY_FIELDS).not.toContain("obligation_ref");
+
+    const status = leakInstanceIdentityStatus();
+    expect(status.establishable).toBe(false);
+    expect(status.reason).toBe("leak_instance_identity_unavailable");
+  });
+
+  it("the namespace prerequisite being CLOSED does not close the contract prerequisite", () => {
+    // Step 5 made an authoritative source namespace resolvable. If the two prerequisites were ever
+    // collapsed into one boolean, closing either would look like closing both — which is precisely the
+    // confusion this assertion exists to prevent.
+    expect(SOURCE_NAMESPACE_RESOLUTION_AVAILABLE).toBe(true);
+    expect(leakInstanceIdentityStatus().establishable).toBe(false);
+  });
+
+  it("a reference that is perfectly well formed still does not make an identity establishable", () => {
+    // The component checks pass on a realistic reference …
+    const identity: CandidateLeakInstanceIdentity = {
+      boundaryId: "synthetic-boundary-0001",
+      recoveryType: "ActivationMissed",
+      sourceNamespaceId: "synthetic-billing",
+      obligationRef: "INV-2026-0001",
+    };
+    expect(leakInstanceIdentityProblems(identity)).toEqual([]);
+    expect(canonicalLeakInstanceKey(identity)).toContain("INV-2026-0001");
+    // … and the STATUS is still false, because encodability is not authority. A caller that confused the
+    // two would emit candidates keyed on a value nothing has established anything about.
+    expect(leakInstanceIdentityStatus().establishable).toBe(false);
   });
 });

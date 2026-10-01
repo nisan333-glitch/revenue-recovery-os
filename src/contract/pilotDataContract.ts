@@ -23,8 +23,21 @@
 // Revenue, and it can never reach a Proof except through the existing governed
 // Case → Evidence → Approval path, by a human, under the trust gates that already exist.
 
-/** Semantic version of the contract itself. Consumers pin, compare and negotiate on this. */
-export const PILOT_DATA_CONTRACT_VERSION = "2.0.0";
+/**
+ * Semantic version of the contract itself. Consumers pin, compare and negotiate on this.
+ *
+ * 2.1.0 (2026-10-01) · MINOR, by two separate policy items. It adds `obligation_ref` as an OPTIONAL field,
+ * which §10 lists as minor outright, and it RELAXES minimization: a column by that name was previously
+ * rejected as undeclared, so no dataset valid under 2.0 becomes invalid under 2.1.
+ *
+ * The MAJOR component is deliberately unchanged, and the submission identity is derived over the MAJOR
+ * only — so every existing idempotency key survives this bump, which is the promise minor versions make.
+ *
+ * What this version does NOT do: make `obligation_ref` identity-bearing. `OBLIGATION_IDENTITY_FIELDS`
+ * stays empty and candidate emission still refuses. The grain change that would key on the reference is a
+ * MAJOR change requiring evidence that does not exist yet. See docs/OBLIGATION_IDENTITY_V1.md.
+ */
+export const PILOT_DATA_CONTRACT_VERSION = "2.1.0";
 
 /** Stable identity of this contract, stamped into every report and manifest. */
 export const PILOT_DATA_CONTRACT_ID = "nh.customer-pilot-data-contract";
@@ -152,6 +165,39 @@ export const PILOT_DATA_CONTRACT_FIELDS: readonly FieldSpec[] = Object.freeze([
     description: "Alternative cycle-level join key when subscription_id is not the billing grain.",
     typicalSourceSystem: "billing",
     since: "1.0.0",
+  }),
+  /**
+   * EP-32 pre-flight · The billing system's own identifier for the single billed obligation.
+   *
+   * OPTIONAL, and that is a decision rather than caution. "Optional or recommended" is MINOR by the letter
+   * of COMPATIBILITY_POLICY, but `recommended` feeds `missingRecommendedColumns`, which the admission gate
+   * checks against a GOVERNED, version-pinned `maxMissingRecommendedColumns`. Every existing export would
+   * gain one, and a boundary sitting at its threshold would flip ADMISSIBLE -> NOT_ADMISSIBLE with no
+   * remedy, because anti-tuning forbids raising a threshold after seeing the result. That is "tighten a
+   * validation rule so a previously valid dataset is now rejected" in substance, so the field is optional.
+   *
+   * DECLARED IS NOT IDENTITY-BEARING. `OBLIGATION_IDENTITY_FIELDS` in src/contract/leakInstanceIdentity.ts
+   * stays EMPTY, so candidate emission still refuses. A field qualifies there only once it is declared
+   * stable across re-export AND across a reschedule of its own due date, and nothing establishes that for
+   * any real column yet — which is precisely what collecting this field is meant to find out.
+   *
+   * ZERO SYNONYMS, in the adapter too. `invoice_number` is a display sequence commonly re-issued on
+   * correction; `billing_document_id` may name a credit or debit memo; `obligation_id` is our vocabulary,
+   * not an export header; `invoice_id` is unestablished on every property the identity needs. A non-canonical
+   * header therefore reaches this field only through an explicit operator mapping, which is recorded in
+   * `mappingId` — an automatic synonym would be an unrecorded decision made by us.
+   *
+   * Full reasoning: docs/OBLIGATION_IDENTITY_V1.md.
+   */
+  field({
+    name: "obligation_ref",
+    requirement: "optional",
+    kind: "identifier",
+    piiClass: "identifier_pseudonymous",
+    description:
+      "The billing system's own identifier for this single billed obligation — the invoice itself, not the account and not the subscription. Recorded for observation only: it does not yet identify anything in the assessment.",
+    typicalSourceSystem: "billing",
+    since: "2.1.0",
   }),
   field({
     name: "activation_at",
@@ -468,6 +514,49 @@ export function looksLikePii(value: string): "email" | "phone" | "card" | null {
   if (PHONE_SHAPE.test(v)) return "phone";
   if (CARD_SHAPE.test(v) && luhn(v.replace(/[ -]/g, ""))) return "card";
   return null;
+}
+
+// ── 6b · Obligation reference syntax, and the normalization that is actually applied ──────────────
+//
+// WHAT THE PIPELINE DOES TO AN IDENTIFIER VALUE, stated because "no normalization" was claimed and is
+// false. Between the uploaded bytes and the adapter: a leading BOM is stripped; every CR and CRLF becomes
+// LF across the WHOLE file, including inside quoted fields; CSV quoting is interpreted, so `""` collapses
+// to `"`; the header is trimmed; and EVERY CELL IS TRIMMED — once in the parser, again in the contract's
+// row loop, again in the adapter. There is no case folding of values, and NO UNICODE NORMALIZATION of any
+// kind.
+//
+// So the claim this contract may actually make is:
+//
+//   identity is compared over the EXACT UTF-8 BYTES after surrounding-whitespace removal.
+//
+// Two consequences, declared rather than left to be discovered:
+//   • " INV-1" and "INV-1" become the SAME value — a merge the customer did not ask for;
+//   • U+00E9 and "e" + U+0301 are visually identical and are DIFFERENT values — a false split.
+//
+// And one pre-existing interaction worth naming: `looksLikePii` rejects Luhn-valid 13-19 digit values as
+// card-shaped, so a purely numeric document id of that length can be refused. That is a real false
+// positive, inherited rather than introduced here.
+//
+// The bound below is SYNTACTIC ONLY. It establishes nothing about uniqueness, immutability or stability,
+// and a value that satisfies it is not thereby an identity. In 2.1.0 a failure is a row WARNING
+// (`NH-DC-2022`), never a rejection: rejecting would drop the row and change a measured amount on the
+// strength of a field that carries no weight.
+
+/**
+ * Permitted shape for `obligation_ref`. Starts with a letter or digit; then letters, digits and the
+ * separators real billing systems use in document ids. 128 characters, well inside the 256-byte component
+ * bound in `leakInstanceIdentity.ts`, so THIS is the binding constraint.
+ */
+export const OBLIGATION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+
+/**
+ * Is this a usable `obligation_ref` SHAPE? An empty value is not malformed — the field is optional, and
+ * absence is absence. Takes the value as it arrives, so a caller cannot trim it into validity by accident:
+ * the pipeline has already trimmed, and a value that still carries whitespace would be refused downstream
+ * by `leakInstanceComponentProblem` for exactly that reason.
+ */
+export function isWellFormedObligationRef(value: string): boolean {
+  return value === "" || OBLIGATION_REF_PATTERN.test(value);
 }
 
 /** Luhn check — used ONLY to avoid rejecting ordinary long numeric ids as if they were cards. */
