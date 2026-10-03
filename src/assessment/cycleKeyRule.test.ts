@@ -408,8 +408,32 @@ describe("cycle-key · structural inertness", () => {
     expect([...code.matchAll(/from "([^"]+)"/g)].map((m) => m[1]!)).toEqual([]);
   });
 
-  // NO ASSERTION ABOUT THE STAGE-A INTERPRETATION REVISION LIVES HERE, deliberately. Its value and its
-  // inertness are already pinned by the vector that owns them, and that vector fails on any textual
-  // occurrence of its module's name outside its own test — so a duplicate check here could only be
-  // either redundant or a breach of the thing it was meant to confirm.
+  // TWO DIFFERENT CHECKS, AND ONLY ONE OF THEM BELONGS HERE. An earlier version of this comment ran
+  // them together and was wrong about the second; stated apart:
+  //
+  //   ASSERTING THE EXISTING REVISION'S VALUE — does not belong here, on two counts. It is already
+  //   pinned by the vector that owns it (which asserts both the exact 2.x value and that it contains no
+  //   `3x` at all), so a copy would be redundant. And reaching it requires importing or reading the
+  //   stage-A identity module, which that module's textual inertness barrier forbids outright — it
+  //   fails on ANY occurrence of its module name outside its own test. So the copy would also break the
+  //   very property it was meant to confirm.
+  //
+  //   ASSERTING THAT THIS MODULE MINTS NO INTERPRETATION REVISION — belongs here, and is INDEPENDENT
+  //   and SAFE. It reads only `cycleKeyRule.ts`, names nothing outside this directory, and touches no
+  //   pinned vector. Nothing else in the suite covers it: every other revision check reads the imported
+  //   constant, so a revision string declared in SOME OTHER module would go unnoticed. That is the
+  //   check restored below.
+  it("mints NO data-interpretation revision — a D1 rule is not an interpretation identity", () => {
+    const raw = readFileSync(join(__dirname, "cycleKeyRule.ts"), "utf8");
+    const code = raw
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    // No interpretation revision is DECLARED here, of any major. The only ids this module mints are
+    // cycle-key rule ids — `D1_SEMANTIC_RULE`, never `DATA_INTERPRETATION_IDENTITY`.
+    expect(code).not.toMatch(/nh-data-interpretation/);
+    // And no 3.x interpretation revision is asserted even in prose, so a commented-out declaration or a
+    // claim that one exists is caught too. (The 2.x revision IS named in a comment, which is accurate
+    // description of what runs, not a declaration — hence the narrower pattern on the raw source.)
+    expect(raw).not.toMatch(/nh-data-interpretation-3/);
+  });
 });
