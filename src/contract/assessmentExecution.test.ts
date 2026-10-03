@@ -396,3 +396,80 @@ describe("identity schemes · admission and execution are versioned separately",
     expect(EXECUTION_PROJECTION_SCHEME).not.toBe(ADMISSION_DECISION_SCHEME);
   });
 });
+
+// ── THE ABSOLUTE ANCHOR FOR PAD V1 ────────────────────────────────────────────────────────────────
+//
+// WHY AN ABSOLUTE ANCHOR, AND WHY IT WAS MISSING. Every other PAD assertion in this file compares one
+// derived id with another derived the same way — "changing this field changes the id". That catches a
+// field dropping out of the preimage and catches NOTHING that moves every id together: a new scheme
+// string, a reordered component list, a different digest length. The repository already paid for this
+// lesson on the submission key, and recorded it: negative controls NC-47 and NC-48 "initially failed to
+// fail", because "every other assertion compared one derived key with another derived the same way"
+// (docs/ASSESSMENT_IDENTITY_V1.md). A derivation with no absolute anchor is not pinned at all.
+//
+// PAD was the one identity in the chain with no such anchor. `pds` has one
+// (pilotDataContract.test.ts, test 9c) and `PAX` has one (sourceResolution.test.ts, test 17). This is
+// the third, so all three canonicalizations are now independently nailed to a literal.
+//
+// HOW THE LITERAL WAS OBTAINED — and the point is that it was NOT read back out of the code under test.
+// The fixture below was fixed first, its canonical preimage written out by hand, and the digest computed
+// with `node:crypto` WITHOUT importing `canonicalDecision` or `deriveAdmissionDecisionId`. Only then was
+// the production derivation run, and the two agreed. So this value is independent evidence, not a
+// transcription of today's behaviour.
+//
+//   preimage, NUL-separated, in canonicalDecision's exact component order:
+//
+//     ADMISSION_DECISION_SCHEME  "nh-pilot-assessment-execution-v1"
+//     boundaryId                 "golden-boundary"
+//     idempotencyKey             "pds_" + "0"×64
+//     datasetFingerprint         "0"×64
+//     contractVersion            "2.0.0"
+//     outcome                    "ADMISSIBLE"
+//     admissionPolicyId          "golden-bar"
+//     admissionPolicyVersion     "1.0.0"
+//     admissionPolicyHash        "sha256:" + "0"×64
+//
+//   sha256  a04577ae3965c285ced941e06149a9f7ff84530156f85a417220730ff078f05b
+//   PAD-    first 32 hex of that digest
+//
+// IF THIS FAILS, DO NOT UPDATE THE LITERAL TO MATCH. A moved PAD means every stored admission decision
+// stops hashing to its own identifier, which the service and the worker both refuse (`NH-AX-1005`).
+// Either the derivation changed deliberately — in which case it is a NEW SCHEME with its own constant
+// and its own vector, and historical rows keep deriving under the old one — or it changed by accident.
+
+/** The fixed PAD V1 vector. Frozen and literal: no helper, no spread, nothing computed. */
+const PAD_V1_GOLDEN = Object.freeze({
+  boundaryId: "golden-boundary",
+  idempotencyKey: "pds_" + "0".repeat(64),
+  datasetFingerprint: "0".repeat(64),
+  contractVersion: "2.0.0",
+  outcome: "ADMISSIBLE",
+  admissionPolicyId: "golden-bar",
+  admissionPolicyVersion: "1.0.0",
+  admissionPolicyHash: "sha256:" + "0".repeat(64),
+});
+
+/** The expected digest. Computed independently of the code under test — see the note above. */
+const PAD_V1_GOLDEN_ID = "PAD-a04577ae3965c285ced941e06149a9f7";
+
+describe("identity vectors · absolute anchors", () => {
+  it("PAD V1 · fixed inputs, one expected digest", async () => {
+    expect(await deriveAdmissionDecisionId(PAD_V1_GOLDEN)).toBe(PAD_V1_GOLDEN_ID);
+  });
+
+  it("PAD V1 · the anchor is a 32-hex truncation, so a digest-length change is caught too", () => {
+    expect(PAD_V1_GOLDEN_ID).toMatch(/^PAD-[0-9a-f]{32}$/);
+  });
+
+  it("the other two anchors still EXIST where they live — no silent deletion", () => {
+    // DELIBERATELY NOT A SECOND COPY OF THEIR LITERALS. Re-stating `pds_1bc639b3…` or `PAX-8ad0089a…`
+    // here would create two sources of truth for one accepted value, and a legitimate future scheme
+    // bump would then have to be made twice or go half-done. So this asserts only that each file still
+    // pins its derivation to SOME absolute literal of the right shape. Deleting an anchor fails here;
+    // deliberately re-deriving one does not, and belongs to whichever slice bumps that scheme.
+    const read = (f: string) => readFileSync(join(__dirname, f), "utf8");
+    expect(read("pilotDataContract.test.ts")).toMatch(/\.toBe\("pds_[0-9a-f]{64}"\)/);
+    expect(read("sourceResolution.test.ts")).toMatch(/\.toBe\("PAX-[0-9a-f]{32}"\)/);
+    expect(read("sourceResolution.test.ts")).toMatch(/"sha256:[0-9a-f]{64}",/);
+  });
+});
