@@ -194,9 +194,17 @@ export function selectDataInterpretation(input: {
         `declared ${input.declaredVersion} is newer than implemented ${input.implementedVersion}`,
       );
     }
-    // An older minor or patch of the same major is interpreted identically — that is what a minor
-    // promises ("a dataset valid under X.Y is still valid under X.(Y+1)"), so there is nothing to select
-    // between within a major.
+    // An older supported minor or patch DOES NOT SELECT A SEPARATE PRESERVED INTERPRETER. It is read
+    // under the current major's interpretation, because this build has exactly one interpretation per
+    // major and the declared minor is never consulted by the parser, the mapping, the adapter or the
+    // validator. So there is nothing to select between inside a major.
+    //
+    // NOT THE SAME AS "identical semantics", which would be too strong and is not what the policy
+    // proves. A MINOR may add a header synonym or relax a rule, so a 2.0-declared file can be REJECTED
+    // by a 2.0 build and ACCEPTED by a 2.1 one. The minor promise is one-directional — "a dataset valid
+    // under X.Y is still valid under X.(Y+1)" — and guarantees that valid stays valid, never that the
+    // outcome is unchanged. A minor that genuinely needed its own preserved interpreter would not be a
+    // minor.
     return select("current_major", declared.major, implemented.major, null);
   }
 

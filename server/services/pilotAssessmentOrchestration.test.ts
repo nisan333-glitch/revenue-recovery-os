@@ -139,7 +139,24 @@ describe.skipIf(!HAS_DB)("EP-16 · pilot assessment orchestration", () => {
     expect((await propose(boundaryId, policy)).statusCode).toBe(201);
     expect((await move("activate", boundaryId, policy.policyId as string)).statusCode).toBe(200);
     const body = datasetBody({ boundaryId, admissionPolicyId: policy.policyId, ...over });
-    const submitted = (await submit(body)).json();
+    // ASSERT THE TRANSPORT BEFORE THE PAYLOAD — diagnostic only, a no-op on the happy path.
+    //
+    // Without this, a submission that returns any non-2xx yields a body with no `admission` at all, and
+    // the helper dies on `Cannot read properties of undefined (reading 'outcome')` — discarding the
+    // status code and server message that would say WHY. That is exactly what CI run #134 reported here,
+    // and run #109 reported with the identical signature from a different file eight days earlier, so
+    // three occurrences have so far taught us nothing about the cause.
+    //
+    // IT FIXES NOTHING. The underlying nondeterminism is unproven and untouched; this only makes the
+    // next recurrence legible. `submitPilotDataset` answers 200 even when every row was rejected
+    // ("200, not 201" — see server/app.ts), so a non-200 here is always a transport or governance
+    // refusal and never a dataset verdict.
+    const res = await submit(body);
+    expect(
+      res.statusCode,
+      `submission did not succeed — status ${res.statusCode}, body: ${res.body}`,
+    ).toBe(200);
+    const submitted = res.json();
     expect(submitted.admission.outcome).toBe("ADMISSIBLE");
     return { boundaryId, policy, body, submitted };
   }
