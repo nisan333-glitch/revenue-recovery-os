@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
+  ADMISSION_DECISION_SCHEME,
+  EXECUTION_BINDING_SCHEME,
   EXECUTION_PROJECTION_SCHEME,
   assessmentPolicyRef,
   canTransitionExecution,
@@ -337,5 +341,58 @@ describe("EP-16 · the refusal catalogue is total and stable", () => {
     for (const reason of Object.keys(EXECUTION_REFUSAL_CODES)) {
       expect(executionCode(reason as keyof typeof EXECUTION_REFUSAL_CODES).code).toMatch(/^NH-AX-/);
     }
+  });
+});
+
+// ── THE TWO SCHEMES ───────────────────────────────────────────────────────────────────────────────
+//
+// One constant used to version TWO canonicalizations at two lifecycle stages: `canonicalDecision`
+// (`PAD`, admission) and `canonicalBinding` (`PAX`, execution) both read `EXECUTION_BINDING_SCHEME`.
+// These tests pin the split that separates them. They are STRUCTURAL on purpose: because the two
+// values are deliberately identical today, no behavioural assertion can tell which symbol each
+// canonicalization reads, and the whole content of this change is exactly that.
+
+describe("identity schemes · admission and execution are versioned separately", () => {
+  const source = readFileSync(join(__dirname, "assessmentExecution.ts"), "utf8");
+  const bodyOf = (fn: string): string => {
+    const start = source.indexOf(`function ${fn}(`);
+    expect(start, `${fn} not found`).toBeGreaterThan(-1);
+    const open = source.indexOf("{", start);
+    const close = source.indexOf("\n}", open);
+    return source.slice(open, close);
+  };
+
+  it("the split moved NO hash — the two scheme values are identical today", () => {
+    // THE POINT OF THIS SLICE. Splitting the constant is a refactor, not a re-grade: every historical
+    // PAD and PAX must re-derive bit for bit. If this assertion ever fails, some slice changed a
+    // scheme value, and the absolute vectors are what say whether that was intended.
+    expect(ADMISSION_DECISION_SCHEME).toBe(EXECUTION_BINDING_SCHEME);
+    expect(ADMISSION_DECISION_SCHEME).toBe("nh-pilot-assessment-execution-v1");
+  });
+
+  it("they are two separate declarations, so either can move without the other", () => {
+    const declarations = [...source.matchAll(/export const (\w+_SCHEME) = "([^"]+)"/g)].map((m) => m[1]!);
+    expect(declarations).toEqual([
+      "EXECUTION_BINDING_SCHEME",
+      "ADMISSION_DECISION_SCHEME",
+      "EXECUTION_PROJECTION_SCHEME",
+    ]);
+  });
+
+  it("canonicalDecision reads the ADMISSION scheme and nothing else", () => {
+    const body = bodyOf("canonicalDecision");
+    expect(body).toContain("ADMISSION_DECISION_SCHEME");
+    expect(body).not.toContain("EXECUTION_BINDING_SCHEME");
+  });
+
+  it("canonicalBinding reads the EXECUTION scheme and nothing else", () => {
+    const body = bodyOf("canonicalBinding");
+    expect(body).toContain("EXECUTION_BINDING_SCHEME");
+    expect(body).not.toContain("ADMISSION_DECISION_SCHEME");
+  });
+
+  it("the projection scheme is a third, independent thing", () => {
+    expect(EXECUTION_PROJECTION_SCHEME).not.toBe(EXECUTION_BINDING_SCHEME);
+    expect(EXECUTION_PROJECTION_SCHEME).not.toBe(ADMISSION_DECISION_SCHEME);
   });
 });
