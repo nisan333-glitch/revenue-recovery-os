@@ -19,6 +19,7 @@ import {
   toCsv,
 } from "../../src/contract/syntheticPilotDataset";
 import { DATASET_CODES, ROW_CODES } from "../../src/contract/rejectionCodes";
+import { deriveIdempotencyKey } from "../../src/contract/validateDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS, TEST_ANALYSIS_TERMS } from "../test/governedTerms";
 
@@ -326,5 +327,133 @@ describe.skipIf(!HAS_DB)("EP-28 · the submission identity is the data plus what
     // Different boundaries alone would explain that, so the discriminating case is the SAME boundary with a
     // second definition — test 6 — and the two together show the register is what is being read.
     expect(TEST_ANALYSIS_TERMS.asOf).not.toBe("2026-05-31");
+  });
+
+  // ── S4a · THE ADMISSION SNAPSHOT ────────────────────────────────────────────────────────────────
+  //
+  // WHY THESE COLUMNS EXIST. Nine components make up `pds`. Before this slice only THREE were
+  // recoverable from the submission row — `boundaryId`, `datasetFingerprint`, and the contract MAJOR via
+  // `contractVersion`. The other six (`dateLocale`, `amountFormat`, and the governed `currency`, `asOf`,
+  // `stallThresholdDays`) were committed by the hash and stored nowhere, so learning them meant
+  // enumerating candidates until one reproduced the digest. That finds a hash PREIMAGE; it does not
+  // establish PROVENANCE. The execution record does hold them — but it is created BY scheduling, so it
+  // cannot be read before scheduling has decided anything.
+  //
+  // WHAT THEY ARE NOT: an identity change. No derivation reads them, which test 10 proves against the
+  // absolute `pds` golden.
+
+  it("8 · the snapshot records the interpretation facts the verdict was reached under", async () => {
+    const boundaryId = await boundary();
+    const csvText = syntheticPilotCsv(40);
+    const res = await post(body({ boundaryId, csvText, locale: "MDY", amountFormat: "US" }));
+    expect(res.statusCode).toBe(200);
+
+    const row = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
+    // The two `pds` components, recorded exactly as declared.
+    expect(row.snapshotDateLocale).toBe("MDY");
+    expect(row.snapshotAmountFormat).toBe("US");
+    // The terms REFERENCE — lineage, not identity. It is the address of the governed definition.
+    expect(row.snapshotTermsId).toBe(TEST_ANALYSIS_TERMS.termsId);
+    expect(row.snapshotTermsVersion).toBe(TEST_ANALYSIS_TERMS.termsVersion);
+  });
+
+  it("8b · an UNDECLARED locale or format records \"auto\" — a declaration, not an absence", async () => {
+    // "auto" is its own choice and its own `pds` component, so recording it as null would lose the
+    // distinction between "the uploader pinned nothing" and "we do not know what they pinned".
+    const boundaryId = await boundary();
+    const res = await post(body({ boundaryId, csvText: syntheticPilotCsv(40) }));
+    expect(res.statusCode).toBe(200);
+    const row = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
+    expect(row.snapshotDateLocale).toBe("auto");
+    expect(row.snapshotAmountFormat).toBe("auto");
+  });
+
+  it("9 · the snapshot makes the pds REDERIVABLE from stored facts alone — no caller input", async () => {
+    // THE WHOLE POINT OF THE SLICE, and the prerequisite reference-first scheduling needs. Everything
+    // below comes from the stored row and the append-only governed register. Nothing comes from a
+    // request, and no candidate is enumerated.
+    const boundaryId = await boundary();
+    const csvText = syntheticPilotCsv(40);
+    const res = await post(body({ boundaryId, csvText, locale: "DMY", amountFormat: "EU" }));
+    expect(res.statusCode).toBe(200);
+    const stored = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
+
+    // The governed values, read from the register at the address the snapshot recorded.
+    const terms = await prisma.pilotAnalysisTermsRecord.findFirstOrThrow({
+      where: { boundaryId, termsId: stored.snapshotTermsId!, termsVersion: stored.snapshotTermsVersion! },
+    });
+
+    const rederived = await deriveIdempotencyKey({
+      boundary: { boundaryId: stored.boundaryId, datasetId: "ANY-LABEL-AT-ALL" },
+      datasetFingerprint: stored.datasetFingerprint,
+      dateLocale: stored.snapshotDateLocale!,
+      amountFormat: stored.snapshotAmountFormat!,
+      currency: terms.currency,
+      asOf: terms.asOf,
+      stallThresholdDays: terms.stallThresholdDays,
+    });
+    expect(rederived).toBe(stored.idempotencyKey);
+  });
+
+  it("9b · rederivation fails closed when any snapshot fact is substituted", async () => {
+    // A rederivation that matched regardless would prove nothing. Each substitution must break it.
+    const boundaryId = await boundary();
+    const res = await post(body({ boundaryId, csvText: syntheticPilotCsv(40), locale: "MDY", amountFormat: "US" }));
+    expect(res.statusCode).toBe(200);
+    const stored = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
+    const terms = await prisma.pilotAnalysisTermsRecord.findFirstOrThrow({
+      where: { boundaryId, termsId: stored.snapshotTermsId!, termsVersion: stored.snapshotTermsVersion! },
+    });
+    const base = {
+      boundary: { boundaryId: stored.boundaryId, datasetId: "x" },
+      datasetFingerprint: stored.datasetFingerprint,
+      dateLocale: stored.snapshotDateLocale!,
+      amountFormat: stored.snapshotAmountFormat!,
+      currency: terms.currency,
+      asOf: terms.asOf,
+      stallThresholdDays: terms.stallThresholdDays,
+    };
+    expect(await deriveIdempotencyKey(base)).toBe(stored.idempotencyKey);
+    for (const [label, over] of [
+      ["locale", { dateLocale: "DMY" }],
+      ["amountFormat", { amountFormat: "EU" }],
+      ["currency", { currency: "EUR" }],
+      ["asOf", { asOf: "2026-05-31" }],
+      ["threshold", { stallThresholdDays: terms.stallThresholdDays + 1 }],
+      ["fingerprint", { datasetFingerprint: "0".repeat(64) }],
+      ["boundary", { boundary: { boundaryId: "someone-else", datasetId: "x" } }],
+    ] as const) {
+      expect(await deriveIdempotencyKey({ ...base, ...over }), label).not.toBe(stored.idempotencyKey);
+    }
+  });
+
+  it("10 · the snapshot moves NO identity — the absolute pds golden is unchanged", async () => {
+    // The columns are write-only. `deriveIdempotencyKey` reads none of them, so the pinned vector still
+    // holds, which is what makes this slice safe to land in front of historical rows.
+    expect(
+      await deriveIdempotencyKey({
+        boundary: { boundaryId: "golden-boundary", datasetId: "any-label-at-all" },
+        datasetFingerprint: "0".repeat(64),
+        dateLocale: "MDY",
+        amountFormat: "US",
+        asOf: "2026-04-15",
+        stallThresholdDays: 30,
+        currency: "USD",
+      }),
+    ).toBe("pds_1bc639b3f5892d03381bfee75a37830fbe063b7132b31758e823000fcb849ffa");
+  });
+
+  it("10b · a NULL snapshot is readable as 'written before the columns existed', not as a default", async () => {
+    // Historical rows are never backfilled, so a reader must be able to tell "unknown" from a value. The
+    // columns are nullable precisely so that distinction survives, and a consumer that cannot rederive
+    // must fail closed rather than guess.
+    const boundaryId = await boundary();
+    const res = await post(body({ boundaryId, csvText: syntheticPilotCsv(40) }));
+    expect(res.statusCode).toBe(200);
+    const stored = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
+    // Every row written from this point carries all four, so null unambiguously means "pre-snapshot".
+    for (const v of [stored.snapshotDateLocale, stored.snapshotAmountFormat, stored.snapshotTermsId, stored.snapshotTermsVersion]) {
+      expect(v).not.toBeNull();
+    }
   });
 });

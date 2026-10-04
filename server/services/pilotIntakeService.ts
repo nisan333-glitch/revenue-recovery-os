@@ -382,6 +382,17 @@ export async function submitPilotDataset(
     admissionPolicyVersion: admission.policyVersion,
     admissionPolicyHash: policyHash,
     admissionDecisionId,
+    // S4a · THE ADMISSION SNAPSHOT. The interpretation facts this verdict was reached under, written so
+    // a later reader can READ them instead of enumerating candidates against the `pds` digest. The two
+    // locale values are `pds` components, recorded exactly as declared — "auto" is itself a declaration.
+    // The terms reference is lineage: the governed register already holds the cut-off, the threshold and
+    // the currency forever, so an id+version recovers them authoritatively.
+    //
+    // NOT AN IDENTITY CHANGE. No derivation reads these columns; `pds`, PAD and PAX are untouched.
+    snapshotDateLocale: request.locale ?? "auto",
+    snapshotAmountFormat: request.amountFormat ?? "auto",
+    snapshotTermsId: governedTerms.termsId,
+    snapshotTermsVersion: governedTerms.termsVersion,
     submittedByActorId: actor.actorId,
     submittedByRole: actor.role,
   });

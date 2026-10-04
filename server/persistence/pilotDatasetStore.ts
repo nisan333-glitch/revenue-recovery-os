@@ -47,6 +47,19 @@ export interface PilotSubmissionInput {
    * than merely asserted. Null on a submission recorded before orchestration existed.
    */
   readonly admissionDecisionId: string | null;
+  /**
+   * S4a · THE ADMISSION SNAPSHOT — the interpretation facts this decision was made under.
+   *
+   * The two locale fields are `pds` COMPONENTS, recorded so they can be read rather than guessed at by
+   * enumerating candidates against the hash. The two terms fields are LINEAGE: the governed register is
+   * append-only and holds the three governed values forever, so an id+version recovers them
+   * authoritatively — what was missing was the address. All four are null for rows written before the
+   * columns existed, which is a fact about the schema epoch, never a default value.
+   */
+  readonly snapshotDateLocale: string | null;
+  readonly snapshotAmountFormat: string | null;
+  readonly snapshotTermsId: string | null;
+  readonly snapshotTermsVersion: string | null;
   readonly submittedByActorId: string;
   readonly submittedByRole: string;
 }
@@ -61,6 +74,10 @@ function toRecord(row: {
   datasetId: string;
   contractVersion: string;
   declaredVersion: string | null;
+  snapshotDateLocale: string | null;
+  snapshotAmountFormat: string | null;
+  snapshotTermsId: string | null;
+  snapshotTermsVersion: string | null;
   datasetFingerprint: string;
   accepted: boolean;
   usable: boolean;
@@ -84,6 +101,10 @@ function toRecord(row: {
     datasetId: row.datasetId,
     contractVersion: row.contractVersion,
     declaredVersion: row.declaredVersion,
+    snapshotDateLocale: row.snapshotDateLocale,
+    snapshotAmountFormat: row.snapshotAmountFormat,
+    snapshotTermsId: row.snapshotTermsId,
+    snapshotTermsVersion: row.snapshotTermsVersion,
     datasetFingerprint: row.datasetFingerprint,
     accepted: row.accepted,
     usable: row.usable,
@@ -147,6 +168,10 @@ export async function recordSubmission(
       datasetId: input.datasetId,
       contractVersion: input.contractVersion,
       declaredVersion: input.declaredVersion,
+      snapshotDateLocale: input.snapshotDateLocale,
+      snapshotAmountFormat: input.snapshotAmountFormat,
+      snapshotTermsId: input.snapshotTermsId,
+      snapshotTermsVersion: input.snapshotTermsVersion,
       datasetFingerprint: input.datasetFingerprint,
       accepted: input.accepted,
       usable: input.usable,

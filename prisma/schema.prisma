@@ -280,6 +280,29 @@ model PilotDatasetSubmissionRecord {
   /// never backfilled: a submission recorded before orchestration existed was never bound to an
   /// execution, and minting an identifier now would assert a binding that never happened.
   admissionDecisionId    String?  @map("admission_decision_id")
+  /// S4a · THE ADMISSION SNAPSHOT — the interpretation facts this decision was made under, recorded so
+  /// they can be READ rather than guessed.
+  ///
+  /// WHY. Six of the nine components of the submission identity were unrecoverable from this row:
+  /// `dateLocale`, `amountFormat`, and the governed `currency`/`asOf`/`stallThresholdDays`. They are
+  /// committed by the `pds` hash and nowhere else, so the only way to learn them was to enumerate
+  /// candidates until one reproduced the digest — which finds a hash preimage, not provenance. The
+  /// execution record does store them, but it is CREATED BY SCHEDULING, so it cannot be read before
+  /// scheduling decides anything.
+  ///
+  /// The two locale fields are identity-bearing (they are `pds` components). The two terms fields are
+  /// LINEAGE: the governed register is append-only and already holds the three values forever, so an
+  /// id+version recovers them authoritatively — what was missing was the address, not the data. They
+  /// are deliberately NOT identity-bearing: the `pds` preimage commits the governed VALUES, and two
+  /// terms versions with identical values are intentionally one identity.
+  ///
+  /// NULLABLE AND NEVER BACKFILLED. Null means "written before these columns existed" — a fact about
+  /// the schema, not a guess about semantics. The service always writes all four from this point on, so
+  /// null and present are unambiguous, and a historical row stays exactly as it was recorded.
+  snapshotDateLocale     String?  @map("snapshot_date_locale")
+  snapshotAmountFormat   String?  @map("snapshot_amount_format")
+  snapshotTermsId        String?  @map("snapshot_terms_id")
+  snapshotTermsVersion   String?  @map("snapshot_terms_version")
   submittedByActorId     String   @map("submitted_by_actor_id")
   submittedByRole        String   @map("submitted_by_role")
   submittedAt            DateTime @default(now()) @map("submitted_at")
