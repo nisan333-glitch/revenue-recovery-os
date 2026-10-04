@@ -456,6 +456,177 @@ detector **1**, which needs nothing from anyone.
 
 ---
 
+## THE DECISION, STATED AS NUMBERS
+
+This is the last documentation slice before capability work resumes, so the audit ends with the eight
+figures the next decision needs and nothing else between them.
+
+| # | | Answer |
+|---|---|---|
+| **1** | **Total credible leakage families identified** | **25** (expanded) · **11** (minimum defensible, the classes already planted against this product). Membership of both is listed in §7 |
+| **2** | **Genuinely executable by NH today** | **1** — the activation-timing stall (`cohort.ts:33-46`). Generously **2**, if `Unpaid` and `PartiallyPaid` are counted as separate families rather than two payment states of one rule |
+| **3** | **With defensible monetary valuation today** | **1** — the same family, **observed exposure only**. No estimate, no forecast, no baseline (`assess.ts:110-112`, `policy.ts:26`) |
+| **4** | **With end-to-end recovery-proof capability today** | **0** — from NH's own detection. The one proven class (`ActivationMissed` via `ingest:csv`) rests on a conclusion a human typed into a CSV column |
+| **5** | **Detection Coverage** | **4 – 18 %** (1–2 of 25 … 1–2 of 11) |
+| **6** | **Monetary Coverage** | **4 – 18 %** (same numerator; observed-only) |
+| **7** | **Recovery-Proof Coverage** | **0 %** — and it is a frozen empty constant, not a configuration |
+| **8** | **Detector #2** | **Unpaid obligation with no activation stall** — *"the invoice is overdue and the account activated fine"* |
+
+---
+
+## DETECTOR #2 · Unpaid obligation with no activation stall
+
+> The next detector NH should build. It needs **no new customer data**, crosses **no system boundary**,
+> and closes a **measured** gap. It is the only item in the top five whose absence is a scope decision
+> rather than a data limit.
+
+### Exact leakage mechanism
+
+An obligation is due, the due date has passed as of the analysis cut-off, and **no settling payment is
+observed** — but the account reached its activation milestone on time. The invoice is simply unpaid. No
+operational signal is wrong; nothing stalled; the money is just not in the bank.
+
+This is the ordinary, highest-frequency form of revenue leakage in any business that invoices, and NH
+currently cannot see a single dollar of it.
+
+### Where the money disappears — one line
+
+```ts
+// src/assessment/observed.ts:26
+for (const c of stalled) {
+```
+
+`observedSummary` is invoked with the **stalled cohort only** (`assess.ts:72`). A cycle whose observation
+arrived inside the threshold is classified `observed_within_threshold` and routed to `reference`
+(`cohort.ts:68`), and `reference` is **never scanned for payment state**. So the unpaid value on a
+healthy-activation account is computed **nowhere** — not in the headline, not in `grossEligible`, not even
+in `excludedValue`.
+
+The prior validation measured the consequence exactly: `unpaid_invoice_without_activation_stall`,
+**$9,300.00**, classified *"REPRESENTABLE, NOT DETECTED"* — *"the schema carries the signal and the
+product does not look."*
+
+### Required source data — none beyond today's contract
+
+| Field | Status in the contract |
+|---|---|
+| `entity_id`, `signed_at`, `next_invoice_due_at`, `next_invoice_amount`, `currency` | **already required** (`saasActivation.ts:23`) |
+| `next_invoice_paid_at`, `next_invoice_paid`, `paid_amount` | **already accepted** (`saasActivation.ts:38-60`) |
+
+**No new column. No contract version bump. No customer re-export.** `classifyPayment`
+(`paymentState.ts:19-46`) is already cohort-independent — it takes a cycle and an `asOf` and has no notion
+of stalling. The capability is present and simply not called over the right population.
+
+### Expected event versus observed event
+
+| | |
+|---|---|
+| **Expected** | a settling payment of `next_invoice_amount` on or before `next_invoice_due_at` |
+| **Observed** | no payment visible as of `asOf`, with `dueAt ≤ asOf` — i.e. `classifyPayment` returns `Unpaid` (`paymentState.ts:40`) or `PartiallyPaid` (`:44`) |
+| **Point-in-time** | `effectivePaidAt` nulls any payment dated after `asOf` (`paymentState.ts:13-17`), so an invoice paid later is correctly *unpaid at the cut-off* and no future information leaks in |
+
+### Monetary exposure calculation
+
+Over the **complement of the stalled cohort** (`reference` ∪ `undetermined`):
+
+```
+unpaidOutsideStallMinor     = Σ amount                        where state = Unpaid
+partialOutsideStallMinor    = Σ clamp(amount − paidAmount)    where state = PartiallyPaid
+```
+
+Exact integer minor units throughout, via `addMoney` / `subMoney` / `clampNonNegative`
+(`money.ts:45-62`), with the existing cross-currency throw retained (`observed.ts:28-30`).
+
+**It must be a NEW ledger line, never a widening of `observedUnpaid`.** The existing headline is *defined*
+as unpaid-within-stalled; re-pointing it would silently re-grade every historical figure, break the prior
+validation's reconciliation and invalidate its frozen goldens. Add a bucket; do not move one.
+
+### Attribution requirement
+
+**For detection and valuation: nothing new.** The figure is a population total, exactly as the current
+headline is.
+
+**For per-account attribution:** `attributeByEntity` (`entityAttribution.ts:89-112`) already computes it
+and would need only to be given the other cohorts — but it is gated off and then hard-blocked, so this
+buys nothing today.
+
+**For a candidate, a case or a proven dollar:** blocked by **B1**, identically to the activation family.
+Detector #2 therefore delivers **rungs 1 and 3** of §4 — DETECTION and VALUATION — and claims neither
+ATTRIBUTION-to-instance nor anything above it. Stating that boundary up front is the point.
+
+### False-positive controls
+
+Already in place and reused unchanged:
+
+| Control | Mechanism |
+|---|---|
+| future-dated obligations | `NotYetDue` when `dueAt > asOf` (`paymentState.ts:31`) — never counted |
+| payments made after the cut-off | invisible by `effectivePaidAt` (`:13-17`) — correct point-in-time, no leakage |
+| cancelled / refunded obligations | take precedence in the cascade (`:23-24`) and land in `excludedValue` |
+| settled but untimeable | isolated as `Unknown` (`:39`), never counted as unpaid |
+| zero / negative / malformed amounts, wrong currency, test accounts, excluded statuses | existing exclusions (`saasActivation.ts:104-221`) |
+| `next_invoice_paid=true` with no timestamp | normalised to `PaidOnTime` (`:190-193`) — suppresses false positives rather than creating them |
+
+**One control that must be ADDED in the same slice, and this is a blocker not a nicety.** `status =
+churned` is **unrecognised** — the adapter knows only `refunded` and `cancelled`
+(`saasActivation.ts:210-211`) — so a churned account with no `cancelled_at` is accepted as a normal cycle.
+Today that gap can only pollute the stalled cohort. **Detector #2 widens its blast radius to the entire
+population**, where a book of churned accounts with unpaid final invoices would be reported as live
+exposure. Either recognise `churned` as a terminal state requiring a date, or require a dated terminal
+state before counting. Shipping the detector without it would convert a narrow known gap into a broad
+false-positive source.
+
+### Recovery action
+
+Ordinary accounts-receivable follow-up on a **named invoice, for a named amount, on a named customer** —
+the most actionable play in the business and the one least dependent on interpretation. No play design is
+required; the action already exists in every finance function.
+
+### Verification event
+
+The invoice is subsequently settled: a later export carries `next_invoice_paid_at` populated with
+`paid_amount ≥ next_invoice_amount`, and the cycle's state moves to `PaidOnTime`/`PaidLate`.
+
+### Proof path
+
+**Identical to the activation family's: none, until B1 closes.** `Revenue Returned = Collected − Baseline`
+requires a Recovery Case, which requires a candidate, which requires a leak-instance identity
+(`leakInstanceIdentity.ts:53`). The finding keeps `constitutesProof: false`.
+
+This must be said plainly in any customer-facing material about Detector #2: it finds money and values it
+exactly; it does not yet prove recovery of it.
+
+### Cross-department / system boundary
+
+**None.** Single extract, single source namespace, billing data only — the obligation and its payment are
+columns on the same row the customer already sends. This is precisely why it ranks first: it needs
+neither **B2** (multi-extract intake) nor a join key.
+
+### Implementation dependencies
+
+| # | Dependency | Detail |
+|---|---|---|
+| **D-1** | **Do NOT widen `ObservedSummary` — compute a SEPARATE summary** | `computeBehaviourFingerprint` digests `JSON.parse(JSON.stringify(summary))` — the **whole** `ObservedSummary` object (`calculationMethodLineage.test.ts`). Adding a key changes the `JSON.stringify` output and therefore the SHA-256, **by construction rather than by luck**: the lineage test fails, which forces an `ASSESSMENT_CALC_VERSION` bump, which refuses scheduling `NH-AX-1014` until every governed terms version is re-blessed, which makes every admitted extract need **re-assessment**. Computing the new buckets in a **separate** summary over the non-stalled cohorts leaves `observedSummary(cohorts.stalled, policy)` byte-identical, so the fingerprint does not move and none of that cascade fires. **This single choice is the difference between an additive slice and a migration** |
+| **D-2** | `assessmentId` is unaffected either way | its preimage is fingerprint + policy + mapping + formats, with **no dependency on the result shape** (`assess.ts:74-88`). Verified |
+| **D-3** | `canonicalFinding` must gain the new fields — and the conflict edge is **closed** | `assessmentExecution.ts` enumerates the five money fields explicitly, so new fields change `findingHash` **for new findings only**; historical findings are append-only and never recomputed. The edge worth checking — a completed execution re-claimed after deploy computing a different hash and hitting `finding_conflict` — **cannot occur**: the claim query selects `status IN ('queued','retry_wait')` (`postgresTaskStore.ts:205`) and `succeed` sets `status = 'succeeded'` (`:245`), so a finished task is never re-claimed. Verified, not deferred |
+| **D-4** | the `churned` control above | same slice, not a follow-up |
+| **D-5** | the UI must label it as a **second, separate** figure | never folded into *Detected Revenue Opportunity*, for the same reason the ledger line is additive |
+
+### Why it ranks above the other four
+
+| Rival | What it needs that Detector #2 does not |
+|---|---|
+| **Failed payment / dunning** | three new columns → contract minor version **and a customer re-export**. Higher frequency, but gated behind data NH has never asked for |
+| **Invoice-expected-but-absent** | **B2** multi-extract intake — a design slice, not a build. The largest money, and the furthest away |
+| **Undercharge / amount mismatch** | an authoritative expected price (`list_price`, `discount_pct`) the contract does not declare. The comparison logic already exists in `revenueEvent.ts:248-262`, but it has nothing to compare against |
+| **Renewal-eligible, no action** | new columns **and** a cross-system comparison — both B2 and new data |
+
+**Detector #2 needs none of it.** Zero new columns, zero contract versions, zero system boundaries, zero
+identity work, and it reuses `classifyPayment` unchanged. It roughly **doubles detection coverage** — 1
+family to 2, 4 % to 8 % of the expanded denominator — at the lowest cost and risk of anything available,
+and it corrects a conceptual error worth correcting on its own: that **unpaid value is only interesting
+inside a timing cohort**. It is not. An overdue invoice is leakage whether or not onboarding went well.
+
 ## Appendix · the searches, so this is rerunnable rather than trusted
 
 Every **ABSENT** claim above rests on a named search. These were run over `src/` and `server/`,
