@@ -26,7 +26,11 @@ import {
   type ContractValidationReport,
   type DatasetSubmission,
 } from "../../src/contract/validateDataset";
-import { PILOT_DATA_CONTRACT_VERSION, type DatasetProvenance } from "../../src/contract/pilotDataContract";
+import {
+  PILOT_DATA_CONTRACT_VERSION,
+  isSupportedContractVersion,
+  type DatasetProvenance,
+} from "../../src/contract/pilotDataContract";
 import {
   assessmentPolicyRef,
   deriveAdmissionDecisionId,
@@ -44,9 +48,11 @@ import {
 } from "../../src/contract/executionCodes";
 import { mayEvaluate, whyCannotEvaluate, type PolicyState } from "../../src/contract/policyLifecycle";
 import { makePolicy } from "../../src/assessment/policy";
+import { observedSummary } from "../../src/assessment/observed";
+import { splitCohorts } from "../../src/assessment/cohort";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
-import { ForbiddenError, NotFoundError } from "../http/errors";
+import { NotFoundError } from "../http/errors";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
 import { findSubmission } from "../persistence/pilotDatasetStore";
@@ -59,6 +65,16 @@ import {
   listExecutions,
   type ExecutionRecord,
 } from "../persistence/pilotExecutionStore";
+import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
+import { readDatasetFirstSeenAt, readSourceGovernance } from "./sourceAuthorityService";
+import { resolveSourceNamespace, sourceResolutionHash } from "../../src/contract/sourceNamespace";
+import {
+  deriveStagedAttributions,
+  resolveSignalStagingConfig,
+  type CandidateStagingBlockedReason,
+  type CandidateStagingDecision,
+  type SignalStagingConfig,
+} from "./governedSignalStaging";
 import { PILOT_ASSESSMENT_AGENT_ID } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import type { AgentTaskStore } from "../agents/types";
@@ -69,11 +85,14 @@ export interface SchedulePilotAssessmentRequest {
   readonly datasetId: string;
   readonly declaredVersion: string;
   readonly csvText: string;
-  readonly policy: {
-    readonly stallThresholdDays: number;
-    readonly asOf: string;
-    readonly currency: string;
-  };
+  /**
+   * EP-26b · WHICH GOVERNED ASSESSMENT POLICY this execution is measured under. Not a set of values:
+   * `asOf`, `stallThresholdDays` and the currency together define what is being measured, so they are
+   * proposed by one identity and activated by another. An absent, unknown, draft, frozen or retired
+   * reference is refused with NH-AX-1010 — there is no default and no fallback.
+   */
+  readonly analysisTermsId?: string;
+  readonly analysisTermsVersion?: string;
   readonly provenance: DatasetProvenance;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
@@ -96,6 +115,19 @@ export interface SchedulePilotAssessmentResponse {
   readonly refusal: ExecutionCodeSpec | null;
   /** Non-identifying context for the refusal. Never echoes a customer value. */
   readonly refusalDetail: string | null;
+  /**
+   * EP-31c · Whether candidate-capable attribution was staged for this execution, and if not, why.
+   *
+   * DELIBERATELY NOT `refusal`/`refusalDetail`. Those are the deterministic NH-AX-#### refusals of the
+   * EXECUTION, and putting a candidate-side outcome there would let `scheduled: true` sit beside a
+   * `refusal` — which reads as the assessment having been refused when it was not. No NH-AX code is
+   * invented for this: the execution vocabulary is unchanged.
+   *
+   * `staged: false` is the ordinary case. Under the current data contract it is ALWAYS false, with
+   * reason `leak_instance_identity_unavailable`, because no declared field can establish a stable
+   * obligation identity (`src/contract/leakInstanceIdentity.ts`). An assessment does not need one.
+   */
+  readonly candidateStaging: CandidateStagingDecisionSummary;
   readonly admissionPolicyState: PolicyState | null;
   readonly claimBoundary: {
     readonly observationOnly: true;
@@ -127,15 +159,49 @@ function refused(
     binding: null,
     refusal: executionCode(refusal),
     refusalDetail: detail,
+    // A refused schedule reaches no staging decision at all, and reporting `staged: false` with the
+    // boundary reason keeps the field total rather than nullable.
+    candidateStaging: Object.freeze({
+      staged: false,
+      reason: "boundary_not_enrolled" as const,
+      detail: "the schedule was refused before candidate-capable staging was considered",
+    }),
     admissionPolicyState,
     claimBoundary: CLAIM_BOUNDARY,
   });
+}
+
+/** The decision, without the staged rows: a response never carries customer-derived figures. */
+export interface CandidateStagingDecisionSummary {
+  readonly staged: boolean;
+  readonly reason: CandidateStagingBlockedReason | null;
+  readonly detail: string;
+}
+
+function stagingSummary(decision: CandidateStagingDecision): CandidateStagingDecisionSummary {
+  return Object.freeze({ staged: decision.staged, reason: decision.reason, detail: decision.detail });
 }
 
 export interface PilotAssessmentDeps {
   /** Injectable so the queue can be driven directly in tests; production uses the Postgres store. */
   readonly taskStore?: AgentTaskStore;
   readonly now?: () => number;
+  /**
+   * EP-31 · Staging configuration for the governed signal bridge. `null` means off, which is the
+   * default: absent here resolves from the environment, where unset is also off.
+   */
+  readonly signalStaging?: SignalStagingConfig | null;
+}
+
+/**
+ * Resolved ONCE per process, not per request, so a misconfiguration is a startup failure rather than a
+ * server that silently stages nothing. `resolveSignalStagingConfig` throws on a non-boolean switch and on
+ * an allowlisted boundary with no usable HMAC key.
+ */
+let cachedSignalStaging: SignalStagingConfig | null | undefined;
+function defaultSignalStagingConfig(): SignalStagingConfig | null {
+  if (cachedSignalStaging === undefined) cachedSignalStaging = resolveSignalStagingConfig(process.env);
+  return cachedSignalStaging;
 }
 
 /**
@@ -155,15 +221,35 @@ export async function schedulePilotAssessment(
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
+  // ── 1 · The whole definition, from the register ───────────────────────────────────────────────
+  // Resolved BEFORE the bytes are parsed. The terms decide what the run measures, so a run under
+  // terms nobody approved must not happen at all — not even far enough to report a count. The
+  // governed ids become the binding's `assessmentPolicyId`/`assessmentPolicyVersion`, so a change of
+  // definition yields a DIFFERENT execution identity and can never re-grade an existing finding.
+  const resolvedTerms = await resolveGovernedAnalysisTerms(
+    boundaryId,
+    request.analysisTermsId,
+    request.analysisTermsVersion,
+  );
+  if (!resolvedTerms.ok) {
+    return refused(boundaryId, "analysis_terms_not_governed", resolvedTerms.reason);
+  }
+  const governedTerms = resolvedTerms.stored.terms;
+
   let policy;
   try {
     policy = makePolicy({
-      stallThresholdDays: request.policy.stallThresholdDays,
-      asOf: request.policy.asOf,
-      currency: request.policy.currency,
+      policyId: governedTerms.termsId,
+      policyVersion: governedTerms.termsVersion,
+      stallThresholdDays: governedTerms.stallThresholdDays,
+      asOf: governedTerms.asOf,
+      currency: governedTerms.currency,
     });
-  } catch {
-    throw new ForbiddenError("assessment policy is invalid (stall threshold, as-of date or currency)");
+  } catch (e) {
+    // UNREACHABLE BY CONSTRUCTION: every value came from a registered row that the store already
+    // rebuilt through `makeAnalysisTerms`. Checked rather than asserted away, and rethrown rather than
+    // reported as a caller error — there is no longer any caller input here to blame.
+    throw e;
   }
 
   const submissionInput: DatasetSubmission = {
@@ -194,11 +280,22 @@ export async function schedulePilotAssessment(
   if (decision.datasetFingerprint !== report.datasetFingerprint) {
     return refused(boundaryId, "fingerprint_mismatch", "the supplied bytes do not match the admitted dataset");
   }
-  if (decision.contractVersion !== report.contractVersion) {
+  // EP-27 · COMPATIBILITY, not string equality. This was `decision.contractVersion !== report.contractVersion`
+  // — the version the build implemented at submit time against the version it implements now — so ANY bump,
+  // including a purely editorial patch, refused execution of every already-admitted dataset with NH-AX-1006
+  // and the message "the fields may not mean the same thing", which for a patch is simply false. A promise
+  // that two MAJORS coexist (§10) is void in a build where two PATCHES cannot.
+  //
+  // The question that actually matters is whether THIS build can still faithfully interpret what that
+  // decision was made under, which is exactly what the version gate answers. `declaredVersion` is null only
+  // for rows written before EP-27's column existed; those fall back to the implemented version they were
+  // recorded with — the same value the migration backfilled — never to an optimistic assumption.
+  const admittedUnder = decision.declaredVersion ?? decision.contractVersion;
+  if (!isSupportedContractVersion(admittedUnder)) {
     return refused(
       boundaryId,
       "contract_version_mismatch",
-      `admitted under ${decision.contractVersion}; this build serves ${PILOT_DATA_CONTRACT_VERSION}`,
+      `admitted under ${admittedUnder}; this build serves ${PILOT_DATA_CONTRACT_VERSION} and does not accept it`,
     );
   }
   if (decision.admissionOutcome !== "ADMISSIBLE") {
@@ -274,6 +371,56 @@ export async function schedulePilotAssessment(
     hashExecutionInput(input),
   ]);
 
+  // ── 6b · EP-31 · Stage the per-account at-risk attribution, if this boundary is enrolled ────────
+  //
+  // HERE AND NOWHERE ELSE, because this is the last moment the account identity exists:
+  // `projectExecutionInput` above has already replaced it with an ordinal whose mapping is not stored
+  // and not recoverable, and the worker reads only that projection. The rows are written inside the
+  // execution's own transaction below, so if the execution cannot be created no attribution exists —
+  // and therefore no candidate can ever be derived from one.
+  //
+  // THIS IS NOT A CANDIDATE. Nothing lists these rows in a review queue and nothing can promote them.
+  // Only the emitter, and only once the execution has reached `completed`, turns them into signals. The
+  // execution is the governed artefact; the candidate is strictly downstream of it.
+  //
+  // Off unless the boundary is explicitly enrolled — `mayStage` requires both the master switch and the
+  // allowlist — so the default is an empty list and no behaviour change at all.
+  const stagingConfig = deps.signalStaging ?? defaultSignalStagingConfig();
+  const candidateStaging = deriveStagedAttributions(
+    stagingConfig,
+    boundaryId,
+    report.acceptedCycles,
+    policy,
+    observedSummary(splitCohorts(report.acceptedCycles, policy).stalled, policy),
+  );
+
+  // ── 6c · Step 5 · Resolve the GOVERNED source namespace for these bytes ─────────────────────────
+  //
+  // AUDIT LINEAGE, NOT A GATE ON ASSESSMENT. A submission that no governed authority resolves is assessed
+  // exactly as before and simply carries no lineage. That is EP-31c's invariant restated: an ordinary
+  // assessment may complete without source authority; candidate-capable work may not. A refusal is never
+  // turned into an execution refusal, so `scheduled: true` can never coexist with a fabricated `NH-AX-*`.
+  //
+  // The first sighting comes from the record the intake wrote BEFORE it resolved the admission bar, so the
+  // ordering rule compares authority against when these bytes actually arrived rather than against anything
+  // in this request.
+  const firstSeenAt = await readDatasetFirstSeenAt(boundaryId, binding.datasetFingerprint);
+  const resolution = firstSeenAt === null
+    ? ({ resolved: false, reason: "source_namespace_unresolved", detail: "these bytes have no recorded first sighting" } as const)
+    : resolveSourceNamespace({
+        boundaryId,
+        datasetFingerprint: binding.datasetFingerprint,
+        firstSeenAt,
+        declaredBillingSource: request.provenance.sourceSystems.billing,
+        ...(await readSourceGovernance(boundaryId, binding.datasetFingerprint)),
+      });
+  const sourceResolution = resolution.resolved
+    ? {
+        ...resolution.lineage,
+        sourceResolutionHash: await sourceResolutionHash(boundaryId, binding.datasetFingerprint, resolution.lineage),
+      }
+    : null;
+
   const { execution, created } = await createExecutionIfAbsent({
     executionId,
     binding,
@@ -282,6 +429,8 @@ export async function schedulePilotAssessment(
     inputHash,
     scheduledByActorId: actor.actorId,
     scheduledByRole: actor.role,
+    attributions: candidateStaging.attributions,
+    sourceResolution,
   });
 
   // ── 7 · Enqueue ────────────────────────────────────────────────────────────────────────────────
@@ -310,6 +459,7 @@ export async function schedulePilotAssessment(
     binding: execution.binding,
     refusal: null,
     refusalDetail: null,
+    candidateStaging: stagingSummary(candidateStaging),
     admissionPolicyState: governance.state,
     claimBoundary: CLAIM_BOUNDARY,
   });

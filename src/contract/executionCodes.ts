@@ -49,6 +49,7 @@ export type ExecutionRefusal =
   | "decision_binding_mismatch"
   | "contract_version_mismatch"
   | "policy_not_active"
+  | "analysis_terms_not_governed"
   | "boundary_mismatch"
   | "no_assessable_cycles"
   | "case_halted"
@@ -124,6 +125,17 @@ export const EXECUTION_REFUSAL_CODES: Readonly<Record<ExecutionRefusal, Executio
       remediation:
         "None. Tenancy comes from the authenticated session and never from a request body; a mismatch is refused rather than reconciled.",
       since: "1.0.0",
+    }),
+    // EP-26 · The cut-off and the stall threshold are not request parameters. This refusal is what
+    // makes that true rather than merely intended: an execution cannot name an unapproved, frozen or
+    // retired definition, and it cannot name none at all.
+    analysis_terms_not_governed: code({
+      code: "NH-AX-1010",
+      severity: "refused",
+      title: "The analysis terms this execution would run under are not an ACTIVE governed version.",
+      remediation:
+        "Propose an analysis-terms version and have governance activate it, then cite it by id and version. The as-of date and the stall threshold define what the assessment measures, so they are decided by a proposer and an approver — never chosen in the request that benefits from the result.",
+      since: "1.1.0",
     }),
     no_assessable_cycles: code({
       code: "NH-AX-1009",

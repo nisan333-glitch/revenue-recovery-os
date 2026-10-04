@@ -239,7 +239,6 @@ model RecoveryCaseRecord {
   openedAt          DateTime @map("opened_at") @db.Timestamptz(3)
   persistedAt       DateTime @default(now()) @map("persisted_at") @db.Timestamptz(3)
 
-  @@unique([sourceCandidateId, boundaryId], map: "recovery_cases_candidate_boundary_unique")
   @@index([boundaryId, openedAt], map: "recovery_cases_boundary_opened_idx")
   @@map("recovery_cases")
 }
@@ -254,32 +253,59 @@ model RecoveryCaseRecord {
 /// `detail` text of a finding (which can echo a customer value). A rejected row is reported to the
 /// uploader and then forgotten — it is never persisted.
 model PilotDatasetSubmissionRecord {
-  idempotencyKey     String   @id @map("idempotency_key")
-  boundaryId         String   @map("boundary_id")
-  datasetId          String   @map("dataset_id")
-  contractVersion    String   @map("contract_version")
-  datasetFingerprint String   @map("dataset_fingerprint")
-  accepted           Boolean
-  usable             Boolean
-  dataRows           Int      @map("data_rows")
-  acceptedRows       Int      @map("accepted_rows")
-  rejectedRows       Int      @map("rejected_rows")
-  warnedRows         Int      @map("warned_rows")
+  idempotencyKey         String   @id @map("idempotency_key")
+  boundaryId             String   @map("boundary_id")
+  datasetId              String   @map("dataset_id")
+  contractVersion        String   @map("contract_version")
+  /// EP-27 · The version the CUSTOMER'S EXPORT declared, which under §10's two-major window need not be
+  /// the version this build implements. Nullable only for rows written before the column existed; those
+  /// were backfilled from `contract_version`, which is exact for every row this product's clients created.
+  declaredVersion        String?  @map("declared_version")
+  datasetFingerprint     String   @map("dataset_fingerprint")
+  accepted               Boolean
+  usable                 Boolean
+  dataRows               Int      @map("data_rows")
+  acceptedRows           Int      @map("accepted_rows")
+  rejectedRows           Int      @map("rejected_rows")
+  warnedRows             Int      @map("warned_rows")
   /// Distinct NH-DC-#### codes only. Never the findings' detail text.
-  findingCodes       String[] @map("finding_codes")
+  findingCodes           String[] @map("finding_codes")
   /// EP-15 · The exact bar this decision was judged under. Retiring or superseding the policy can
   /// never alter these three values, so a historical verdict stays reproducible forever.
-  admissionOutcome   String?  @map("admission_outcome")
-  admissionPolicyId  String?  @map("admission_policy_id")
-  admissionPolicyVersion String? @map("admission_policy_version")
-  admissionPolicyHash String? @map("admission_policy_hash")
+  admissionOutcome       String?  @map("admission_outcome")
+  admissionPolicyId      String?  @map("admission_policy_id")
+  admissionPolicyVersion String?  @map("admission_policy_version")
+  admissionPolicyHash    String?  @map("admission_policy_hash")
   /// EP-16 · Deterministic identifier for this decision, derived from the fields above. Nullable and
   /// never backfilled: a submission recorded before orchestration existed was never bound to an
   /// execution, and minting an identifier now would assert a binding that never happened.
-  admissionDecisionId String? @map("admission_decision_id")
-  submittedByActorId String   @map("submitted_by_actor_id")
-  submittedByRole    String   @map("submitted_by_role")
-  submittedAt        DateTime @default(now()) @map("submitted_at")
+  admissionDecisionId    String?  @map("admission_decision_id")
+  /// S4a · THE ADMISSION SNAPSHOT — the interpretation facts this decision was made under, recorded so
+  /// they can be READ rather than guessed.
+  ///
+  /// WHY. Six of the nine components of the submission identity were unrecoverable from this row:
+  /// `dateLocale`, `amountFormat`, and the governed `currency`/`asOf`/`stallThresholdDays`. They are
+  /// committed by the `pds` hash and nowhere else, so the only way to learn them was to enumerate
+  /// candidates until one reproduced the digest — which finds a hash preimage, not provenance. The
+  /// execution record does store them, but it is CREATED BY SCHEDULING, so it cannot be read before
+  /// scheduling decides anything.
+  ///
+  /// The two locale fields are identity-bearing (they are `pds` components). The two terms fields are
+  /// LINEAGE: the governed register is append-only and already holds the three values forever, so an
+  /// id+version recovers them authoritatively — what was missing was the address, not the data. They
+  /// are deliberately NOT identity-bearing: the `pds` preimage commits the governed VALUES, and two
+  /// terms versions with identical values are intentionally one identity.
+  ///
+  /// NULLABLE AND NEVER BACKFILLED. Null means "written before these columns existed" — a fact about
+  /// the schema, not a guess about semantics. The service always writes all four from this point on, so
+  /// null and present are unambiguous, and a historical row stays exactly as it was recorded.
+  snapshotDateLocale     String?  @map("snapshot_date_locale")
+  snapshotAmountFormat   String?  @map("snapshot_amount_format")
+  snapshotTermsId        String?  @map("snapshot_terms_id")
+  snapshotTermsVersion   String?  @map("snapshot_terms_version")
+  submittedByActorId     String   @map("submitted_by_actor_id")
+  submittedByRole        String   @map("submitted_by_role")
+  submittedAt            DateTime @default(now()) @map("submitted_at")
 
   @@index([boundaryId, submittedAt], map: "pilot_dataset_submissions_boundary_idx")
   @@index([boundaryId, admissionDecisionId], map: "pilot_dataset_submissions_decision_idx")
@@ -355,6 +381,58 @@ model PilotDatasetSightingRecord {
   @@id([boundaryId, datasetFingerprint], map: "pilot_dataset_sightings_pkey")
 }
 
+/// EP-26 · A registered, versioned ANALYSIS-TERMS tuple: the cut-off and the stall definition.
+///
+/// A SEPARATE table from `pilot_admission_policies`, deliberately. The two answer different questions —
+/// "was this dataset fit to judge?" versus "as of when, and with what threshold, is it read?" — and one
+/// table keyed by a shared id would let an admission policy id collide with a terms id, so a single
+/// governance act could read as the other. Append-only per (boundary, id, version): a change is a NEW
+/// version with its own proposal and its own activation, because editing a cut-off that has already
+/// produced a finding would silently redefine what that finding measured.
+model PilotAnalysisTermsRecord {
+  boundaryId               String   @map("boundary_id")
+  termsId                  String   @map("terms_id")
+  termsVersion             String   @map("terms_version")
+  /// Analysis cut-off (ISO date, stored as text so no timezone can shift the day).
+  asOf                     String   @map("as_of")
+  stallThresholdDays       Int      @map("stall_threshold_days")
+  /// Single currency per assessment. A row in another currency is excluded, never converted, so this
+  /// decides which rows count — which is why it is governed rather than supplied with the request.
+  currency                 String
+  calculationMethodVersion String   @map("calculation_method_version")
+  /// Deterministic hash of the DEFINITION. Stamped into every execution binding, so a historical run
+  /// proves which cut-off and threshold it was measured under even if this row were ever altered.
+  termsHash                String   @map("terms_hash")
+  registeredByActorId      String   @map("registered_by_actor_id")
+  registeredByRole         String   @map("registered_by_role")
+  registeredAt             DateTime @default(now()) @map("registered_at")
+
+  @@id([boundaryId, termsId, termsVersion], map: "pilot_analysis_terms_pkey")
+  @@index([boundaryId, termsId, registeredAt], map: "pilot_analysis_terms_boundary_idx")
+  @@map("pilot_analysis_terms")
+}
+
+/// EP-26 · Append-only lifecycle log for one analysis-terms version.
+///
+/// Same shape and same reasoning as the admission-policy log, and a different table: state is DERIVED
+/// from these rows rather than stored as an editable column, the customer side proposes, governance
+/// activates, and no row here is ever updated or deleted.
+model PilotAnalysisTermsEventRecord {
+  id           String   @id(map: "pilot_analysis_terms_events_pkey")
+  boundaryId   String   @map("boundary_id")
+  termsId      String   @map("terms_id")
+  termsVersion String   @map("terms_version")
+  transition   String // PROPOSED | ACTIVATED | FROZEN | UNFROZEN | RETIRED
+  actorId      String   @map("actor_id")
+  actorRole    String   @map("actor_role")
+  /// Why. Required on every transition — a governance decision with no stated reason is not one.
+  rationale    String
+  at           DateTime @default(now())
+
+  @@index([boundaryId, termsId, termsVersion, at], map: "pilot_analysis_terms_events_identity_idx")
+  @@map("pilot_analysis_terms_events")
+}
+
 /// EP-16 · One governed assessment execution over an admitted dataset.
 ///
 /// The primary key is the DETERMINISTIC execution id — sha256 over the whole binding — so the same
@@ -362,30 +440,40 @@ model PilotDatasetSightingRecord {
 /// Append-only: DB triggers reject UPDATE and DELETE. There is no status column; the five states the
 /// UI shows are derived from the append-only event log.
 model PilotAssessmentExecutionRecord {
-  executionId              String   @id(map: "pilot_assessment_executions_pkey") @map("execution_id")
-  boundaryId               String   @map("boundary_id")
-  datasetFingerprint       String   @map("dataset_fingerprint")
-  admissionDecisionId      String   @map("admission_decision_id")
-  admissionPolicyId        String   @map("admission_policy_id")
-  admissionPolicyVersion   String   @map("admission_policy_version")
-  admissionPolicyHash      String   @map("admission_policy_hash")
-  contractVersion          String   @map("contract_version")
-  assessmentPolicyId       String   @map("assessment_policy_id")
-  assessmentPolicyVersion  String   @map("assessment_policy_version")
-  calculationMethodVersion String   @map("calculation_method_version")
-  asOf                     String   @map("as_of")
-  stallThresholdDays       Int      @map("stall_threshold_days")
-  currency                 String
-  mappingId                String   @map("mapping_id")
-  amountFormat             String   @map("amount_format")
-  dateLocale               String   @map("date_locale")
+  executionId               String   @id(map: "pilot_assessment_executions_pkey") @map("execution_id")
+  boundaryId                String   @map("boundary_id")
+  datasetFingerprint        String   @map("dataset_fingerprint")
+  admissionDecisionId       String   @map("admission_decision_id")
+  admissionPolicyId         String   @map("admission_policy_id")
+  admissionPolicyVersion    String   @map("admission_policy_version")
+  admissionPolicyHash       String   @map("admission_policy_hash")
+  contractVersion           String   @map("contract_version")
+  assessmentPolicyId        String   @map("assessment_policy_id")
+  assessmentPolicyVersion   String   @map("assessment_policy_version")
+  calculationMethodVersion  String   @map("calculation_method_version")
+  asOf                      String   @map("as_of")
+  stallThresholdDays        Int      @map("stall_threshold_days")
+  currency                  String
+  mappingId                 String   @map("mapping_id")
+  amountFormat              String   @map("amount_format")
+  dateLocale                String   @map("date_locale")
   /// Optional link to a governed recovery case. When set, that case's Halt blocks this execution.
-  recoveryCaseId           String?  @map("recovery_case_id")
-  bindingHash              String   @map("binding_hash")
-  inputHash                String   @map("input_hash")
-  scheduledByActorId       String   @map("scheduled_by_actor_id")
-  scheduledByRole          String   @map("scheduled_by_role")
-  scheduledAt              DateTime @default(now()) @map("scheduled_at")
+  recoveryCaseId            String?  @map("recovery_case_id")
+  bindingHash               String   @map("binding_hash")
+  inputHash                 String   @map("input_hash")
+  // Step 5 · source-resolution lineage. AUDIT ONLY — never part of CandidateLeakInstanceIdentity, and
+  // deliberately outside `canonicalBinding` so the execution id and its idempotency key cannot move.
+  // Nullable because this table refuses UPDATE and holds historical rows: nothing is backfilled.
+  sourceNamespaceId         String?  @map("source_namespace_id")
+  sourceNamespaceVersion    String?  @map("source_namespace_version")
+  sourceBindingMode         String?  @map("source_binding_mode")
+  sourcePermittedSetId      String?  @map("source_permitted_set_id")
+  sourcePermittedSetVersion String?  @map("source_permitted_set_version")
+  sourceBindingRevision     Int?     @map("source_binding_revision")
+  sourceResolutionHash      String?  @map("source_resolution_hash")
+  scheduledByActorId        String   @map("scheduled_by_actor_id")
+  scheduledByRole           String   @map("scheduled_by_role")
+  scheduledAt               DateTime @default(now()) @map("scheduled_at")
 
   @@unique([executionId, boundaryId], map: "pilot_assessment_executions_identity_boundary_unique")
   @@index([boundaryId, scheduledAt], map: "pilot_assessment_executions_boundary_idx")
@@ -408,6 +496,47 @@ model PilotAssessmentExecutionInputRecord {
 
   @@unique([executionId, boundaryId], map: "pilot_assessment_inputs_identity_boundary_unique")
   @@map("pilot_assessment_execution_inputs")
+}
+
+/// EP-31 · One account's at-risk total within one execution, staged for the governed signal emitter.
+///
+/// WHAT THIS IS, AND WHAT IT IS NOT. A derivation artefact, not a claim. It is written in the same
+/// transaction as the execution it belongs to — so if that transaction fails there is no execution and no
+/// attribution — and it is NEVER a candidate: nothing lists it in a review queue and nothing can promote
+/// it. Only the emitter, and only for an execution that reached `completed`, turns these rows into
+/// CandidateSignals. That ordering is the point: the execution is the governed artefact and the candidate
+/// is downstream of it.
+///
+/// IDENTITY IS PSEUDONYMOUS, ALWAYS. `source_ref` is `hmac-sha256:<digest>` over
+/// (boundary ‖ the customer's own account id) using the same scheme and key as secure CSV ingestion. The
+/// raw account identifier is NEVER written here. That also makes the pseudonym stable for one account
+/// across re-exports — it depends on nothing but the boundary and the account id, not on row order, row
+/// count, file bytes, `asOf` or the execution — which is what stops one account becoming two candidates.
+///
+/// Pseudonymised customer-derived data, of the same class as the execution input, so the same governed
+/// retention and purge policy applies to it under the same `execution_id` keying.
+///
+/// Append-only: the amount a signal was derived from can never be edited after the fact.
+model PilotAssessmentEntityAttributionRecord {
+  executionId            String   @map("execution_id")
+  boundaryId             String   @map("boundary_id")
+  /// `hmac-sha256:<64 hex>` — never a raw identifier.
+  sourceRef              String   @map("source_ref")
+  amountAtRiskMinor      BigInt   @map("amount_at_risk_minor")
+  currency               String
+  /// How many stalled cycles contributed, so one figure is never mistaken for one invoice.
+  contributingCycleCount Int      @map("contributing_cycle_count")
+  /// The rule version that produced the figure. A change is a new rule, never a silent re-grade.
+  attributionRule        String   @map("attribution_rule")
+  /// Which pseudonymisation key produced `sourceRef`. NULL is refused at emission as
+  /// `source_ref_key_id_missing` rather than assumed current — nullable because this table is
+  /// append-only and holds historical rows, so no backfill is possible.
+  sourceRefKeyId         String?  @map("source_ref_key_id")
+  derivedAt              DateTime @default(now()) @map("derived_at")
+
+  @@id([executionId, sourceRef], map: "pilot_assessment_entity_attributions_pkey")
+  @@index([boundaryId, executionId], map: "pilot_assessment_entity_attributions_boundary_idx")
+  @@map("pilot_assessment_entity_attributions")
 }
 
 /// EP-16 · Append-only lifecycle log for one execution. State is DERIVED from these rows.
@@ -471,4 +600,112 @@ model PilotAssessmentInputPurgeRecord {
   @@unique([executionId, boundaryId], map: "pilot_assessment_input_purges_identity_boundary_unique")
   @@index([boundaryId, purgedAt], map: "pilot_assessment_input_purges_boundary_idx")
   @@map("pilot_assessment_input_purges")
+}
+
+// ── Step 5 · Governed source-namespace authority ──────────────────────────────────────────────────
+
+/// Stable identity of one external system-of-record instance. NOT boundary-scoped and holding no customer
+/// data: per-tenant authority lives in PilotBoundarySourceSetRecord. Registering one grants nothing.
+model PilotSourceNamespaceRecord {
+  namespaceId         String   @id @map("namespace_id")
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@map("pilot_source_namespaces")
+}
+/// One governed version of a namespace. `label` is DESCRIPTIVE ONLY — never part of any identity, so a
+/// rename cannot mint a second identity for one system.
+model PilotSourceNamespaceVersionRecord {
+  namespaceId         String   @map("namespace_id")
+  namespaceVersion    String   @map("namespace_version")
+  label               String
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@id([namespaceId, namespaceVersion], map: "pilot_source_namespace_versions_pkey")
+  @@index([namespaceId, registeredAt], map: "pilot_source_namespace_versions_identity_idx")
+  @@map("pilot_source_namespace_versions")
+}
+model PilotSourceNamespaceEventRecord {
+  id               String   @id
+  namespaceId      String   @map("namespace_id")
+  namespaceVersion String   @map("namespace_version")
+  transition       String
+  actorId          String   @map("actor_id")
+  actorRole        String   @map("actor_role")
+  rationale        String
+  at               DateTime @default(now())
+
+  @@index([namespaceId, namespaceVersion, at], map: "pilot_source_namespace_events_identity_idx")
+  @@map("pilot_source_namespace_events")
+}
+/// The versioned per-boundary permitted set. Versioned so an execution can STAMP which authority resolved
+/// it; a set derived from N rows would have no version to record.
+model PilotBoundarySourceSetRecord {
+  boundaryId          String   @map("boundary_id")
+  setId               String   @map("set_id")
+  setVersion          String   @map("set_version")
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@id([boundaryId, setId, setVersion], map: "pilot_boundary_source_sets_pkey")
+  @@index([boundaryId, registeredAt], map: "pilot_boundary_source_sets_boundary_idx")
+  @@map("pilot_boundary_source_sets")
+}
+/// Members of one set VERSION, referencing the STABLE namespace id. Which registered version of a member is
+/// in force is answered at resolution time by requiring exactly one ACTIVE version.
+model PilotBoundarySourceSetMemberRecord {
+  boundaryId  String @map("boundary_id")
+  setId       String @map("set_id")
+  setVersion  String @map("set_version")
+  namespaceId String @map("namespace_id")
+
+  @@id([boundaryId, setId, setVersion, namespaceId], map: "pilot_boundary_source_set_members_pkey")
+  @@map("pilot_boundary_source_set_members")
+}
+model PilotBoundarySourceSetEventRecord {
+  id         String   @id
+  boundaryId String   @map("boundary_id")
+  setId      String   @map("set_id")
+  setVersion String   @map("set_version")
+  transition String
+  actorId    String   @map("actor_id")
+  actorRole  String   @map("actor_role")
+  rationale  String
+  at         DateTime @default(now())
+
+  @@index([boundaryId, setId, setVersion, at], map: "pilot_boundary_source_set_events_identity_idx")
+  @@map("pilot_boundary_source_set_events")
+}
+/// Explicit (boundary, dataset bytes) → namespace, with revisions. The whole history is kept so the
+/// resolver can tell "never bound" from "bound and retired" — the latter REFUSES rather than inheriting.
+model PilotDatasetSourceBindingRecord {
+  boundaryId          String   @map("boundary_id")
+  datasetFingerprint  String   @map("dataset_fingerprint")
+  revision            Int
+  namespaceId         String   @map("namespace_id")
+  registeredByActorId String   @map("registered_by_actor_id")
+  registeredByRole    String   @map("registered_by_role")
+  registeredAt        DateTime @default(now()) @map("registered_at")
+
+  @@id([boundaryId, datasetFingerprint, revision], map: "pilot_dataset_source_bindings_pkey")
+  @@index([boundaryId, datasetFingerprint, revision], map: "pilot_dataset_source_bindings_dataset_idx")
+  @@map("pilot_dataset_source_bindings")
+}
+model PilotDatasetSourceBindingEventRecord {
+  id                 String   @id
+  boundaryId         String   @map("boundary_id")
+  datasetFingerprint String   @map("dataset_fingerprint")
+  revision           Int
+  transition         String
+  actorId            String   @map("actor_id")
+  actorRole          String   @map("actor_role")
+  rationale          String
+  at                 DateTime @default(now())
+
+  @@index([boundaryId, datasetFingerprint, revision, at], map: "pilot_dataset_source_binding_events_identity_idx")
+  @@map("pilot_dataset_source_binding_events")
 }

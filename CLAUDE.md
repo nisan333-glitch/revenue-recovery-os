@@ -84,6 +84,63 @@ A recovery dollar may be counted **only when**:
 > recovery number influence the baseline, evidence, timing, attribution, approval, or
 > historical calculation? **If yes, reject the design.**
 
+**Pilot dataset collision decision (2026-09-25).** The contract validator previously
+accepted the first of two rows with the same derived cycle identity while the
+assessment core excluded both. That gave the file author control over the selected
+row by reordering the file, potentially changing admission and the measured amount.
+Before changing the implementation, the governing rule is: **all rows sharing a
+derived cycle identity are excluded from the accepted population, regardless of
+order, identical content, or other row defects, whenever the adapter yields that
+identity.** Report both rows as duplicate-cycle exclusions;
+an identical repeated source row may additionally carry its source-duplicate code.
+No surviving row may be chosen by file position. Reordering must preserve the
+accepted population and admission outcome. This is a pilot-data trust rule and
+does not turn any observed amount into proven Revenue Returned.
+If a malformed row yields no cycle identity at all, a collision cannot be
+established from it; its separate rejection remains in force.
+
+**Assessment identity and analysis-terms governance decision (2026-09-26).** An audit found that the
+pilot submission identity is derived over `(boundaryId, datasetId, datasetFingerprint)` where
+`datasetId` is a free-text label the uploader types, so byte-identical data in the same boundary could
+be assessed again by renaming it. No rationale for including the label is recorded anywhere in the
+repository, and the sibling pre-registration record excludes it. The governing rule is now:
+
+> **The submission identity contains the stable identity of the data plus only those parameters whose
+> change materially changes the meaning or the result-space of the assessment. Purely descriptive or
+> operator-controlled metadata never determines identity.**
+
+And, because `asOf` and `stallThresholdDays` decide what "stalled" means and what the analysis cut-off
+is, they fall under rule **2** above — *the baseline and recovery definition were established before the
+outcome was known* — which they currently escape:
+
+> **The same extract may be assessed again under new analysis terms, but only when those terms were
+> pre-registered and governed in the way the admission bar is governed.** An operator may not choose a
+> new cut-off or stall definition and obtain a fresh assessment on their own authority.
+
+**Order of work, binding:** the governance mechanism for analysis terms comes **first**; the identity
+derivation changes only after it exists. **That mechanism was built on 2026-09-26** — `asOf`,
+`stallThresholdDays` **and `currency`** are now one registered, versioned AssessmentPolicy, proposed by one
+identity and activated by another, and the request carries no `policy` object at all
+([`docs/ANALYSIS_TERMS_GOVERNANCE.md`](docs/ANALYSIS_TERMS_GOVERNANCE.md)). The currency is in the governed
+set because a row in another currency is excluded rather than converted, so it decides which rows count. The
+temporal guard is that the version must be ACTIVE when it is used — **not** the admission bar's
+`activatedAt > firstSeenAt` rule, which would forbid the later re-reading the decision above permits. The
+fail-closed enforcement is a **breaking, tightening** change; its major bump is deferred to land with the
+derivation and its migration, because the contract reference sits inside the idempotency key. The derivation is still
+unchanged, the contract stays at its current major, and no migration is written. The §10
+two-major compatibility decision — the next prerequisite — was **decided and built on 2026-09-26**: the
+promise is honoured at the level it was made, as a checked per-major declaration that the older major's row
+semantics are unchanged, with the declared version persisted so the claim is auditable
+([`docs/CONTRACT_DUAL_MAJOR_V1.md`](docs/CONTRACT_DUAL_MAJOR_V1.md)). **The derivation itself changed on
+2026-09-27 as contract 2.0.0**, completing the binding order: the operator-supplied dataset label is out of
+the submission identity and the parameters that change what the data means are in, with the version component
+narrowed to the **major** so a patch or minor bump no longer resets every identity.
+`calculationMethodVersion` stays explicitly **open** and out. One consequence, stated rather than buried: an
+extract re-read under new governed terms must be **re-submitted**, because the admission decision is looked up
+by the same identity — a verdict computed under one definition does not authorise an execution under another. Full treatment and the field-by-field classification are
+in [`docs/ASSESSMENT_IDENTITY_V1.md`](docs/ASSESSMENT_IDENTITY_V1.md). This is a pilot-data trust rule
+and does not turn any observed amount into a proven figure.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

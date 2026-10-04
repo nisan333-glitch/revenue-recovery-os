@@ -17,6 +17,14 @@
 // Revenue, or a financial claim, and nothing here creates a Recovery Case. The agent that runs an
 // execution deliberately emits zero CandidateSignals, so the automatic path into case creation is
 // structurally absent rather than merely unused.
+//
+// EP-31 · THAT REMAINS TRUE, AND IS NO LONGER THE WHOLE PICTURE. A separate governed emitter can now
+// turn a COMPLETED execution's staged per-account attribution into `pending_review` candidates — see
+// `docs/GOVERNED_DETECTION_V1.md`. The sentence above still holds literally: this agent emits none, and
+// its boundaries test still proves it. What changed is that the pilot lane is no longer a dead end, and
+// the route out of it is off by default, enrolled per boundary, gated on `completed`, unable to write to
+// anything here, and still incapable of creating a Case without an accepted review by a second identity
+// or a Proof without a locked baseline, case-scoped evidence and an approver who is not the owner.
 import { assess } from "../assessment/assess";
 import { SAAS_ADAPTER_ID, SAAS_ADAPTER_VERSION } from "../assessment/adapters/saasActivation";
 import { sha256Hex } from "../assessment/fingerprint";
@@ -24,8 +32,33 @@ import type { AssessmentPolicy } from "../assessment/policy";
 import type { ExpectationCycle } from "../assessment/types";
 import { EXCLUSION_REASON_CODES } from "./rejectionCodes";
 
-/** Version of the identity/binding scheme itself. A change here is a new scheme, not a re-grade. */
+/**
+ * Version of the EXECUTION BINDING canonicalization (`PAX`). A change here is a new scheme, not a
+ * re-grade.
+ *
+ * SCOPED TO STAGE 3 — THE EXECUTION — AND NOTHING ELSE. It used to version two different
+ * canonicalizations at two different lifecycle stages: `canonicalDecision` (the ADMISSION decision,
+ * `PAD`) read this same constant. That overloading was harmless only because neither had ever been
+ * versioned, and it was blocking by construction the moment either needed to be: changing this value
+ * to version `PAD` would have changed every historical `PAX`, and the worker re-derives `PAX` from the
+ * stored binding columns and refuses on mismatch, so every historical and queued execution would have
+ * stopped replaying. Two stages that can move for different reasons need two constants.
+ */
 export const EXECUTION_BINDING_SCHEME = "nh-pilot-assessment-execution-v1";
+
+/**
+ * Version of the ADMISSION DECISION canonicalization (`PAD`).
+ *
+ * ITS VALUE IS DELIBERATELY IDENTICAL TO `EXECUTION_BINDING_SCHEME`, and that is the whole point of
+ * this change: splitting the constant must move no hash. Every historical `PAD` re-derives bit for
+ * bit, which is what the absolute vectors assert. The two values are equal TODAY and are not required
+ * to stay equal — that independence is the capability being created, and nothing here uses it yet.
+ *
+ * NOT A DISCRIMINATOR. This names the scheme the CURRENT build computes; it says nothing about which
+ * scheme a stored row was written under. A stored row that needs to declare its own scheme requires a
+ * persisted field, which does not exist and is not added here.
+ */
+export const ADMISSION_DECISION_SCHEME = "nh-pilot-assessment-execution-v1";
 
 /** Version of the input-projection rules. Stamped into the input hash. */
 export const EXECUTION_PROJECTION_SCHEME = "nh-pilot-assessment-projection-v1";
@@ -53,7 +86,7 @@ export interface AdmissionDecisionRef {
 function canonicalDecision(ref: AdmissionDecisionRef): string {
   // NUL-separated so no value can impersonate a separator and shift the fields after it.
   return [
-    EXECUTION_BINDING_SCHEME,
+    ADMISSION_DECISION_SCHEME,
     ref.boundaryId,
     ref.idempotencyKey,
     ref.datasetFingerprint,

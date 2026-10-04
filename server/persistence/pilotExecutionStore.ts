@@ -100,6 +100,42 @@ export interface CreateExecutionInput {
   readonly inputHash: string;
   readonly scheduledByActorId: string;
   readonly scheduledByRole: string;
+  /**
+   * EP-31 · Per-account at-risk attribution, staged in THIS transaction.
+   *
+   * In here rather than in a call of its own because the ordering is the guarantee: if the execution
+   * cannot be written, no attribution may exist either, and therefore no candidate can ever be derived
+   * from one. A separate write could leave staged rows for an execution that was never created.
+   *
+   * Absent or empty when staging is off for the boundary — which is the default.
+   */
+  readonly attributions?: readonly StagedAttributionRow[];
+  /**
+   * Step 5 · the governed source resolution, or null when none could be established.
+   *
+   * AUDIT LINEAGE ONLY. It is never part of `CandidateLeakInstanceIdentity`, and it is deliberately NOT in
+   * the hashed binding: `canonicalBinding` feeds both `hashExecutionBinding` and `deriveExecutionId`, whose
+   * result is the execution's identity AND its idempotency key, so putting it there would change every
+   * execution id and break replay.
+   */
+  readonly sourceResolution?: {
+    readonly sourceNamespaceId: string;
+    readonly sourceNamespaceVersion: string;
+    readonly sourceBindingMode: string;
+    readonly sourcePermittedSetId: string | null;
+    readonly sourcePermittedSetVersion: string | null;
+    readonly sourceBindingRevision: number | null;
+    readonly sourceResolutionHash: string;
+  } | null;
+}
+
+/** One staged row. `sourceRef` is a pseudonym; the raw account identifier never reaches this layer. */
+export interface StagedAttributionRow {
+  readonly sourceRef: string;
+  readonly amountAtRiskMinor: number;
+  readonly currency: string;
+  readonly contributingCycleCount: number;
+  readonly attributionRule: string;
 }
 
 /**
@@ -141,6 +177,15 @@ export async function createExecutionIfAbsent(
           dateLocale: b.interpretation.dateLocale,
           recoveryCaseId: b.recoveryCaseId,
           bindingHash: input.bindingHash,
+          // Null for every historical row and for any submission no governed authority resolved. The
+          // column-level checks refuse a half-written lineage, so this is all-or-nothing by construction.
+          sourceNamespaceId: input.sourceResolution?.sourceNamespaceId ?? null,
+          sourceNamespaceVersion: input.sourceResolution?.sourceNamespaceVersion ?? null,
+          sourceBindingMode: input.sourceResolution?.sourceBindingMode ?? null,
+          sourcePermittedSetId: input.sourceResolution?.sourcePermittedSetId ?? null,
+          sourcePermittedSetVersion: input.sourceResolution?.sourcePermittedSetVersion ?? null,
+          sourceBindingRevision: input.sourceResolution?.sourceBindingRevision ?? null,
+          sourceResolutionHash: input.sourceResolution?.sourceResolutionHash ?? null,
           inputHash: input.inputHash,
           scheduledByActorId: input.scheduledByActorId,
           scheduledByRole: input.scheduledByRole,
@@ -155,6 +200,22 @@ export async function createExecutionIfAbsent(
           inputHash: input.inputHash,
         },
       });
+      // EP-31 · Staged in the SAME transaction as the execution and its input. If anything above or
+      // below fails, these rows do not exist — which is what makes "no candidate without a governed
+      // execution" true of the database rather than of the application's good intentions.
+      if (input.attributions && input.attributions.length > 0) {
+        await tx.pilotAssessmentEntityAttributionRecord.createMany({
+          data: input.attributions.map((attribution) => ({
+            executionId: input.executionId,
+            boundaryId: b.boundaryId,
+            sourceRef: attribution.sourceRef,
+            amountAtRiskMinor: BigInt(attribution.amountAtRiskMinor),
+            currency: attribution.currency,
+            contributingCycleCount: attribution.contributingCycleCount,
+            attributionRule: attribution.attributionRule,
+          })),
+        });
+      }
       await appendExecutionEvent(
         {
           executionId: input.executionId,

@@ -6,9 +6,19 @@ import { downloadSummary } from "./exportSummary";
 export interface ObservedResultsScreenProps {
   result: AssessmentResult;
   onBack: () => void;
+  /** EP-19 · Hand the dataset to the governed server execution — the only authoritative run. */
+  onRunGoverned?: () => void;
+  running?: boolean;
 }
 
-export function ObservedResultsScreen({ result, onBack }: ObservedResultsScreenProps) {
+/**
+ * EP-19 · THIS SCREEN IS A LOCAL PREVIEW. Every figure on it was computed in this browser, from the
+ * file in memory. It is useful — it says whether the dataset has the shape a pilot needs — and it is
+ * NOT an execution: it has no binding, no policy hash, no audit lineage and no server record. A number
+ * with none of those is not a result anyone can be held to, so the page says so above the figures
+ * rather than below them.
+ */
+export function ObservedResultsScreen({ result, onBack, onRunGoverned, running = false }: ObservedResultsScreenProps) {
   const o = result.observed;
   const cur = o.currency;
   const zero = money(0, cur);
@@ -16,15 +26,32 @@ export function ObservedResultsScreen({ result, onBack }: ObservedResultsScreenP
   return (
     <div>
       <SectionHeader
-        title="Observed result"
-        subtitle="Read directly from your records — not a forecast, not proven recovery. The four states are never blended."
+        title="Local preview — computed in this browser"
+        subtitle="Read from the file in memory. Not a governed execution, not Proof, not Revenue Returned. Run the governed execution for a figure with a binding and an audit trail."
         right={
           <div className="flex gap-2">
             <button onClick={onBack} className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">← Cohort</button>
             <button onClick={() => downloadSummary(result)} className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">Export summary</button>
+            {onRunGoverned && (
+              <button
+                onClick={onRunGoverned}
+                disabled={running}
+                className="rounded-lg border border-proof-600/40 bg-proof-600/10 px-3 py-1.5 text-sm text-proof-500 hover:bg-proof-600/20 disabled:opacity-40"
+              >
+                {running ? "Running…" : "Run governed execution →"}
+              </button>
+            )}
           </div>
         }
       />
+
+      <Panel className="mb-4 p-3 text-[12px] text-slate-400">
+        <span className="rounded bg-ink-600/60 px-1.5 py-0.5 text-[11px] text-slate-300">local preview</span>{" "}
+        Every number below was calculated <span className="text-slate-300">in this browser</span> from
+        the file you picked. It carries no execution binding, no policy hash and no audit lineage, and it
+        is <span className="text-slate-300">not</span> an execution, a Proof, or Revenue Returned. The
+        authoritative figure comes from the governed server run.
+      </Panel>
 
       {/* The four money states, permanently separated. */}
       <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">

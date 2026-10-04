@@ -93,6 +93,89 @@ jobs:
       - name: EP-2/EP-9 persistence suite (test:ep2)
         run: npm run test:ep2
 
+  browser-journey:
+    name: EP-19 Browser journey (UI -> API -> worker -> Postgres)
+    # EP-19 · The gap this closes: `npm run test:e2e` existed but NO job ever invoked it, so the
+    # only browser coverage in the repository was never actually run in CI. This job runs it, and
+    # adds the governed journey — the one path a pilot actually walks, end to end, in a real
+    # browser against a real API, a real worker loop and a real database.
+    #
+    # Two things about it are deliberate and easy to "tidy" into uselessness:
+    #
+    #   * `test:journey` drives the Vite DEV server, not a production build. `src/data/apiClient.ts`
+    #     attaches development identity headers only under `import.meta.env.DEV`, so against a
+    #     production bundle every governed call arrives unauthenticated and 401s. Switching this to
+    #     `vite preview` would not make the journey stricter, it would stop it reaching the API.
+    #   * The worker is enabled with NH_PILOT_ASSESSMENT_AGENT_ENABLED and NO admission-policy
+    #     registry. The assessment agent publishes no candidates, so (per EP-18) it needs none, and
+    #     inventing a RecoveryType:threshold pair to satisfy an over-broad guard would put a
+    #     fabricated number into the configuration of the very suite that exists to forbid them.
+    #
+    # Credentials below are runner-local, test-only values fixed in this file — never a GitHub
+    # secret, never anything resembling production access. All data is synthetic by construction.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ep19_test
+          POSTGRES_PASSWORD: ep19_test_only
+          POSTGRES_DB: ep19_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ep19_test:ep19_test_only@localhost:5432/ep19_test?schema=public
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        # The development sandbox has Chromium pre-installed at /opt/pw-browsers/chromium; a CI
+        # runner does not, and both harnesses fall back to Playwright's managed browser when that
+        # path is absent. Only the browser is fetched, not the whole bundled toolchain.
+        run: npx playwright install --with-deps chromium
+
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: EP-19 governed pilot journey (real browser, real API, real worker)
+        run: npm run test:journey
+
+      # NOT WIRED: `npm run test:e2e` (e2e/smoke.mjs).
+      #
+      # The intent was to wire it in here, since no job had ever invoked it. It turns out it has been
+      # broken since EP-13, and reproduces identically at this branch's base (b82c151d) — so it is a
+      # pre-existing failure, not a regression from this branch. Adding it would simply make CI red.
+      #
+      # The cause is not a small one. `smoke.mjs` drives `vite preview` against a static build with no
+      # server, and since EP-13 the upload path cannot proceed until the SERVER has validated and
+      # admitted the dataset. Its premise — a browser-only flow that needs no backend — no longer
+      # describes the product.
+      #
+      # It also cannot be fixed by pointing it at the API. Its fixtures are two rows, so admission
+      # would have to be granted by a bar with minAcceptedRows: 1 and minCoverageDays: 0 — a permissive
+      # threshold invented for no reason except to make a test pass. That is the exact habit this
+      # repository forbids, and it would be worse than a skipped test, because it would look green.
+      #
+      # So it is left out deliberately and visibly. Rewriting it against the API belongs with the
+      # per-case browser matrix (the next branch); the governed journey above covers the happy path it
+      # was originally guarding.
+
   docker-pilot-smoke:
     name: EP-10 Docker pilot smoke test
     # EP-10 · Real containerized verification that the sandbox this branch was developed in

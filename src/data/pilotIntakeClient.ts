@@ -69,11 +69,20 @@ export interface PilotIntakeParams {
   readonly datasetId: string;
   readonly csvText: string;
   readonly provenance: DatasetProvenance;
+  /**
+   * EP-26b · PREFLIGHT ONLY, all three of them. The browser needs a cut-off, a threshold and a currency
+   * to render its local preview, and it takes them from the GOVERNED definition it read back from the
+   * server. They are never sent: the server resolves the whole policy from its own register, so a value
+   * here can change what the preview shows and nothing about what the server measures.
+   */
   readonly stallThresholdDays: number;
   readonly asOf: string;
   readonly currency: string;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
+  /** EP-26 · Which governed analysis-terms version defines the server's reading. Absent is refused. */
+  readonly analysisTermsId?: string;
+  readonly analysisTermsVersion?: string;
   /** Which versioned admission policy to judge fitness against. Absent means NOT_ASSESSABLE. */
   readonly admissionPolicyId?: string;
   readonly admissionPolicyVersion?: string;
@@ -125,11 +134,10 @@ export function submitPilotDataset(params: PilotIntakeParams, actor: DevActor): 
     datasetId: params.datasetId,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: params.csvText,
-    policy: {
-      stallThresholdDays: params.stallThresholdDays,
-      asOf: params.asOf,
-      currency: params.currency,
-    },
+    // EP-26b · NO `policy` OBJECT IS SENT AT ALL. The cut-off, the threshold and the currency are the
+    // registered definition; this names which one, and nothing more.
+    ...(params.analysisTermsId ? { analysisTermsId: params.analysisTermsId } : {}),
+    ...(params.analysisTermsVersion ? { analysisTermsVersion: params.analysisTermsVersion } : {}),
     provenance: params.provenance,
     ...(params.locale ? { locale: params.locale } : {}),
     ...(params.amountFormat ? { amountFormat: params.amountFormat } : {}),

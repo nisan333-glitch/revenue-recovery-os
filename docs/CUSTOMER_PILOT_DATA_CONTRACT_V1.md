@@ -145,13 +145,49 @@ the observation, not a gap, and warning about it would bury the real signals.
 
 ## 9 · Duplicates and idempotency
 
-- **Identical rows** within a dataset are rejected (`NH-DC-4001`) — the same exposure must not count twice.
-- **Colliding cycle identities** are rejected (`NH-DC-2016`).
+- **Identical rows** carry `NH-DC-4001`; both copies are excluded from accepted cycles.
+- **Colliding cycle identities** carry `NH-DC-2016` on every row in the collision, including a row
+  rejected for another defect if the adapter can still derive its cycle identity. No row wins because
+  of file order or because the other row was corrupted. If the adapter cannot derive a cycle identity
+  from an invalid row, no collision can be asserted for that row; its own rejection still applies.
 - **`idempotencyKey`** = `pds_<sha256>` over contract ∥ boundary ∥ datasetId ∥ exact file bytes.
   Re-uploading the identical extract under the same tenant yields the identical key, so a pipeline can
   drop the repeat. Change one byte and the key changes — a changed file is a different dataset and
   deserves a fresh decision rather than inheriting the previous verdict. Two tenants uploading
   byte-identical files never collide.
+
+  > **Known implementation deviation — decided at the constitution level, NOT yet implemented.**
+  >
+  > The guarantee above is the intended one and is left standing. The **current implementation does not
+  > fully deliver it**: `datasetId` is an operator-supplied *label*, so byte-identical data in the same
+  > boundary can be submitted and assessed again after **relabelling** — the identical extract does not
+  > then yield the identical key. Measured, not inferred.
+  >
+  > No rationale for including `datasetId` in the derivation is recorded anywhere in this repository —
+  > no ADR, no commit rationale, no test asserts it. The sibling pre-registration record
+  > (`pilot_dataset_sightings`) is keyed on boundary and fingerprint **only**, so the two mechanisms
+  > disagree about what "the same dataset" means.
+  >
+  > **Status (2026-09-27): DECIDED AND IMPLEMENTED as contract 2.0.0.** The identity contains the stable identity of the
+  > data plus only parameters whose change materially changes the meaning or result-space of the
+  > assessment; descriptive and operator-controlled metadata never determine identity. The analysis
+  > terms (`asOf`, `stallThresholdDays`, and since EP-26b `currency`) may create a new assessment of the
+  > same extract **only once they are pre-registered and governed the way the admission bar is** — and they
+  > are: one registered, versioned AssessmentPolicy, proposed by one identity and activated by another, with
+  > no `policy` object in the request at all
+  > ([`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md)). **The derivation itself changed on
+  > 2026-09-27 under this major version**: the operator-supplied dataset label is out, and the parameters
+  > that change what the data means are in. The version component is the **major**, so a patch or minor bump
+  > no longer resets every identity. One consequence, stated rather than buried: an extract re-read under new
+  > governed terms must be **re-submitted**, because the admission decision is looked up by the same
+  > identity — a verdict computed under one definition does not authorise an execution under another.
+  > Field-by-field classification and the binding order of work:
+  > [`ASSESSMENT_IDENTITY_V1.md`](ASSESSMENT_IDENTITY_V1.md). §10 classifies a change to identity
+  > derivation as a **major** bump, and that still applies when the work is done.
+  >
+  > **Concurrency is a separate matter and is settled:** two concurrent submissions resolving to the
+  > same *current* identity yield exactly one row, one winner, and the loser receives this same
+  > `NH-DC-4003` classification (`pilotIntake.test.ts` 5, 5c, 5d).
 
 ## 10 · Versioning and backward compatibility
 
@@ -163,9 +199,45 @@ Semver on the contract itself.
 | minor | add an optional/recommended field, add a synonym, add a narrower code, relax a rule |
 | **major** | add/promote a required field · remove or rename a field · **change the meaning of a field even with an identical name** · tighten a rule · change identity derivation |
 
+> **2.0.0 (2026-09-27) carries two major-class changes, together and deliberately.** They landed under one
+> version because the second one's consequence had to be decided before either could ship:
+>
+> 1. **A tightened rule.** The assessment policy — `asOf`, `stallThresholdDays`, `currency` — is a governed,
+>    registered version, and the request carries **no `policy` object at all**: a caller that supplied those
+>    values is refused at the transport. Recorded as major rather than minor even though the new refusal code
+>    `NH-AX-1010` would on its own be a minor addition.
+> 2. **A changed identity derivation.** The operator-supplied dataset label no longer varies the submission
+>    identity; the parameters that change what the data means do. **One re-assessment per historical dataset
+>    at the cutover**, because an already-submitted dataset derives a new key — asserted by test, with the
+>    historical rows untouched and the free re-assessment limited to exactly one.
+>
+> Governance detail: [`ANALYSIS_TERMS_GOVERNANCE.md`](ANALYSIS_TERMS_GOVERNANCE.md). Derivation, the
+> granularity finding and the answered migration questions:
+> [`ASSESSMENT_IDENTITY_V1.md`](ASSESSMENT_IDENTITY_V1.md).
+
 A dataset declaring an older minor of the same major is accepted and its version recorded. A **newer**
 version than the build implements is **refused** (`NH-DC-5001`), never interpreted optimistically.
 Two majors are supported concurrently for at least one full pilot cycle.
+
+> **How the two-major window works, since 2026-09-26 (EP-27).** It is a **declaration you can check**, not
+> a clock. `MAJOR_ROW_SEMANTICS` in `src/contract/pilotDataContract.ts` names, per implemented major, the
+> previous majors whose **row-level semantics are identical** to it — no field added, removed or renamed, no
+> field's meaning changed, no validation rule tightened. A declared previous major is accepted **only** if it
+> is named there, so a major with no entry accepts none: the safe answer is the default, and the moment a
+> future major changes what a field means, saying nothing refuses the older export. The window opens
+> backwards only; a newer major is still refused.
+>
+> Each decision now records the version the **export declared** alongside the version the **build
+> implemented**, so which contract judged a dataset is auditable per decision rather than inferred. And
+> whether an admitted dataset may still be *executed* is now decided by that same compatibility rule — it
+> used to be exact string equality, which refused execution of every admitted dataset after a purely
+> editorial **patch** bump, making this promise void in practice.
+>
+> **"One full pilot cycle" is not defined anywhere** — it is a commercial period, not an engineering
+> constant, and this repository does not invent thresholds nobody decided. Until it is defined, the window
+> is a declaration a human withdraws, which is stronger than a timer nobody set. Full reasoning, the
+> rejected alternatives and the consequences at a 2.0.0 cutover:
+> [`CONTRACT_DUAL_MAJOR_V1.md`](CONTRACT_DUAL_MAJOR_V1.md).
 
 Changing what a field *means* is breaking even when every column name is identical — that is exactly
 the change that invalidates a pilot's conclusions without anyone noticing.
@@ -238,13 +310,34 @@ reaching for another boundary gets **403** before anything is validated or writt
 
 ## Persistence
 
+**The customer's file is uploaded.** It is not stored as a file — the uploaded bytes are never
+persisted — but two different things *are* written, and this section once described only the first.
+
+### The submission record (EP-13)
+
 Only a **usable** dataset is recorded, and the record holds counts, the deterministic key, the
-fingerprint and NH-DC-#### **codes**. Never uploaded row content, never customer identifiers, never
-monetary values, and never a finding's `detail` text — which can echo a customer value. A rejected
-row is reported to the uploader and then forgotten. An invalid dataset leaves no row at all, which
-also keeps a corrected re-upload a genuinely new submission rather than a "duplicate" of a failure.
+fingerprint and NH-DC-#### **codes**. No uploaded row content, no customer identifiers, no monetary
+values, and never a finding's `detail` text — which can echo a customer value. A rejected row is
+reported to the uploader and then forgotten. An invalid dataset leaves no row at all, which also
+keeps a corrected re-upload a genuinely new submission rather than a "duplicate" of a failure.
 
 The table is append-only at the database level, like every other governed record here.
+
+### The execution input (EP-16 / EP-17) — a second, different record
+
+Scheduling a governed assessment also persists a **pseudonymised projection of the accepted cycles**.
+The sentence above about "no monetary values" is true of the submission record and **false** of this
+one: the projection keeps exact dates and exact amounts, replacing only the direct identifiers. It is
+called out here because this section described only the submission record for two epics after the
+second record existed, and a reader would reasonably have taken the narrower description as the whole
+answer.
+
+It is **pseudonymised customer-derived data, not anonymous data.** Full description, retention rules,
+purge authorisation, and the limits of reproducing an execution later — including backups and the fact
+that we keep no copy of the uploaded bytes — are in
+[The execution input](#the-execution-input--pseudonymised-customer-derived-data) and
+[Retention and purging](#retention-and-purging) below. They are not restated here, so there is one
+authoritative description rather than two that can drift apart.
 
 ## Limits
 
@@ -698,6 +791,58 @@ id is not reconciled by a last-writer rule — it is surfaced as `NH-AX-2004`.
 * `src/modules/assessment/assessmentExecutionPanel.test.ts` — 16 UI tests
 * `npm run pilot:assessment` — the synthetic rehearsal, over a **real socket** with the **production
   worker loop**
+
+## The pilot journey, end to end (EP-19)
+
+Before this, the pieces existed and did not meet: `Assessment.tsx` never sent an admission policy id,
+so the server always answered `NOT_ASSESSABLE`, the intake gate always blocked, and the flow could not
+leave the upload screen by either route. Nothing under `src/` called `/pilot/admission-policies` at
+all, so there was no way to propose or activate a bar from the UI. The screen completed no run.
+
+The journey now has six steps, and the split between the first two is the whole point:
+
+| # | Step | Who | Where |
+|---|---|---|---|
+| 1 | Propose the fitness bar | operator (customer side) | Pilot Policy Governance |
+| 2 | **Activate** it | steward — a **different** identity | Pilot Policy Governance |
+| 3 | Upload the CSV; server validates and judges admission | operator | Revenue Opportunity Assessment |
+| 4 | Local preview of the dataset's shape | browser | same screen, labelled a preview |
+| 5 | Schedule the governed execution | operator | same screen |
+| 6 | Poll; display the server's finding | worker answers | execution panel |
+
+Steps 1 and 2 live on a **separate screen**, outside the customer's assessment flow, on purpose. A
+single screen that walked from proposing a bar to activating it would model a beneficiary setting the
+bar that judges them — and the server refuses that anyway, by identity as well as by role, so a UI
+that offered it would only be teaching the wrong shape.
+
+### What the browser computes, and what it is not
+
+The preview at step 4 is real and useful: it runs the same pure assessment core locally, so a customer
+can see the dataset's shape without waiting. It is labelled **"Local preview — computed in this
+browser"** and states that it is **not an execution, a Proof, or Revenue Returned**, and that it carries
+no execution binding, no policy hash and no audit lineage. Only step 6 shows an authoritative figure.
+
+Three failure modes are deliberately visible rather than smoothed over:
+
+* A **refusal** shows its `NH-AX-####` code and remediation. It is an answer, not an error.
+* A **timeout** shows as a timeout, naming the last state seen, and says plainly that no result is
+  shown because none was produced — and that waiting stopped without cancelling the run.
+* An **unreachable server** is an error. There is no fallback to the local preview, no cached finding
+  and no offline mode. A browser-computed number presented as a governed result would be
+  indistinguishable on screen from a real one, which is why the data layer has no path to it.
+
+A `failed` state is **not** settled: the runtime retries it, so telling someone their run is over would
+cost them a re-upload they did not need.
+
+### How this is verified
+
+`npm run test:journey` drives the whole path in a real browser (Chromium) against a real Fastify
+process, a real worker loop and a real PostgreSQL database, then compares the figures on screen against
+the same execution read back from the API. It asserts the two governance acts were performed by two
+different identities, that exactly one execution exists, that the execution is bound to an admission
+decision, and that the proven-ledger vocabulary appears on the result **only inside a denial of
+itself**. It uses the Vite **dev** server, because `apiClient.ts` attaches development identity headers
+only under `import.meta.env.DEV` and a production bundle would 401 on every governed call.
 
 ## Known constraints
 

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { AssessmentResult } from "../../assessment/types";
 import { summarizeExclusions } from "../../assessment/summarize";
 import { SectionHeader, Panel, StatCard } from "../../components/ui";
@@ -7,13 +6,11 @@ export interface DataQualityCohortScreenProps {
   result: AssessmentResult;
   n: number;
   error: string | null;
-  onChangeN: (n: number) => void;
   onBack: () => void;
   onNext: () => void;
 }
 
-export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, onNext }: DataQualityCohortScreenProps) {
-  const [nInput, setNInput] = useState(n);
+export function DataQualityCohortScreen({ result, n, error, onBack, onNext }: DataQualityCohortScreenProps) {
   const reasons = summarizeExclusions(result);
 
   return (
@@ -46,19 +43,18 @@ export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, o
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Panel className="p-5">
           <div className="mb-2 text-sm font-semibold text-slate-200">Cohort policy</div>
+          {/* EP-26 · There was a "Re-run with N" control here. It let the party who benefits from the
+              figure walk the stall threshold until the number looked right, which is the lever the
+              constitution's trust invariant forbids. N and the cut-off are now a governed definition:
+              proposed by one identity, activated by another, and cited by reference. */}
           <div className="mb-3 text-[12px] text-slate-400">
-            Stall threshold N and as-of date. Changing N produces a <span className="text-slate-300">new assessment result</span> (the prior is never mutated).
+            Stall threshold N and the as-of date are a <span className="text-slate-300">governed definition</span>, not
+            settings on this screen. Reading the same data differently means citing a different
+            analysis-terms version — proposed by one identity and activated by another.
           </div>
-          <div className="flex items-end gap-2">
-            <label className="block">
-              <span className="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">N (days)</span>
-              <input type="number" min={0} className="num-input w-28" value={nInput}
-                onChange={(e) => setNInput(Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
-            </label>
-            <button onClick={() => onChangeN(nInput)}
-              className="rounded-lg border border-ink-500/50 px-3 py-2 text-sm text-slate-300 hover:bg-ink-700/50">
-              Re-run with N
-            </button>
+          <div className="mb-3 text-[12px] text-slate-300">
+            N = <span className="font-semibold">{n}</span> days · governed terms{" "}
+            <span className="font-semibold">{result.policy.policyId}@{result.policy.policyVersion}</span>
           </div>
           <div className="mt-3 text-[11px] text-slate-500">
             asOf {result.policy.asOf} · currency {result.policy.currency} · policy {result.policy.policyId} v{result.policy.policyVersion} · amount {result.amountFormat} · dates {result.dateLocale} · mapping {result.mappingId}
