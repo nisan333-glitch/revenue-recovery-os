@@ -26,7 +26,8 @@
     "test:e2e": "vite build && node e2e/smoke.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "fixture:journey": "vite-node scripts/write-journey-fixture.ts",
-    "test:journey": "npm run fixture:journey && node e2e/journey.mjs"
+    "test:journey": "npm run fixture:journey && node e2e/journey.mjs",
+    "verify:registers": "vite-node scripts/verify-register-integrity.ts"
   },
   "dependencies": {
     "@fastify/static": "^8.3.0",

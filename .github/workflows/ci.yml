@@ -156,6 +156,20 @@ jobs:
       - name: EP-19 governed pilot journey (real browser, real API, real worker)
         run: npm run test:journey
 
+      # Read-only integrity sweep over both governed registers, AFTER the journey.
+      #
+      # HERE, and deliberately not in the `persistence` job, which was the first attempt: that job's
+      # database intentionally contains PLANTED corruption — the tamper-evidence suites insert rows whose
+      # witness does not match their values, because the tables are append-only and that is the only way
+      # to model a migration that edited one. A sweep over that database must fail, by construction.
+      #
+      # This job's database holds only what the real browser, the real API and the real worker wrote. So
+      # the sweep here asks the question that matters: does everything the APPLICATION'S OWN WRITE PATH
+      # produced still hash to its witness? It needs a database and exits nonzero without one, which is
+      # why it cannot live in the invariants job either.
+      - name: Governed register integrity sweep (read-only)
+        run: npm run verify:registers
+
       # NOT WIRED: `npm run test:e2e` (e2e/smoke.mjs).
       #
       # The intent was to wire it in here, since no job had ever invoked it. It turns out it has been
