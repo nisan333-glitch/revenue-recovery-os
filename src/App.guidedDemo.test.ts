@@ -122,53 +122,104 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
     const authorHeaders = { "x-actor-id": author.actorId, "x-actor-role": author.role };
     const approverHeaders = { "x-actor-id": APPROVER.actorId, "x-actor-role": APPROVER.role };
 
+    // ── The seed is DECLARATIVE, not a one-shot write ──────────────────────────────────────────────
+    //
+    // THE BUG THIS FIXES. Every identifier below is fixed, and it has to be: the Guided Demo panel
+    // looks the case up by `RE-1014` and the assertion at the bottom of this file looks for
+    // `PF-RE-1014` in the rendered HTML, so neither can be randomised per run. Against a database that
+    // already held this fixture — a second `npm run test` without recreating the database — the
+    // evidence write returned 409 ("a uniqueness constraint was violated") and the suite threw in
+    // `beforeAll`, taking all 16 tests in the file with it. CI never saw it because CI always starts
+    // from a fresh database, which is exactly the kind of failure that waits for a developer instead.
+    //
+    // THE FIX IS IDEMPOTENCE, NOT UNIQUENESS. What this block owes the tests is a STATE — RE-1014
+    // authored, baselined, intervened, evidenced and proven as PF-RE-1014 — not a set of writes. The
+    // append-only tables are right to refuse the second write; the seed was wrong to demand one. So it
+    // asks first whether the state already exists.
+    //
+    // IT DOES NOT SWALLOW CONFLICTS. A proof already there under this id is VERIFIED to be this
+    // fixture before it is accepted, and anything else fails loudly with what it found. A 409 on a
+    // fresh seed is still a hard failure, because there it means something genuinely unexpected.
+    const existingProof = await app.inject({
+      method: "GET",
+      url: `/proofs/${PROOF_ID}`,
+      headers: approverHeaders,
+    });
+    const alreadySeeded = existingProof.statusCode === 200;
+    if (alreadySeeded) {
+      // The READ shape, not the write shape: `POST /proofs` takes `collectedMinor`, and a Proof comes
+      // back carrying `collectedAmount: { minor, currency }`. Comparing against the request's field
+      // names would make every existing proof look like a stranger, which is how this check first
+      // failed — loudly, and on the right side of the line.
+      const proof = existingProof.json() as {
+        recoveryCaseId: string;
+        currency: string;
+        collectedAmount: { minor: number; currency: string };
+        baselineAmount: { minor: number };
+        baselineId: string;
+      };
+      const matches =
+        proof.recoveryCaseId === CASE_ID &&
+        proof.currency === "USD" &&
+        Number(proof.collectedAmount?.minor) === 1_320_000 &&
+        Number(proof.baselineAmount?.minor) === 260_000 &&
+        proof.baselineId === `BL-${CASE_ID}`;
+      if (!matches) {
+        throw new Error(
+          `${PROOF_ID} already exists in this database but is not this fixture — ` +
+            `refusing to reuse it: ${existingProof.body}`,
+        );
+      }
+    }
+
     // Exactly mirrors src/data/seedTrust.ts's RE-1014 entry: same amounts, same lifecycle order
     // (author → baseline pre-registered → intervention → evidence → approve), now through the
     // real governed API instead of a local domain-kernel call.
-    await app.inject({ method: "POST", url: `/cases/${CASE_ID}/author`, headers: authorHeaders });
-    await app.inject({
-      method: "POST",
-      url: `/cases/${CASE_ID}/baseline`,
-      headers: authorHeaders,
-      payload: {
-        baselineId: `BL-${CASE_ID}`,
-        calculatedMinor: 260_000,
-        currency: "USD",
-        method: "matched_historical_cohort",
-        methodVersion: 1,
-        sourceRefs: ["cohort:ActivationMissed"],
-        effectiveAt: "2026-06-01T09:05:00.000Z",
-      },
-    });
-    await app.inject({ method: "POST", url: `/cases/${CASE_ID}/intervention`, headers: authorHeaders });
-    // EP-9.1 fix: confidenceUsed (81) is >= CURRENT_POLICY.proofThreshold (80), so this approval
-    // is an auditable-tier claim — the server (server/services/proofService.ts) requires at
-    // least one OUTCOME-role evidence reference substantiating the full collected amount for
-    // that tier, not merely an independent one. Only billing/invoice_paid|payment_received
-    // derive to "outcome" role (server/domain/evidenceRole.ts) — the legacy local seed's
-    // product/usage_activation_event reference was never subject to this real server-side gate,
-    // only the domain kernel's own trustClassification check, which product/usage-activation
-    // still satisfies as "independent". Using the same billing/invoice_paid pattern already
-    // relied on by server/test/fixtures.ts's own seedAuditableCase().
-    const { attestFixture } = await import("../server/test/sourceFixture");
-    const evidence = await app.inject({
-      method: "POST",
-      url: `/cases/${CASE_ID}/evidence`,
-      headers: authorHeaders,
-      payload: {
-        ...attestFixture(CASE_ID, {
-        evidenceId: `EV-${CASE_ID}-src`,
-        sourceSystem: "billing",
-        sourceRecordId: "UA-7781",
-        evidenceType: "invoice_paid",
-        observedAt: "2026-06-02T09:05:00.000Z",
-        amountMinor: 1_320_000,
-        currency: "USD",
-        }),
-      },
-    });
-    if (evidence.statusCode !== 201) {
-      throw new Error(`demo evidence seed failed: ${evidence.statusCode} ${evidence.body}`);
+    if (!alreadySeeded) {
+      await app.inject({ method: "POST", url: `/cases/${CASE_ID}/author`, headers: authorHeaders });
+      await app.inject({
+        method: "POST",
+        url: `/cases/${CASE_ID}/baseline`,
+        headers: authorHeaders,
+        payload: {
+          baselineId: `BL-${CASE_ID}`,
+          calculatedMinor: 260_000,
+          currency: "USD",
+          method: "matched_historical_cohort",
+          methodVersion: 1,
+          sourceRefs: ["cohort:ActivationMissed"],
+          effectiveAt: "2026-06-01T09:05:00.000Z",
+        },
+      });
+      await app.inject({ method: "POST", url: `/cases/${CASE_ID}/intervention`, headers: authorHeaders });
+      // EP-9.1 fix: confidenceUsed (81) is >= CURRENT_POLICY.proofThreshold (80), so this approval
+      // is an auditable-tier claim — the server (server/services/proofService.ts) requires at
+      // least one OUTCOME-role evidence reference substantiating the full collected amount for
+      // that tier, not merely an independent one. Only billing/invoice_paid|payment_received
+      // derive to "outcome" role (server/domain/evidenceRole.ts) — the legacy local seed's
+      // product/usage_activation_event reference was never subject to this real server-side gate,
+      // only the domain kernel's own trustClassification check, which product/usage-activation
+      // still satisfies as "independent". Using the same billing/invoice_paid pattern already
+      // relied on by server/test/fixtures.ts's own seedAuditableCase().
+      const { attestFixture } = await import("../server/test/sourceFixture");
+      const evidence = await app.inject({
+        method: "POST",
+        url: `/cases/${CASE_ID}/evidence`,
+        headers: authorHeaders,
+        payload: {
+          ...attestFixture(CASE_ID, {
+          evidenceId: `EV-${CASE_ID}-src`,
+          sourceSystem: "billing",
+          sourceRecordId: "UA-7781",
+          evidenceType: "invoice_paid",
+          observedAt: "2026-06-02T09:05:00.000Z",
+          amountMinor: 1_320_000,
+          currency: "USD",
+          }),
+        },
+      });
+      if (evidence.statusCode !== 201) {
+        throw new Error(`demo evidence seed failed: ${evidence.statusCode} ${evidence.body}`);
     }
     const { evidenceId } = evidence.json() as { evidenceId: string };
     const approved = await app.inject({
@@ -192,6 +243,7 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
     });
     if (approved.statusCode !== 201) {
       throw new Error(`demo proof seed failed: ${approved.statusCode} ${approved.body}`);
+    }
     }
 
     // Route the app's own, unmodified `apiClient.ts` fetch calls (`/api/...`, relative — normally
