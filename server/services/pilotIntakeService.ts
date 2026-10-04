@@ -32,6 +32,7 @@ import { POLICY_CODES } from "../../src/contract/admissionCodes";
 import { admissionPolicyRef, makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
 import { findAdmissionPolicy, registerAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
 import { hashAdmissionPolicy, policyHashMatches } from "../../src/contract/policyHash";
+import { compareIntegrity } from "../../src/contract/registerIntegrity";
 import { deriveAdmissionDecisionId } from "../../src/contract/assessmentExecution";
 import {
   canTransition,
@@ -611,25 +612,25 @@ export async function readPilotAdmissionPolicyGovernance(
   requireBoundaryAccess(actor, boundaryId);
   const stored = await findAdmissionPolicy(boundaryId.trim(), policyId, policyVersion);
   if (!stored) throw new NotFoundError("no such admission policy version exists for this boundary");
-  // THE THIRD AND LAST PRODUCTION PATH that touches a stored policy. It makes no decision — the
-  // governance screen displays it — but the response returns a `policyHash` and a lifecycle state, which
-  // together ASSERT that the row is what that hash attests. Returning that for a row which no longer
-  // hashes to its own values would be this surface stating something false, and it is the audit surface.
+  // AUDIT VISIBILITY, not a refusal. This surface makes no decision — it is what an auditor and the
+  // governance screen read — and it previously refused a suspect row outright. That was the wrong shape
+  // for the one surface whose job is to let someone LOOK at a suspect record: refusing to show it means
+  // the only way to inspect the anomaly is direct database access.
   //
-  // Fail closed rather than reporting a flag: a caller that has to remember to check a field is a caller
-  // that will forget. Nothing is lost by it — the transition endpoints do not depend on this read, and
-  // the governance screen's FREEZE and RETIRE buttons are not gated on it, so a steward can still stop a
-  // row this refuses to show them. That is the same asymmetry the transitions keep.
-  if (!(await policyHashMatches(stored.policy, stored.policyHash))) {
-    throw new ConflictError(
-      `admission policy ${policyId}@${policyVersion} no longer hashes to the definition it was registered with; its stored lifecycle and hash are not reported. Investigate the row rather than re-registering over it.`,
-    );
-  }
+  // So the row is returned WITH ITS INTEGRITY STATED, and with both hashes, so an auditor can see
+  // whether the mismatch is a one-field edit or a wholesale replacement and can check the comparison
+  // themselves. What must never happen is the row reading as sound, and an explicit `integrity` block is
+  // a stronger guard against that than an absent one.
+  //
+  // THE REFUSALS THAT MATTER ARE UNCHANGED: a suspect row still judges nothing, and still cannot be put
+  // in force. It simply remains inspectable, and freezing or retiring it remains available.
+  const integrity = compareIntegrity(stored.policyHash, await hashAdmissionPolicy(stored.policy));
   const governance = await policyGovernanceState(boundaryId.trim(), policyId, policyVersion);
   return Object.freeze({
     boundaryId: stored.boundaryId,
     policyRef: `${policyId}@${policyVersion}`,
     policyHash: stored.policyHash,
+    integrity,
     state: governance.state,
     proposedBy: governance.proposedBy,
     proposedAt: governance.proposedAt,

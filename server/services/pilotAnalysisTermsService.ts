@@ -22,6 +22,7 @@ import {
   makeAnalysisTerms,
   type AnalysisTerms,
 } from "../../src/contract/analysisTerms";
+import { compareIntegrity } from "../../src/contract/registerIntegrity";
 import {
   canTransition,
   mayEvaluate,
@@ -177,6 +178,19 @@ export async function transitionAnalysisTerms(
     throw new NotFoundError("no such analysis-terms version exists for this boundary");
   }
 
+  // A definition that fails its own witness may not be PUT IN FORCE. Targeted, not blanket, and for the
+  // same reason the admission register uses: refusing a FREEZE or a RETIRE would leave governance unable
+  // to stop the very thing it had just discovered. Only the transitions that GRANT evaluation authority
+  // are refused.
+  if (
+    (transition === "ACTIVATED" || transition === "UNFROZEN") &&
+    !(await analysisTermsHashMatches(stored.terms, stored.termsHash))
+  ) {
+    throw new ConflictError(
+      `analysis terms ${analysisTermsRef(stored.terms)} no longer hash to the definition they were registered with; they cannot be put in force. Investigate the row rather than re-registering over it.`,
+    );
+  }
+
   const governance = await analysisTermsGovernanceState(boundaryId, request.termsId, request.termsVersion);
   if (governance.proposedBy !== null && governance.proposedBy === actor.actorId) {
     throw new ForbiddenError(
@@ -220,11 +234,16 @@ export async function readAnalysisTermsGovernance(
   const trimmed = boundaryId.trim();
   const stored = await findAnalysisTerms(trimmed, termsId, termsVersion);
   if (!stored) throw new NotFoundError("no such analysis-terms version exists for this boundary");
+  // AUDIT VISIBILITY, matching the admission register. `resolveGovernedAnalysisTerms` already refuses a
+  // suspect row for USE; this is the surface that lets someone see WHY, with both hashes, rather than
+  // having to reach for the database. Reported, never repaired.
+  const integrity = compareIntegrity(stored.termsHash, await hashAnalysisTerms(stored.terms));
   const governance = await analysisTermsGovernanceState(trimmed, termsId, termsVersion);
   return Object.freeze({
     boundaryId: stored.boundaryId,
     termsRef: analysisTermsRef(stored.terms),
     termsHash: stored.termsHash,
+    integrity,
     asOf: stored.terms.asOf,
     stallThresholdDays: stored.terms.stallThresholdDays,
     currency: stored.terms.currency,

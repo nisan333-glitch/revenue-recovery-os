@@ -40,6 +40,19 @@ export interface PolicyGovernanceView {
   readonly boundaryId: string;
   readonly policyRef: string;
   readonly policyHash: string;
+  /**
+   * Whether the stored definition still hashes to its stored witness, with both hashes.
+   *
+   * A suspect row is RETURNED rather than hidden, because this is the surface an auditor uses to look
+   * at one. What the screen must never do is present it as sound — hence an explicit status rather than
+   * the absence of a warning.
+   */
+  readonly integrity: {
+    readonly status: "INTACT" | "MISMATCH" | "UNVERIFIABLE";
+    readonly storedHash: string;
+    readonly computedHash: string | null;
+    readonly detail: string | null;
+  };
   readonly state: PolicyState | null;
   readonly proposedBy: string | null;
   readonly proposedAt: string | null;

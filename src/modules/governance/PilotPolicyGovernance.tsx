@@ -375,6 +375,30 @@ export function PilotPolicyGovernance() {
         )}
       </Panel>
 
+      {/* INTEGRITY, stated before the lifecycle log. A steward looking at a definition has to be able to
+          see that its stored values no longer match the witness it was blessed under — and that it is
+          nonetheless ACTIVE, which is the fact that makes it urgent. Both hashes are shown so the
+          comparison can be checked by hand, and the stop buttons above remain enabled, deliberately. */}
+      {currentGovernance && currentGovernance.integrity.status !== "INTACT" && (
+        <div className="mt-4 rounded-lg border border-detect-500/50 bg-detect-500/10 p-3 text-sm">
+          <p className="font-medium text-detect-400">
+            Integrity {currentGovernance.integrity.status === "MISMATCH" ? "MISMATCH" : "UNVERIFIABLE"} — this
+            definition no longer matches the witness it was registered with.
+          </p>
+          <p className="mt-1 text-slate-400">
+            {currentGovernance.integrity.detail ?? "the stored values could not be rebuilt into a definition"}
+          </p>
+          <dl className="mt-2 space-y-0.5 font-mono text-xs text-slate-400">
+            <div>stored&nbsp;&nbsp;&nbsp;{currentGovernance.integrity.storedHash}</div>
+            <div>computed&nbsp;{currentGovernance.integrity.computedHash ?? "— not computable"}</div>
+          </dl>
+          <p className="mt-2 text-slate-400">
+            It judges nothing and cannot be put in force. Freezing or retiring it is still available.
+            Investigate the record rather than re-registering over it.
+          </p>
+        </div>
+      )}
+
       {currentGovernance && currentGovernance.events.length > 0 && (
         <Panel className="p-5">
           <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">

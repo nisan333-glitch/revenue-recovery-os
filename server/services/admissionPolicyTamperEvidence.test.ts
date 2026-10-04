@@ -277,34 +277,60 @@ describe.skipIf(!HAS_DB)("the admission-policy register is tamper-evident at rea
     expect(out.admissionGovernanceRefusal).toMatch(/no longer hashes to the definition/);
     expect(out.admissionPolicyState).toBeNull();
   });
-  it("7 · the governance READ fails closed on a tampered row, and names it", async () => {
-    // The third and last production path. It makes no decision, but it returns a `policyHash` and a
-    // lifecycle state, which together assert the row is what that hash attests. Reporting a flag instead
-    // would leave a caller to remember to check it; a caller that has to remember will forget.
+  it("7 · the governance READ reports INTEGRITY and BOTH HASHES, instead of hiding the row", async () => {
+    // REVISED DELIBERATELY. This surface briefly refused a suspect row outright, which was the wrong
+    // shape for the one surface whose job is to let someone LOOK at one: refusing to show it leaves
+    // direct database access as the only way to inspect the anomaly. It now returns the row with its
+    // integrity STATED and both hashes, so an auditor can see whether a single field moved or the whole
+    // definition was replaced, and can check the comparison themselves.
+    //
+    // What must never happen is the row reading as sound. An explicit `integrity` block is a stronger
+    // guard against that than an absent one — and the refusals that matter are untouched, which tests
+    // 2 and 4 still hold.
     const boundaryId = `pb-${uid()}`;
     const { policyId } = await policyRow({
       boundaryId, policyId: `pol-${uid()}`,
       storedHashOf: { maxSingleReasonShare: 0.11 }, activate: true,
     });
     const res = await readGovernance(boundaryId, policyId);
-    expect(res.statusCode).toBe(409);
-    expect(res.json().message).toMatch(/no longer hashes to the definition/);
-    expect(res.json().message).toContain(policyId);
-    // Neither the hash nor the lifecycle is disclosed as though it were sound.
-    expect(res.body).not.toMatch(/"state":\s*"ACTIVE"/);
+    expect(res.statusCode).toBe(200);
+    const view = res.json();
+    expect(view.integrity.status).toBe("MISMATCH");
+    expect(view.integrity.storedHash).toBe(view.policyHash);
+    expect(view.integrity.computedHash).not.toBe(view.integrity.storedHash);
+    expect(view.integrity.computedHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(view.integrity.detail).toMatch(/changed after it was registered/);
+    // The lifecycle is visible too — an auditor needs to know a tampered row is ACTIVE, which is
+    // precisely the fact that makes it urgent.
+    expect(view.state).toBe("ACTIVE");
   });
 
-  it("8 · ...and the steward can still FREEZE and RETIRE it, even though the read refuses", async () => {
-    // THE ASYMMETRY SURVIVES ON THE READ PATH TOO, and it has to: the governance screen's stop buttons
-    // are not gated on a successful read, so refusing to display a row never means being unable to stop
-    // it. If this ever regressed, failing the read closed would defeat the whole point of test 5.
+  it("7b · POSITIVE CONTROL · a sound row reports INTACT, with the two hashes equal", async () => {
+    // Without this, test 7 would pass against a surface that reported MISMATCH for everything.
+    const boundaryId = `pb-${uid()}`;
+    const { policyId } = await policyRow({ boundaryId, policyId: `pol-${uid()}`, propose: true });
+    const view = (await readGovernance(boundaryId, policyId)).json();
+    expect(view.integrity.status).toBe("INTACT");
+    expect(view.integrity.computedHash).toBe(view.integrity.storedHash);
+    expect(view.integrity.detail).toBeNull();
+  });
+
+  it("8 · a suspect row stays inspectable AND stoppable, but gains no authority", async () => {
+    // The three properties together, on one row: visible, unable to judge, unable to be put in force,
+    // and still stoppable. Any one of them alone is not the guarantee.
     const boundaryId = `pb-${uid()}`;
     const { policyId } = await policyRow({
       boundaryId, policyId: `pol-${uid()}`,
       storedHashOf: { minCoverageDays: THRESHOLDS.minCoverageDays + 9 }, activate: true,
     });
-    expect((await readGovernance(boundaryId, policyId)).statusCode).toBe(409);
+    // inspectable
+    expect((await readGovernance(boundaryId, policyId)).json().integrity.status).toBe("MISMATCH");
+    // judges nothing
+    expect((await submit(boundaryId, policyId)).admission.outcome).toBe("NOT_ASSESSABLE");
+    // cannot regain authority
     expect((await move(boundaryId, policyId, "freeze")).statusCode).toBe(200);
+    expect((await move(boundaryId, policyId, "unfreeze")).statusCode).toBe(409);
+    // ...and stopping it works
     expect((await move(boundaryId, policyId, "retire")).statusCode).toBe(200);
   });
 
