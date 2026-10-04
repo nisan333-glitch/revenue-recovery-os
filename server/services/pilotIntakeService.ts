@@ -611,6 +611,20 @@ export async function readPilotAdmissionPolicyGovernance(
   requireBoundaryAccess(actor, boundaryId);
   const stored = await findAdmissionPolicy(boundaryId.trim(), policyId, policyVersion);
   if (!stored) throw new NotFoundError("no such admission policy version exists for this boundary");
+  // THE THIRD AND LAST PRODUCTION PATH that touches a stored policy. It makes no decision — the
+  // governance screen displays it — but the response returns a `policyHash` and a lifecycle state, which
+  // together ASSERT that the row is what that hash attests. Returning that for a row which no longer
+  // hashes to its own values would be this surface stating something false, and it is the audit surface.
+  //
+  // Fail closed rather than reporting a flag: a caller that has to remember to check a field is a caller
+  // that will forget. Nothing is lost by it — the transition endpoints do not depend on this read, and
+  // the governance screen's FREEZE and RETIRE buttons are not gated on it, so a steward can still stop a
+  // row this refuses to show them. That is the same asymmetry the transitions keep.
+  if (!(await policyHashMatches(stored.policy, stored.policyHash))) {
+    throw new ConflictError(
+      `admission policy ${policyId}@${policyVersion} no longer hashes to the definition it was registered with; its stored lifecycle and hash are not reported. Investigate the row rather than re-registering over it.`,
+    );
+  }
   const governance = await policyGovernanceState(boundaryId.trim(), policyId, policyVersion);
   return Object.freeze({
     boundaryId: stored.boundaryId,

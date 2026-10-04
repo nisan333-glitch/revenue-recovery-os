@@ -150,11 +150,28 @@ set the terms register already refuses to treat as acceptable for itself.
 
 ### Two enforcement points, and one deliberate asymmetry
 
-| Where | Behaviour |
+### Coverage: all three production paths that touch a stored policy
+
+`findAdmissionPolicy` has exactly three production callers, enumerated before any change. All three now
+verify.
+
+| Path | Behaviour |
 |---|---|
 | **judging a dataset** (`submitPilotDataset`) | verified **first**, before any other question is asked. On mismatch: `admissionGovernanceRefusal` names the policy, the outcome is `NOT_ASSESSABLE`, and `admissionPolicyState` / `admissionPolicyHash` are **null** |
 | **putting a bar in force** (`ACTIVATED`, `UNFROZEN`) | refused `409` — an altered bar may not acquire the authority to judge |
+| **the governance read** (`readPilotPolicyGovernance`) | refused `409`. It decides nothing, but it returns a `policyHash` and a lifecycle state, which together **assert** the row is what that hash attests — and it is the audit surface. Fail closed rather than reporting a flag: a caller that must remember to check a field will forget |
 | **withdrawing authority** (`FROZEN`, `RETIRED`) | **still allowed**, deliberately |
+
+**Nothing is lost by failing the read closed.** The transition endpoints do not depend on it, and the
+governance screen's stop buttons are gated on `!identified || busy || !rationale` — **not** on a
+successful read. So refusing to display a row never means being unable to stop it. Test 8 pins that; if it
+regressed, failing the read closed would defeat the asymmetry below.
+
+**The pattern it follows, and where it goes further.** The analysis-terms register verifies in exactly
+**one** place, `resolveGovernedAnalysisTerms` — its own read, list and transition paths do not. This
+register now verifies on **all three** of its paths, which is stricter than the pattern it was modelled
+on. Stated so the divergence is deliberate and visible rather than discovered later; whether the terms
+register should match it is a separate question, left open.
 
 That last row is the point. Refusing *every* transition on a suspect row would leave governance unable to
 stop the very thing it had just discovered. Only the transitions that **grant** evaluation authority are
@@ -171,8 +188,16 @@ validated, and fitness is a separate verdict. What matters is that the recorded 
 policy and no hash**, so nothing downstream can bind an execution to it.
 
 **It refuses nothing today.** Every row the application has ever written hashes to its own values, which
-the whole existing suite re-proves (548 → 554 tests, all green, no behaviour change). A latent guard, like
+the whole existing suite re-proves (548 → 557 tests, all green, no behaviour change). A latent guard, like
 the calculation-method gates.
+
+### Historical rows are checked against their OWN witness, never against today's value
+
+Proven behaviourally rather than asserted (test 9). A row recorded before the provenance correction
+carries `"admission-2026.1"`. Hashed from *that* value, it still **reads**, still **activates** and still
+**judges** — and is re-read afterwards to confirm no path restamped, repaired or rewrote it. Falsifier
+**F27** replaces the witness comparison with *"does this row carry what this build would stamp?"* and test
+9 fails, so the constraint is enforced and not merely intended.
 
 ### Falsifiers
 
@@ -182,10 +207,13 @@ the calculation-method gates.
 | F23 | put-in-force verification removed | 4, 5 | both |
 | F24 | verification applied to **every** transition | 5 | it did — governance could no longer stop a tampered bar |
 | F25 | the check moved **after** the lifecycle check | 2 | it did |
+| F26 | **read-path** verification disabled | 7, 8 | both |
+| F27 | witness comparison replaced by *"carries what this build would stamp"* | 9 (and 2, 3, 6) | it did — the historical positive control fails, which is the constraint |
 
 ### Still open
 
-The **governance read** surface (`readPilotPolicyGovernance`) still reports a stored row's hash and
-lifecycle without saying whether the row hashes to its own definition. A read should *report* a mismatch
-rather than refuse — an auditor must be able to see a tampered row — but that is a response-shape change
-and is left for its own decision.
+* **The analysis-terms register verifies on one path, not three.** Its read, list and transition surfaces
+  trust the stored row, exactly as the admission-policy register's did. The asymmetry has now inverted:
+  the policy register is the stricter of the two. Its own slice.
+* **No surface lists a tamper without being asked.** Verification is per-resolve; nothing sweeps the
+  registers. A migration that altered many rows is discovered one refusal at a time.

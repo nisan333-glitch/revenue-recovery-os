@@ -28,7 +28,7 @@ import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv, SCENARIO_POLICY } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
 import { ADMISSION_EVALUATOR_VERSION } from "../../src/contract/admissionGate";
-import { makeAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
+import { ADMISSION_CALC_VERSION, makeAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
 import { hashAdmissionPolicy } from "../../src/contract/policyHash";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
@@ -62,6 +62,8 @@ describe.skipIf(!HAS_DB)("the admission-policy register is tamper-evident at rea
     readonly boundaryId: string;
     readonly policyId: string;
     readonly storedHashOf?: Record<string, unknown>;
+    /** The calculation-method label the row carries. Defaults to what the server stamps today. */
+    readonly calculationMethodVersion?: string;
     /** Write a PROPOSED event, so the row is DRAFT and the lifecycle permits activation. */
     readonly propose?: boolean;
     /** Write PROPOSED + ACTIVATED, so the row is already ACTIVE. */
@@ -70,13 +72,13 @@ describe.skipIf(!HAS_DB)("the admission-policy register is tamper-evident at rea
     const actual = makeAdmissionPolicy({
       policyId: opts.policyId,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
+      calculationMethodVersion: opts.calculationMethodVersion ?? ADMISSION_EVALUATOR_VERSION,
       ...THRESHOLDS,
     });
     const witnessed = makeAdmissionPolicy({
       policyId: opts.policyId,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
+      calculationMethodVersion: opts.calculationMethodVersion ?? ADMISSION_EVALUATOR_VERSION,
       ...THRESHOLDS,
       ...(opts.storedHashOf ?? {}),
     } as never);
@@ -157,6 +159,14 @@ describe.skipIf(!HAS_DB)("the admission-policy register is tamper-evident at rea
       url: `/pilot/admission-policies/${transition}`,
       headers: STEWARD,
       payload: { boundaryId, policyId, policyVersion: "1.0.0", rationale: "governance act" },
+    });
+
+
+  const readGovernance = (boundaryId: string, policyId: string) =>
+    app.inject({
+      method: "GET",
+      url: `/pilot/admission-policies/governance?boundaryId=${encodeURIComponent(boundaryId)}&policyId=${encodeURIComponent(policyId)}&policyVersion=1.0.0`,
+      headers: STEWARD,
     });
 
   it("1 · POSITIVE CONTROL · a SOUND constructed row is activated and judges normally", async () => {
@@ -266,5 +276,65 @@ describe.skipIf(!HAS_DB)("the admission-policy register is tamper-evident at rea
     const out = await submit(boundaryId, policyId);
     expect(out.admissionGovernanceRefusal).toMatch(/no longer hashes to the definition/);
     expect(out.admissionPolicyState).toBeNull();
+  });
+  it("7 · the governance READ fails closed on a tampered row, and names it", async () => {
+    // The third and last production path. It makes no decision, but it returns a `policyHash` and a
+    // lifecycle state, which together assert the row is what that hash attests. Reporting a flag instead
+    // would leave a caller to remember to check it; a caller that has to remember will forget.
+    const boundaryId = `pb-${uid()}`;
+    const { policyId } = await policyRow({
+      boundaryId, policyId: `pol-${uid()}`,
+      storedHashOf: { maxSingleReasonShare: 0.11 }, activate: true,
+    });
+    const res = await readGovernance(boundaryId, policyId);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/no longer hashes to the definition/);
+    expect(res.json().message).toContain(policyId);
+    // Neither the hash nor the lifecycle is disclosed as though it were sound.
+    expect(res.body).not.toMatch(/"state":\s*"ACTIVE"/);
+  });
+
+  it("8 · ...and the steward can still FREEZE and RETIRE it, even though the read refuses", async () => {
+    // THE ASYMMETRY SURVIVES ON THE READ PATH TOO, and it has to: the governance screen's stop buttons
+    // are not gated on a successful read, so refusing to display a row never means being unable to stop
+    // it. If this ever regressed, failing the read closed would defeat the whole point of test 5.
+    const boundaryId = `pb-${uid()}`;
+    const { policyId } = await policyRow({
+      boundaryId, policyId: `pol-${uid()}`,
+      storedHashOf: { minCoverageDays: THRESHOLDS.minCoverageDays + 9 }, activate: true,
+    });
+    expect((await readGovernance(boundaryId, policyId)).statusCode).toBe(409);
+    expect((await move(boundaryId, policyId, "freeze")).statusCode).toBe(200);
+    expect((await move(boundaryId, policyId, "retire")).statusCode).toBe(200);
+  });
+
+  it("9 · POSITIVE CONTROL · a HISTORICAL row keeps its retired label and passes ALL THREE paths", async () => {
+    // "Preserve historical calculationMethodVersion values" proven behaviourally rather than asserted.
+    // A row recorded before the provenance correction carries "admission-2026.1". It is correctly hashed
+    // FROM that value, so it must still read, still activate, and still judge — verification checks a row
+    // against its OWN witness, never against what this build would stamp today.
+    const boundaryId = `pb-${uid()}`;
+    const { policyId } = await policyRow({
+      boundaryId, policyId: `pol-${uid()}`,
+      calculationMethodVersion: ADMISSION_CALC_VERSION, propose: true,
+    });
+    const row = await prisma.pilotAdmissionPolicyRecord.findFirstOrThrow({ where: { boundaryId, policyId } });
+    expect(row.calculationMethodVersion).toBe("admission-2026.1");
+    expect(row.calculationMethodVersion).not.toBe(ADMISSION_EVALUATOR_VERSION);
+
+    // 1 · read
+    const view = await readGovernance(boundaryId, policyId);
+    expect(view.statusCode).toBe(200);
+    expect(view.json().policyHash).toBe(row.policyHash);
+    // 2 · put in force
+    expect((await move(boundaryId, policyId, "activate")).statusCode).toBe(200);
+    // 3 · judge
+    const out = await submit(boundaryId, policyId);
+    expect(out.admissionGovernanceRefusal).toBeNull();
+    expect(out.admission.outcome).toBe("ADMISSIBLE");
+    // The row was NOT restamped, repaired or rewritten by any of the three.
+    const after = await prisma.pilotAdmissionPolicyRecord.findFirstOrThrow({ where: { boundaryId, policyId } });
+    expect(after.calculationMethodVersion).toBe("admission-2026.1");
+    expect(after.policyHash).toBe(row.policyHash);
   });
 });
