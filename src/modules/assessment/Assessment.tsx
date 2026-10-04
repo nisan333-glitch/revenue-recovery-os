@@ -177,6 +177,11 @@ export function Assessment() {
           amountFormat: amountFormat || undefined,
           analysisTermsId: selectedTerms?.termsId,
           analysisTermsVersion: selectedTerms?.termsVersion,
+          // S4 · CITE THE DECISION THAT ADMITTED THIS FILE. `validation` is the server's own intake
+          // result for the bytes on this screen, so the identifier is the server's, not the screen's.
+          // Without it the server falls back to re-discovering the decision from the fields above —
+          // which works, but proves only that those fields agree with themselves.
+          admissionDecisionId: validation?.admissionDecisionId ?? undefined,
         },
         actor,
       );

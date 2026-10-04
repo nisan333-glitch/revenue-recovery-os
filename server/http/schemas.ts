@@ -286,6 +286,11 @@ export const schedulePilotAssessmentSchema = {
       boundaryId: { type: "string", minLength: 1, maxLength: 256 },
       datasetId: { type: "string", minLength: 1, maxLength: 256 },
       declaredVersion: { type: "string", minLength: 1, maxLength: 32 },
+      // S4 · REFERENCE-FIRST. The admission decision this execution binds to, as the intake returned
+      // it. A reference, not a capability: the service looks it up boundary-scoped, so one minted for
+      // another tenant reads as absent. Optional on the wire because every admission recorded before
+      // the interpretation snapshot existed can only be reached by the legacy discovery path.
+      admissionDecisionId: { type: "string", minLength: 1, maxLength: 256 },
       csvText: { type: "string", minLength: 1, maxLength: 20_971_520 },
       locale: { type: "string", enum: ["MDY", "DMY"] },
       amountFormat: { type: "string", enum: ["US", "EU"] },

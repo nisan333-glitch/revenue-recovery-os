@@ -70,6 +70,7 @@ function serverResult(over: Partial<PilotIntakeResult> = {}): PilotIntakeResult 
     admissionPolicyState: "ACTIVE" as const,
     admissionPolicyHash: "sha256:" + "a".repeat(64),
     admissionGovernanceRefusal: null,
+    admissionDecisionId: null,
     ...over,
   };
 }

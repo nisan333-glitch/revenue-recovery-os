@@ -552,6 +552,19 @@ export interface SubmissionIdentityInput {
   readonly asOf: string;
   readonly stallThresholdDays: number;
   readonly currency: string;
+  /**
+   * S4 · The contract MAJOR this identity is derived under. OMITTED means "the major this build
+   * implements", which is what minting a NEW identity must always use — so the intake never passes it
+   * and its key is byte-identical to before.
+   *
+   * It exists for the opposite direction: RE-DERIVING a historical identity. A stored `pds` embeds the
+   * major that was current when it was minted, so a verifier on a later major must re-derive under
+   * THAT major or it would compute a different digest and report the record as changed when nothing
+   * about the record changed — the build did. §10 promises two majors coexist; honouring that promise
+   * at schedule time requires exactly this. The value is read from the stored decision, never from a
+   * request: a caller who could choose the major could choose which admission its bytes match.
+   */
+  readonly contractMajor?: number;
 }
 
 /**
@@ -586,7 +599,7 @@ export interface SubmissionIdentityInput {
  * The boundary is inside the key, so two tenants uploading byte-identical files never collide.
  */
 export async function deriveIdempotencyKey(input: SubmissionIdentityInput): Promise<string> {
-  const major = parseContractVersion(PILOT_DATA_CONTRACT_VERSION)?.major ?? "unparseable";
+  const major = input.contractMajor ?? parseContractVersion(PILOT_DATA_CONTRACT_VERSION)?.major ?? "unparseable";
   const digest = await sha256Hex(
     [
       IDEMPOTENCY_DERIVATION,

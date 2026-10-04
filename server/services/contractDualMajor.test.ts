@@ -90,7 +90,15 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
     return { boundaryId, datasetId, csvText, submitted };
   }
 
-  const schedule = (boundaryId: string, datasetId: string, csvText: string) =>
+  const schedule = (
+    boundaryId: string,
+    datasetId: string,
+    csvText: string,
+    // S4 · When given, scheduling anchors on the decision instead of re-discovering it from the fields
+    // below. A row whose contract MAJOR differs from this build's can only be reached this way: the
+    // discovery key embeds the build's major, so it would simply not be found.
+    admissionDecisionId?: string,
+  ) =>
     app.inject({
       method: "POST",
       url: "/pilot/assessments",
@@ -102,6 +110,7 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
         csvText,
         provenance: SYNTHETIC_PROVENANCE,
         ...GOVERNED_TERMS_FIELDS,
+        ...(admissionDecisionId ? { admissionDecisionId } : {}),
       },
     });
 
@@ -147,9 +156,28 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
     const stored = await findAdmissionPolicy(boundaryId, policyId, "1.0.0");
     const policyHash = await hashAdmissionPolicy(stored!.policy);
     const contractVersion = opts.contractVersion ?? PILOT_DATA_CONTRACT_VERSION;
+
+    // S4 · THE KEY IS MINTED UNDER THIS ROW'S OWN MAJOR, because that is what the build it pretends to
+    // be would have done: the submission key embeds the contract major that was current when it was
+    // written. Leaving it at this build's major would make the row internally inconsistent — its stored
+    // identity would not re-derive from its own recorded facts — and scheduling would refuse it as a
+    // changed record (NH-AX-1012) instead of on the version question these tests are about. The anomaly
+    // in the row stays exactly one thing: the version.
+    const { deriveIdempotencyKey } = await import("../../src/contract/validateDataset");
+    const { parseContractVersion } = await import("../../src/contract/pilotDataContract");
+    const idempotencyKey = await deriveIdempotencyKey({
+      boundary: { boundaryId, datasetId },
+      datasetFingerprint: report.datasetFingerprint,
+      dateLocale: "auto",
+      amountFormat: "auto",
+      asOf: TEST_ANALYSIS_TERMS.asOf,
+      stallThresholdDays: TEST_ANALYSIS_TERMS.stallThresholdDays,
+      currency: TEST_ANALYSIS_TERMS.currency,
+      contractMajor: parseContractVersion(contractVersion)!.major,
+    });
     const admissionDecisionId = await deriveAdmissionDecisionId({
       boundaryId,
-      idempotencyKey: report.idempotencyKey,
+      idempotencyKey,
       datasetFingerprint: report.datasetFingerprint,
       contractVersion,
       outcome: "ADMISSIBLE",
@@ -160,11 +188,16 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
 
     await prisma.pilotDatasetSubmissionRecord.create({
       data: {
-        idempotencyKey: report.idempotencyKey,
+        idempotencyKey,
         boundaryId,
         datasetId,
         contractVersion,
         declaredVersion: opts.declaredVersion,
+        // S4a · the interpretation snapshot a real intake writes, with nothing pinned.
+        snapshotDateLocale: "auto",
+        snapshotAmountFormat: "auto",
+        snapshotTermsId: TEST_ANALYSIS_TERMS.termsId,
+        snapshotTermsVersion: TEST_ANALYSIS_TERMS.termsVersion,
         datasetFingerprint: report.datasetFingerprint,
         accepted: true,
         usable: true,
@@ -182,7 +215,7 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
         submittedByRole: "operator",
       },
     });
-    return { boundaryId, datasetId, csvText };
+    return { boundaryId, datasetId, csvText, admissionDecisionId };
   }
 
   it("1 · the DECLARED version is persisted, not only the version the build implemented", async () => {
@@ -249,8 +282,19 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
 
     // ...and null is NOT a free pass: with an uninterpretable recorded build version it is still refused,
     // so the fallback is to the recorded value rather than to acceptance.
+    //
+    // CITED, not discovered: a row recorded by a build serving major 9 carries a major-9 submission key,
+    // which this build's discovery derivation cannot reach. Reaching it by reference is the point — the
+    // support gate must still fire on the fully authoritative path, where every fact came from the record.
     const unsupported = await insertDecisionRow({ declaredVersion: null, contractVersion: "9.9.9" });
-    const out = (await schedule(unsupported.boundaryId, unsupported.datasetId, unsupported.csvText)).json();
+    const out = (
+      await schedule(
+        unsupported.boundaryId,
+        unsupported.datasetId,
+        unsupported.csvText,
+        unsupported.admissionDecisionId,
+      )
+    ).json();
     expect(out.scheduled).toBe(false);
     expect(out.refusal.code).toBe("NH-AX-1006");
   });

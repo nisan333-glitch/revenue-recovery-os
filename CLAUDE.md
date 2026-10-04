@@ -141,6 +141,31 @@ by the same identity — a verdict computed under one definition does not author
 in [`docs/ASSESSMENT_IDENTITY_V1.md`](docs/ASSESSMENT_IDENTITY_V1.md). This is a pilot-data trust rule
 and does not turn any observed amount into a proven figure.
 
+**Reference-first scheduling decision (2026-10-04).** An audit of the scheduling path found that it began
+by *validating* the re-supplied bytes under whatever the request claimed — the declared contract version,
+the date locale, the amount format and the analysis terms — and then found the admission decision by the
+submission key that validation produced. So every authoritative input arrived from the party who benefits
+from the number, and the closing check compared a hash of those inputs against a record selected **by** that
+same hash, which can only agree. `request.declaredVersion` was worse than inert: a malformed or unsupported
+value raised a dataset-level rejection, emptied the accepted cycles, and refused a properly admitted dataset
+with `NH-AX-1009` — blaming the data for a claim the caller made. The governing rule is now:
+
+> **An execution is authorised by an immutable admission decision, not by what the request re-asserts about
+> the reading.** The request may *cite* the decision; every fact that decides what the run measures is then
+> read from that record, and the record's own submission identity is re-derived from those facts and compared
+> **unconditionally** before anything runs. A request may not name an interpretation or a definition other
+> than the admitted one and have the run proceed — under either value.
+
+**Built 2026-10-04** ([`docs/REFERENCE_FIRST_SCHEDULING_V1.md`](docs/REFERENCE_FIRST_SCHEDULING_V1.md)).
+Identity re-derivation and current support authorization are answered **separately**, in that order, so a
+withdrawal of support can never report itself as the record having changed; and the contract major used in
+the re-derivation comes from the decision rather than from the build, which is what finally makes §10's
+two-major window reachable at schedule time. The legacy discovery path is kept, **named and tested as
+such**, for every admission recorded before the interpretation snapshot existed — failing those closed
+would have broken scheduling for every dataset already admitted. `request.declaredVersion` is now
+structurally inert; its physical removal is a breaking wire change and is deferred to its own slice. This
+is a pilot-data trust rule and turns no observed amount into proven Revenue Returned.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

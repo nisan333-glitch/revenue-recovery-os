@@ -132,6 +132,7 @@ describe("Assessment screens render the critical content", () => {
           datasetFingerprint: "f".repeat(64),
           idempotencyKey: "pds_test",
           recordedAt: null,
+          admissionDecisionId: null,
           admissionPolicyState: "DRAFT" as const,
           admissionPolicyHash: null,
           admissionGovernanceRefusal:

@@ -140,6 +140,12 @@ export interface ScheduleAssessmentParams {
    */
   readonly analysisTermsId?: string;
   readonly analysisTermsVersion?: string;
+  /**
+   * S4 · The admission decision to bind to, from the intake result that recorded it. Citing it is what
+   * makes the server read the date locale, the amount format, the analysis terms and the admitted
+   * declaration from that record instead of from this request.
+   */
+  readonly admissionDecisionId?: string;
   /** Optional link to a governed case. Supplying it never creates one. */
   readonly recoveryCaseId?: string;
 }
@@ -151,7 +157,9 @@ export function schedulePilotAssessment(
   return apiRequest<ScheduleAssessmentResult>("POST", "/pilot/assessments", actor, {
     boundaryId: params.boundaryId,
     datasetId: params.datasetId,
+    // S4 · INERT SERVER-SIDE, and still the build constant here rather than anything a screen holds.
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+    ...(params.admissionDecisionId ? { admissionDecisionId: params.admissionDecisionId } : {}),
     csvText: params.csvText,
     // EP-26b · NO `policy` OBJECT IS SENT AT ALL. Nothing about what this run measures comes from here.
     ...(params.analysisTermsId ? { analysisTermsId: params.analysisTermsId } : {}),

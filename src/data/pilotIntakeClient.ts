@@ -62,6 +62,11 @@ export interface PilotIntakeResult {
   readonly admissionPolicyHash: string | null;
   /** EP-15 · set when governance refused to let the named policy judge this dataset. */
   readonly admissionGovernanceRefusal: string | null;
+  /**
+   * S4 · The decision this submission recorded, to be CITED when scheduling. Null when nothing was
+   * recorded — a refused dataset, or a local preflight, neither of which produces a decision.
+   */
+  readonly admissionDecisionId: string | null;
 }
 
 export interface PilotIntakeParams {

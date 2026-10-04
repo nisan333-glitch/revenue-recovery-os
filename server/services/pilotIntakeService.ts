@@ -129,6 +129,17 @@ export interface PilotIntakeResponse {
    * dataset satisfies an explicit, versioned pilot policy.
    */
   readonly admission: AdmissionDecision;
+  /**
+   * S4 · The identifier of the admission decision this submission recorded, or null when nothing was
+   * recorded (a refused dataset, or a local preflight).
+   *
+   * Returned so a later schedule can CITE the decision instead of making the server re-discover it
+   * from re-supplied claims. That is the whole of reference-first scheduling: the caller hands over a
+   * reference to an immutable record, and every authoritative fact is then read from that record
+   * rather than from the request. It is not a capability — it is boundary-scoped on lookup and
+   * carries no authority of its own.
+   */
+  readonly admissionDecisionId: string | null;
 }
 
 /** The contract version this build serves. Advertised so a client can pin and compare. */
@@ -143,6 +154,7 @@ function toResponse(
     readonly hash: string | null;
     readonly refusal: string | null;
   } = { state: null, hash: null, refusal: null },
+  admissionDecisionId: string | null = null,
 ): PilotIntakeResponse {
   return Object.freeze({
     contractRef: report.contractRef,
@@ -165,6 +177,7 @@ function toResponse(
     admissionPolicyHash: governance.hash,
     admissionGovernanceRefusal: governance.refusal,
     admission,
+    admissionDecisionId,
   });
 }
 
@@ -397,7 +410,7 @@ export async function submitPilotDataset(
     submittedByRole: actor.role,
   });
 
-  return toResponse(report, recorded.submittedAt, admission, governance);
+  return toResponse(report, recorded.submittedAt, admission, governance, admissionDecisionId);
 }
 
 export interface RegisterAdmissionPolicyRequest {

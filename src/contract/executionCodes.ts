@@ -50,6 +50,9 @@ export type ExecutionRefusal =
   | "contract_version_mismatch"
   | "policy_not_active"
   | "analysis_terms_not_governed"
+  | "admission_snapshot_unavailable"
+  | "submission_identity_mismatch"
+  | "request_contradicts_admission"
   | "boundary_mismatch"
   | "no_assessable_cycles"
   | "case_halted"
@@ -136,6 +139,42 @@ export const EXECUTION_REFUSAL_CODES: Readonly<Record<ExecutionRefusal, Executio
       remediation:
         "Propose an analysis-terms version and have governance activate it, then cite it by id and version. The as-of date and the stall threshold define what the assessment measures, so they are decided by a proposer and an approver — never chosen in the request that benefits from the result.",
       since: "1.1.0",
+    }),
+    // S4 · The three refusals reference-first scheduling needs, and deliberately three rather than one.
+    //
+    // They answer three different questions, and collapsing them would send someone after the wrong
+    // thing. 1011: the stored admission does not carry enough of its own interpretation to be
+    // reproduced — a schema-epoch fact about the record, nobody's fault, fixed by re-submitting. 1012:
+    // it does carry enough, and what it carries does not reproduce its own identity — a tamper or
+    // drift signal that must never be laundered by recomputing and carrying on. 1013: the record is
+    // sound and the REQUEST is asking to run under something else.
+    //
+    // None of them is `decision_binding_mismatch` (NH-AX-1005). That code says "the record changed
+    // after it was written", and saying it when the build changed, or when the caller asked for
+    // something new, would accuse immutable data of mutating.
+    admission_snapshot_unavailable: code({
+      code: "NH-AX-1011",
+      severity: "refused",
+      title: "The admission's interpretation snapshot is absent or unusable, so its submission identity cannot be reproduced.",
+      remediation:
+        "Re-submit the dataset. Submissions recorded before the interpretation snapshot existed carry no date-locale, amount-format or analysis-terms reference, and those are exactly the facts the submission identity is derived over. They are deliberately not backfilled: a snapshot written now from today's request would assert that this is what the verdict was reached under, which is the one thing it cannot evidence.",
+      since: "1.2.0",
+    }),
+    submission_identity_mismatch: code({
+      code: "NH-AX-1012",
+      severity: "refused",
+      title: "The stored submission identity is not reproducible from the admission's own recorded facts.",
+      remediation:
+        "Do not re-run. Re-deriving the submission key from the fingerprint, the boundary, the admitted contract major, the recorded interpretation and the governed analysis terms did not return the key the record is stored under. Investigate the record and the register rather than accepting the stored key on its own word — an identity that cannot be recomputed cannot be audited later either.",
+      since: "1.2.0",
+    }),
+    request_contradicts_admission: code({
+      code: "NH-AX-1013",
+      severity: "refused",
+      title: "The request names analysis terms or interpretation options other than the ones the dataset was admitted under.",
+      remediation:
+        "Cite the admitted analysis-terms version and the admitted date-locale and amount-format, or re-submit the extract under the new ones. A verdict computed under one definition does not authorise an execution under another, and silently running under the admitted terms instead would report a result nobody asked for.",
+      since: "1.2.0",
     }),
     no_assessable_cycles: code({
       code: "NH-AX-1009",
