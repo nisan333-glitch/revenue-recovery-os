@@ -16,7 +16,8 @@
 // what the server decided about them.
 import { useRef, useState } from "react";
 import { Panel, Pill, SectionHeader } from "../../components/ui";
-import { ADMISSION_CALC_VERSION, validateAdmissionPolicy, type PilotAdmissionPolicy, type RequiredLifecycleState } from "../../contract/pilotAdmissionPolicy";
+import { validateAdmissionPolicy, type PilotAdmissionPolicy, type RequiredLifecycleState } from "../../contract/pilotAdmissionPolicy";
+import { ADMISSION_EVALUATOR_VERSION } from "../../contract/admissionGate";
 import type { PolicyState } from "../../contract/policyLifecycle";
 import {
   forSelection,
@@ -57,10 +58,13 @@ function completePolicy(
   provenanceRequired: boolean | null,
   policyId: string,
   policyVersion: string,
-): PilotAdmissionPolicy | null {
+  // FINDING 3 · NO `calculationMethodVersion`. Its documented meaning is "which evaluator computed the
+  // rates" — a fact about the server, which this screen is in no position to state. The server stamps
+  // `ADMISSION_EVALUATOR_VERSION` and the request body has no such field, so sending one is a 400.
+): Omit<PilotAdmissionPolicy, "calculationMethodVersion"> | null {
   if (NUMERIC_FIELDS.some(field => fields[field].trim() === "") || lifecycle === null || provenanceRequired === null) return null;
   const numeric = Object.fromEntries(NUMERIC_FIELDS.map(field => [field, Number(fields[field])])) as Record<NumericField, number>;
-  return { ...numeric, policyId, policyVersion, calculationMethodVersion: ADMISSION_CALC_VERSION,
+  return { ...numeric, policyId, policyVersion,
     requiredLifecycleStates: lifecycle, requireProvenanceDeclaration: provenanceRequired };
 }
 
@@ -93,7 +97,13 @@ export function PilotPolicyGovernance() {
   const proposer = operatorActorFor(null);
   const identified = Boolean(boundaryId.trim() && policyId.trim() && policyVersion.trim());
   const complete = completePolicy(thresholds, requiredLifecycleStates, requireProvenanceDeclaration, policyId.trim(), policyVersion.trim());
-  const policyDefects = complete ? validateAdmissionPolicy(complete) : [];
+  // The local defect list PREVIEWS the policy the server will construct, which is why the evaluator
+  // version is added here: the domain guard requires it on a complete policy, and the server stamps
+  // exactly this constant. The screen still cannot SEND it — the request body has no such field — so
+  // this is a preview of someone else's construction, never an assertion about the evaluator.
+  const policyDefects = complete
+    ? validateAdmissionPolicy({ ...complete, calculationMethodVersion: ADMISSION_EVALUATOR_VERSION })
+    : [];
   const policyToPropose = complete && policyDefects.length === 0 ? complete : null;
   // A verdict is shown only beside the identity it was read for. Everything below renders these, never
   // `governance`/`policyHash` directly.

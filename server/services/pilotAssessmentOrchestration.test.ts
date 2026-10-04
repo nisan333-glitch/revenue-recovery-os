@@ -10,7 +10,6 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { deriveAdmissionDecisionId } from "../../src/contract/assessmentExecution";
 import { AgentRuntime } from "../agents/runtime";
 import { createPilotAssessmentAgent, PILOT_ASSESSMENT_AGENT_ID } from "../agents/pilotAssessmentAgent";
@@ -38,7 +37,6 @@ function policyBody(over: Record<string, unknown> = {}) {
   return {
     policyId: `pol-${uid()}`,
     policyVersion: "1.0.0",
-    calculationMethodVersion: ADMISSION_CALC_VERSION,
     minAcceptedRows: 10,
     minDistinctEntities: 5,
     maxRejectionRate: 0.2,

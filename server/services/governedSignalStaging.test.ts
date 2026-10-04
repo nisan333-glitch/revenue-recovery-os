@@ -9,7 +9,6 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS, TEST_ANALYSIS_TERMS } from "../test/governedTerms";
 import { schedulePilotAssessment } from "./pilotAssessmentService";
 import { createExecutionIfAbsent, findExecution } from "../persistence/pilotExecutionStore";
@@ -195,7 +194,7 @@ describe.skipIf(!HAS_DB)("EP-31 · staging, against a real database", () => {
     const policyId = `pol-${uid()}`;
     barFor.set(boundaryId, policyId);
     const policy = {
-      policyId, policyVersion: "1.0.0", calculationMethodVersion: ADMISSION_CALC_VERSION,
+      policyId, policyVersion: "1.0.0",
       minAcceptedRows: 10, minDistinctEntities: 5, maxRejectionRate: 0.2, maxSingleReasonShare: 0.9,
       maxDuplicateRate: 0.05, minCoverageDays: 10, requiredLifecycleStates: ["stalled", "reference"],
       maxOrderingDefectRate: 0.05, maxMissingRecommendedColumns: 2, requireProvenanceDeclaration: true,

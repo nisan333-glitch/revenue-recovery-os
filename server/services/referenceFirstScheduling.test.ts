@@ -29,7 +29,6 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv, SCENARIO_POLICY } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION, parseContractVersion } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { deriveIdempotencyKey, validatePilotDataset } from "../../src/contract/validateDataset";
 import { deriveAdmissionDecisionId } from "../../src/contract/assessmentExecution";
 import { hashAdmissionPolicy } from "../../src/contract/policyHash";
@@ -71,7 +70,6 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
           policy: {
             policyId,
             policyVersion: "1.0.0",
-            calculationMethodVersion: ADMISSION_CALC_VERSION,
             ...SCENARIO_POLICY,
             requiredLifecycleStates: [...SCENARIO_POLICY.requiredLifecycleStates],
           },

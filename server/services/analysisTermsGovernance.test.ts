@@ -19,7 +19,6 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { SCENARIO_POLICY } from "../../src/contract/syntheticPilotDataset";
 import { hashAnalysisTerms, makeAnalysisTerms } from "../../src/contract/analysisTerms";
 import { proposeAnalysisTerms } from "./pilotAnalysisTermsService";
@@ -91,7 +90,6 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     const policy = {
       policyId,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_CALC_VERSION,
       ...SCENARIO_POLICY,
       requiredLifecycleStates: [...SCENARIO_POLICY.requiredLifecycleStates],
     };

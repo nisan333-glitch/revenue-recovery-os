@@ -15,7 +15,6 @@ import {
   toCsv,
 } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
@@ -32,7 +31,6 @@ function policyBody(over: Record<string, unknown> = {}) {
   return {
     policyId: `pol-${uid()}`,
     policyVersion: "1.0.0",
-    calculationMethodVersion: ADMISSION_CALC_VERSION,
     minAcceptedRows: 10,
     minDistinctEntities: 5,
     maxRejectionRate: 0.2,

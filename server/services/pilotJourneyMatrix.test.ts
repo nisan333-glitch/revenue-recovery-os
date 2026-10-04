@@ -25,7 +25,6 @@ import {
   syntheticScenarios,
 } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { AgentRuntime } from "../agents/runtime";
 import { createPilotAssessmentAgent } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
@@ -84,7 +83,6 @@ describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () =
     const policy = {
       policyId,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_CALC_VERSION,
       ...SCENARIO_POLICY,
       requiredLifecycleStates: [...SCENARIO_POLICY.requiredLifecycleStates],
       ...thresholds,
@@ -256,11 +254,17 @@ describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () =
   it("refuses in the domain when a threshold satisfies the schema but configures nothing", async () => {
     // A single space is a string of length 1, so the transport lets it through; the domain guard is
     // what stops it. This is the exact shape the inner layer exists for.
-    const { proposed } = await boundaryWithActivePolicy({ calculationMethodVersion: " " });
+    //
+    // RE-POINTED (Finding 3, 2026-10-04) from `calculationMethodVersion` to `policyId`. That field is no
+    // longer in the request body — it is stamped server-side — so it can never reach the domain guard
+    // again and could not be the subject of this test. `policyId` is the same shape: `minLength: 1`
+    // passes a single space at the transport, and `validateAdmissionPolicy` rejects it on `!value.trim()`.
+    // The test's intent is unchanged; only the field that can still demonstrate it has moved.
+    const { proposed } = await boundaryWithActivePolicy({ policyId: " " });
     expect(proposed.statusCode).toBe(403);
     expect(proposed.json().message).toMatch(/every threshold must be configured explicitly/);
     // The refusal must not echo the caller's input back — the message is deliberately generic.
-    expect(proposed.json().message).not.toMatch(/calculationMethodVersion/);
+    expect(proposed.json().message).not.toMatch(/policyId/);
   });
 
   it("answers NOT_ASSESSABLE when no policy is named at all", async () => {
@@ -320,7 +324,7 @@ describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () =
     const boundaryId = `pb-${uid()}`;
     const policyId = `pol-${uid()}`;
     const policy = {
-      policyId, policyVersion: "1.0.0", calculationMethodVersion: ADMISSION_CALC_VERSION,
+      policyId, policyVersion: "1.0.0",
       ...SCENARIO_POLICY, requiredLifecycleStates: [...SCENARIO_POLICY.requiredLifecycleStates],
     };
     expect(

@@ -381,6 +381,16 @@ export const pilotAssessmentListSchema = {
  * Every threshold is `required` here as well as in the domain. A schema that let one be omitted
  * would push the "unset means no limit" decision one layer down, where it is harder to see.
  */
+//
+// FINDING 3 · `calculationMethodVersion` IS GONE FROM THIS BODY. Its own documented meaning is "which
+// evaluator computed the rates", so it is a statement about the SERVER's implementation and was never
+// the operator's to make. An audit proved the consequence: an arbitrary label passed validation with
+// zero defects, changed `admissionPolicyHash`, and therefore changed the `PAD-` frozen into the
+// decision — while the evaluator that actually ran was untouched and recorded separately. That is the
+// proof capturing a CLAIMED calculation, which Trust Invariant rule 4 forbids.
+//
+// The server now stamps `ADMISSION_EVALUATOR_VERSION` instead. Same treatment, same stated reason, as
+// `analysisTermsSchema` below.
 export const admissionPolicySchema = {
   body: {
     type: "object",
@@ -397,7 +407,6 @@ export const admissionPolicySchema = {
         required: [
           "policyId",
           "policyVersion",
-          "calculationMethodVersion",
           "minAcceptedRows",
           "minDistinctEntities",
           "maxRejectionRate",
@@ -412,7 +421,6 @@ export const admissionPolicySchema = {
         properties: {
           policyId: { type: "string", minLength: 1, maxLength: 256 },
           policyVersion: { type: "string", minLength: 1, maxLength: 32 },
-          calculationMethodVersion: { type: "string", minLength: 1, maxLength: 64 },
           minAcceptedRows: { type: "integer", minimum: 0, maximum: 1000000 },
           minDistinctEntities: { type: "integer", minimum: 0, maximum: 1000000 },
           maxRejectionRate: { type: "number", minimum: 0, maximum: 1 },

@@ -63,7 +63,13 @@ const TRANSITION_PATH: Readonly<Record<Exclude<PolicyTransition, "PROPOSED">, st
  * reason cannot be reviewed later, so there is no way to record one without saying why.
  */
 export function proposeAdmissionPolicy(
-  input: { readonly boundaryId: string; readonly policy: PilotAdmissionPolicy; readonly rationale: string },
+  // FINDING 3 · the thresholds only. `calculationMethodVersion` is stamped by the server from the
+  // evaluator that will actually judge, and the request body has no such field.
+  input: {
+    readonly boundaryId: string;
+    readonly policy: Omit<PilotAdmissionPolicy, "calculationMethodVersion">;
+    readonly rationale: string;
+  },
   actor: DevActor,
 ): Promise<ProposePolicyResult> {
   return apiRequest<ProposePolicyResult>("POST", "/pilot/admission-policies", actor, {

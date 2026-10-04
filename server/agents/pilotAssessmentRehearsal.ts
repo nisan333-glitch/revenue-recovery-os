@@ -28,7 +28,6 @@ import { createPilotAssessmentAgent, PILOT_ASSESSMENT_AGENT_ID } from "./pilotAs
 import { assertSyntheticPilotEnvironment } from "./syntheticPilot";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import type { ExecutionState } from "../../src/contract/assessmentExecution";
 
 const REHEARSAL_SCHEMA_VERSION = "nh-pilot-assessment-rehearsal-v1";
@@ -156,7 +155,8 @@ export async function runPilotAssessmentRehearsal(
         policy: {
           policyId,
           policyVersion: "1.0.0",
-          calculationMethodVersion: ADMISSION_CALC_VERSION,
+          // FINDING 3 · no `calculationMethodVersion`: the server stamps the evaluator version it will
+          // actually judge with, and this body cannot express one.
           minAcceptedRows: 10,
           minDistinctEntities: 5,
           maxRejectionRate: 0.2,

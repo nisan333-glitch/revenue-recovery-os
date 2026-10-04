@@ -23,7 +23,6 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 import { scheduleRequestFrom } from "../test/scheduleRequest";
 
@@ -225,7 +224,6 @@ describe.skipIf(!HAS_DB)("EP-17 · a full assessment-only run with no fabricated
     const policy = {
       policyId: `pol-${uid()}`,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_CALC_VERSION,
       minAcceptedRows: 10,
       minDistinctEntities: 5,
       maxRejectionRate: 0.2,

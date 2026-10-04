@@ -23,7 +23,11 @@ import {
   type DatasetProvenance,
 } from "../../src/contract/pilotDataContract";
 import { IDENTITY_CODES } from "../../src/contract/rejectionCodes";
-import { evaluateAdmission, type AdmissionDecision } from "../../src/contract/admissionGate";
+import {
+  ADMISSION_EVALUATOR_VERSION,
+  evaluateAdmission,
+  type AdmissionDecision,
+} from "../../src/contract/admissionGate";
 import { POLICY_CODES } from "../../src/contract/admissionCodes";
 import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
 import { findAdmissionPolicy, registerAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
@@ -415,7 +419,15 @@ export async function submitPilotDataset(
 
 export interface RegisterAdmissionPolicyRequest {
   readonly boundaryId: string;
-  readonly policy: PilotAdmissionPolicy;
+  /**
+   * FINDING 3 · The thresholds, WITHOUT `calculationMethodVersion`.
+   *
+   * That field's documented meaning is "which evaluator computed the rates" — a fact about the server's
+   * implementation, not a commercial judgement the customer side makes. It is stamped below from
+   * `ADMISSION_EVALUATOR_VERSION`, the constant that actually judges the dataset, so the policy hash
+   * commits the evaluator that will really run.
+   */
+  readonly policy: Omit<PilotAdmissionPolicy, "calculationMethodVersion">;
   /** Why this bar. Required — a threshold with no stated reasoning cannot be reviewed. */
   readonly rationale: string;
 }
@@ -447,7 +459,15 @@ export async function registerPilotAdmissionPolicy(
 
   let policy: PilotAdmissionPolicy;
   try {
-    policy = makeAdmissionPolicy(request.policy);
+    // FINDING 3 · THE PROVENANCE IS STAMPED, NEVER ACCEPTED. The spread order is the guarantee: even if
+    // a caller got a `calculationMethodVersion` past the transport, the server's value is written last
+    // and wins. The transport refuses it anyway (`additionalProperties: false` under
+    // `removeAdditional: false`), so this is the second of two fail-closed layers rather than the only
+    // one — and it is the layer that holds for an in-process caller the transport never sees.
+    policy = makeAdmissionPolicy({
+      ...(request.policy as PilotAdmissionPolicy),
+      calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
+    });
   } catch {
     // The message is deliberately generic; the caller gets the per-field defects from the gate's
     // own codes rather than an exception string that could echo their input.

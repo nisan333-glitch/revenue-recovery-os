@@ -184,12 +184,32 @@ the computation rather than merely before the write, and the agent comment that 
 rebuild "cannot drift" corrected. This is **execution compatibility**, in stage C — it does not touch the
 submission identity, and `calculationMethodVersion` remains explicitly **open** and out of `pds`.
 
-**Still open (2026-10-04).** `PilotAdmissionPolicy.calculationMethodVersion` is **operator-supplied**,
-hashed into `admissionPolicyHash` → the `PAD-` → the frozen decision, and compared to nothing. It must
-**not** simply be required to equal `ADMISSION_EVALUATOR_VERSION`: that constant
-(`"admission-gate-2026.1"`) and `ADMISSION_CALC_VERSION` (`"admission-2026.1"`) are currently different
-values versioning different things, and conflating them would break legitimate policy creation. What each
-versions, and the smallest correct remedy, is under audit.
+**Admission-policy provenance decision (2026-10-04).** `PilotAdmissionPolicy.calculationMethodVersion`
+documents itself as *"which evaluator computed the rates"* — a fact about the server — yet it arrived from
+the operator and was validated only as a non-empty string. An audit proved an arbitrary label passed with
+zero defects, changed `admissionPolicyHash` and therefore the `PAD-` frozen into the decision, while the
+evaluator that actually ran was untouched. It changed no outcome, count, rate or check, so the harm was
+never a wrong verdict: it was the **proof carrying an operator-authored claim about its own calculation**,
+which rule 4 forbids. The governing rule is now:
+
+> **The calculation provenance recorded on a governed definition is stated by the server, never by a
+> caller.** It names the implementation that will actually judge, and the definition's hash commits it.
+
+**Built 2026-10-04** ([`docs/ADMISSION_POLICY_PROVENANCE_V1.md`](docs/ADMISSION_POLICY_PROVENANCE_V1.md)):
+the field is gone from the request (an injected one is a **400**), the server stamps
+`ADMISSION_EVALUATOR_VERSION` before hashing, and policy and decision agree for every new record — the
+agreement the original module comment promised and never implemented. The audit established these were
+**one concept with two inconsistent constants**, not two layers: both arrived in the same commit, the
+"stamped into every decision" intent was never implemented for `ADMISSION_CALC_VERSION`, and no evaluator
+ever read it. That constant is now **retired and relabelled**, kept only because historical rows store it.
+`POLICY_HASH_SCHEME` is unchanged under a five-point proof, and history is untouched — no production path
+ever recomputes a historical policy hash.
+
+**Still open (2026-10-04).** The admission-policy register's stored hash is **never re-verified** in
+production — `policyHashMatches` has no production caller — while the analysis-terms register verifies its
+hash on every resolve and refuses `NH-AX-1010`, explicitly because a stale hash means the row changed
+after it was blessed. Both tables are append-only, so the exposure is the same migration/restore/bug set
+the terms register refuses to treat as acceptable for itself. Its own slice.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

@@ -17,7 +17,8 @@ import {
 import { PILOT_DATA_CONTRACT_VERSION } from "./pilotDataContract";
 import { validatePilotDataset } from "./validateDataset";
 import { evaluateAdmission } from "./admissionGate";
-import { ADMISSION_CALC_VERSION, makeAdmissionPolicy } from "./pilotAdmissionPolicy";
+import { makeAdmissionPolicy } from "./pilotAdmissionPolicy";
+import { ADMISSION_EVALUATOR_VERSION } from "./admissionGate";
 import { makePolicy } from "../assessment/policy";
 
 const ASSESSMENT_POLICY = makePolicy({
@@ -29,7 +30,7 @@ const ASSESSMENT_POLICY = makePolicy({
 const ADMISSION_POLICY = makeAdmissionPolicy({
   policyId: "synthetic-scenario-bar",
   policyVersion: "1.0.0",
-  calculationMethodVersion: ADMISSION_CALC_VERSION,
+  calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
   ...SCENARIO_POLICY,
   requiredLifecycleStates: [...SCENARIO_POLICY.requiredLifecycleStates],
 });

@@ -14,6 +14,21 @@
 // parameter produces a NEW decision rather than silently altering an old one.
 import { POLICY_CODES, type AdmissionCodeSpec } from "./admissionCodes";
 
+/**
+ * RETIRED 2026-10-04. The label historical admission-policy rows carry — and nothing more.
+ *
+ * It described no evaluator and drove no computation, ever. An audit established that: it is read by no
+ * evaluator anywhere, the field it populated documents itself as "which evaluator computed the rates",
+ * and the decision has always been stamped from `ADMISSION_EVALUATOR_VERSION` instead — so the "stamped
+ * into every decision" intent recorded above was never actually implemented for this constant. A policy
+ * registered now records `ADMISSION_EVALUATOR_VERSION`, stamped server-side.
+ *
+ * KEPT, NOT DELETED, and deliberately: historical rows store this exact string, and the
+ * historical-compatibility test needs to name it to prove their hashes and `PAD-`s are untouched.
+ * Nothing in production reads it. Do not use it to describe a current evaluator.
+ *
+ * See `docs/ADMISSION_POLICY_PROVENANCE_V1.md`.
+ */
 export const ADMISSION_CALC_VERSION = "admission-2026.1";
 
 /** Lifecycle states a policy may require the accepted rows to contain. */

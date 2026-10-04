@@ -9,7 +9,6 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { AgentRuntime } from "../agents/runtime";
 import { createPilotAssessmentAgent, PILOT_ASSESSMENT_AGENT_ID } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
@@ -128,7 +127,6 @@ describe.skipIf(!HAS_DB)("EP-17 · purging an execution input", () => {
     const policy = {
       policyId: `pol-${uid()}`,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_CALC_VERSION,
       minAcceptedRows: 10,
       minDistinctEntities: 5,
       maxRejectionRate: 0.2,
@@ -615,7 +613,6 @@ describe.skipIf(!HAS_DB)("EP-18 · the scan reaches records behind an ineligible
     const policy = {
       policyId: `pol-${uid()}`,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_CALC_VERSION,
       minAcceptedRows: 10,
       minDistinctEntities: 5,
       maxRejectionRate: 0.2,
@@ -793,7 +790,6 @@ describe.skipIf(!HAS_DB)("EP-18 · a database failure fails the run instead of r
     const policy = {
       policyId: `pol-${uid()}`,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_CALC_VERSION,
       minAcceptedRows: 10,
       minDistinctEntities: 5,
       maxRejectionRate: 0.2,

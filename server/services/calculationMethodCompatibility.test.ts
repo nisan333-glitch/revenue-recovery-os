@@ -29,7 +29,6 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv, SCENARIO_POLICY } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { ASSESSMENT_CALC_VERSION } from "../../src/assessment/policy";
 import {
   deriveExecutionId,
@@ -119,7 +118,7 @@ describe.skipIf(!HAS_DB)("Findings 1 & 2 · calculation-method compatibility", (
         payload: {
           boundaryId,
           policy: {
-            policyId, policyVersion: "1.0.0", calculationMethodVersion: ADMISSION_CALC_VERSION,
+            policyId, policyVersion: "1.0.0",
             ...SCENARIO_POLICY, requiredLifecycleStates: [...SCENARIO_POLICY.requiredLifecycleStates],
           },
           rationale: "fixture",

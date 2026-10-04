@@ -20,7 +20,8 @@ import {
 import { pollUntilSettled } from "../modules/assessment/executionPolling";
 import { operatorActorFor, STEWARD } from "./devActor";
 import { SCENARIO_POLICY, SYNTHETIC_PROVENANCE } from "../contract/syntheticPilotDataset";
-import { ADMISSION_CALC_VERSION, makeAdmissionPolicy } from "../contract/pilotAdmissionPolicy";
+import { makeAdmissionPolicy } from "../contract/pilotAdmissionPolicy";
+import { ADMISSION_EVALUATOR_VERSION } from "../contract/admissionGate";
 
 const ACTOR = operatorActorFor(null);
 
@@ -29,7 +30,7 @@ const ACTOR = operatorActorFor(null);
 const SCENARIO_ADMISSION_POLICY = makeAdmissionPolicy({
   policyId: "network-failure-fixture",
   policyVersion: "1.0.0",
-  calculationMethodVersion: ADMISSION_CALC_VERSION,
+  calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
   ...SCENARIO_POLICY,
   requiredLifecycleStates: [...SCENARIO_POLICY.requiredLifecycleStates],
 });
