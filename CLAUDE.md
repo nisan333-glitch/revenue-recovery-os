@@ -205,11 +205,22 @@ ever read it. That constant is now **retired and relabelled**, kept only because
 `POLICY_HASH_SCHEME` is unchanged under a five-point proof, and history is untouched — no production path
 ever recomputes a historical policy hash.
 
-**Still open (2026-10-04).** The admission-policy register's stored hash is **never re-verified** in
-production — `policyHashMatches` has no production caller — while the analysis-terms register verifies its
-hash on every resolve and refuses `NH-AX-1010`, explicitly because a stale hash means the row changed
-after it was blessed. Both tables are append-only, so the exposure is the same migration/restore/bug set
-the terms register refuses to treat as acceptable for itself. Its own slice.
+**Register tamper-evidence decision (2026-10-04).** The admission-policy register's stored hash was
+**never re-verified** in production — `hashAdmissionPolicy` ran only at registration, the judging path
+trusted `stored.policyHash`, and `policyHashMatches` had no production caller — while the analysis-terms
+register verified on every resolve and refused. Both tables are append-only, so the exposure was the same
+migration/restore/bug set the terms register refuses to treat as acceptable for itself. The governing rule
+is now:
+
+> **A governed definition is verified against its own witness wherever it is resolved for use, not
+> trusted as stored.** A row that fails its witness judges nothing and may not be put in force — but
+> governance may always still *withdraw* its authority.
+
+**Built 2026-10-04** ([`docs/ADMISSION_POLICY_PROVENANCE_V1.md`](docs/ADMISSION_POLICY_PROVENANCE_V1.md) §10):
+verified **first** on the judging path, so "this row changed" outranks "nobody activated it"; `ACTIVATED`
+and `UNFROZEN` refused; `FROZEN` and `RETIRED` deliberately still permitted, because refusing every
+transition would leave governance unable to stop what it had just found. It refuses nothing today — every
+row the application has written hashes to its own values.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

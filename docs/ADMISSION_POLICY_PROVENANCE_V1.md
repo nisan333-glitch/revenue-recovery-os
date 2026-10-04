@@ -135,15 +135,57 @@ Not proof, not a Recovery Case, not a counted dollar. Lane 1 remains `constitute
 not touch the submission identity; `calculationMethodVersion` is still **not** a `pds` component and that
 question stays explicitly open.
 
-## 10 · Still open — queued, deliberately not built here
+## 10 · The register is now tamper-evident at read time — BUILT 2026-10-04
 
-**The admission-policy register's stored hash is never re-verified in production.** `policyHashMatches`
-exists and has **no production caller**, while `resolveGovernedAnalysisTerms` verifies its terms hash on
-every resolve and refuses `NH-AX-1010` on mismatch — explicitly because *"a stored hash that no longer
-matches the stored values means the row changed after it was blessed — by a migration, a restore or a
-bug."* Both tables carry append-only triggers, so the exposure is exactly that set of causes, and the
-terms register rejects that reasoning as sufficient for itself.
+Queued by this slice and built as its own, immediately after. The asymmetry it closes:
+`resolveGovernedAnalysisTerms` verified its terms hash on **every resolve** and refused rather than
+recomputing — *"a stored hash that no longer matches the stored values means the row changed after it was
+blessed — by a migration, a restore or a bug. Recomputing and carrying on would launder that change into
+the next finding."* The admission-policy register had the identical exposure and did the opposite:
+`hashAdmissionPolicy` ran in exactly one production place (registration), the judging path read
+`stored.policyHash` and trusted it, and `policyHashMatches` had **no production caller at all**.
 
-So the two registers are asymmetric: one is tamper-evident at read time, the other is trusted as stored.
-Adding read-time verification introduces a new refusal path on an existing flow and affects every stored
-row, so it is **its own slice** with its own falsifiers — not a rider on a provenance correction.
+Both tables carry append-only triggers, so the residual exposure is precisely the migration/restore/bug
+set the terms register already refuses to treat as acceptable for itself.
+
+### Two enforcement points, and one deliberate asymmetry
+
+| Where | Behaviour |
+|---|---|
+| **judging a dataset** (`submitPilotDataset`) | verified **first**, before any other question is asked. On mismatch: `admissionGovernanceRefusal` names the policy, the outcome is `NOT_ASSESSABLE`, and `admissionPolicyState` / `admissionPolicyHash` are **null** |
+| **putting a bar in force** (`ACTIVATED`, `UNFROZEN`) | refused `409` — an altered bar may not acquire the authority to judge |
+| **withdrawing authority** (`FROZEN`, `RETIRED`) | **still allowed**, deliberately |
+
+That last row is the point. Refusing *every* transition on a suspect row would leave governance unable to
+stop the very thing it had just discovered. Only the transitions that **grant** evaluation authority are
+refused; the ones that withdraw it are exactly what must keep working. Falsifier **F24** applies the check
+to every transition and fails on it, so the asymmetry is enforced rather than merely intended.
+
+**Why the check is first.** *"This row changed"* outranks *"nobody put it in force"*, because the second
+invites re-registering over it and the first forbids that. `policyState` is left null on a mismatch for
+the same reason the terms resolver returns `state: null`: the lifecycle of a row that fails its own
+witness is not a fact worth reporting, and reporting it would dress the row as ordinarily governed.
+
+**The dataset row is still written** when the file is usable, and that is correct — the file was
+validated, and fitness is a separate verdict. What matters is that the recorded decision cites **no
+policy and no hash**, so nothing downstream can bind an execution to it.
+
+**It refuses nothing today.** Every row the application has ever written hashes to its own values, which
+the whole existing suite re-proves (548 → 554 tests, all green, no behaviour change). A latent guard, like
+the calculation-method gates.
+
+### Falsifiers
+
+| # | Falsifier | Must fail | Did fail |
+|---|---|---|---|
+| F22 | judging-path verification removed | 2, 3, 6 | all three |
+| F23 | put-in-force verification removed | 4, 5 | both |
+| F24 | verification applied to **every** transition | 5 | it did — governance could no longer stop a tampered bar |
+| F25 | the check moved **after** the lifecycle check | 2 | it did |
+
+### Still open
+
+The **governance read** surface (`readPilotPolicyGovernance`) still reports a stored row's hash and
+lifecycle without saying whether the row hashes to its own definition. A read should *report* a mismatch
+rather than refuse — an auditor must be able to see a tampered row — but that is a response-shape change
+and is left for its own decision.

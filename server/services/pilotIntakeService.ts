@@ -29,9 +29,9 @@ import {
   type AdmissionDecision,
 } from "../../src/contract/admissionGate";
 import { POLICY_CODES } from "../../src/contract/admissionCodes";
-import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
+import { admissionPolicyRef, makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
 import { findAdmissionPolicy, registerAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
-import { hashAdmissionPolicy } from "../../src/contract/policyHash";
+import { hashAdmissionPolicy, policyHashMatches } from "../../src/contract/policyHash";
 import { deriveAdmissionDecisionId } from "../../src/contract/assessmentExecution";
 import {
   canTransition,
@@ -307,6 +307,24 @@ export async function submitPilotDataset(
       request.admissionPolicyVersion?.trim() || undefined,
     );
     if (stored) {
+      // TAMPER EVIDENCE, FIRST — checked here rather than trusted, and before anything else is asked
+      // about this row. The hash was computed from the definition when it was proposed, so a stored hash
+      // that no longer matches the stored values means the row changed after it was blessed: by a
+      // migration, a restore or a bug. Judging a dataset against it would launder that change into an
+      // admission decision, and the decision freezes the hash — so the altered bar would be cited
+      // forever by a `PAD-` that looks sound.
+      //
+      // The register carries an append-only trigger, which is exactly the protection the analysis-terms
+      // register also has and still does not treat as sufficient for itself. This closes the asymmetry
+      // between the two: one was tamper-evident at read time and the other was trusted as stored.
+      //
+      // `policyState` is deliberately left null on a mismatch. The lifecycle of a row that fails its own
+      // witness is not a fact worth reporting, and reporting it would dress the row as ordinarily
+      // governed. Same shape as `resolveGovernedAnalysisTerms`, which returns `state: null` here.
+      if (!(await policyHashMatches(stored.policy, stored.policyHash))) {
+        governanceRefusal =
+          `admission policy ${admissionPolicyRef(stored.policy)} no longer hashes to the definition it was registered with`;
+      } else {
       const governance = await policyGovernanceState(boundaryId, stored.policy.policyId, stored.policy.policyVersion);
       policyState = governance.state;
       if (!mayEvaluate(governance.state)) {
@@ -322,6 +340,7 @@ export async function submitPilotDataset(
       } else {
         admissionPolicy = stored.policy;
         policyHash = stored.policyHash;
+      }
       }
     }
   }
@@ -536,6 +555,18 @@ export async function transitionPilotAdmissionPolicy(
   const stored = await findAdmissionPolicy(boundaryId, request.policyId, request.policyVersion);
   if (!stored) {
     throw new NotFoundError("no such admission policy version exists for this boundary");
+  }
+
+  // A row that fails its own witness may not be PUT IN FORCE. Deliberately only for the transitions
+  // that grant evaluation authority: refusing a FREEZE or a RETIRE on a suspect bar would be perverse —
+  // stopping it is the correct response, and governance must not be unable to stop it.
+  if (
+    (transition === "ACTIVATED" || transition === "UNFROZEN") &&
+    !(await policyHashMatches(stored.policy, stored.policyHash))
+  ) {
+    throw new ConflictError(
+      `admission policy ${request.policyId}@${request.policyVersion} no longer hashes to the definition it was registered with; it cannot be put in force. Investigate the row rather than re-registering over it.`,
+    );
   }
 
   const governance = await policyGovernanceState(boundaryId, request.policyId, request.policyVersion);
