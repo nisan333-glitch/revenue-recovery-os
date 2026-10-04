@@ -223,7 +223,20 @@ would learn `NH-AX-1017` only by being refused.
 ## 6c · The browser journey — BUILT 2026-10-04
 
 `e2e/journey.mjs` §11b drives it through the screen, the API, the database and the worker, and asserts
-the persisted link, the preservation, the visible change and a governance refusal. 119/119 checks.
+the persisted link, the preservation, the visible change and a governance refusal. 120/120 checks.
+
+**The database lifecycle is deliberate, and the harness states its own contract.** Every identifier the
+journey writes under is derived per run — the tenant boundary, the admission-policy id, the
+analysis-terms id — so two runs against one database occupy two disjoint tenants, and every count it
+asserts is scoped to its own boundary. That makes a second run on the **same** database the
+repeat/idempotency case rather than a convenience, and §1a measures the claim instead of assuming it:
+this run's tenant must hold nothing before the run writes anything, so a leaked row, a reused
+identifier or a boundary that outlived a previous run fails there by name. Verified by running it twice
+without recreating the database: 120/120 both times, two boundaries each holding exactly three
+executions, two methods and one revision — the same shape — with every submission key, execution
+identity and finding hash distinct across both runs, and the register sweep clean over the shared
+database. The harness does not clean up after itself and is not required to: rows accumulate, which is
+correct for append-only storage, and they accumulate in tenants this run cannot see.
 
 **Why history has to be seeded, and it is the one unavoidable fixture.** A re-assessment only means
 something across a method change, and the method is a build constant: every definition the governance

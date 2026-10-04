@@ -15,6 +15,25 @@
 //
 // Deterministic: a fixed synthetic CSV, a fixed as-of date, a boundary derived once per run.
 // Exits non-zero on any failure. Never uses real or disguised customer data.
+//
+// ── THE DATABASE CONTRACT · deliberate, not incidental ────────────────────────────────────────────
+//
+// THIS HARNESS IS REPEATABLE ON ONE DATABASE, and that is a commitment rather than something that
+// happens to work. Every identifier it writes under is derived per run — the tenant boundary, the
+// admission-policy id and the analysis-terms id — so two runs against the same database occupy two
+// disjoint tenants and cannot collide on a primary key, inherit each other's governance state, or read
+// each other's rows. Every count this file asserts is scoped to its own `BOUNDARY` for the same
+// reason: a global count would measure other runs and would drift the moment one was repeated.
+//
+// SO A SECOND RUN ON THE SAME DATABASE IS A REAL TEST, not a convenience — it is the repeat/idempotency
+// case, and it must pass with the same number of checks and the same verdicts as the first. The
+// precondition below is what makes the claim checkable rather than asserted: this run's boundary must
+// hold NOTHING before the run writes anything. A leaked row, a reused identifier or a boundary that
+// survived a previous run fails there, by name, instead of surfacing later as an inexplicable count.
+//
+// WHAT IS NOT CLAIMED: the harness does not clean up after itself and is not required to. Rows
+// accumulate, which is correct for append-only storage; they accumulate in other tenants, where this
+// run cannot see them.
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -54,6 +73,15 @@ function check(name, ok, detail = "") {
   if (!ok) failures += 1;
   console.log(`${ok ? "PASS" : "FAIL"} · ${name}${detail ? ` · ${detail}` : ""}`);
 }
+/**
+ * A dev-identity label ("Dana Levy (operator)") reduced to the actor id the API expects.
+ *
+ * Declared here, with the other pure helpers, because it is used from the database-contract
+ * precondition in section 1a — it previously sat below that, where a `const` is hoisted but not yet
+ * initialised, so the first use would have thrown a ReferenceError instead of checking anything.
+ */
+const bareId = (label) => label.replace(/\s*\(.*\)$/, "").trim();
+
 function checkEqual(name, actual, expected) {
   check(name, actual === expected, actual === expected ? "" : `expected ${expected}, got ${actual}`);
 }
@@ -236,6 +264,36 @@ try {
   await page.getByLabel("Max duplicate rate", { exact: true }).fill(String(SCENARIO_POLICY.maxDuplicateRate));
   const proposerName = (await proposeButton.textContent())?.replace("Propose as ", "").trim() ?? "";
   const stewardName = (await activateButton.textContent())?.replace("Activate as ", "").trim() ?? "";
+
+  // ── 1a · The database contract, checked before this run writes anything ─────────────────────────
+  //
+  // See the header: this harness is repeatable on one database because every identifier it writes under
+  // is derived per run. That is only true if the boundary really is untouched when the run starts, so it
+  // is measured rather than assumed — a leaked row, a reused identifier or a boundary that outlived a
+  // previous run fails HERE, by name, rather than surfacing later as a count nobody can explain.
+  const startingState = await page.evaluate(async ([boundaryId, actorId]) => {
+    const get = async (path) => {
+      const res = await fetch(path, { headers: { "x-actor-id": actorId, "x-actor-role": "operator" } });
+      return { status: res.status, body: res.ok ? await res.json() : await res.text() };
+    };
+    return {
+      executions: await get(`/api/pilot/assessments?boundaryId=${encodeURIComponent(boundaryId)}`),
+      terms: await get(`/api/pilot/analysis-terms/list?boundaryId=${encodeURIComponent(boundaryId)}`),
+    };
+  }, [BOUNDARY, bareId(proposerName)]);
+  const startedEmpty =
+    startingState.executions.status === 200 &&
+    (startingState.executions.body?.length ?? -1) === 0 &&
+    startingState.terms.status === 200 &&
+    (startingState.terms.body?.terms?.length ?? -1) === 0;
+  check(
+    "this run's tenant is empty before it writes anything — so a repeat on one database is isolated",
+    startedEmpty,
+    `executions=${startingState.executions.body?.length} terms=${startingState.terms.body?.terms?.length}`,
+  );
+  haltIf(!startedEmpty,
+    "the tenant this run derived already holds rows, so every scoped count below would be measuring " +
+      "another run's state and a passing journey would prove nothing about this one");
   check(
     "the two governance acts are offered as two different identities",
     proposerName !== "" && stewardName !== "" && proposerName !== stewardName,
@@ -288,7 +346,6 @@ try {
   // Everything below is scoped to the audit panel, which the screen renders ONLY from a successful
   // lifecycle read — and that read requires `AuditRead`, which the operator does not hold. So the
   // panel's mere existence is evidence the UI performed it as a steward.
-  const bareId = (label) => label.replace(/\s*\(.*\)$/, "").trim();
   const audit = page.getByText("Who decided what", { exact: false }).locator("..");
   await audit.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
   check("the governance audit trail loaded, which requires an AuditRead identity",
