@@ -445,24 +445,30 @@ function ReassessmentOutcome({
   // never needed to re-upload.
   if (result.refusal) {
     return (
-      <Panel aria-label="Re-assessment refusal" className="p-5">
+      // Wrapped in a labelled section rather than labelling the Panel: `Panel` accepts only children
+      // and a className, so an aria-label handed to it is silently dropped — which is how this region
+      // came to be unfindable while looking, in the source, as though it had a name.
+      <section aria-label="Re-assessment refusal">
+        <Panel className="p-5">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Pill tone="detect">{result.refusal.code}</Pill>
           <span className="text-sm text-slate-200">{result.refusal.title}</span>
         </div>
         {result.refusalDetail && <p className="text-[13px] text-slate-300">{result.refusalDetail}</p>}
         <p className="mt-2 text-[12px] text-slate-400">{result.refusal.remediation}</p>
-        <p className="mt-3 text-[12px] text-slate-500">
-          Nothing was created and nothing was changed. The earlier result is untouched and still readable
-          at its own identifier.
-        </p>
-      </Panel>
+          <p className="mt-3 text-[12px] text-slate-500">
+            Nothing was created and nothing was changed. The earlier result is untouched and still
+            readable at its own identifier.
+          </p>
+        </Panel>
+      </section>
     );
   }
 
   if (problem !== null) {
     return (
-      <Panel aria-label="Re-assessment problem" className="p-5">
+      <section aria-label="Re-assessment problem">
+        <Panel className="p-5">
         <div className="text-sm text-detect-500">No result is shown, because none was confirmed.</div>
         <p className="mt-1 text-[13px] text-slate-300">{problem}</p>
         {result.executionId && (
@@ -482,7 +488,8 @@ function ReassessmentOutcome({
             {retrying ? "Retrying…" : "Retry the same request"}
           </button>
         )}
-      </Panel>
+        </Panel>
+      </section>
     );
   }
 
@@ -491,7 +498,12 @@ function ReassessmentOutcome({
       <Panel className="mb-4 p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-slate-200">The revision</span>
-          <ExecutionStatePill state={revision?.state ?? result.state} />
+          {/* Named, because `AssessmentExecutionPanel` below renders its own state pill: an unscoped
+              search for the completion sentence resolves two elements, and a harness that swallowed
+              the resulting strict-mode error read a finished revision as one that never finished. */}
+          <span aria-label="Revision state">
+            <ExecutionStatePill state={revision?.state ?? result.state} />
+          </span>
           {result.created ? (
             <Pill tone="proof">created</Pill>
           ) : (
@@ -541,7 +553,8 @@ function ReassessmentOutcome({
       {/* BOTH, side by side. The claim that makes this a revision rather than a replacement, shown
           rather than asserted — and reported from the server's own `previousFindingExists`. */}
       {revision?.finding && previous?.finding && (
-        <Panel aria-label="Both results" className="mt-4 p-5">
+        <section aria-label="Both results">
+        <Panel className="mt-4 p-5">
           <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
             Both observations — the earlier one is preserved, not replaced
           </div>
@@ -563,6 +576,7 @@ function ReassessmentOutcome({
             showed, under the method each names.
           </p>
         </Panel>
+        </section>
       )}
     </section>
   );

@@ -16,7 +16,7 @@
 // Deterministic: a fixed synthetic CSV, a fixed as-of date, a boundary derived once per run.
 // Exits non-zero on any failure. Never uses real or disguised customer data.
 import { chromium } from "playwright";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
@@ -335,16 +335,17 @@ try {
    * tenant's cut-off, which is the same isolation the admission bar has. Driving it through the UI here
    * rather than calling the API keeps the cross-boundary section honest — the boundary really is usable.
    */
-  async function governTermsFor(boundaryId) {
+  async function governTermsFor(boundaryId, termsVersion = TERMS_VERSION) {
     await page.goto(UI_BASE, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "Pilot Policy Governance" }).click();
     await page.getByLabel("Analysis-terms tenant").fill(boundaryId);
     await page.getByLabel("Terms id").fill(TERMS_ID);
-    await page.getByLabel("Terms version").fill(TERMS_VERSION);
+    await page.getByLabel("Terms version").fill(termsVersion);
     await page.getByLabel("Analysis as-of date").fill(AS_OF);
     await page.getByLabel("Stall threshold N (days)").fill(STALL_N);
     await page.getByLabel("Assessment currency").fill(CURRENCY);
-    await page.getByLabel("Reason for this terms act").fill("journey fixture: a second tenant's cut-off");
+    await page.getByLabel("Reason for this terms act")
+      .fill(`journey fixture: ${termsVersion} for ${boundaryId}`);
     await page.getByRole("button", { name: /^Propose terms as / }).click();
     await page.getByLabel("Analysis terms state").getByText("DRAFT", { exact: true })
       .waitFor({ timeout: 15_000 }).catch(() => undefined);
@@ -1010,6 +1011,291 @@ try {
     resumedAudit.includes("UNFROZEN") && resumedAudit.includes("FROZEN") &&
     resumedAudit.includes(bareId(stewardName)),
     resumedAudit.slice(-160));
+
+  // ── 11b · Re-assessment, through the screen, the API, the database and the worker ────────────────
+  //
+  // WHAT THIS PROVES that no in-process test can: that an operator can take a result produced under an
+  // older calculation method and get a current-method answer for the SAME retained bytes, without
+  // re-uploading anything, and that the earlier answer is still there afterwards.
+  //
+  // WHY HISTORY HAS TO BE SEEDED, stated rather than hidden. A re-assessment only means something
+  // across a calculation-method change, and the method is a BUILD CONSTANT — every definition this
+  // screen can register is stamped with the method this build implements, so a freshly governed version
+  // names the method the execution already used and the server correctly answers NH-AX-1017. A result
+  // from before the bump is a fact about the past; `scripts/seed-journey-prebump.ts` records one the way
+  // the pre-bump build recorded it, and its own header says why it is written and not run. Everything
+  // after that line is the real product: the real screen, the real API, the real worker, the real rows.
+  //
+  // The bar is ACTIVE again here, restored by section 11's resume, so this section can use it and then
+  // freeze it for the refusal check.
+  const prebump = JSON.parse(
+    execFileSync("npx", ["vite-node", "scripts/seed-journey-prebump.ts", BOUNDARY, executionId ?? ""], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: process.env,
+    }),
+  );
+  check(
+    "a result from before the calculation-method bump exists to re-assess",
+    typeof prebump.executionId === "string" && prebump.method !== undefined,
+    `${prebump.executionId} · ${prebump.method}`,
+  );
+  haltIf(
+    typeof prebump.executionId !== "string",
+    "no pre-bump execution was seeded, so every re-assessment check below would be asserting against " +
+      "a screen that has nothing to re-assess",
+  );
+
+  // Its finding, as it stands BEFORE anything is re-assessed. The preservation claim is measured
+  // against this, not against a memory of it.
+  const readExecution = (id) =>
+    page.evaluate(async ([boundaryId, executionIdToRead, actorId]) => {
+      const res = await fetch(
+        `/api/pilot/assessments/${executionIdToRead}?boundaryId=${encodeURIComponent(boundaryId)}`,
+        { headers: { "x-actor-id": actorId, "x-actor-role": "operator" } },
+      );
+      return { status: res.status, body: res.ok ? await res.json() : await res.text() };
+    }, [BOUNDARY, id, proposerId]);
+
+  const beforeRevision = await readExecution(prebump.executionId);
+  checkEqual("the pre-bump result is readable before re-assessment", beforeRevision.status, 200);
+  const historicalFindingHash = beforeRevision.body?.finding?.findingHash ?? null;
+  const historicalAssessmentId = beforeRevision.body?.finding?.finding?.assessmentId ?? null;
+  check(
+    "the pre-bump result carries its own finding under its own method",
+    historicalFindingHash !== null &&
+      beforeRevision.body?.finding?.finding?.calculationMethodVersion === prebump.method,
+    `${historicalAssessmentId} · ${beforeRevision.body?.finding?.finding?.calculationMethodVersion}`,
+  );
+
+  // A NEW governed definition blesses this build's method — the real post-bump workflow, proposed and
+  // activated by two different identities, through the screen.
+  const REVISION_TERMS_VERSION = "1.1.0";
+  await governTermsFor(BOUNDARY, REVISION_TERMS_VERSION);
+  const revisionTermsRef = `${TERMS_ID}@${REVISION_TERMS_VERSION}`;
+
+  /**
+   * Choose one governed definition, and report whether it was actually selectable.
+   *
+   * NOT swallowed. The first version of this used `.catch(() => undefined)`, so when the locator did
+   * not match, the radio stayed unselected, submit stayed disabled, the click did nothing — and the
+   * only symptom was a refusal panel that never appeared, blamed on the refusal. A selection that
+   * cannot be made is a failure of this harness and has to say so.
+   */
+  async function chooseDefinition(termsRef) {
+    const radio = page.locator(`input[type="radio"][value="${termsRef}"]`);
+    await radio.waitFor({ state: "visible", timeout: 20_000 }).catch(() => undefined);
+    if (!(await radio.count()) || (await radio.isDisabled())) return false;
+    await radio.check();
+    return radio.isChecked();
+  }
+
+  /** Open the re-assessment screen on one execution. */
+  async function openReassessment(targetExecutionId) {
+    await page.goto(UI_BASE, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Re-assessment", exact: true }).click();
+    await page.getByLabel("Re-assessment tenant").fill(BOUNDARY);
+    await page.getByLabel("Execution to re-assess").fill(targetExecutionId);
+    await page.getByRole("button", { name: "Load this execution" }).click();
+    await page.getByLabel("Governed definitions for re-assessment")
+      .waitFor({ state: "visible", timeout: 20_000 }).catch(() => undefined);
+  }
+
+  // ── 11b.i · GOVERNANCE IS RE-CHECKED NOW, not inherited from the original admission ──────────────
+  //
+  // Freeze the bar and attempt the re-assessment. The pre-bump execution was admitted while the bar was
+  // ACTIVE, so an implementation that trusted the original decision would proceed. NH-AX-1007 on screen
+  // is the evidence that it does not. Unlike section 11's note about schedule-time refusals, this one IS
+  // reachable from the UI: re-assessment never passes through intake, so nothing earlier can refuse it
+  // first and be credited to the wrong rule.
+  await readLifecycle();
+  await page.getByRole("button", { name: "Freeze", exact: true }).click();
+  await lifecycle().getByText("FROZEN", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+  const frozenForReassessment = await lifecycle().getByText("FROZEN", { exact: true }).isVisible();
+  check("the admission bar is FROZEN before the refused re-assessment", frozenForReassessment);
+  haltIf(!frozenForReassessment,
+    "the bar was not frozen, so a re-assessment that succeeded below would say nothing about whether " +
+      "governance is re-checked");
+
+  await openReassessment(prebump.executionId);
+  const chosenWhileFrozen = await chooseDefinition(revisionTermsRef);
+  check("the definition is selectable while the bar is frozen — the refusal comes from the server",
+    chosenWhileFrozen);
+  haltIf(!chosenWhileFrozen,
+    "the definition could not be selected, so an absent refusal panel below would say nothing about " +
+      "whether a frozen bar refuses a re-assessment");
+  await page.getByLabel("Reason for this re-assessment")
+    .fill("journey: the calculation method moved; re-scoring the retained input");
+  await page.getByRole("button", { name: /^Re-assess under this definition/ }).click();
+  const refusalPanel = page.getByLabel("Re-assessment refusal");
+  await refusalPanel.waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
+  const refusalText = ((await refusalPanel.innerText().catch(() => "")) || "").replace(/\s+/g, " ");
+  check(
+    "a frozen bar refuses the re-assessment NH-AX-1007, on screen, with its remedy",
+    refusalText.includes("NH-AX-1007") && /activate or resume the policy/i.test(refusalText),
+    refusalText.slice(0, 200),
+  );
+  check(
+    "the refusal says plainly that nothing was created and nothing was changed",
+    /Nothing was created and nothing was changed/i.test(refusalText),
+  );
+  const afterRefusal = await page.evaluate(async ([boundaryId, actorId]) => {
+    const res = await fetch(`/api/pilot/assessments?boundaryId=${encodeURIComponent(boundaryId)}`, {
+      headers: { "x-actor-id": actorId, "x-actor-role": "operator" },
+    });
+    return res.ok ? (await res.json()).length : -1;
+  }, [BOUNDARY, proposerId]);
+  check("the refused re-assessment created no execution", afterRefusal === 2, `executions=${afterRefusal}`);
+
+  // ── 11b.ii · The same request, once the bar is in force again ───────────────────────────────────
+  await readLifecycle();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await lifecycle().getByText("ACTIVE", { exact: true }).waitFor({ timeout: 15_000 }).catch(() => undefined);
+
+  await openReassessment(prebump.executionId);
+  const optionsText = ((await page.getByLabel("Governed definitions for re-assessment")
+    .innerText().catch(() => "")) || "").replace(/\s+/g, " ");
+  check(
+    "the screen shows the result being re-assessed under its OWN older method",
+    (await page.getByLabel("Previous result").innerText().catch(() => "")).includes(prebump.method),
+    prebump.method,
+  );
+  // THE CHECK THAT PROVES THIS IS NOT A NO-OP, and its first form had the premise wrong. It expected the
+  // screen to show NH-AX-1017 here, reasoning that the definition the pre-bump execution ran under would
+  // be listed as refusable. It is not listed at all: every definition this build can register is stamped
+  // with the method this build implements, and the pre-bump method is one no registered definition
+  // names. So the evidence is the other way round — the previous method differs from EVERY definition
+  // on offer, which is exactly what makes any selection below a real method change.
+  check(
+    "every definition on offer names a method DIFFERENT from the one the result was computed with",
+    optionsText.includes(revisionTermsRef) && !optionsText.includes(prebump.method),
+    `offered: ${optionsText.slice(0, 160)}`,
+  );
+
+  const chosen = await chooseDefinition(revisionTermsRef);
+  check("the new definition is selectable once the bar is in force again", chosen);
+  const REVISION_REASON = "journey: the calculation method moved; re-scoring the retained input";
+  await page.getByLabel("Reason for this re-assessment").fill(REVISION_REASON);
+  const submitReassessment = page.getByRole("button", { name: /^Re-assess under this definition/ });
+  const submitWasEnabled = await submitReassessment.isEnabled();
+  check("the screen permits the re-assessment once a definition and a reason are given", submitWasEnabled);
+  haltIf(!submitWasEnabled,
+    "the submit control never became available, so nothing below would be measuring a re-assessment");
+  await submitReassessment.click();
+
+  // `Completed` is the only acceptable end: the worker has to claim the revision and record its own
+  // finding. A timeout is a failure of this harness, exactly as in section 5.
+  //
+  // SCOPED TO THE REVISION'S OWN STATE PILL, and the first version was not — it waited on any occurrence of
+  // the completion sentence, which the PREVIOUS execution's panel already carries. So the wait returned
+  // instantly, every API read below ran while the worker was still going, and five checks failed
+  // reporting a revision that in fact completed a second later. Precisely the trap section 5's own
+  // comment warns about, met from the other direction. Scoping it to the panel was not enough either:
+  // that panel carries TWO state pills, so the locator resolved two elements, Playwright's strict mode
+  // threw, and the catch read a finished revision as one that never finished. One named region, one
+  // match.
+  const revisionState = page.getByLabel("Revision state");
+  await revisionState.getByText("Completed — an observation was recorded")
+    .waitFor({ timeout: 90_000 }).catch(() => undefined);
+  const revisionCompleted = await revisionState
+    .getByText("Completed — an observation was recorded").isVisible().catch(() => false);
+  check("the re-assessment reached a server-reported completion", revisionCompleted);
+  haltIf(!revisionCompleted,
+    "the revision never reported completion on screen, so the preservation and delta checks below " +
+      "would be reading a run that had not finished");
+  const revisionText = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+
+  // ── 11b.iii · The link is PERSISTED, and the earlier result survived ────────────────────────────
+  const listedAfter = await page.evaluate(async ([boundaryId, actorId]) => {
+    const res = await fetch(`/api/pilot/assessments?boundaryId=${encodeURIComponent(boundaryId)}`, {
+      headers: { "x-actor-id": actorId, "x-actor-role": "operator" },
+    });
+    return res.ok ? await res.json() : [];
+  }, [BOUNDARY, proposerId]);
+  const revisionId = listedAfter
+    .map((row) => row.executionId)
+    .find((id) => id !== prebump.executionId && id !== executionId) ?? null;
+  check("a third execution now exists — the revision, beside the two originals",
+    revisionId !== null && listedAfter.length === 3, `count=${listedAfter.length}`);
+
+  const revisionView = revisionId ? (await readExecution(revisionId)).body : null;
+  checkEqual("the API agrees the revision completed", revisionView?.state, "completed");
+  // THE PERSISTED LINK, read from the record rather than from the response the screen was given.
+  checkEqual("the revision's stored link names the execution it revises",
+    revisionView?.revises?.executionId, prebump.executionId);
+  checkEqual("the stored revision carries the operator's stated reason",
+    revisionView?.revises?.reason, REVISION_REASON);
+  check("the stored delta reports the method change and nothing it must not",
+    (revisionView?.revises?.delta?.changed ?? []).some((c) =>
+      c.field === "calculationMethodVersion" && c.before === prebump.method) &&
+    (revisionView?.revises?.delta?.unexpectedChanges ?? []).length === 0,
+    JSON.stringify(revisionView?.revises?.delta?.changed ?? []));
+  check("the server reports the earlier finding as still stored",
+    revisionView?.revises?.previousFindingExists === true);
+
+  // HISTORICAL PRESERVATION, measured. The earlier finding's hash is the same hash it had before any of
+  // this happened, which is a stronger statement than "the row is still there".
+  const afterRevision = await readExecution(prebump.executionId);
+  checkEqual("the earlier result is still readable at its own identifier", afterRevision.status, 200);
+  checkEqual("the earlier result still reports its own state", afterRevision.body?.state, "completed");
+  checkEqual("the earlier finding is BYTE-IDENTICAL after the re-assessment",
+    afterRevision.body?.finding?.findingHash, historicalFindingHash);
+  checkEqual("the earlier result still names the method it was computed with",
+    afterRevision.body?.finding?.finding?.calculationMethodVersion, prebump.method);
+  check("the earlier result was not relabelled as a revision of anything",
+    afterRevision.body?.revises === null);
+
+  // THE RESULT CHANGED VISIBLY, and the two answers are distinguishable rather than asserted to differ.
+  const revisionAssessmentId = revisionView?.finding?.finding?.assessmentId ?? null;
+  check("the revision produced its OWN finding, with its own assessment identity",
+    revisionAssessmentId !== null && revisionAssessmentId !== historicalAssessmentId,
+    `${historicalAssessmentId} → ${revisionAssessmentId}`);
+  checkEqual("the revision's finding names this build's method",
+    revisionView?.finding?.finding?.calculationMethodVersion,
+    revisionView?.binding?.assessmentPolicy?.calculationMethodVersion);
+  check("the screen shows what changed, with both values",
+    revisionText.includes("calculationMethodVersion") && revisionText.includes(prebump.method) &&
+    revisionText.includes(revisionView?.binding?.assessmentPolicy?.calculationMethodVersion ?? "\u0000"),
+  );
+  check("the screen shows BOTH observations, naming the earlier one as preserved",
+    revisionText.includes(historicalAssessmentId ?? "\u0000") &&
+    revisionText.includes(revisionAssessmentId ?? "\u0000") &&
+    /preserved, not replaced/i.test(revisionText));
+  check("the screen states that the earlier finding is still stored and reproducible",
+    /still stored and still reproducible/i.test(revisionText));
+
+  // ── 11b.iv · NH-AX-1017, where it IS reachable: a result already on this build's method ─────────
+  //
+  // The journey's ORIGINAL execution ran under the method this build implements, which is the method
+  // every definition the governance screen can register is stamped with. So for that execution every
+  // definition on offer names the method it already used, and the screen must say so in advance rather
+  // than let an operator submit and be refused. This is the no-op case from the operator's side — on the
+  // one target where a browser can actually reach it.
+  await openReassessment(executionId ?? "");
+  const noOpOptions = ((await page.getByLabel("Governed definitions for re-assessment")
+    .innerText().catch(() => "")) || "").replace(/\s+/g, " ");
+  check(
+    "a result already on this build's method shows every definition as refusable, NH-AX-1017",
+    noOpOptions.includes("NH-AX-1017") && /nothing to re-assess/i.test(noOpOptions),
+    noOpOptions.slice(0, 200),
+  );
+  check(
+    "and nothing is selectable, so the no-op cannot be submitted at all",
+    (await page.locator('input[type="radio"]:not([disabled])').count()) === 0,
+  );
+  const noOpSubmit = page.getByRole("button", { name: /^Re-assess under this definition/ });
+  check(
+    "the submit control stays shut and names what is missing",
+    !(await noOpSubmit.isEnabled()) &&
+      /choose a governed definition/i.test((await page.getByLabel("Submit blocked reason").innerText().catch(() => "")) || ""),
+  );
+
+  // AND IT IS STILL A PILOT ASSESSMENT. Two figures on one screen is exactly where a reader starts
+  // believing one of them was proven.
+  check("the re-assessment screen states it is a pilot assessment, not proof of recovered revenue",
+    /pilot assessment/i.test(revisionText) &&
+    /Neither is proof of recovered revenue/i.test(revisionText) &&
+    /No recovery case is created/i.test(revisionText));
 
   // ── 12 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
