@@ -30,6 +30,11 @@ export const PILOT_DATA_CONTRACT_VERSION = "2.0.0";
 export const PILOT_DATA_CONTRACT_ID = "nh.customer-pilot-data-contract";
 
 /** `id@version` — the form that appears in reports and audit records. */
+// The previous-major SUPPORT CEILING is a separate declared fact from row-semantics identity; see
+// `previousMajorSupport.ts`. This is the only import this module has, and it is one-directional: that
+// module imports nothing, so the contract root acquires no cycle.
+import { previousMajorSupport, previousMajorSupportDecision } from "./previousMajorSupport";
+
 export const PILOT_DATA_CONTRACT_REF = `${PILOT_DATA_CONTRACT_ID}@${PILOT_DATA_CONTRACT_VERSION}`;
 
 // ── 1 · Field requirements ────────────────────────────────────────────────────────────────────────
@@ -605,7 +610,28 @@ export function isSupportedContractVersion(
   const impl = parseContractVersion(implemented);
   if (!d || !impl) return false;
   if (d.major > impl.major) return false;
-  if (d.major < impl.major) return acceptsPreviousMajor(impl.major, d.major);
+  if (d.major < impl.major) {
+    // ONE COMPLETE DECISION, MADE IN ONE PLACE. The registry owns entry presence, the ceiling, the mode
+    // and the mode's own requirement; this call site supplies the two things only it can know — the real
+    // entry, and whether `MAJOR_ROW_SEMANTICS` declares that major's row semantics identical to ours.
+    //
+    // THE ROW-SEMANTICS EVIDENCE IS PASSED, NOT REQUIRED. An earlier version of this branch was
+    // `acceptsPreviousMajor(...) && withinPreviousMajorCeiling(...)`, which demanded that evidence for
+    // EVERY mode. Right for `IDENTICAL`; wrong for `PRESERVED_INTERPRETER`, whose premise is that the
+    // semantics are NOT identical — so a future preserved major would have been refused here while the
+    // selector accepted it, and the tempting repair would have been to add that major to
+    // `MAJOR_ROW_SEMANTICS`, declaring an identity that does not hold.
+    //
+    // It also returned before any minor or patch comparison, so an implemented 2.0.0 accepted
+    // `1.999.999` — a version no build ever implemented — while refusing `2.0.1` as too new. The
+    // published contract refuses anything newer than the build implements and "never interpreted
+    // optimistically"; the ceiling, now inside the decision, makes that true for a previous major too.
+    return previousMajorSupportDecision(
+      previousMajorSupport(impl.major, d.major),
+      d,
+      acceptsPreviousMajor(impl.major, d.major),
+    );
+  }
   if (d.minor > impl.minor) return false;
   if (d.minor === impl.minor && d.patch > impl.patch) return false;
   return true;

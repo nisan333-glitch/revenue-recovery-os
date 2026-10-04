@@ -52,6 +52,27 @@ export type MajorSupportMode = "IDENTICAL" | "PRESERVED_INTERPRETER";
 export interface MajorSupportDeclaration {
   readonly mode: MajorSupportMode;
   /**
+   * The highest version WITHIN this previous major that the declaration supports, INCLUSIVE.
+   *
+   * REQUIRED, never optional, and that is the whole defence. Before it existed this selector returned
+   * as soon as it saw a declared major below the implemented one, with no minor or patch comparison —
+   * so a major declared supported was supported *to infinity*, and `2.999.999` would have been routed
+   * to a preserved 2.x interpreter that implements no such thing. A ceiling that could be omitted would
+   * re-open that hole the first time someone forgot one; a required field makes a ceiling-less
+   * declaration unwriteable.
+   *
+   * A CEILING, NOT AN ALLOWLIST. "Up to and including", because the contract's own minor promise — a
+   * dataset valid under X.Y stays valid under X.(Y+1) — is a range promise.
+   *
+   * WHERE REAL CEILINGS COME FROM: `previousMajorSupport.ts`, which is the single source of truth for
+   * actual support facts and projects them into this shape. This module does NOT import it, and must
+   * not: the registry is keyed by implemented major and holds only majors that really exist, while this
+   * selector is deliberately parameterised so its rule can be exercised at a HYPOTHETICAL implemented
+   * major before any constant is bumped. A declaration reaching here may therefore be a projection of
+   * the real registry or a hypothetical under test, and this module cannot and need not tell which.
+   */
+  readonly maxSupportedVersion: string;
+  /**
    * WHICH preserved interpretation reads this major. Required iff mode is `PRESERVED_INTERPRETER`, and
    * refused when absent or blank — a preserved mode that cannot name its interpreter would otherwise fall
    * through to the current one, which is the single most dangerous silent behaviour in this whole design.
@@ -105,6 +126,20 @@ export type InterpretationRefusalReason =
   | "declared_major_newer_than_implemented"
   | "declared_minor_or_patch_newer_than_implemented"
   | "previous_major_not_declared"
+  /**
+   * The declaration itself is unusable — no ceiling at runtime despite the type, a malformed ceiling,
+   * or a ceiling recorded for a different major than the key it sits under. Distinct from the two
+   * below: those describe a WELL-FORMED declaration that refuses this version, while this one says the
+   * declaration cannot be evaluated at all. A broken declaration must never fall through to IDENTICAL
+   * or PRESERVED_INTERPRETER handling, because "unusable" and "permissive" are opposites.
+   */
+  | "support_declaration_invalid"
+  /**
+   * The major is supported, but not this far INTO it. Separate from `previous_major_not_declared`
+   * because the two are different facts with different remedies: one says "we do not read that major",
+   * the other "we read it, but never implemented that version of it".
+   */
+  | "declared_above_previous_major_ceiling"
   | "preserved_interpreter_not_named"
   | "support_mode_unrecognised";
 
@@ -217,6 +252,48 @@ export function selectDataInterpretation(input: {
     return refuse(
       "previous_major_not_declared",
       `major ${declared.major} has no support declaration under implemented major ${implemented.major}`,
+    );
+  }
+
+  // ── THE CEILING, CARRIED BY THE DECLARATION ────────────────────────────────────────────────────
+  //
+  // Checked with the SAME parser the versions above were read with, so no second notion of a valid
+  // version exists in this module.
+  //
+  // CHECKED BEFORE THE MODE, and the order matters for both modes:
+  //   • `IDENTICAL` must NOT mean "every hypothetical future minor of that major" — the identity claim
+  //     was checked against the versions that existed, never against ones nobody has written.
+  //   • `PRESERVED_INTERPRETER` must never be handed a declaration newer than the semantics it
+  //     implements. Routing `2.999.999` to a preserved 2.x reader would be worse than refusing: it
+  //     would read data under semantics that reader was never built for, which is the silent
+  //     reinterpretation the mode exists to prevent.
+  //
+  // BUT ONLY WHEN THE CEILING IS VALID does it get to decide. An unusable ceiling refuses as its own
+  // named reason, so a genuinely unnamed interpreter or an unrecognised mode is still reported as
+  // itself rather than masked by a ceiling complaint.
+  const ceiling = parseContractVersion(declaration.maxSupportedVersion ?? "");
+  if (ceiling === null) {
+    // Reachable despite the required field: declarations can arrive from data the type system never
+    // saw. Fails closed — never "no limit".
+    return refuse(
+      "support_declaration_invalid",
+      `major ${declared.major} declares an unusable maxSupportedVersion`,
+    );
+  }
+  if (ceiling.major !== declared.major) {
+    // A ceiling recorded under the wrong major makes the comparison meaningless, so it is refused
+    // rather than compared.
+    return refuse(
+      "support_declaration_invalid",
+      `major ${declared.major} declares a maxSupportedVersion belonging to major ${ceiling.major}`,
+    );
+  }
+  const newerMinorThanCeiling = declared.minor > ceiling.minor;
+  const newerPatchThanCeiling = declared.minor === ceiling.minor && declared.patch > ceiling.patch;
+  if (newerMinorThanCeiling || newerPatchThanCeiling) {
+    return refuse(
+      "declared_above_previous_major_ceiling",
+      `declared ${input.declaredVersion} is newer than the highest supported version of major ${declared.major}`,
     );
   }
 

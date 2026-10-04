@@ -18,6 +18,7 @@ import {
   isProhibitedFieldName,
   isSupportedContractVersion,
   acceptsPreviousMajor,
+  MAJOR_ROW_SEMANTICS,
   PILOT_DATA_CONTRACT_ID,
   looksLikePii,
   parseContractVersion,
@@ -175,6 +176,45 @@ describe("contract declaration", () => {
     expect(isSupportedContractVersion("2.0.1")).toBe(false);
     expect(isSupportedContractVersion("0.9.0")).toBe(false);
     expect(isSupportedContractVersion("not-a-version")).toBe(false);
+  });
+
+  it("10c · the PREVIOUS-MAJOR CEILING · the complete control matrix at implemented 2.0.0", () => {
+    // THE DEFECT THIS CLOSES, AND THE ASYMMETRY THAT MADE IT ABSURD. This predicate used to return at
+    // the previous-major branch BEFORE any minor or patch comparison, so a major declared
+    // row-semantics-identical was supported to INFINITY: `1.999.999` — a version no build ever
+    // implemented — was accepted, while `2.0.1` was refused as too new. The published contract says a
+    // newer version than the build implements is refused, "never interpreted optimistically"
+    // (docs/CUSTOMER_PILOT_DATA_CONTRACT_V1.md), so this was a divergence from a promise, not just a gap.
+    //
+    // THE CEILING IS NOT TAKEN FROM `MAJOR_ROW_SEMANTICS`, which names majors and carries no version at
+    // all. It is a separate governed fact in `previousMajorSupport.ts`, where `1.1.0` — the last 1.x this
+    // product published — is written exactly once.
+    const at2 = (v: string) => isSupportedContractVersion(v, "2.0.0");
+
+    // POSITIVE: the previous major, up to and INCLUDING its ceiling. Support that existed is not lost.
+    for (const v of ["1.0.0", "1.0.1", "1.1.0"]) expect(at2(v), v).toBe(true);
+    // POSITIVE: the implemented version itself.
+    expect(at2("2.0.0")).toBe(true);
+
+    // NEGATIVE: above the previous major's ceiling. `1.1.0` / `1.1.1` is the boundary pair.
+    for (const v of ["1.1.1", "1.2.0", "1.99.0", "1.999.999"]) expect(at2(v), v).toBe(false);
+    // NEGATIVE: newer than implemented, within the current major.
+    for (const v of ["2.0.1", "2.1.0", "2.999.999"]) expect(at2(v), v).toBe(false);
+    // NEGATIVE: a newer major, an undeclared older major, and nonsense.
+    for (const v of ["3.0.0", "0.9.0", "0.0.1", "not-a-version", "", "1.1", "v1.1.0"]) {
+      expect(at2(v), JSON.stringify(v)).toBe(false);
+    }
+  });
+
+  it("10d · the ceiling does not come from MAJOR_ROW_SEMANTICS — two facts, both required", () => {
+    // `acceptsPreviousMajor` still means exactly what it meant: row semantics are declared identical.
+    // It is necessary and NO LONGER SUFFICIENT — the ceiling is the second, independent condition.
+    expect(acceptsPreviousMajor(2, 1)).toBe(true);
+    expect(isSupportedContractVersion("1.999.999", "2.0.0")).toBe(false);
+    // So a major can be row-semantics-identical AND a version within it still be unsupported. That pair
+    // of facts is the whole content of this slice.
+    expect(MAJOR_ROW_SEMANTICS[2]).toEqual([1]);
+    expect(JSON.stringify(MAJOR_ROW_SEMANTICS)).not.toContain("1.1.0");
   });
 
   it("10b · EP-27 · §10's two-major window is a CHECKED declaration, exercised at a future major", () => {
