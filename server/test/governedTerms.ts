@@ -42,7 +42,11 @@ export interface GovernedTermsRef {
  */
 export async function ensureGovernedTerms(
   boundaryId: string,
-  over: Partial<typeof TEST_ANALYSIS_TERMS> = {},
+  // `calculationMethodVersion` is not in TEST_ANALYSIS_TERMS because it is a BUILD CONSTANT that
+  // `makeAnalysisTerms` fills in — no request can state it. A test may override it, and exactly one
+  // does: the only way to construct a definition blessed for a method this build does not implement,
+  // which is what the schedule-time compatibility gate exists to refuse.
+  over: Partial<typeof TEST_ANALYSIS_TERMS> & { calculationMethodVersion?: string } = {},
 ): Promise<GovernedTermsRef> {
   const terms = makeAnalysisTerms({ ...TEST_ANALYSIS_TERMS, ...over });
   const existing = await findAnalysisTerms(boundaryId, terms.termsId, terms.termsVersion);

@@ -53,6 +53,8 @@ export type ExecutionRefusal =
   | "admission_snapshot_unavailable"
   | "submission_identity_mismatch"
   | "request_contradicts_admission"
+  | "calculation_method_unsupported"
+  | "calculation_method_drift"
   | "boundary_mismatch"
   | "no_assessable_cycles"
   | "case_halted"
@@ -174,6 +176,37 @@ export const EXECUTION_REFUSAL_CODES: Readonly<Record<ExecutionRefusal, Executio
       title: "The request names analysis terms or interpretation options other than the ones the dataset was admitted under.",
       remediation:
         "Cite the admitted analysis-terms version and the admitted date-locale and amount-format, or re-submit the extract under the new ones. A verdict computed under one definition does not authorise an execution under another, and silently running under the admitted terms instead would report a result nobody asked for.",
+      since: "1.2.0",
+    }),
+    // Findings 1 & 2 · THE CALCULATION METHOD, in two bands because they are two different events.
+    //
+    // A governed AnalysisTerms version records the calculation method it was BLESSED for. Nothing used
+    // to check that the build about to measure under it still implements that method — not at schedule
+    // time, and not at run time, where `makePolicy` rebuilds the policy from the binding but takes no
+    // `calculationMethodVersion` input and so always stamps the CURRENT build constant. A comment in the
+    // agent claimed the rebuild "cannot drift"; that was true of the as-of date, the threshold and the
+    // currency, and false of exactly this field.
+    //
+    // 1014 is REFUSED: nothing was queued, and re-registering the definition is the remedy. 2006 is
+    // BLOCKED and terminal: the execution's identity was frozen under one method and the build now
+    // implements another, so a retry on this build cannot change the answer. Keeping them in separate
+    // bands matters because they call for different actions — and neither is an authorization or an
+    // identity failure, which is why neither reuses NH-AX-1006 (contract support) or NH-AX-1005/2003
+    // (the record changed).
+    calculation_method_unsupported: code({
+      code: "NH-AX-1014",
+      severity: "refused",
+      title: "The governed analysis terms were blessed for a calculation method this build does not implement.",
+      remediation:
+        "Propose and activate an analysis-terms version for the method this build implements, then re-submit the extract under it. The definition is not wrong and the data is not wrong — they were approved against an implementation that is no longer the one that would run, and measuring under a method nobody blessed for these terms is how a number acquires an authority it was never given.",
+      since: "1.2.0",
+    }),
+    calculation_method_drift: code({
+      code: "NH-AX-2006",
+      severity: "blocked",
+      title: "The build's calculation method changed between scheduling and execution.",
+      remediation:
+        "Do not retry on this build. The binding froze the method the execution's identity was derived under, and this build implements a different one, so producing a finding here would record a result computed by an implementation the binding does not name. Schedule a new execution, which will be refused at NH-AX-1014 until the governed terms name this build's method.",
       since: "1.2.0",
     }),
     no_assessable_cycles: code({

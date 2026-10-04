@@ -68,7 +68,7 @@ import {
   type ExecutionRefusal,
 } from "../../src/contract/executionCodes";
 import { mayEvaluate, whyCannotEvaluate, type PolicyState } from "../../src/contract/policyLifecycle";
-import { makePolicy } from "../../src/assessment/policy";
+import { ASSESSMENT_CALC_VERSION, makePolicy } from "../../src/assessment/policy";
 import { observedSummary } from "../../src/assessment/observed";
 import { splitCohorts } from "../../src/assessment/cohort";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
@@ -596,6 +596,35 @@ export async function schedulePilotAssessment(
       boundaryId,
       "contract_version_mismatch",
       `admitted under ${admittedUnder}; this build serves ${PILOT_DATA_CONTRACT_VERSION} and does not accept it`,
+    );
+  }
+
+  // ── 6b · THE CALCULATION METHOD THE TERMS WERE BLESSED FOR ─────────────────────────────────────
+  //
+  // A governed AnalysisTerms version records `calculationMethodVersion`: a BUILD CONSTANT at the moment
+  // of registration, recorded so a historical registration says which implementation it was approved
+  // against. Nothing checked that the build about to measure under it still implements that method, so a
+  // definition blessed for one implementation could silently authorise a run by another. That is the
+  // same error the transport already refuses to allow for the terms themselves — `analysisTermsSchema`
+  // omits the field precisely because letting a request state it "would invite a definition blessed for
+  // an implementation that never ran it".
+  //
+  // The value is tamper-evident before it gets here: `resolveGovernedAnalysisTerms` verifies the terms
+  // hash, which commits `calculationMethodVersion`, so a row whose method was altered is already refused
+  // as NH-AX-1010 rather than reaching this comparison.
+  //
+  // SEPARATE FROM CONTRACT SUPPORT ABOVE, and deliberately so. Step 6 asks what DATA this build can
+  // interpret; this asks what CALCULATION it implements. They move independently, and one code for both
+  // would send someone to re-export a file when what changed was the assessment implementation.
+  //
+  // Today this refuses nothing: `ASSESSMENT_CALC_VERSION` has never moved, so every registered row
+  // carries the current value. It exists for the bump, which is exactly when a silent divergence would
+  // otherwise be least visible.
+  if (governedTerms.calculationMethodVersion !== ASSESSMENT_CALC_VERSION) {
+    return refused(
+      boundaryId,
+      "calculation_method_unsupported",
+      `the analysis terms were blessed for ${governedTerms.calculationMethodVersion}; this build implements ${ASSESSMENT_CALC_VERSION}`,
     );
   }
 

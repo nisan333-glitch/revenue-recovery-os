@@ -170,12 +170,26 @@ treatment EP-26b gave the `policy` object. It stays required at the intake, wher
 declaration about their export and is persisted as made. This is a pilot-data trust rule and turns no
 observed amount into proven Revenue Returned.
 
-**Open, and not closed by the above (2026-10-04).** A governed AnalysisTerms version records the
-`calculationMethodVersion` it was **blessed for**, and nothing checks that the build running an execution
-still matches it: `makePolicy` stamps the current build constant into the binding regardless. This is an
-**execution compatibility / semantic binding** defect in stage C — not a submission-identity defect, and
-explicitly *not* a reason to change `pds` — and it needs its own focused slice. Audited in
-[`docs/REFERENCE_FIRST_SCHEDULING_V1.md`](docs/REFERENCE_FIRST_SCHEDULING_V1.md) §6.
+**Calculation-method compatibility decision (2026-10-04).** A governed AnalysisTerms version records the
+`calculationMethodVersion` it was **blessed for**, and nothing checked that the build running an execution
+still matched it — not at schedule time, and not at run time, where `makePolicy` rebuilds the policy from
+the binding but takes no such input and so always stamps the current constant. The governing rule is now:
+
+> **The calculation implementation that actually executes must be compatible with the calculation method
+> the governed definition was blessed for and the execution binding froze.**
+
+**Built 2026-10-04** ([`docs/CALCULATION_METHOD_COMPATIBILITY_V1.md`](docs/CALCULATION_METHOD_COMPATIBILITY_V1.md)):
+refused `NH-AX-1014` at schedule time, blocked `NH-AX-2006` at run time, the run-time gate placed before
+the computation rather than merely before the write, and the agent comment that wrongly claimed the
+rebuild "cannot drift" corrected. This is **execution compatibility**, in stage C — it does not touch the
+submission identity, and `calculationMethodVersion` remains explicitly **open** and out of `pds`.
+
+**Still open (2026-10-04).** `PilotAdmissionPolicy.calculationMethodVersion` is **operator-supplied**,
+hashed into `admissionPolicyHash` → the `PAD-` → the frozen decision, and compared to nothing. It must
+**not** simply be required to equal `ADMISSION_EVALUATOR_VERSION`: that constant
+(`"admission-gate-2026.1"`) and `ADMISSION_CALC_VERSION` (`"admission-2026.1"`) are currently different
+values versioning different things, and conflating them would break legitimate policy creation. What each
+versions, and the smallest correct remedy, is under audit.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
