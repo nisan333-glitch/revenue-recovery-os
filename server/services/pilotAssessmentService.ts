@@ -60,6 +60,7 @@ import {
   hashExecutionInput,
   projectExecutionInput,
   type ExecutionBinding,
+  type ExecutionInput,
   type ExecutionState,
 } from "../../src/contract/assessmentExecution";
 import {
@@ -70,11 +71,14 @@ import {
 import { mayEvaluate, whyCannotEvaluate, type PolicyState } from "../../src/contract/policyLifecycle";
 import { ASSESSMENT_CALC_VERSION, makePolicy } from "../../src/assessment/policy";
 import { calculationMethodsCompatible } from "../../src/assessment/calculationMethodLineage";
+import { bindingRevisionDelta, isPermittedRevision, type BindingRevisionDelta } from "../../src/contract/assessmentRevision";
+import { findAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
+import { policyHashMatches } from "../../src/contract/policyHash";
 import { observedSummary } from "../../src/assessment/observed";
 import { splitCohorts } from "../../src/assessment/cohort";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
-import { NotFoundError } from "../http/errors";
+import { ForbiddenError, NotFoundError } from "../http/errors";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
 import {
@@ -85,6 +89,8 @@ import {
 import { policyGovernanceState } from "../persistence/pilotPolicyGovernanceStore";
 import {
   createExecutionIfAbsent,
+  findExecutionInput,
+  inputPurgeRecord,
   executionStatus,
   findExecution,
   findFinding,
@@ -816,6 +822,304 @@ export async function schedulePilotAssessment(
   });
 }
 
+export interface ReassessPilotAssessmentRequest {
+  /** Authorization REQUEST, never an assertion — `requireBoundaryAccess` decides. */
+  readonly boundaryId: string;
+  /** The execution to re-assess. Its retained input is reused; no file is re-supplied. */
+  readonly executionId: string;
+  /** The governed analysis-terms version blessing the new calculation method. Required. */
+  readonly analysisTermsId: string;
+  readonly analysisTermsVersion: string;
+  /** Why. Required — a revision nobody can explain is indistinguishable from a quiet re-grade. */
+  readonly reason: string;
+}
+
+export interface ReassessPilotAssessmentResponse {
+  readonly reassessed: boolean;
+  readonly created: boolean;
+  /** The NEW execution. The one it revises is untouched and still readable at its own id. */
+  readonly executionId: string | null;
+  readonly revisesExecutionId: string;
+  readonly boundaryId: string;
+  readonly state: ExecutionState | null;
+  readonly binding: ExecutionBinding | null;
+  /** What differs from the execution being revised, derived rather than narrated. */
+  readonly delta: BindingRevisionDelta | null;
+  readonly refusal: ExecutionCodeSpec | null;
+  readonly refusalDetail: string | null;
+  readonly claimBoundary: typeof CLAIM_BOUNDARY;
+}
+
+function reassessmentRefused(
+  boundaryId: string,
+  revisesExecutionId: string,
+  refusal: ExecutionRefusal,
+  detail: string,
+): ReassessPilotAssessmentResponse {
+  return Object.freeze({
+    reassessed: false,
+    created: false,
+    executionId: null,
+    revisesExecutionId,
+    boundaryId,
+    state: null,
+    binding: null,
+    delta: null,
+    refusal: executionCode(refusal),
+    refusalDetail: detail,
+    claimBoundary: CLAIM_BOUNDARY,
+  });
+}
+
+/**
+ * Re-assess an already-admitted dataset under a new calculation method, WITHOUT asking for the file again.
+ *
+ * WHY THIS IS SOUND, and it rests on a derivation rather than a convenience: the admission verdict does
+ * not depend on the calculation method. `evaluateAdmission` reads the assessment policy only to split
+ * cohorts, and never reads its method — so an admission reached under one method would have been
+ * identical under another, and reusing it re-uses a decision that was never about the thing that changed.
+ * Full argument in docs/CALCULATION_IDENTITY_V1.md.
+ *
+ * WHAT MAY CHANGE, and nothing else: the assessment policy. Same bytes, same admission, same
+ * interpretation, same cut-off, same threshold, same currency. A different cut-off or threshold is a
+ * different READING of the data — it changes which rows count and what "stalled" means — and the
+ * admission was for the old reading, so that case is refused and the extract must be re-submitted.
+ *
+ * IT NEVER REPLACES. A new execution and a new finding are created, LINKED to the previous ones, which
+ * remain exactly as they were and readable at their own identifiers. Trust Invariant rule 9 requires a
+ * revision to be a new linked record and rule 5 requires the historical result to stay reproducible;
+ * both are satisfied by construction, because the previous rows are not written to at all.
+ *
+ * THE INPUT MUST BE THERE AND MUST VERIFY. The whole point is not to ask the customer for the file
+ * again, and that is only honest while the retained input is the one the earlier finding was computed
+ * from. Purged, absent or failing its hash → refused, and the extract must be re-submitted.
+ */
+export async function reassessPilotAssessment(
+  actor: ActorContext,
+  request: ReassessPilotAssessmentRequest,
+  deps: PilotAssessmentDeps = {},
+): Promise<ReassessPilotAssessmentResponse> {
+  // CURRENT AUTHORIZATION, not a new capability. A re-assessment produces a governed finding, which is
+  // what scheduling produces, so it is gated by the same right — inventing a weaker one would create a
+  // path to a finding that the scheduling gate does not cover.
+  requireCan(actor, "SchedulePilotAssessment");
+  requireBoundaryAccess(actor, request.boundaryId);
+  const boundaryId = request.boundaryId.trim();
+  const previousId = request.executionId.trim();
+
+  const reason = request.reason.trim();
+  if (reason === "") {
+    throw new ForbiddenError("a re-assessment must state why it exists; a revision with no stated reason cannot be reviewed");
+  }
+
+  // ── 1 · The execution being revised, and its own integrity ─────────────────────────────────────
+  const previous = await findExecution(previousId, boundaryId);
+  if (!previous) throw new NotFoundError("no such assessment execution exists for this boundary");
+  if ((await deriveExecutionId(previous.binding)) !== previousId) {
+    return reassessmentRefused(boundaryId, previousId, "decision_binding_mismatch", "the execution does not hash to its own identifier");
+  }
+
+  // ── 2 · The retained input: present, and the one the earlier finding was computed from ──────────
+  const stored = await findExecutionInput(previousId, boundaryId);
+  if (!stored) {
+    const purge = await inputPurgeRecord(previousId, boundaryId);
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "reassessment_input_unavailable",
+      purge
+        ? `the input was purged under the retention policy (${purge.reason})`
+        : "the execution has no stored input",
+    );
+  }
+  const input: ExecutionInput = Object.freeze({ scheme: "nh-pilot-assessment-projection-v1", cycles: stored.cycles });
+  const inputHash = await hashExecutionInput(input);
+  if (inputHash !== stored.inputHash || stored.inputHash !== previous.inputHash) {
+    // UNVERIFIABLE, not merely absent. Re-assessing it would compute a new finding from rows the earlier
+    // one never saw, under the earlier one's identity lineage.
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "reassessment_input_unavailable",
+      "the stored input does not match its recorded hash",
+    );
+  }
+
+  // ── 3 · The new definition, governed NOW ────────────────────────────────────────────────────────
+  const resolved = await resolveGovernedAnalysisTerms(boundaryId, request.analysisTermsId, request.analysisTermsVersion);
+  if (!resolved.ok) return reassessmentRefused(boundaryId, previousId, "analysis_terms_not_governed", resolved.reason);
+  const terms = resolved.stored.terms;
+
+  // ONLY THE METHOD. The three governed values that decide what is measured must be identical, or this is
+  // a different reading and the admission does not cover it.
+  const measured: readonly [string, string, string][] = [
+    ["asOf", previous.binding.assessmentPolicy.asOf, terms.asOf],
+    ["stallThresholdDays", String(previous.binding.assessmentPolicy.stallThresholdDays), String(terms.stallThresholdDays)],
+    ["currency", previous.binding.assessmentPolicy.currency, terms.currency],
+  ];
+  const differing = measured.filter(([, before, after]) => before !== after).map(([name]) => name);
+  if (differing.length > 0) {
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "reassessment_terms_not_method_only",
+      `the cited terms change ${differing.join(", ")}, which changes what is measured rather than how`,
+    );
+  }
+
+  if (!calculationMethodsCompatible(terms.calculationMethodVersion, ASSESSMENT_CALC_VERSION)) {
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "calculation_method_unsupported",
+      `the cited terms were blessed for ${terms.calculationMethodVersion}; this build implements ${ASSESSMENT_CALC_VERSION} and does not declare them equivalent`,
+    );
+  }
+  if (terms.calculationMethodVersion === previous.binding.assessmentPolicy.calculationMethodVersion) {
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "reassessment_no_method_change",
+      "the cited terms name the calculation method this execution already used",
+    );
+  }
+
+  // The governed definition, rebuilt into a policy. Every field comes from the registered terms, so the
+  // revision measures what the governed version says and not what the request would prefer.
+  const policy = makePolicy({
+    policyId: terms.termsId,
+    policyVersion: terms.termsVersion,
+    stallThresholdDays: terms.stallThresholdDays,
+    asOf: terms.asOf,
+    currency: terms.currency,
+  });
+
+  // ── 4 · The admission still stands, and the bar that made it is still sound and ACTIVE ──────────
+  const decision = await findSubmissionByDecisionId(previous.binding.admissionDecisionId, boundaryId);
+  if (!decision) {
+    return reassessmentRefused(boundaryId, previousId, "dataset_not_submitted", "the bound admission decision no longer resolves in this boundary");
+  }
+  if (decision.admissionOutcome !== "ADMISSIBLE") {
+    return reassessmentRefused(boundaryId, previousId, "admission_not_admissible", "the bound decision is not ADMISSIBLE");
+  }
+  if (!decision.admissionPolicyId || !decision.admissionPolicyVersion || !decision.admissionPolicyHash) {
+    return reassessmentRefused(boundaryId, previousId, "admission_not_admissible", "the bound decision names no policy");
+  }
+  const rederivedDecisionId = await deriveAdmissionDecisionId({
+    boundaryId,
+    idempotencyKey: decision.idempotencyKey,
+    datasetFingerprint: decision.datasetFingerprint,
+    contractVersion: decision.contractVersion,
+    outcome: decision.admissionOutcome,
+    admissionPolicyId: decision.admissionPolicyId,
+    admissionPolicyVersion: decision.admissionPolicyVersion,
+    admissionPolicyHash: decision.admissionPolicyHash,
+  });
+  if (rederivedDecisionId !== previous.binding.admissionDecisionId) {
+    return reassessmentRefused(boundaryId, previousId, "decision_binding_mismatch", "the stored decision does not hash to its own identifier");
+  }
+  // The bar's own row must still hash to its definition. A re-assessment is new governed work, so it may
+  // not proceed on a bar whose record has moved since it was blessed.
+  const storedBar = await findAdmissionPolicy(boundaryId, decision.admissionPolicyId, decision.admissionPolicyVersion);
+  if (!storedBar || !(await policyHashMatches(storedBar.policy, storedBar.policyHash))) {
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "admission_not_admissible",
+      "the admission policy no longer hashes to the definition it was registered with",
+    );
+  }
+  const governance = await policyGovernanceState(boundaryId, decision.admissionPolicyId, decision.admissionPolicyVersion);
+  if (!mayEvaluate(governance.state)) {
+    return reassessmentRefused(boundaryId, previousId, "policy_not_active", whyCannotEvaluate(governance.state));
+  }
+
+  // ── 5 · The new binding: the previous one, with the assessment policy replaced ──────────────────
+  const binding: ExecutionBinding = Object.freeze({
+    ...previous.binding,
+    assessmentPolicy: assessmentPolicyRef(policy),
+  });
+  const delta = bindingRevisionDelta(previous.binding, binding);
+  if (!isPermittedRevision(delta)) {
+    // UNREACHABLE: the checks above pin every field the delta calls unexpected, and the method change is
+    // required. Checked rather than asserted away, because a revision that changed something it must not
+    // is the one outcome that would make "what changed" untrustworthy.
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "decision_binding_mismatch",
+      `the revision would change ${delta.unexpectedChanges.map((c) => c.field).join(", ") || "nothing"}`,
+    );
+  }
+
+  const executionId = await deriveExecutionId(binding);
+
+  // AN EXECUTION'S IDENTITY IS ITS BINDING, so the revision may land on a row that already exists —
+  // someone could have scheduled these bytes under these terms directly. Two cases, and they are not
+  // the same answer:
+  //
+  //   • it already revises THIS execution → an idempotent repeat. Return it; nothing new is written.
+  //   • it revises nothing, or something else → the answer exists INDEPENDENTLY of this request.
+  //     Writing a revision link onto it would claim it was produced by re-assessing this execution,
+  //     which it was not, and there is no second identity available for identical content.
+  //
+  // Found by a test whose fixture arrived at exactly this collision, which is how it became visible.
+  const colliding = await findExecution(executionId, boundaryId);
+  if (colliding && colliding.revisesExecutionId !== previousId) {
+    return reassessmentRefused(
+      boundaryId,
+      previousId,
+      "reassessment_already_exists",
+      `execution ${executionId} already holds this binding${colliding.revisesExecutionId === null ? "" : " as a revision of another execution"}`,
+    );
+  }
+
+  const [bindingHash, newInputHash] = await Promise.all([hashExecutionBinding(binding), hashExecutionInput(input)]);
+
+  // THE SAME INPUT, written again under the new execution's identity. Not moved and not shared: the
+  // previous execution keeps its own input row, so purging one never strands the other, and the earlier
+  // finding stays reproducible from its own stored rows.
+  const { execution, created } = await createExecutionIfAbsent({
+    executionId,
+    binding,
+    bindingHash,
+    input,
+    inputHash: newInputHash,
+    scheduledByActorId: actor.actorId,
+    scheduledByRole: actor.role,
+    revision: { revisesExecutionId: previousId, revisionReason: reason },
+    // EP-31 · No staging on a revision: the attribution belongs to the first assessment of these bytes,
+    // and staging it again would double-count the same at-risk accounts.
+    attributions: [],
+    sourceResolution: null,
+  });
+
+  const store = deps.taskStore ?? createPostgresAgentTaskStore();
+  await store.enqueueIfAbsent({
+    taskId: `TASK-${executionId}`,
+    boundaryId,
+    agentId: PILOT_ASSESSMENT_AGENT_ID,
+    idempotencyKey: executionId,
+    payload: { executionId },
+    now: (deps.now ?? Date.now)(),
+  });
+
+  const status = await executionStatus(executionId, boundaryId);
+  return Object.freeze({
+    reassessed: true,
+    created,
+    executionId,
+    revisesExecutionId: previousId,
+    boundaryId,
+    state: status.state,
+    binding: execution.binding,
+    delta,
+    refusal: null,
+    refusalDetail: null,
+    claimBoundary: CLAIM_BOUNDARY,
+  });
+}
+
 export interface PilotAssessmentView {
   readonly executionId: string;
   readonly boundaryId: string;
@@ -829,6 +1133,20 @@ export interface PilotAssessmentView {
   readonly scheduledAt: string;
   readonly events: Awaited<ReturnType<typeof executionStatus>>["events"];
   readonly finding: Awaited<ReturnType<typeof findFinding>>;
+  /**
+   * What this execution revises, what differs, and why — or null for a first assessment.
+   *
+   * The DELTA IS DERIVED from the two bindings rather than narrated, because a hand-written summary can
+   * be wrong about its own diff. The REASON is the only part a human supplies, since no computation can.
+   * `previousFindingExists` is reported because "the earlier result is still there" is the claim that
+   * makes this a revision rather than a replacement, and a reader should not have to take it on trust.
+   */
+  readonly revises: {
+    readonly executionId: string;
+    readonly reason: string;
+    readonly delta: BindingRevisionDelta | null;
+    readonly previousFindingExists: boolean;
+  } | null;
   readonly claimBoundary: typeof CLAIM_BOUNDARY;
 }
 
@@ -862,7 +1180,30 @@ export async function readPilotAssessment(
     scheduledAt: execution.scheduledAt,
     events: status.events,
     finding: await findFinding(executionId, scoped),
+    revises: await describeRevision(execution, scoped),
     claimBoundary: CLAIM_BOUNDARY,
+  });
+}
+
+/**
+ * Resolve the revision link for a read, if there is one.
+ *
+ * A missing predecessor yields a null delta rather than throwing: the link is a fact this record states
+ * about itself, and a reader asking about THIS execution should still get it even if the record it points
+ * at cannot be loaded. That case should be impossible — nothing deletes an execution — so it is reported
+ * as an absent delta rather than smoothed over.
+ */
+async function describeRevision(
+  execution: ExecutionRecord,
+  boundaryId: string,
+): Promise<PilotAssessmentView["revises"]> {
+  if (execution.revisesExecutionId === null) return null;
+  const previous = await findExecution(execution.revisesExecutionId, boundaryId);
+  return Object.freeze({
+    executionId: execution.revisesExecutionId,
+    reason: execution.revisionReason ?? "",
+    delta: previous ? bindingRevisionDelta(previous.binding, execution.binding) : null,
+    previousFindingExists: previous !== null && (await findFinding(execution.revisesExecutionId, boundaryId)) !== null,
   });
 }
 

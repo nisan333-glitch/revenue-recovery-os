@@ -3,8 +3,12 @@ import { createHash } from "node:crypto";
 import {
   CALCULATION_METHOD_LINEAGE,
   calculationMethodsCompatible,
-  labelOnlyAncestry,
+  reviewedEquivalenceChain,
+  reviewedEquivalenceIsWellFormed,
+  type CalculationMethodLineage,
 } from "./calculationMethodLineage";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { ASSESSMENT_CALC_VERSION, makePolicy } from "./policy";
 import { splitCohorts } from "./cohort";
 import { observedSummary } from "./observed";
@@ -21,10 +25,17 @@ import type { ExpectationCycle } from "./types";
 // every pilot to re-submit. So the fingerprint is taken over OUTPUTS, across a fixture built to exercise
 // each branch of the classification and each term of the summary.
 //
+// AND WHY A FINGERPRINT IS NOT A PROOF, which is the whole reason the registry asks for more than one.
+// It is evidence over a FINITE fixture: two methods that agree on these nine cycles may disagree on the
+// tenth, and no fixture can close that gap. So a matching fingerprint is NECESSARY and never SUFFICIENT
+// — equivalence must additionally be DECLARED by a named reviewer, with implementation evidence and
+// tests that exist. Unknown compatibility is blocked.
+//
 // WHAT FAILS, AND WHEN:
 //   • implementation changed, version not bumped → fingerprint mismatch. Bump, or revert.
-//   • version bumped claiming `labelOnlyOf` → the fingerprints must be IDENTICAL, or the claim is false.
-//   • version bumped with no `labelOnlyOf` → they must DIFFER, or the bump changed nothing.
+//   • a REVIEWED_EQUIVALENT claim whose fingerprints differ → the claim is false; the link is dropped.
+//   • a reviewed claim missing a reviewer, a date, a rationale, evidence or tests → grants nothing.
+//   • matching fingerprints with no reviewed claim at all → grants nothing.
 
 /**
  * A frozen fixture chosen to exercise every branch, not to look realistic.
@@ -116,29 +127,87 @@ describe("the calculation-method lineage is a checked declaration, not a convent
     expect(CALCULATION_METHOD_LINEAGE[ASSESSMENT_CALC_VERSION]!.behaviour).toBe(computeBehaviourFingerprint());
   });
 
-  it("every label-only claim is TRUE — identical fingerprints — and every other bump DIFFERS", () => {
-    // A `labelOnlyOf` entry asserts the arithmetic is unchanged. That assertion is what lets a rename
-    // avoid forcing every governed definition to be re-proposed, so a false one would silently carry an
-    // old blessing onto a method that computes something else.
+  it("every reviewed equivalence in the REAL registry is well formed, and cites tests that EXIST", () => {
+    // The declaration is a human's claim, so what a machine can check is that it is COMPLETE: a
+    // predecessor that exists, matching fingerprints, a named reviewer and date, stated implementation
+    // evidence, a rationale, and cited tests that are really there. A claim citing tests nobody wrote
+    // would read as reviewed while resting on nothing.
     for (const [version, entry] of Object.entries(CALCULATION_METHOD_LINEAGE)) {
-      if (entry.labelOnlyOf === null) continue;
-      const predecessor = CALCULATION_METHOD_LINEAGE[entry.labelOnlyOf];
-      expect(predecessor, `${version} claims to rename an unknown version`).toBeDefined();
-      expect(entry.behaviour, `${version} claims to be a rename of ${entry.labelOnlyOf}`).toBe(predecessor!.behaviour);
-    }
-    // ...and two methods that are NOT related by a rename chain must not share a fingerprint, or one of
-    // them is an undeclared rename.
-    const entries = Object.entries(CALCULATION_METHOD_LINEAGE);
-    for (const [a, ea] of entries) {
-      for (const [b, eb] of entries) {
-        if (a >= b) continue;
-        if (ea.behaviour !== eb.behaviour) continue;
-        expect(
-          calculationMethodsCompatible(a, b),
-          `${a} and ${b} compute the same answers but neither declares the other a rename`,
-        ).toBe(true);
+      if (entry.compatibility.kind !== "REVIEWED_EQUIVALENT") continue;
+      expect(reviewedEquivalenceIsWellFormed(entry), `${version}'s equivalence is malformed`).toBe(true);
+      for (const path of entry.compatibility.equivalence.tests) {
+        expect(existsSync(resolve(__dirname, "..", "..", path)), `${version} cites a test that does not exist: ${path}`).toBe(true);
+      }
+      // "The fingerprints matched" is a precondition checked elsewhere, not evidence about the
+      // implementation. A declaration that offers only that has offered nothing a reader can disagree with.
+      for (const line of entry.compatibility.equivalence.implementationEvidence) {
+        expect(line.toLowerCase(), `${version} offers the fingerprint as implementation evidence`).not.toMatch(
+          /^the fingerprints? match/,
+        );
       }
     }
+  });
+
+  it("two methods with the SAME fingerprint are still incompatible without a reviewed declaration", () => {
+    // THE CORRECTION THIS MODEL EXISTS FOR. A digest over a finite fixture establishes agreement on that
+    // fixture and nothing more; the input space is not finite and no enumeration closes the gap. So
+    // matching fingerprints alone must grant nothing, or the fingerprint would be doing the work of a
+    // proof it cannot supply.
+    const unreviewed: CalculationMethodLineage = Object.freeze({
+      "m-1": Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "STANDALONE" as const }) }),
+      "m-2": Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "STANDALONE" as const }) }),
+    });
+    expect(calculationMethodsCompatible("m-1", "m-2", unreviewed)).toBe(false);
+    expect(calculationMethodsCompatible("m-2", "m-1", unreviewed)).toBe(false);
+  });
+
+  it("an INCOMPLETE reviewed declaration grants nothing — every missing field fails closed", () => {
+    // It does not warn and it does not degrade. An incomplete claim is indistinguishable from an
+    // unreviewed one, so it is treated as one.
+    const complete = {
+      of: "m-1",
+      reviewedBy: "reviewer@company",
+      reviewedAt: "2026-10-04",
+      implementationEvidence: ["compared classifyStall and observedSummary line by line; only a rename"],
+      tests: ["src/assessment/calculationMethodLineage.test.ts"],
+      rationale: "the identifier changed; no arithmetic did",
+    };
+    type Equivalence = {
+      of: string;
+      reviewedBy: string;
+      reviewedAt: string;
+      implementationEvidence: readonly string[];
+      tests: readonly string[];
+      rationale: string;
+    };
+    const build = (over: Partial<Equivalence>, behaviour = "nhcm_same"): CalculationMethodLineage =>
+      Object.freeze({
+        "m-1": Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "STANDALONE" as const }) }),
+        "m-2": Object.freeze({
+          behaviour,
+          compatibility: Object.freeze({ kind: "REVIEWED_EQUIVALENT" as const, equivalence: Object.freeze({ ...complete, ...over }) }),
+        }),
+      });
+
+    // The complete declaration works, so each failure below is attributable to the one field removed.
+    expect(calculationMethodsCompatible("m-1", "m-2", build({}))).toBe(true);
+
+    for (const [label, over] of [
+      ["no reviewer", { reviewedBy: "  " }],
+      ["no date", { reviewedAt: "" }],
+      ["no rationale", { rationale: " " }],
+      ["no implementation evidence", { implementationEvidence: [] }],
+      ["no cited tests", { tests: [] }],
+      ["a blank evidence line", { implementationEvidence: [" "] }],
+      ["a blank test path", { tests: [""] }],
+      ["an unknown predecessor", { of: "m-nonexistent" }],
+    ] as const) {
+      expect(calculationMethodsCompatible("m-1", "m-2", build(over)), label).toBe(false);
+    }
+
+    // ...and a mismatched fingerprint defeats an otherwise perfect declaration. The precondition is
+    // necessary even though it is not sufficient.
+    expect(calculationMethodsCompatible("m-1", "m-2", build({}, "nhcm_different"))).toBe(false);
   });
 
   it("compatibility is reflexive for a known version and FAILS CLOSED for an unknown one", () => {
@@ -150,33 +219,47 @@ describe("the calculation-method lineage is a checked declaration, not a convent
     expect(calculationMethodsCompatible(ASSESSMENT_CALC_VERSION, "assess-9999.9-unknown")).toBe(false);
   });
 
-  it("a rename chain is compatible in BOTH directions, and a declaration cycle terminates", async () => {
-    // Exercised against a registry built for the purpose, because the real one has a single entry and
-    // will until there is a second method — which would otherwise leave the chain logic, the part that
-    // decides whether an old blessing still holds, unreached by any test until the day it first
+  it("a reviewed chain is compatible in BOTH directions, and truncates at a malformed link", () => {
+    // Exercised against a registry built for the purpose: the real one has a single entry and will until
+    // there is a second method, which would otherwise leave this logic unreached until the day it first
     // mattered. Production never passes a registry.
-    const renamed = Object.freeze({
-      "m-1": Object.freeze({ behaviour: "nhcm_same", labelOnlyOf: null }),
-      "m-2": Object.freeze({ behaviour: "nhcm_same", labelOnlyOf: "m-1" }),
-      "m-3": Object.freeze({ behaviour: "nhcm_same", labelOnlyOf: "m-2" }),
-      "m-other": Object.freeze({ behaviour: "nhcm_different", labelOnlyOf: null }),
+    const ev = (of: string) => ({
+      of,
+      reviewedBy: "reviewer@company",
+      reviewedAt: "2026-10-04",
+      implementationEvidence: ["compared the classification and the summary; identifier only"],
+      tests: ["src/assessment/calculationMethodLineage.test.ts"],
+      rationale: "a rename",
     });
-    expect(labelOnlyAncestry("m-3", renamed)).toEqual(["m-2", "m-1"]);
-    // Forward: blessed under the oldest name, measured by a build calling it the newest.
-    expect(calculationMethodsCompatible("m-1", "m-3", renamed)).toBe(true);
-    // Backward: blessed under the newest, measured by a rolled-back build.
-    expect(calculationMethodsCompatible("m-3", "m-1", renamed)).toBe(true);
-    // A method that is NOT in the chain is never compatible, however adjacent it looks.
-    expect(calculationMethodsCompatible("m-1", "m-other", renamed)).toBe(false);
-    expect(calculationMethodsCompatible("m-other", "m-3", renamed)).toBe(false);
+    const chained: CalculationMethodLineage = Object.freeze({
+      "m-1": Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "STANDALONE" as const }) }),
+      "m-2": Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "REVIEWED_EQUIVALENT" as const, equivalence: Object.freeze(ev("m-1")) }) }),
+      "m-3": Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "REVIEWED_EQUIVALENT" as const, equivalence: Object.freeze(ev("m-2")) }) }),
+      "m-other": Object.freeze({ behaviour: "nhcm_other", compatibility: Object.freeze({ kind: "STANDALONE" as const }) }),
+    });
+    expect(reviewedEquivalenceChain("m-3", chained)).toEqual(["m-2", "m-1"]);
+    expect(calculationMethodsCompatible("m-1", "m-3", chained)).toBe(true);
+    expect(calculationMethodsCompatible("m-3", "m-1", chained)).toBe(true);
+    expect(calculationMethodsCompatible("m-1", "m-other", chained)).toBe(false);
 
-    // A cycle in the declarations terminates rather than hanging. Nobody should write this, which is
-    // exactly why the loop is bounded instead of trusting that nobody does.
-    const cyclic = Object.freeze({
-      "x": Object.freeze({ behaviour: "nhcm_same", labelOnlyOf: "y" }),
-      "y": Object.freeze({ behaviour: "nhcm_same", labelOnlyOf: "x" }),
+    // A MALFORMED LINK TRUNCATES the chain rather than being stepped over: if m-2's claim is incomplete,
+    // m-3 inherits nothing through it, and m-1 is out of reach. Walking past it would let an unreviewed
+    // link launder a blessing from one end of the chain to the other.
+    const broken: CalculationMethodLineage = Object.freeze({
+      ...chained,
+      "m-2": Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "REVIEWED_EQUIVALENT" as const, equivalence: Object.freeze({ ...ev("m-1"), tests: [] }) }) }),
     });
-    expect(labelOnlyAncestry("x", cyclic).length).toBeLessThanOrEqual(3);
+    expect(reviewedEquivalenceChain("m-3", broken)).toEqual(["m-2"]);
+    expect(calculationMethodsCompatible("m-1", "m-3", broken)).toBe(false);
+    expect(calculationMethodsCompatible("m-2", "m-3", broken)).toBe(true);
+
+    // A declaration cycle terminates rather than hanging. Nobody should write one, which is exactly why
+    // the loop is bounded instead of trusting that nobody does.
+    const cyclic: CalculationMethodLineage = Object.freeze({
+      x: Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "REVIEWED_EQUIVALENT" as const, equivalence: Object.freeze(ev("y")) }) }),
+      y: Object.freeze({ behaviour: "nhcm_same", compatibility: Object.freeze({ kind: "REVIEWED_EQUIVALENT" as const, equivalence: Object.freeze(ev("x")) }) }),
+    });
+    expect(reviewedEquivalenceChain("x", cyclic).length).toBeLessThanOrEqual(3);
     expect(calculationMethodsCompatible("x", "y", cyclic)).toBe(true);
   });
 

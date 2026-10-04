@@ -492,6 +492,33 @@ export const analysisTermsSchema = {
   },
 } as const;
 
+/**
+ * Re-assess an already-admitted dataset under a new calculation method, with NO file re-supplied.
+ *
+ * Note what is absent: no `csvText`. That is the whole point — the retained, hash-verified input is
+ * reused, so the customer is not asked to produce the file again. And no thresholds, no cut-off, no
+ * currency: the request names WHICH governed definition blesses the new method and nothing about what is
+ * measured. A definition that changes the cut-off, the threshold or the currency is refused
+ * (NH-AX-1016), because that is a different reading of the data and the admission was for the old one.
+ *
+ * `reason` is required, and required to be non-blank at the transport as well as in the service and the
+ * database: a revision nobody can explain is indistinguishable from a quiet re-grade.
+ */
+export const reassessPilotAssessmentSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "executionId", "analysisTermsId", "analysisTermsVersion", "reason"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      executionId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
+      reason: { type: "string", minLength: 1, maxLength: 2000, pattern: "\\S" },
+    },
+  },
+} as const;
+
 /** EP-26 · Activate, freeze, resume or retire one analysis-terms version. */
 export const analysisTermsTransitionSchema = {
   body: {

@@ -27,6 +27,9 @@ export interface ExecutionRecord {
   readonly binding: ExecutionBinding;
   readonly bindingHash: string;
   readonly inputHash: string;
+  /** The execution this one revises, or null for an ordinary first assessment. A link, not a successor. */
+  readonly revisesExecutionId: string | null;
+  readonly revisionReason: string | null;
   readonly scheduledByActorId: string;
   readonly scheduledByRole: string;
   readonly scheduledAt: string;
@@ -53,6 +56,8 @@ type ExecutionRow = {
   recoveryCaseId: string | null;
   bindingHash: string;
   inputHash: string;
+  revisesExecutionId: string | null;
+  revisionReason: string | null;
   scheduledByActorId: string;
   scheduledByRole: string;
   scheduledAt: Date;
@@ -85,6 +90,8 @@ function toExecutionRecord(row: ExecutionRow): ExecutionRecord {
       recoveryCaseId: row.recoveryCaseId,
     }),
     bindingHash: row.bindingHash,
+    revisesExecutionId: row.revisesExecutionId,
+    revisionReason: row.revisionReason,
     inputHash: row.inputHash,
     scheduledByActorId: row.scheduledByActorId,
     scheduledByRole: row.scheduledByRole,
@@ -100,6 +107,14 @@ export interface CreateExecutionInput {
   readonly inputHash: string;
   readonly scheduledByActorId: string;
   readonly scheduledByRole: string;
+  /**
+   * The execution this one REVISES, with the reason the caller gave.
+   *
+   * Both or neither: the database enforces that a revision states a reason, because a reason that can be
+   * omitted is a reason nobody supplies, and a revision nobody can explain is indistinguishable from a
+   * quiet re-grade. Absent for an ordinary first assessment, which is what every historical row is.
+   */
+  readonly revision?: { readonly revisesExecutionId: string; readonly revisionReason: string };
   /**
    * EP-31 · Per-account at-risk attribution, staged in THIS transaction.
    *
@@ -187,6 +202,8 @@ export async function createExecutionIfAbsent(
           sourceBindingRevision: input.sourceResolution?.sourceBindingRevision ?? null,
           sourceResolutionHash: input.sourceResolution?.sourceResolutionHash ?? null,
           inputHash: input.inputHash,
+          revisesExecutionId: input.revision?.revisesExecutionId ?? null,
+          revisionReason: input.revision?.revisionReason ?? null,
           scheduledByActorId: input.scheduledByActorId,
           scheduledByRole: input.scheduledByRole,
         },

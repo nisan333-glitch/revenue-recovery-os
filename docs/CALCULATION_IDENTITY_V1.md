@@ -1,6 +1,7 @@
 # Calculation-method identity and re-assessment · v1
 
-**Derived and built 2026-10-04.** No identity derivation changed. `pds`, `PAD-` and `PAX-` are untouched,
+**Derived and built 2026-10-04.** Extended the same day with the re-assessment decision (§6) and the
+correction to the equivalence model (§5). No identity derivation changed. `pds`, `PAD-` and `PAX-` are untouched,
 and `calculationMethodVersion` stays **out of the submission identity** — not as a further deferral, but
 as the answer the evidence gives.
 
@@ -58,27 +59,57 @@ That is the pre-existing consequence of putting the governed policy inside the s
 the constitution already states: *"an extract re-read under new governed terms must be re-submitted."* It
 is not a new rule and it is not caused by the calculation method's identity placement.
 
-## 5 · Label-only versus result-altering — now distinguishable
+## 5 · Rename versus re-grade — distinguishable, and never on a fingerprint alone
 
 Until this slice the two were indistinguishable, and both cost a full re-submission of every pilot. A
 **rename** — a scheme tidy-up, a naming convention — therefore imposed the same migration as a change of
 arithmetic, for no behavioural reason.
 
-`src/assessment/calculationMethodLineage.ts` declares, per method, a **behaviour fingerprint** over a
-frozen fixture, plus an optional `labelOnlyOf`. It is a declaration a human writes and a test checks by
-recomputing from the implementation actually present — the shape `MAJOR_ROW_SEMANTICS` and
-`PREVIOUS_MAJOR_SUPPORT` already use here. Consequences, all enforced:
+### The first model was wrong, and saying why matters more than the fix
 
-| Change | Outcome |
+`src/assessment/calculationMethodLineage.ts` first declared, per method, a **behaviour fingerprint** over
+a frozen fixture plus an optional `labelOnlyOf`, and treated *matching fingerprints* as establishing that
+two methods were the same method. **That does not follow.** The fingerprint is computed over nine cycles.
+Two implementations that agree on those nine may disagree on the tenth, and no finite fixture can close
+that gap — it is evidence of agreement on what was tried, never a proof of semantic equivalence. A model
+that promoted it to a proof would let a genuine behavioural change pass as a rename whenever the fixture
+happened not to reach it, which is exactly the failure **F34** had already demonstrated in miniature.
+
+### What the registry asks for now
+
+Equivalence is a **reviewed declaration**, and the fingerprint is one of its supporting exhibits:
+
+```ts
+type CalculationCompatibility =
+  | { kind: "STANDALONE" }
+  | { kind: "REVIEWED_EQUIVALENT"; equivalence: ReviewedEquivalence };
+
+interface ReviewedEquivalence {
+  of: string;                                 // the predecessor declared equivalent
+  reviewedBy: string;                         // a named human, not a process
+  reviewedAt: string;
+  implementationEvidence: readonly string[];  // what was compared, and where
+  tests: readonly string[];                   // targeted tests that must EXIST on disk
+  rationale: string;
+}
+```
+
+`reviewedEquivalenceIsWellFormed` **fails closed on every missing part**, and the registry's own test
+asserts each cited test file exists (`existsSync`) — a declaration may not cite tests that were never
+written. Consequences, all enforced:
+
+| Situation | Outcome |
 |---|---|
 | implementation moves, version does not | the fingerprint no longer matches; the test fails. Bump, or revert |
-| version bumped, declared `labelOnlyOf` | fingerprints must be **identical**, or the claim is false and the test fails |
-| version bumped, no `labelOnlyOf` | fingerprints must **differ**, or the bump changed nothing |
+| `REVIEWED_EQUIVALENT` whose fingerprints differ | the claim is contradicted by the evidence; the link is **dropped**, so compatibility is not granted |
+| a reviewed claim missing a reviewer, date, rationale, evidence or tests | grants **nothing** |
+| **matching fingerprints, no reviewed claim** | grants **nothing** — the correction above, asserted directly |
 | a method the registry does not describe | **never** compatible, not even with itself by string equality |
 
-`NH-AX-1014` now asks `calculationMethodsCompatible` rather than string equality, so a declared rename
-does **not** force re-submission, in **both directions** — a definition blessed before a rename stays
-usable after it, and one blessed after stays usable if the build is rolled back.
+`NH-AX-1014` asks `calculationMethodsCompatible` rather than string equality, so a *reviewed* rename does
+not force re-submission, in **both directions** — a definition blessed before it stays usable after, and
+one blessed after stays usable if the build is rolled back. **Unknown compatibility is blocked.** The
+current registry holds exactly one entry, `STANDALONE`; nothing claims equivalence to anything.
 
 ### The guard was blind, and the falsifier found it
 
@@ -87,30 +118,44 @@ fixture it **did not bite**: every cycle sat far from the stall boundary and cla
 way, so the fingerprint did not move. A fingerprint that only notices absurd changes is not a
 fingerprint. The fixture now carries two cycles observing at exactly *N* and *N+1* days after their
 expectation, and the one-day sensitivity is asserted directly (`digest(±1) !== digest(0)`), so the weak
-version cannot come back silently. F34 bites now.
+version cannot come back silently. F34 bites now. **F39** and **F40** guard the correction itself: granting
+compatibility on matching fingerprints alone, or accepting an evidence-free declaration, each fail a test.
 
-## 6 · The one decision that is NOT derivable — isolated
+## 6 · The decision, now made · explicit re-assessment without re-upload
 
 > **Should a RESULT-ALTERING method change permit re-assessment of an already-admitted extract without
 > re-submission?**
 
-Evidence cannot settle it, and that is why it is stated rather than answered:
+**Yes — explicitly, on a verified retained input, as a new linked execution.** The owner decided it; the
+evidence could not, and §6 of this document previously said so and left it open. What the evidence *did*
+settle is the shape, and the shape is what makes the answer safe rather than convenient:
 
-* **The identity machinery supports either.** A new `PAX-` is produced either way; nothing would have to
-  be re-identified.
-* **The trust invariant forbids neither.** New terms would still be governed — proposed by one identity,
-  activated by another, hash-witnessed — so the beneficiary determines nothing in either case.
-* **It is a product question.** Re-grading maximises consistency across a portfolio: every customer's
-  number reflects the current best method. Requiring re-submission maximises the stability of what a
-  customer was already told: a figure they were shown does not move because the implementation improved.
+* **The admission verdict does not depend on the calculation method.** `evaluateAdmission` reads the
+  assessment policy only to split cohorts and never reads its method, so an admission reached under one
+  method would have been identical under another. Reusing it reuses a decision that was never about the
+  thing that changed.
+* **Only the method may move.** `asOf`, `stallThresholdDays` and `currency` decide *what* is measured, and
+  the admission was for that reading. Terms that change any of them are refused `NH-AX-1016` and the
+  extract must be re-submitted.
+* **Nothing is replaced.** A new `PAX-` and a new finding are created and **linked**; the earlier rows are
+  never written to.
+* **Re-submission remains required** when the input is gone or does not verify — the half the decision
+  does *not* relax.
 
-Both are defensible and they are not reconcilable by inspection. **This is the remaining open item from
-the identity-governance order of work**, and it is a business decision with an owner, not a gap in the
-code. Nothing in this slice presumes either answer: today's behaviour (re-submission required) is the
-status quo preserved, not a decision made.
+The mechanism, its four refusals and the preservation proofs are in
+[`REASSESSMENT_V1.md`](REASSESSMENT_V1.md). One fact it rests on, worth stating here: a pre-bump execution
+**cannot run on this build at all** — the run-time gate blocks it `NH-AX-2006` before anything is computed
+— so re-assessment is not a convenience over re-running. It is the only honest route to a current-method
+answer for bytes already admitted.
 
 ## 7 · What this is not
 
 Not proof, not a Recovery Case, not a counted dollar. Lane 1 remains `constitutesProof: false`. It
 changes no historical identity, no hash scheme and no stored record. It decides where the calculation
-method belongs in identity — which was already right — and makes a rename distinguishable from a re-grade.
+method belongs in identity — which was already right — and makes a **reviewed** rename distinguishable
+from a re-grade.
+
+And it is **not** a claim that a later finding supersedes an earlier one. A revision is a second answer
+with its own identity, its own stated reason and a link to the first. Which of the two a reader should act
+on is a judgement for the reader; the system's job is to make both visible, attributable and
+reproducible, and to refuse to hide either.

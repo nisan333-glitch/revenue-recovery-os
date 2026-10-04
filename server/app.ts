@@ -50,6 +50,7 @@ import {
   policyTransitionSchema,
   policyGovernanceQuerySchema,
   schedulePilotAssessmentSchema,
+  reassessPilotAssessmentSchema,
   pilotAssessmentReadSchema,
   pilotAssessmentListSchema,
 } from "./http/schemas";
@@ -305,6 +306,27 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       // idempotent path), and a refusal is 200 with a deterministic NH-AX-#### code — a dataset
       // that may not be executed is a valid answer, exactly as a rejected dataset is at the intake.
       return reply.code(result.scheduled && result.created ? 201 : 200).send(result);
+    },
+  );
+
+  // Re-assess an already-admitted dataset under a new calculation method, with NO file re-supplied.
+  //
+  // A SEPARATE ROUTE, not a flag on the schedule. The two take different bodies — this one carries no
+  // `csvText` at all — and they answer different questions: scheduling asks "assess these bytes", this
+  // asks "assess the input you already hold, under this new method, and say why". Folding them together
+  // would let a request that omitted the file be read as a scheduling request that forgot it.
+  //
+  // No `bodyLimit` override: there is no dataset in this body, so the default is correct and a large
+  // body here would be a sign of something wrong rather than something needed.
+  app.post<{ Body: pilotAssessmentService.ReassessPilotAssessmentRequest }>(
+    "/pilot/assessments/reassess",
+    { schema: reassessPilotAssessmentSchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      const result = await pilotAssessmentService.reassessPilotAssessment(actor, req.body);
+      // 201 only when a NEW revision was created; a repeat is 200, and a refusal is 200 with its
+      // NH-AX-#### code — a re-assessment that may not proceed is a valid answer, not an error.
+      return reply.code(result.reassessed && result.created ? 201 : 200).send(result);
     },
   );
 

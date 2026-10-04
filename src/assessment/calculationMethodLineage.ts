@@ -12,40 +12,85 @@
 // result-altering change that is exactly right. For a rename it is a migration imposed on every pilot
 // for no reason, and nothing in the system could tell the two apart.
 //
-// HOW IT IS TOLD APART, and why this shape. A `behaviour` fingerprint per version, over a frozen fixture
-// — a DECLARATION a human writes, which a test then checks against the implementation actually present.
-// Exactly the shape `MAJOR_ROW_SEMANTICS` and `PREVIOUS_MAJOR_SUPPORT` already use in this codebase: a
-// claim that is checkable, rather than a clock or a convention. Consequences:
+// A FINGERPRINT IS NOT A PROOF, and the first version of this module came too close to treating it as
+// one. A digest over a frozen fixture establishes that two methods agree ON THAT FIXTURE. It cannot
+// establish that they agree on every input: the fixture is finite, the input space is not, and no
+// enumeration closes that gap. A reviewer who sees matching fingerprints has seen NECESSARY evidence
+// and nothing more.
 //
-//   • change the implementation without bumping the version → the fingerprint no longer matches and the
-//     test fails. You must bump, or revert. There is no third option.
-//   • bump the version and declare `labelOnlyOf` → the test requires the fingerprint to be IDENTICAL to
-//     that predecessor's. A false "nothing changed" claim fails.
-//   • bump the version without `labelOnlyOf` → the test requires the fingerprint to DIFFER. A bump that
-//     changed nothing is either a mistake or a rename that should say so.
+// So equivalence is carried by an EXPLICIT REVIEWED DECLARATION, and the fingerprint is one of its
+// preconditions rather than its substance. A declaration must name:
+//
+//   • WHO reviewed it and WHEN — a person owns the claim; no constant and no test can own it;
+//   • IMPLEMENTATION EVIDENCE — what in the code was compared, and why the change cannot alter an
+//     answer. "The fingerprints matched" is not evidence of this kind and is explicitly insufficient;
+//   • TARGETED TESTS, by path — and the checking test asserts those files EXIST, so a declaration
+//     cannot cite tests nobody wrote;
+//   • a RATIONALE, in words, for why the arithmetic is untouched.
+//
+// A declaration missing any of those, or whose fingerprints do not match, grants NO compatibility. That
+// is the fail-closed direction, and it is enforced by `reviewedEquivalenceIsWellFormed` rather than
+// trusted to review discipline.
+//
+// WHAT THE FINGERPRINT STILL DOES, which is worth keeping: it catches an implementation that moved
+// without the version moving. Change `splitCohorts`, `observedSummary` or `classifyStall` so that any
+// answer differs, and the declared fingerprint stops matching — you must bump the version or revert.
+// That is a real guarantee and it is the one thing a finite fixture CAN give.
 //
 // ZERO IMPORTS, deliberately. This is the declaration; computing the fingerprint from the real
 // calculation belongs in the test that checks the declaration, not in the thing being checked.
 //
-// WHAT IT DOES NOT DECIDE. Whether a RESULT-ALTERING change should let an existing admission be
-// re-assessed without re-submission is not here, and is not derivable from the code — see
-// docs/CALCULATION_IDENTITY_V1.md §6.
+// UNKNOWN COMPATIBILITY IS BLOCKED. A method this registry does not describe is never compatible with
+// anything, not even with itself by string equality: a build that cannot say what a method DOES cannot
+// claim its answers are unchanged.
 
-/** A declared calculation method and how it relates to its predecessor. */
+/**
+ * A reviewed claim that two calculation methods compute the same answers.
+ *
+ * A PERSON owns this. The fields are what make the claim auditable later: who stood behind it, what they
+ * compared, which tests establish it, and why the change cannot alter a result. None of them is
+ * derivable from the code, which is the point — if equivalence could be computed, it would not need
+ * reviewing.
+ */
+export interface ReviewedEquivalence {
+  /** The method this one is declared equivalent to. */
+  readonly of: string;
+  /** The reviewing identity. Not a role: a role cannot be asked what it was thinking. */
+  readonly reviewedBy: string;
+  /** ISO date of the review. */
+  readonly reviewedAt: string;
+  /**
+   * What in the IMPLEMENTATION was compared, and why the change cannot alter an answer.
+   *
+   * "The fingerprints matched" does not belong here and is explicitly insufficient: the fingerprint is a
+   * precondition checked elsewhere. This is the reasoning a reader needs in order to disagree.
+   */
+  readonly implementationEvidence: readonly string[];
+  /**
+   * Repository paths of the tests that establish the equivalence. Their EXISTENCE is checked, so a
+   * declaration cannot cite tests nobody wrote.
+   */
+  readonly tests: readonly string[];
+  readonly rationale: string;
+}
+
+/** Whether a method stands alone, or carries a reviewed equivalence to another. */
+export type CalculationCompatibility =
+  /** No claim. Compatible with itself and nothing else. */
+  | { readonly kind: "STANDALONE" }
+  | { readonly kind: "REVIEWED_EQUIVALENT"; readonly equivalence: ReviewedEquivalence };
+
+/** A declared calculation method and what is claimed about it. */
 export interface CalculationMethodEntry {
   /**
    * Fingerprint of the OBSERVABLE BEHAVIOUR of this method over the frozen fixture, as
-   * `calculationMethodLineage.test.ts` computes it. Not a version string and not a file hash: two
-   * implementations that compute the same answers have the same fingerprint however differently written.
+   * `calculationMethodLineage.test.ts` computes it.
+   *
+   * Its job is to catch an implementation that moved without the version moving. It is a NECESSARY
+   * precondition of an equivalence claim and never a sufficient one — see this file's header.
    */
   readonly behaviour: string;
-  /**
-   * The version this one is a pure RENAME of, or null for a method that stands on its own.
-   *
-   * A non-null value is a claim that the arithmetic is unchanged, and the test enforces it by requiring
-   * both fingerprints to be equal. It is what lets a rename avoid forcing every pilot to re-submit.
-   */
-  readonly labelOnlyOf: string | null;
+  readonly compatibility: CalculationCompatibility;
 }
 
 /**
@@ -55,11 +100,12 @@ export interface CalculationMethodEntry {
  * the test fails until it is, which is the point.
  */
 export const CALCULATION_METHOD_LINEAGE: Readonly<Record<string, CalculationMethodEntry>> = Object.freeze({
-  // The only method this codebase has ever had. Its fingerprint is pinned by the test from the real
-  // `splitCohorts` + `observedSummary` over the frozen fixture.
+  // The only method this codebase has ever had, so it stands alone: there is nothing for it to be
+  // equivalent TO. Its fingerprint is pinned by the test from the real `splitCohorts` +
+  // `observedSummary` over the frozen fixture.
   "assess-2026.1-thin": Object.freeze({
     behaviour: "nhcm_12b105f78dcae1c1",
-    labelOnlyOf: null,
+    compatibility: Object.freeze({ kind: "STANDALONE" as const }),
   }),
 });
 
@@ -67,23 +113,57 @@ export const CALCULATION_METHOD_LINEAGE: Readonly<Record<string, CalculationMeth
 export type CalculationMethodLineage = Readonly<Record<string, CalculationMethodEntry>>;
 
 /**
- * The chain of versions this one is a rename of, nearest first. Empty for an unknown version.
+ * Is this entry's equivalence claim WELL FORMED — complete enough to be allowed to grant compatibility?
  *
- * `lineage` is a parameter so a rename CHAIN can be exercised against a registry built for the purpose.
- * The real registry has one entry and will for as long as there is one method, which would otherwise
- * leave the chain logic — the part that decides whether an old blessing still holds — unreached by any
- * test until the day it first mattered. Production never passes it.
+ * Checked rather than trusted to review discipline, and every clause fails closed:
+ *
+ *   • the named predecessor must exist;
+ *   • the fingerprints must match — necessary, and the only part a machine can check;
+ *   • a reviewer, a date and a rationale must be present and non-blank;
+ *   • implementation evidence must be given, and at least one test cited.
+ *
+ * A malformed declaration grants nothing. It does not warn and it does not degrade: an incomplete claim
+ * is indistinguishable from an unreviewed one, so it is treated as one.
  */
-export function labelOnlyAncestry(
+export function reviewedEquivalenceIsWellFormed(
+  entry: CalculationMethodEntry | undefined,
+  lineage: CalculationMethodLineage = CALCULATION_METHOD_LINEAGE,
+): boolean {
+  if (entry === undefined || entry.compatibility.kind !== "REVIEWED_EQUIVALENT") return false;
+  const e = entry.compatibility.equivalence;
+  const predecessor = lineage[e.of];
+  if (predecessor === undefined) return false;
+  if (predecessor.behaviour !== entry.behaviour) return false;
+  if (e.reviewedBy.trim() === "" || e.reviewedAt.trim() === "" || e.rationale.trim() === "") return false;
+  if (e.implementationEvidence.length === 0 || e.tests.length === 0) return false;
+  if (e.implementationEvidence.some((x) => x.trim() === "") || e.tests.some((x) => x.trim() === "")) return false;
+  return true;
+}
+
+/**
+ * The chain of methods this one is declared equivalent to, nearest first. Empty for an unknown version,
+ * and TRUNCATED at the first malformed declaration rather than stepping over it.
+ *
+ * `lineage` is a parameter so a chain can be exercised against a registry built for the purpose. The real
+ * registry has one entry and will for as long as there is one method, which would otherwise leave this
+ * logic — the part that decides whether an old blessing still holds — unreached by any test until the
+ * day it first mattered. Production never passes it.
+ */
+export function reviewedEquivalenceChain(
   version: string,
   lineage: CalculationMethodLineage = CALCULATION_METHOD_LINEAGE,
 ): readonly string[] {
   const chain: string[] = [];
-  let cursor = lineage[version]?.labelOnlyOf ?? null;
+  let cursor: string = version;
   // Bounded by the registry size, so a cycle in the declarations terminates instead of hanging.
-  while (cursor !== null && chain.length <= Object.keys(lineage).length) {
-    chain.push(cursor);
-    cursor = lineage[cursor]?.labelOnlyOf ?? null;
+  while (chain.length <= Object.keys(lineage).length) {
+    const entry: CalculationMethodEntry | undefined = lineage[cursor];
+    if (!reviewedEquivalenceIsWellFormed(entry, lineage)) break;
+    const compatibility = entry!.compatibility;
+    if (compatibility.kind !== "REVIEWED_EQUIVALENT") break;
+    const next: string = compatibility.equivalence.of;
+    chain.push(next);
+    cursor = next;
   }
   return Object.freeze(chain);
 }
@@ -103,9 +183,11 @@ export function calculationMethodsCompatible(
 ): boolean {
   if (!(blessed in lineage) || !(current in lineage)) return false;
   if (blessed === current) return true;
-  // BOTH DIRECTIONS. A definition blessed before a rename must stay usable after it, and one blessed
-  // after must stay usable if the build is rolled back — the arithmetic is the same either way.
+  // BOTH DIRECTIONS. A definition blessed before a reviewed equivalence must stay usable after it, and
+  // one blessed after must stay usable if the build is rolled back — the claim is that the arithmetic is
+  // the same, which is symmetric.
   return (
-    labelOnlyAncestry(current, lineage).includes(blessed) || labelOnlyAncestry(blessed, lineage).includes(current)
+    reviewedEquivalenceChain(current, lineage).includes(blessed) ||
+    reviewedEquivalenceChain(blessed, lineage).includes(current)
   );
 }

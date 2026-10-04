@@ -55,6 +55,10 @@ export type ExecutionRefusal =
   | "request_contradicts_admission"
   | "calculation_method_unsupported"
   | "calculation_method_drift"
+  | "reassessment_input_unavailable"
+  | "reassessment_terms_not_method_only"
+  | "reassessment_no_method_change"
+  | "reassessment_already_exists"
   | "boundary_mismatch"
   | "no_assessable_cycles"
   | "case_halted"
@@ -208,6 +212,46 @@ export const EXECUTION_REFUSAL_CODES: Readonly<Record<ExecutionRefusal, Executio
       remediation:
         "Do not retry on this build. The binding froze the method the execution's identity was derived under, and this build implements a different one, so producing a finding here would record a result computed by an implementation the binding does not name. Schedule a new execution, which will be refused at NH-AX-1014 until the governed terms name this build's method.",
       since: "1.2.0",
+    }),
+    // RE-ASSESSMENT · the three ways an explicit re-assessment of a retained input is refused.
+    //
+    // All three send the caller somewhere different, which is why they are three codes. 1015: the input
+    // is gone or cannot be trusted, so there is nothing to re-assess and the extract must be
+    // re-submitted. 1016: the new definition changes WHAT IS MEASURED, not merely how — a different
+    // cut-off, threshold or currency is a different reading of the data, and the admission was for the
+    // old one. 1017: the new definition names the method already used, so there is no second answer to
+    // produce and the existing execution is already it.
+    reassessment_input_unavailable: code({
+      code: "NH-AX-1015",
+      severity: "refused",
+      title: "The original execution's input is unavailable or cannot be verified.",
+      remediation:
+        "Re-submit the dataset and schedule a new assessment. Re-assessment reuses the retained, hash-verified input precisely so the customer is not asked to produce the file again; with no trustworthy input there is nothing to re-assess, and reconstructing one would mean assessing data the earlier finding never saw.",
+      since: "1.3.0",
+    }),
+    reassessment_terms_not_method_only: code({
+      code: "NH-AX-1016",
+      severity: "refused",
+      title: "The cited analysis terms change what is measured, not only the calculation method.",
+      remediation:
+        "Re-submit the extract under the new terms. A different cut-off, stall threshold or currency is a different reading of the same data — it changes which rows count and what 'stalled' means — and the admission decision was reached for the old reading. Only a change of calculation method can be applied to an already-admitted input, because the admission verdict does not depend on the method.",
+      since: "1.3.0",
+    }),
+    reassessment_no_method_change: code({
+      code: "NH-AX-1017",
+      severity: "refused",
+      title: "The cited analysis terms name the calculation method the execution already used.",
+      remediation:
+        "Nothing to do: the existing execution is already the answer under that method, and its finding stands. Re-running it would produce a byte-identical result under a new identifier, which would look like a second opinion and be nothing of the kind.",
+      since: "1.3.0",
+    }),
+    reassessment_already_exists: code({
+      code: "NH-AX-1018",
+      severity: "refused",
+      title: "An execution for that exact binding already exists, and it is not a revision of this one.",
+      remediation:
+        "Read the existing execution: it is already the answer for these bytes under those terms, because an execution's identity IS its binding. Recording a revision link onto it would claim it was produced by re-assessing this one, which it was not — and producing a second row would need a second identity for identical content.",
+      since: "1.3.0",
     }),
     no_assessable_cycles: code({
       code: "NH-AX-1009",

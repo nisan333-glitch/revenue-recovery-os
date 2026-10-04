@@ -234,17 +234,48 @@ reads its method. The governing rule is therefore:
 So no identity changes: a method change already yields a new execution identity and a new finding, and
 adding the field to `pds` would re-identify every historical submission to express a dependency admission
 does not have. **Built 2026-10-04**
-([`docs/CALCULATION_IDENTITY_V1.md`](docs/CALCULATION_IDENTITY_V1.md)): a per-method **behaviour
-fingerprint** — a declaration checked by recomputing from the implementation present — now distinguishes a
-**rename** from a change of arithmetic, so `NH-AX-1014` asks compatibility rather than string equality and
-a rename no longer forces every pilot to re-submit.
+([`docs/CALCULATION_IDENTITY_V1.md`](docs/CALCULATION_IDENTITY_V1.md)): a per-method registry now
+distinguishes a **rename** from a change of arithmetic, so `NH-AX-1014` asks compatibility rather than
+string equality and a reviewed rename no longer forces every pilot to re-submit.
 
-**The one decision that is NOT derivable, and is isolated rather than invented:** whether a
-*result-altering* method change should permit re-assessment of an already-admitted extract **without
-re-submission**. The identity machinery supports either, the trust invariant forbids neither, and it turns
-on whether a figure a customer was already shown may move because the implementation improved. It is a
-business decision with an owner. Today's behaviour — re-submission required — is the status quo preserved,
-not an answer.
+**Semantic-equivalence correction (2026-10-04).** The first form of that registry treated a matching
+**behaviour fingerprint** as establishing that two methods were the same method. **That does not follow.**
+The fingerprint is computed over nine cycles; two implementations agreeing there may disagree on the
+tenth, and no finite fixture closes the gap — exactly the failure falsifier F34 had already shown in
+miniature when a one-day classification shift left the fingerprint unmoved. The governing rule is now:
+
+> **A finite behaviour fingerprint is necessary evidence of equivalence and never a proof of it.**
+> Equivalence must be an explicit **reviewed declaration** — a named reviewer, a date, a rationale,
+> implementation evidence and targeted tests that exist — and it is contradicted, not confirmed, by
+> differing fingerprints. **Unknown compatibility is blocked.**
+
+**Built 2026-10-04**: `reviewedEquivalenceIsWellFormed` fails closed on every missing part, the registry's
+test asserts each cited test file exists on disk, and matching fingerprints alone grant nothing. The
+current registry holds one `STANDALONE` entry; nothing claims equivalence to anything.
+
+**Explicit re-assessment decision (2026-10-04).** The decision previously isolated as not derivable —
+whether a *result-altering* method change may permit re-assessment of an already-admitted extract
+**without re-submission** — was **made**, and the shape the evidence does settle is what makes it safe:
+
+> **An already-admitted extract may be assessed again under newly governed analysis terms, without
+> re-supplying the file, when the retained input is present and verifies against its own recorded hash.
+> The result is a new execution and a new finding, LINKED to the previous one with a stated reason. A
+> result is never silently replaced, and re-submission remains required when the input is unavailable or
+> unverifiable.**
+
+It is sound because the admission verdict does not depend on the calculation method — `evaluateAdmission`
+never reads it — so the reused decision was never about the thing that changed. **Only the method may
+move:** terms changing `asOf`, `stallThresholdDays` or `currency` change *what* is measured and are
+refused `NH-AX-1016`. Authorization and governance are re-checked **now**, not inherited, so a frozen bar
+refuses a revision. **Built 2026-10-04**
+([`docs/REASSESSMENT_V1.md`](docs/REASSESSMENT_V1.md)): four refusals — `NH-AX-1015` input unavailable or
+unverifiable, `NH-AX-1016` not method-only, `NH-AX-1017` nothing to do, `NH-AX-1018` the binding already
+exists independently and is **not relabelled** — plus a derived, not narrated, before/after delta over
+fourteen fields a revision must hold constant. The earlier execution and finding are proven byte-identical
+afterwards; the append-only tables refuse the alternative outright. The fact it rests on: a pre-bump
+execution **cannot run on this build at all** (`NH-AX-2006` blocks it before anything is computed), so
+this is the only honest route to a current-method answer for bytes already admitted. This is a pilot-data
+trust rule and turns no observed amount into proven Revenue Returned.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

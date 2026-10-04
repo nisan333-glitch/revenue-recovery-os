@@ -471,6 +471,17 @@ model PilotAssessmentExecutionRecord {
   sourcePermittedSetVersion String?  @map("source_permitted_set_version")
   sourceBindingRevision     Int?     @map("source_binding_revision")
   sourceResolutionHash      String?  @map("source_resolution_hash")
+  /// The execution this one REVISES, when it was produced by re-assessing a retained input under a new
+  /// calculation method. Null for an ordinary first assessment.
+  ///
+  /// A LINK, never a replacement. The earlier execution and its finding are untouched and remain
+  /// readable: Trust Invariant rule 9 requires a revision to be a new linked record, and rule 5 requires
+  /// the historical result to stay reproducible. Nothing in the system deletes or rewrites the record
+  /// this points at.
+  revisesExecutionId        String?  @map("revises_execution_id")
+  /// Why this revision exists, stated by the actor who asked for it. Required whenever
+  /// `revisesExecutionId` is set — a revision with no stated reason cannot be reviewed later.
+  revisionReason            String?  @map("revision_reason")
   scheduledByActorId        String   @map("scheduled_by_actor_id")
   scheduledByRole           String   @map("scheduled_by_role")
   scheduledAt               DateTime @default(now()) @map("scheduled_at")

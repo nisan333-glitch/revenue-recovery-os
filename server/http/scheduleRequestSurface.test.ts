@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { pilotDatasetSchema, schedulePilotAssessmentSchema } from "./schemas";
+import { pilotDatasetSchema, reassessPilotAssessmentSchema, schedulePilotAssessmentSchema } from "./schemas";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "..", "..", p), "utf8");
 
@@ -51,6 +51,25 @@ describe("S5 · the scheduling request cannot express a caller's contract versio
       "provenance",
       "recoveryCaseId",
     ]);
+  });
+
+  it("pins the RE-ASSESSMENT request the same way — it cannot name a version, a file or a reading", () => {
+    // The same reason, applied to the second route that produces a governed finding. The absences are
+    // the content: no `csvText` (the retained input is reused, which is the point), no contract version,
+    // no threshold, no cut-off, no currency, no admission policy. It cites WHICH execution and WHICH
+    // governed definition, and states WHY.
+    expect(Object.keys(reassessPilotAssessmentSchema.body.properties).sort()).toEqual([
+      "analysisTermsId",
+      "analysisTermsVersion",
+      "boundaryId",
+      "executionId",
+      "reason",
+    ]);
+    expect(reassessPilotAssessmentSchema.body.additionalProperties).toBe(false);
+    // A revision nobody can explain is indistinguishable from a quiet re-grade, so the reason is
+    // required and required to be non-blank — here, in the service, and in a CHECK constraint.
+    expect(reassessPilotAssessmentSchema.body.required as readonly string[]).toContain("reason");
+    expect(reassessPilotAssessmentSchema.body.properties.reason.pattern).toBe("\\S");
   });
 
   it("keeps `additionalProperties: false`, which with removeAdditional:false is what makes injection a 400", () => {
