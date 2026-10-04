@@ -52,6 +52,8 @@ export interface GovernedAnalysisTermsRow {
   readonly asOf: string;
   readonly stallThresholdDays: number;
   readonly currency: string;
+  /** Server-stamped at registration. No request can state it; it is reported so a reader can see it. */
+  readonly calculationMethodVersion: string;
   readonly termsHash: string;
   readonly state: PolicyState | null;
   /** True only for ACTIVE. Mirrors the server; never widens it. */

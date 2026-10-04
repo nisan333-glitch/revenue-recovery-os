@@ -114,6 +114,54 @@ export interface AssessmentExecutionView {
     readonly producedBy: string;
     readonly recordedAt: string;
   } | null;
+  /**
+   * What this execution revises, what differs, and why — or null for a first assessment.
+   *
+   * The delta is DERIVED server-side from the two bindings, not narrated, because a hand-written
+   * summary can be wrong about its own diff. `previousFindingExists` is reported because "the earlier
+   * result is still there" is the claim that makes this a revision rather than a replacement, and a
+   * reader should not have to take it on trust.
+   */
+  readonly revises: {
+    readonly executionId: string;
+    readonly reason: string;
+    readonly delta: BindingRevisionDeltaView | null;
+    readonly previousFindingExists: boolean;
+  } | null;
+  readonly claimBoundary: AssessmentFindingView["claimBoundary"];
+}
+
+export interface RevisionFieldView {
+  readonly field: string;
+  readonly before: string;
+  readonly after: string;
+}
+
+export interface BindingRevisionDeltaView {
+  readonly changed: readonly RevisionFieldView[];
+  /** Always empty for a revision this system produced. Non-empty is evidence something went wrong. */
+  readonly unexpectedChanges: readonly RevisionFieldView[];
+}
+
+/**
+ * The answer to "re-assess the input you already hold, under this definition, for this reason".
+ *
+ * `reassessed: false` with a `refusal` is a VALID answer, not an error — the server has four
+ * deterministic reasons to decline and each names its own remedy. `created: false` with
+ * `reassessed: true` means the revision already existed: the call is idempotent on the execution's
+ * identity, which is what makes a retry after an uncertain network response safe.
+ */
+export interface ReassessAssessmentResult {
+  readonly reassessed: boolean;
+  readonly created: boolean;
+  readonly executionId: string | null;
+  readonly revisesExecutionId: string;
+  readonly boundaryId: string;
+  readonly state: ExecutionState | null;
+  readonly binding: ExecutionBindingView | null;
+  readonly delta: BindingRevisionDeltaView | null;
+  readonly refusal: ExecutionCodeSpec | null;
+  readonly refusalDetail: string | null;
   readonly claimBoundary: AssessmentFindingView["claimBoundary"];
 }
 
@@ -169,6 +217,39 @@ export function schedulePilotAssessment(
     ...(params.locale ? { locale: params.locale } : {}),
     ...(params.amountFormat ? { amountFormat: params.amountFormat } : {}),
     ...(params.recoveryCaseId ? { recoveryCaseId: params.recoveryCaseId } : {}),
+  });
+}
+
+/**
+ * Re-assess a retained input under a newly governed definition. NO FILE IS RE-SUPPLIED.
+ *
+ * There is deliberately no `csvText` parameter and no way to add one: the input the earlier finding
+ * was computed from is reused, verified server-side against its own recorded hash, and a missing or
+ * unverifiable one is refused `NH-AX-1015` with "re-submit" as the remedy. There is likewise no
+ * threshold, cut-off or currency — the cited governed definition states those, and one that changes
+ * them is refused `NH-AX-1016` because that is a different reading of the data.
+ *
+ * SAFE TO RETRY. The new execution's identity is derived from its binding, so sending this twice
+ * resolves to the same execution and the second call reports `created: false`. A caller that lost the
+ * response to a network error may repeat it verbatim without risking a second execution or a second
+ * revision link.
+ */
+export function reassessPilotAssessment(
+  params: {
+    readonly boundaryId: string;
+    readonly executionId: string;
+    readonly analysisTermsId: string;
+    readonly analysisTermsVersion: string;
+    readonly reason: string;
+  },
+  actor: DevActor,
+): Promise<ReassessAssessmentResult> {
+  return apiRequest<ReassessAssessmentResult>("POST", "/pilot/assessments/reassess", actor, {
+    boundaryId: params.boundaryId,
+    executionId: params.executionId,
+    analysisTermsId: params.analysisTermsId,
+    analysisTermsVersion: params.analysisTermsVersion,
+    reason: params.reason,
   });
 }
 

@@ -14,6 +14,7 @@ import { AuditTrail } from "./modules/AuditTrail";
 import { RecoveryReasons } from "./modules/RecoveryReasons";
 import { ConfidencePanel } from "./modules/ConfidencePanel";
 import { Assessment } from "./modules/assessment/Assessment";
+import { ReassessmentScreen } from "./modules/assessment/ReassessmentScreen";
 import { PilotPolicyGovernance } from "./modules/governance/PilotPolicyGovernance";
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
@@ -35,6 +36,7 @@ type ModuleKey =
   | "confidence"
   | "audit"
   | "assessment"
+  | "reassessment"
   | "synthetic-pilot"
   | "candidate-review"
   | "policy-governance";
@@ -54,6 +56,11 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "confidence", label: "Confidence Score", group: "Trust" },
   { key: "audit", label: "Audit Trail", group: "Trust" },
   { key: "assessment", label: "Revenue Opportunity Assessment", group: "Assess" },
+  // Its own entry rather than a step inside the assessment flow: it acts on an execution that already
+  // exists, not on a file being uploaded, and the operator reaching it has usually come back days later
+  // because a calculation method moved. A button buried at the end of an upload wizard would be found
+  // by nobody in that situation.
+  { key: "reassessment", label: "Re-assessment", group: "Assess" },
   // EP-19 · Deliberately its own entry, outside "Assess": proposing a fitness bar and putting one in
   // force are two acts by two people, and a screen that walked from one to the other would model a
   // beneficiary setting the bar that judges them.
@@ -203,6 +210,11 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
           {active === "assessment" && (
             <AssessmentErrorBoundary>
               <Assessment />
+            </AssessmentErrorBoundary>
+          )}
+          {active === "reassessment" && (
+            <AssessmentErrorBoundary>
+              <ReassessmentScreen />
             </AssessmentErrorBoundary>
           )}
         </div>

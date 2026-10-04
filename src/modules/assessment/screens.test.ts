@@ -83,7 +83,7 @@ describe("Assessment screens render the critical content", () => {
     // EP-26 · N and the cut-off are a governed reference, not two inputs on this screen.
     governedTerms: [
       { termsRef: "terms-q1@1.0.0", termsId: "terms-q1", termsVersion: "1.0.0", asOf: "2026-03-01",
-        stallThresholdDays: 30, currency: "USD", termsHash: "sha256:t", state: "ACTIVE" as const,
+        stallThresholdDays: 30, currency: "USD", calculationMethodVersion: "assess-2026.1-thin", termsHash: "sha256:t", state: "ACTIVE" as const,
         mayMeasure: true },
     ],
     analysisTermsRef: "terms-q1@1.0.0", setAnalysisTermsRef: noop, termsError: null,

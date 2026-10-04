@@ -46,6 +46,7 @@ function view(over: Partial<AssessmentExecutionView> = {}): AssessmentExecutionV
     scheduledByActorId: "operator@company",
     scheduledByRole: "operator",
     scheduledAt: "2026-04-16T09:00:00.000Z",
+    revises: null,
     events: [
       { transition: "SCHEDULED", code: null, byId: "operator@company", at: "2026-04-16T09:00:00.000Z" },
       { transition: "CLAIMED", code: null, byId: "TASK-x#1", at: "2026-04-16T09:00:01.000Z" },

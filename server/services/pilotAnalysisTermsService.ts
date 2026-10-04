@@ -284,6 +284,11 @@ export async function listGovernedAnalysisTerms(actor: ActorContext, boundaryId:
         asOf: stored.terms.asOf,
         stallThresholdDays: stored.terms.stallThresholdDays,
         currency: stored.terms.currency,
+        // WHICH CALCULATION METHOD this definition was blessed for. Server-stamped at registration, so
+        // it is a fact about the implementation rather than anything a proposer typed. It is reported
+        // because an operator choosing a definition for a RE-ASSESSMENT cannot otherwise tell a real
+        // method change from a no-op, and would be left to discover NH-AX-1017 by submitting.
+        calculationMethodVersion: stored.terms.calculationMethodVersion,
         termsHash: stored.termsHash,
         state: governance.state,
         mayMeasure: mayEvaluate(governance.state),
