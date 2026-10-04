@@ -135,7 +135,8 @@ semantics are unchanged, with the declared version persisted so the claim is aud
 2026-09-27 as contract 2.0.0**, completing the binding order: the operator-supplied dataset label is out of
 the submission identity and the parameters that change what the data means are in, with the version component
 narrowed to the **major** so a patch or minor bump no longer resets every identity.
-`calculationMethodVersion` stays explicitly **open** and out. One consequence, stated rather than buried: an
+`calculationMethodVersion` stays out of the submission identity — **derived and settled on 2026-10-04**,
+see the calculation-identity decision below. One consequence, stated rather than buried: an
 extract re-read under new governed terms must be **re-submitted**, because the admission decision is looked up
 by the same identity — a verdict computed under one definition does not authorise an execution under another. Full treatment and the field-by-field classification are
 in [`docs/ASSESSMENT_IDENTITY_V1.md`](docs/ASSESSMENT_IDENTITY_V1.md). This is a pilot-data trust rule
@@ -221,6 +222,29 @@ verified **first** on the judging path, so "this row changed" outranks "nobody a
 and `UNFROZEN` refused; `FROZEN` and `RETIRED` deliberately still permitted, because refusing every
 transition would leave governance unable to stop what it had just found. It refuses nothing today — every
 row the application has written hashes to its own values.
+
+**Calculation-method identity decision (2026-10-04).** Open four times and answerable from the code. The
+method **is** already in `canonicalBinding` (→ `PAX-`) and in `canonicalFinding`, and the admission verdict
+does **not** depend on it — `evaluateAdmission` reads the assessment policy only to split cohorts and never
+reads its method. The governing rule is therefore:
+
+> **The calculation method is an identity component of exactly the artefacts it can change — the execution
+> and its finding — and is correctly absent from the submission identity, which governs admission.**
+
+So no identity changes: a method change already yields a new execution identity and a new finding, and
+adding the field to `pds` would re-identify every historical submission to express a dependency admission
+does not have. **Built 2026-10-04**
+([`docs/CALCULATION_IDENTITY_V1.md`](docs/CALCULATION_IDENTITY_V1.md)): a per-method **behaviour
+fingerprint** — a declaration checked by recomputing from the implementation present — now distinguishes a
+**rename** from a change of arithmetic, so `NH-AX-1014` asks compatibility rather than string equality and
+a rename no longer forces every pilot to re-submit.
+
+**The one decision that is NOT derivable, and is isolated rather than invented:** whether a
+*result-altering* method change should permit re-assessment of an already-admitted extract **without
+re-submission**. The identity machinery supports either, the trust invariant forbids neither, and it turns
+on whether a figure a customer was already shown may move because the implementation improved. It is a
+business decision with an owner. Today's behaviour — re-submission required — is the status quo preserved,
+not an answer.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

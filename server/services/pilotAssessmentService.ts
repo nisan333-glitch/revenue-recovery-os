@@ -69,6 +69,7 @@ import {
 } from "../../src/contract/executionCodes";
 import { mayEvaluate, whyCannotEvaluate, type PolicyState } from "../../src/contract/policyLifecycle";
 import { ASSESSMENT_CALC_VERSION, makePolicy } from "../../src/assessment/policy";
+import { calculationMethodsCompatible } from "../../src/assessment/calculationMethodLineage";
 import { observedSummary } from "../../src/assessment/observed";
 import { splitCohorts } from "../../src/assessment/cohort";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
@@ -620,11 +621,19 @@ export async function schedulePilotAssessment(
   // Today this refuses nothing: `ASSESSMENT_CALC_VERSION` has never moved, so every registered row
   // carries the current value. It exists for the bump, which is exactly when a silent divergence would
   // otherwise be least visible.
-  if (governedTerms.calculationMethodVersion !== ASSESSMENT_CALC_VERSION) {
+  // COMPATIBLE, not merely equal. String equality treated a RENAME of the method exactly like a change
+  // of arithmetic, and forced every governed definition to be re-proposed and every extract re-submitted
+  // for what may have been a scheme tidy-up. `calculationMethodsCompatible` accepts the same method
+  // under two names only when the lineage DECLARES the rename and a test has checked the declaration by
+  // recomputing both fingerprints — so "compatible" means provably the same answers, never a promise.
+  //
+  // It fails closed on a version this build cannot describe at all, including by string equality: a
+  // build that does not know what a method DOES cannot claim its answers are unchanged.
+  if (!calculationMethodsCompatible(governedTerms.calculationMethodVersion, ASSESSMENT_CALC_VERSION)) {
     return refused(
       boundaryId,
       "calculation_method_unsupported",
-      `the analysis terms were blessed for ${governedTerms.calculationMethodVersion}; this build implements ${ASSESSMENT_CALC_VERSION}`,
+      `the analysis terms were blessed for ${governedTerms.calculationMethodVersion}; this build implements ${ASSESSMENT_CALC_VERSION} and does not declare them equivalent`,
     );
   }
 
