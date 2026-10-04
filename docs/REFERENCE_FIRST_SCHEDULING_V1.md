@@ -100,7 +100,65 @@ None of them is `NH-AX-1005` (`decision_binding_mismatch`). That code says *"the
 was written"*, and saying it when the build changed, or when the caller asked for something new, would
 accuse immutable data of mutating.
 
-## 6 · Falsifiers
+## 6 · `calculationMethodVersion` — audited, and deliberately not changed
+
+Asked explicitly: `AnalysisTerms` carries `calculationMethodVersion` and `hashAnalysisTerms` commits it,
+so is treating `analysisTermsId`/`Version` as an *address* sound, given that `pds` commits only
+`currency`, `asOf` and `stallThresholdDays`? Answered from the repository, with a probe rather than a
+reading.
+
+**1 · Can two governed rows share the three values and differ in `calculationMethodVersion`?**
+**Not through a request — but yes across builds.** `analysisTermsSchema` is `additionalProperties: false`
+and does not list the field (`schemas.ts:448`: *"it is a build constant, not an operator choice, so
+letting a request state it would invite a definition blessed for an implementation that never ran it"*),
+so a request naming it is a 400 and `makeAnalysisTerms` defaults it to `ASSESSMENT_CALC_VERSION`. The
+column is nevertheless persisted per row and the register's primary key is
+`(boundaryId, termsId, termsVersion)` — the field is **not** in the key. So registering v1 on one build,
+bumping the constant, and registering v2 with identical values yields exactly that pair. Probe: both
+tuples construct, the three values are identical, the **terms hashes differ**.
+
+**2 · Can those differing values change results or runtime semantics?** **No — the stored value has zero
+runtime reach.** `makePolicy` takes no such input and hardcodes the build constant (`policy.ts:76`); the
+probe passed `assess-2027.9-fat` and got `assess-2026.1-thin` back. The only non-test readers of
+`stored.terms.calculationMethodVersion` are the hash canonicalization and the read-back projection
+(`pilotAnalysisTermsService.ts:231`). Nothing in `assess.ts` or the cohort/observed path sees it.
+
+**3 · Does `pds` intentionally collapse the two rows, or is this an omitted semantic component?**
+It collapses them — probe: identical `pds_2b34d697…` for both. But this is **preservation of an
+undecided question, not a decision**. Because `pds` commits the governed *values* rather than the
+address, two rows with identical values are one submission identity by design; that design simply never
+ruled on this field.
+
+**4 · What is actually guaranteed?** That it is **out, and recorded as open** —
+`ASSESSMENT_IDENTITY_V1.md` §"Still open" (*"not decided here and needs its own answer"*) and again at
+its step 10 (*"remains explicitly OPEN … this slice preserved its current state rather than deciding
+it"*), `validateDataset.ts:591`, and `CLAUDE.md`. No document claims it is settled.
+
+**5 · What does the authoritative re-derivation need?** **The address alone.** `deriveIdempotencyKey`
+needs `currency`, `asOf` and `stallThresholdDays`; resolving `(boundaryId, termsId, termsVersion)`
+returns all three from the append-only register. Neither the resolved `calculationMethodVersion` nor the
+terms hash is needed as an identity component — and the hash is nonetheless **already enforced**, because
+`resolveGovernedAnalysisTerms` verifies `analysisTermsHashMatches` before returning and refuses
+`NH-AX-1010` otherwise. Probe: an altered `calculationMethodVersion` fails that witness. So S4b does
+protect the field from tampering — through the witness, not through `pds`.
+
+**Conclusion: the exclusion is not an identity defect, and S4 changes no identity.** A field that cannot
+be operator-chosen and has no runtime reach does not let the beneficiary influence the number, which is
+the standing architecture test.
+
+### An adjacent defect, reported and NOT fixed here
+
+Nothing checks that the build running an execution still matches the calculation method its governed
+terms were **blessed for**. Confirmed by absence: the only readers of `ASSESSMENT_CALC_VERSION` are its
+own declaration, `makePolicy`, and `makeAnalysisTerms`' default — there is no comparison anywhere.
+
+So after a method bump: old rows keep their recorded value (the hash witness still matches, correctly,
+since it is rebuilt from the row), `makePolicy` stamps the **new** constant into the execution binding,
+and the run proceeds. The governed definition says *blessed for X*; the binding records *ran under Y*;
+nothing refuses it. That is a genuine gap in stage C, orthogonal to the submission identity, and it is
+left untouched: fixing it inside S4 would mean deciding the open identity question by implication.
+
+## 7 · Falsifiers
 
 Each was applied to `pilotAssessmentService.ts`, run, and reverted byte-identically (`sha256sum -c`
 plus an empty `diff`).
@@ -115,8 +173,48 @@ plus an empty `diff`).
 | F6 | the cited reference resolved through the discovery lookup | most of A–D | 14 of 17 |
 | F7 | probe · refuse every **uncited** schedule, then run the browser journey | nothing | journey 86/86 — the UI does cite |
 | F7b | inverse probe · refuse every **cited** schedule | the journey | journey 76/83, 7 failures |
+| F8 | re-derive under this build's major (repeat of F3, against the new previous-major trace) | A5 | A5 |
+| F9 | `declaredVersion` from the request again | A2, **A2b** | A2 **and A2b** |
+| F10 | support authorization removed entirely | A5 | A5 (the ceiling stops binding) |
 
-## 7 · What this is not
+## 8 · `request.declaredVersion` inertness, reported per population
+
+The claim is global, and it is proven **separately** against both populations rather than asserted from
+one. Structurally: `request.declaredVersion` is read nowhere in the scheduler — the only occurrences are
+its type declaration, comments, and `decision.declaredVersion` (the stored one). `admittedUnder` comes
+from `decision.declaredVersion ?? decision.contractVersion` in both paths, which is why the stored
+`contractVersion` is sufficient and no legacy compatibility exception is needed.
+
+| Population | Path | Probes | Result |
+|---|---|---|---|
+| snapshot-bearing admission | reference-first | `2.0.0`, `1.0.0`, `9.9.9`, `not-a-version` | all **scheduled**, one `executionId`, one `contractVersion` — test A2 |
+| snapshot-bearing admission | legacy discovery | `9.9.9`, `not-a-version` | all **scheduled**, same `executionId` — test A2 |
+| historical NULL-snapshot admission | legacy discovery | all four | all **scheduled**, one `executionId` — test A2b |
+| historical NULL-snapshot admission | reference-first | all four | all **refused** `NH-AX-1011`, byte-identical `refusalDetail` — test A2b |
+
+The last row matters as much as the others: "no observable difference" has to hold for *refusals* too, or
+the field would still be a probe into which gate fired. F9 proves none of this is vacuous — reinstating
+`request.declaredVersion` fails **both** A2 and A2b.
+
+## 9 · The two populations, and the limit stated as evidence
+
+| | New snapshot path | Legacy NULL-snapshot path |
+|---|---|---|
+| anchor | reference-first, boundary-scoped | key derived over caller interpretation |
+| interpretation inputs | authoritative, stored | caller-supplied |
+| `pds` re-derivation | **mandatory and exact** | **not claimed** |
+| comparison | unconditional; fail closed `NH-AX-1012` | the key *is* the address, so nothing independent to compare |
+| reconstruction | read, never enumerated | never enumerated, never fabricated |
+| schedulability | preserved | **preserved** |
+
+The limit is falsifiable, not merely stated. Test **D5**: a substituted stored key is *detected* on a
+snapshot-bearing row (`NH-AX-1012`, test C2) and is *undetectable* on a NULL-snapshot row — there the key
+is the address, so a wrong key is an address nothing lives at, and the refusal is `NH-AX-1001` *"no
+admission decision exists for these bytes"*, **never** `NH-AX-1012`. The system does not report having
+checked something it could not check. Citing the reference on such a row does not launder the gap either:
+the snapshot gate fires first with `NH-AX-1011`.
+
+## 10 · What this is not
 
 It is **not** proof, not a Recovery Case, not an authority-ledger entry and not a counted dollar. Lane 1
 pilot assessment remains `constitutesProof: false`. This slice makes an *observation* governed by a
@@ -125,9 +223,13 @@ record the beneficiary cannot author; it turns no observed amount into Revenue R
 `calculationMethodVersion` stays explicitly **open** and out of the submission identity
 (`docs/ASSESSMENT_IDENTITY_V1.md`). It is not a `pds` component and this slice does not touch it.
 
-## 8 · Still open
+## 11 · Still open
 
 * **S5 · physical removal of `request.declaredVersion`** from the service type, the HTTP schema and both
   clients. Breaking on the wire, so it is its own slice with its own migration.
 * **The pre-snapshot population.** Rows with a NULL snapshot remain reachable only by legacy discovery.
   They become fully authoritative only by being re-submitted; nothing backfills them.
+* **`calculationMethodVersion` in the submission identity** — still open, deliberately (§6). Unchanged.
+* **Build-vs-blessed calculation method.** The adjacent defect in §6: nothing refuses an execution whose
+  build no longer matches the method its governed terms were blessed for. Stage C, not stage A, and not
+  an identity question — so it needs its own slice and its own decision.

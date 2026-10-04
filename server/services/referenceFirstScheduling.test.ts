@@ -28,7 +28,7 @@ import { buildApp } from "../app";
 import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv, SCENARIO_POLICY } from "../../src/contract/syntheticPilotDataset";
-import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
+import { PILOT_DATA_CONTRACT_VERSION, parseContractVersion } from "../../src/contract/pilotDataContract";
 import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { deriveIdempotencyKey, validatePilotDataset } from "../../src/contract/validateDataset";
 import { deriveAdmissionDecisionId } from "../../src/contract/assessmentExecution";
@@ -144,6 +144,8 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
     over: {
       readonly idempotencyKey?: string;
       readonly admissionDecisionId?: string;
+      readonly contractVersion?: string;
+      readonly declaredVersion?: string | null;
       readonly snapshotDateLocale?: string | null;
       readonly snapshotAmountFormat?: string | null;
       readonly snapshotTermsId?: string | null;
@@ -170,27 +172,42 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
     });
     const stored = await findAdmissionPolicy(boundaryId, policyId, "1.0.0");
     const policyHash = await hashAdmissionPolicy(stored!.policy);
-    const idempotencyKey = over.idempotencyKey ?? report.idempotencyKey;
+    const contractVersion = over.contractVersion ?? PILOT_DATA_CONTRACT_VERSION;
+    // The key is minted under THIS ROW'S own major, because that is what the build it stands in for
+    // would have done. Anything else makes the row internally inconsistent and the refusal lands on
+    // NH-AX-1012 rather than on the question under test.
+    const honestKey = await deriveIdempotencyKey({
+      boundary: { boundaryId, datasetId },
+      datasetFingerprint: report.datasetFingerprint,
+      dateLocale: "auto",
+      amountFormat: "auto",
+      asOf: TEST_ANALYSIS_TERMS.asOf,
+      stallThresholdDays: TEST_ANALYSIS_TERMS.stallThresholdDays,
+      currency: TEST_ANALYSIS_TERMS.currency,
+      contractMajor: parseContractVersion(contractVersion)!.major,
+    });
+    const idempotencyKey = over.idempotencyKey ?? honestKey;
     const admissionDecisionId =
       over.admissionDecisionId ??
       (await deriveAdmissionDecisionId({
         boundaryId,
         idempotencyKey,
         datasetFingerprint: report.datasetFingerprint,
-        contractVersion: PILOT_DATA_CONTRACT_VERSION,
+        contractVersion,
         outcome: "ADMISSIBLE",
         admissionPolicyId: policyId,
         admissionPolicyVersion: "1.0.0",
         admissionPolicyHash: policyHash,
       }));
     const pick = <T>(value: T | undefined, fallback: T): T => (value === undefined ? fallback : value);
+    const pickV = pick;
     await prisma.pilotDatasetSubmissionRecord.create({
       data: {
         idempotencyKey,
         boundaryId,
         datasetId,
-        contractVersion: PILOT_DATA_CONTRACT_VERSION,
-        declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+        contractVersion,
+        declaredVersion: pickV(over.declaredVersion, PILOT_DATA_CONTRACT_VERSION),
         snapshotDateLocale: pick(over.snapshotDateLocale, "auto"),
         snapshotAmountFormat: pick(over.snapshotAmountFormat, "auto"),
         snapshotTermsId: pick(over.snapshotTermsId, TEST_ANALYSIS_TERMS.termsId),
@@ -212,7 +229,7 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
         submittedByRole: "operator",
       },
     });
-    return { boundaryId, datasetId, csvText, admissionDecisionId, idempotencyKey, honestKey: report.idempotencyKey };
+    return { boundaryId, datasetId, csvText, admissionDecisionId, idempotencyKey, honestKey };
   }
 
   // ── A · the reference is the anchor ──────────────────────────────────────────────────────────────
@@ -275,6 +292,94 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
       expect(r.scheduled, JSON.stringify([r.refusal?.code, r.refusalDetail])).toBe(true);
       expect(r.executionId).toBe(results[0].executionId);
     }
+  });
+
+  it("A2b · `declaredVersion` is inert on a HISTORICAL NULL-SNAPSHOT admission too, on both outcomes", async () => {
+    // THE SECOND HALF OF THE INERTNESS CLAIM, run separately and reported separately. A2 proves it for a
+    // snapshot-bearing admission; this proves it for the population that CANNOT be re-derived at all.
+    // Inertness does not depend on the snapshot: `admittedUnder` comes from the stored row's own
+    // `declaredVersion ?? contractVersion` in BOTH paths, and the request's copy is read nowhere.
+    const legacy = await builtRow({
+      snapshotDateLocale: null,
+      snapshotAmountFormat: null,
+      snapshotTermsId: null,
+      snapshotTermsVersion: null,
+    });
+    const probes = [PILOT_DATA_CONTRACT_VERSION, "1.0.0", "9.9.9", "not-a-version"];
+
+    // 1 · the LEGACY DISCOVERY path, which is the only one this row can be scheduled on.
+    const discovered = [];
+    for (const declaredVersion of probes) {
+      discovered.push(
+        (await schedule({ boundaryId: legacy.boundaryId, datasetId: legacy.datasetId, csvText: legacy.csvText, declaredVersion })).json(),
+      );
+    }
+    for (const r of discovered) {
+      expect(r.refusal, JSON.stringify([r.refusal?.code, r.refusalDetail])).toBeNull();
+      expect(r.scheduled).toBe(true);
+      expect(r.executionId).toBe(discovered[0].executionId);
+    }
+
+    // 2 · and the REFUSAL is identical too. "No observable difference" has to hold for refusals, or
+    // `declaredVersion` would still be a probe into which gate fired.
+    const cited = [];
+    for (const declaredVersion of probes) {
+      cited.push(
+        (
+          await schedule({
+            boundaryId: legacy.boundaryId,
+            datasetId: legacy.datasetId,
+            csvText: legacy.csvText,
+            admissionDecisionId: legacy.admissionDecisionId,
+            declaredVersion,
+          })
+        ).json(),
+      );
+    }
+    for (const r of cited) {
+      expect(r.scheduled).toBe(false);
+      expect(r.refusal.code).toBe("NH-AX-1011");
+      expect(r.refusalDetail).toBe(cited[0].refusalDetail);
+    }
+  });
+
+  it("A5 · a PREVIOUS-MAJOR admission is reachable BY REFERENCE and unreachable by discovery", async () => {
+    // §10's two-major promise, finally operable at schedule time. The discovery key embeds THIS build's
+    // major, so a major-1 admission could never be found however generous the support declarations were —
+    // S3's ceiling registry was guarding a door nobody could reach. Citing the decision reaches it, and
+    // the re-derivation then has to use the admitted major or it would refuse valid, unchanged data.
+    const previous = await builtRow({ contractVersion: "1.1.0", declaredVersion: "1.1.0" });
+
+    const cited = (
+      await schedule({
+        boundaryId: previous.boundaryId,
+        datasetId: previous.datasetId,
+        csvText: previous.csvText,
+        admissionDecisionId: previous.admissionDecisionId,
+      })
+    ).json();
+    expect(cited.refusal, JSON.stringify(cited.refusalDetail)).toBeNull();
+    expect(cited.scheduled).toBe(true);
+
+    const discovered = (
+      await schedule({ boundaryId: previous.boundaryId, datasetId: previous.datasetId, csvText: previous.csvText })
+    ).json();
+    expect(discovered.scheduled).toBe(false);
+    expect(discovered.refusal.code).toBe("NH-AX-1001");
+
+    // ...and the CEILING still binds, through the new path, without touching the registry: 1.2.0 is above
+    // the declared `maxSupportedVersion` of 1.1.0, so support refuses it where identity did not.
+    const aboveCeiling = await builtRow({ contractVersion: "1.2.0", declaredVersion: "1.2.0" });
+    const refused = (
+      await schedule({
+        boundaryId: aboveCeiling.boundaryId,
+        datasetId: aboveCeiling.datasetId,
+        csvText: aboveCeiling.csvText,
+        admissionDecisionId: aboveCeiling.admissionDecisionId,
+      })
+    ).json();
+    expect(refused.scheduled).toBe(false);
+    expect(refused.refusal.code).toBe("NH-AX-1006");
   });
 
   it("A3 · a decision identifier from ANOTHER boundary reads as absent, never as someone else's record", async () => {
@@ -583,6 +688,39 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
       expect(out.refusal.code, String(cite)).toBe("NH-AX-1011");
       expect(out.refusalDetail).toContain("cannot interpret");
     }
+  });
+
+  it("D5 · the LEGACY path makes no claim of pds re-derivation, and the difference is observable", async () => {
+    // THE HONEST LIMIT, as evidence rather than as prose. A substituted stored key is DETECTED on a
+    // snapshot-bearing row (C2 · NH-AX-1012) and is UNDETECTABLE on a NULL-snapshot row — because there
+    // the key IS the address, so a wrong key is simply an address nothing lives at. The refusal is
+    // therefore NH-AX-1001 "no admission decision exists for these bytes", never NH-AX-1012, and the
+    // system does not pretend to have checked something it could not check.
+    const legacy = await builtRow({
+      idempotencyKey: `pds_${hex64()}`,
+      snapshotDateLocale: null,
+      snapshotAmountFormat: null,
+      snapshotTermsId: null,
+      snapshotTermsVersion: null,
+    });
+    const discovered = (
+      await schedule({ boundaryId: legacy.boundaryId, datasetId: legacy.datasetId, csvText: legacy.csvText })
+    ).json();
+    expect(discovered.scheduled).toBe(false);
+    expect(discovered.refusal.code).toBe("NH-AX-1001");
+    expect(discovered.refusal.code).not.toBe("NH-AX-1012");
+
+    // Citing it does not launder the gap either: the snapshot gate fires first and says exactly why.
+    const cited = (
+      await schedule({
+        boundaryId: legacy.boundaryId,
+        datasetId: legacy.datasetId,
+        csvText: legacy.csvText,
+        admissionDecisionId: legacy.admissionDecisionId,
+      })
+    ).json();
+    expect(cited.scheduled).toBe(false);
+    expect(cited.refusal.code).toBe("NH-AX-1011");
   });
 
   it("D4 · the intake returns the decision identifier, and only for a dataset it actually recorded", async () => {
