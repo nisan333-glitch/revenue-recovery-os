@@ -37,6 +37,10 @@ Found by reading, not assumed.
 | `report.contractVersion` | records the **implemented** version, not the declared one | `validateDataset.ts:492` — `contractVersion: PILOT_DATA_CONTRACT_VERSION` |
 | Submission persistence | stores only `contract_version`; **`declaredVersion` is never persisted** | `prisma/schema.prisma` → `PilotDatasetSubmissionRecord` |
 | Both data clients | hardcode `declaredVersion: PILOT_DATA_CONTRACT_VERSION` | `pilotIntakeClient.ts:104`, `pilotAssessmentClient.ts:154` |
+<!-- SUPERSEDED 2026-10-04 (S5), for the SECOND client only: the assessment client sends no
+     `declaredVersion` at all, and the scheduling body has no such field. The row above is left as the
+     evidence this decision was actually made on, not retrofitted to today's code. The intake client is
+     unchanged. See REFERENCE_FIRST_SCHEDULING_V1.md. -->
 | `VERSIONING_POLICY` | exported and **never read by anything** | no consumer anywhere in `src/` or `server/` |
 
 **The decisive observation.** `declaredVersion` reaches exactly two places: the version gate, and being

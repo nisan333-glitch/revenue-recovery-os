@@ -125,7 +125,8 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
       url: "/pilot/assessments",
       headers: OPERATOR,
       payload: {
-        declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+        // S5 · no `declaredVersion`. The body has no such field and an injected one is a 400, which
+        // tests A2 and A2b pin deliberately.
         provenance: SYNTHETIC_PROVENANCE,
         ...GOVERNED_TERMS_FIELDS,
         ...payload,
@@ -255,92 +256,93 @@ describe.skipIf(!HAS_DB)("S4 · reference-first scheduling", () => {
     expect(byDiscovery.created).toBe(false);
   });
 
-  it("A2 · `declaredVersion` is INERT: four requests that differ only in it schedule identically", async () => {
-    // The trace that matters most, because this field used to be able to BLOCK a properly admitted
-    // dataset — with NH-AX-1009, which blames the data. Two of these four values would have done it:
-    // "9.9.9" is unsupported and "not-a-version" is malformed, and both raise a `dataset_rejected`
-    // finding that empties `acceptedCycles`. All four must now be indistinguishable.
+  it("A2 · a snapshot-bearing admission: an injected `declaredVersion` is REJECTED, and changes nothing", async () => {
+    // S4 made this field inert. S5 removed it, so the proof changes character: the question is no longer
+    // "does varying it change the outcome" but "can it be stated at all". It cannot — and the existing
+    // schema policy decides what happens to someone who tries. `additionalProperties: false` under
+    // `removeAdditional: false` (app.ts: "REJECTS (400) an injected field ... instead of silently
+    // stripping it") means a 400. That policy is PINNED here, not invented: silent stripping would also
+    // be safe for the result, but it would tell a caller their field was accepted.
     const a = await admitted();
-    const results = [];
+
+    // The same request WITHOUT it schedules. This is the control: the 400s below are attributable to the
+    // injected field and to nothing else about the request.
+    const ok = (
+      await schedule({ boundaryId: a.boundaryId, datasetId: a.datasetId, csvText: a.csvText, admissionDecisionId: a.decisionId })
+    ).json();
+    expect(ok.refusal, JSON.stringify(ok.refusalDetail)).toBeNull();
+    expect(ok.scheduled).toBe(true);
+
+    const before = (await app.inject({ method: "GET", url: `/pilot/assessments?boundaryId=${a.boundaryId}`, headers: OPERATOR })).json();
+
+    // Four values, including the two that USED to refuse a properly admitted dataset with NH-AX-1009.
+    // All four are now refused by the transport, identically, before any scheduling logic is reached.
     for (const declaredVersion of [PILOT_DATA_CONTRACT_VERSION, "1.0.0", "9.9.9", "not-a-version"]) {
-      results.push(
-        (
-          await schedule({
-            boundaryId: a.boundaryId,
-            datasetId: a.datasetId,
-            csvText: a.csvText,
-            admissionDecisionId: a.decisionId,
-            declaredVersion,
-          })
-        ).json(),
-      );
+      const res = await schedule({
+        boundaryId: a.boundaryId,
+        datasetId: a.datasetId,
+        csvText: a.csvText,
+        admissionDecisionId: a.decisionId,
+        declaredVersion,
+      });
+      expect(res.statusCode, declaredVersion).toBe(400);
+      // NOT an NH-AX refusal: a malformed request is not a governed scheduling decision, and dressing it
+      // as one would put a transport error into the execution vocabulary.
+      expect(res.json().refusal, declaredVersion).toBeUndefined();
     }
-    for (const r of results) {
-      expect(r.refusal, JSON.stringify([r.refusal?.code, r.refusalDetail])).toBeNull();
-      expect(r.scheduled).toBe(true);
-      expect(r.executionId).toBe(results[0].executionId);
-      expect(r.binding.contractVersion).toBe(results[0].binding.contractVersion);
-    }
-    // ...and on the discovery path too, which is the one every existing caller still takes.
-    const discovered = [];
-    for (const declaredVersion of ["9.9.9", "not-a-version"]) {
-      discovered.push(
-        (await schedule({ boundaryId: a.boundaryId, datasetId: a.datasetId, csvText: a.csvText, declaredVersion })).json(),
-      );
-    }
-    for (const r of discovered) {
-      expect(r.scheduled, JSON.stringify([r.refusal?.code, r.refusalDetail])).toBe(true);
-      expect(r.executionId).toBe(results[0].executionId);
-    }
+
+    // REJECTED, not stripped-and-run: no execution appeared behind any of those four.
+    const after = (await app.inject({ method: "GET", url: `/pilot/assessments?boundaryId=${a.boundaryId}`, headers: OPERATOR })).json();
+    expect(after.length).toBe(before.length);
+    expect(after.map((e: { executionId: string }) => e.executionId)).toEqual([ok.executionId]);
   });
 
-  it("A2b · `declaredVersion` is inert on a HISTORICAL NULL-SNAPSHOT admission too, on both outcomes", async () => {
-    // THE SECOND HALF OF THE INERTNESS CLAIM, run separately and reported separately. A2 proves it for a
-    // snapshot-bearing admission; this proves it for the population that CANNOT be re-derived at all.
-    // Inertness does not depend on the snapshot: `admittedUnder` comes from the stored row's own
-    // `declaredVersion ?? contractVersion` in BOTH paths, and the request's copy is read nowhere.
+  it("A2b · a HISTORICAL NULL-SNAPSHOT admission: same treatment, reported separately", async () => {
+    // THE SECOND POPULATION, run and reported on its own. The one that cannot be re-derived at all must
+    // get exactly the same answer about caller-stated versions as the one that can — otherwise the field
+    // would still be a probe into which population a dataset belongs to.
     const legacy = await builtRow({
       snapshotDateLocale: null,
       snapshotAmountFormat: null,
       snapshotTermsId: null,
       snapshotTermsVersion: null,
     });
-    const probes = [PILOT_DATA_CONTRACT_VERSION, "1.0.0", "9.9.9", "not-a-version"];
 
-    // 1 · the LEGACY DISCOVERY path, which is the only one this row can be scheduled on.
-    const discovered = [];
-    for (const declaredVersion of probes) {
-      discovered.push(
-        (await schedule({ boundaryId: legacy.boundaryId, datasetId: legacy.datasetId, csvText: legacy.csvText, declaredVersion })).json(),
-      );
-    }
-    for (const r of discovered) {
-      expect(r.refusal, JSON.stringify([r.refusal?.code, r.refusalDetail])).toBeNull();
-      expect(r.scheduled).toBe(true);
-      expect(r.executionId).toBe(discovered[0].executionId);
-    }
+    // 1 · the LEGACY DISCOVERY path, the only one this row can be scheduled on, still schedules it.
+    const ok = (
+      await schedule({ boundaryId: legacy.boundaryId, datasetId: legacy.datasetId, csvText: legacy.csvText })
+    ).json();
+    expect(ok.refusal, JSON.stringify(ok.refusalDetail)).toBeNull();
+    expect(ok.scheduled).toBe(true);
 
-    // 2 · and the REFUSAL is identical too. "No observable difference" has to hold for refusals, or
-    // `declaredVersion` would still be a probe into which gate fired.
-    const cited = [];
-    for (const declaredVersion of probes) {
-      cited.push(
-        (
-          await schedule({
-            boundaryId: legacy.boundaryId,
-            datasetId: legacy.datasetId,
-            csvText: legacy.csvText,
-            admissionDecisionId: legacy.admissionDecisionId,
-            declaredVersion,
-          })
-        ).json(),
-      );
+    // 2 · the cited path still refuses it as legacy, with the snapshot gate's own code.
+    const cited = (
+      await schedule({
+        boundaryId: legacy.boundaryId,
+        datasetId: legacy.datasetId,
+        csvText: legacy.csvText,
+        admissionDecisionId: legacy.admissionDecisionId,
+      })
+    ).json();
+    expect(cited.scheduled).toBe(false);
+    expect(cited.refusal.code).toBe("NH-AX-1011");
+
+    // 3 · and an injected `declaredVersion` is rejected on BOTH, identically, leaving nothing behind.
+    const before = (await app.inject({ method: "GET", url: `/pilot/assessments?boundaryId=${legacy.boundaryId}`, headers: OPERATOR })).json();
+    for (const declaredVersion of [PILOT_DATA_CONTRACT_VERSION, "1.0.0", "9.9.9", "not-a-version"]) {
+      for (const cite of [false, true]) {
+        const res = await schedule({
+          boundaryId: legacy.boundaryId,
+          datasetId: legacy.datasetId,
+          csvText: legacy.csvText,
+          ...(cite ? { admissionDecisionId: legacy.admissionDecisionId } : {}),
+          declaredVersion,
+        });
+        expect(res.statusCode, `${declaredVersion}/${cite}`).toBe(400);
+      }
     }
-    for (const r of cited) {
-      expect(r.scheduled).toBe(false);
-      expect(r.refusal.code).toBe("NH-AX-1011");
-      expect(r.refusalDetail).toBe(cited[0].refusalDetail);
-    }
+    const after = (await app.inject({ method: "GET", url: `/pilot/assessments?boundaryId=${legacy.boundaryId}`, headers: OPERATOR })).json();
+    expect(after.length).toBe(before.length);
   });
 
   it("A5 · a PREVIOUS-MAJOR admission is reachable BY REFERENCE and unreachable by discovery", async () => {

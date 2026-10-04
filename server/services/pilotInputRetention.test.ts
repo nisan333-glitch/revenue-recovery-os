@@ -22,6 +22,7 @@ import {
 } from "./pilotInputRetention";
 import type { ActorContext } from "../auth/identity";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
+import { scheduleRequestFrom } from "../test/scheduleRequest";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -174,7 +175,7 @@ describe.skipIf(!HAS_DB)("EP-17 · purging an execution input", () => {
     ).toBe("ADMISSIBLE");
 
     const out = (await app.inject({
-      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: base,
+      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(base),
     })).json();
     expect(out.scheduled).toBe(true);
 
@@ -662,7 +663,7 @@ describe.skipIf(!HAS_DB)("EP-18 · the scan reaches records behind an ineligible
         })).json().admission.outcome,
       ).toBe("ADMISSIBLE");
       const out = (await app.inject({
-        method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: base,
+        method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(base),
       })).json();
       expect(out.scheduled).toBe(true);
       executionIds.push(out.executionId as string);
@@ -831,7 +832,7 @@ describe.skipIf(!HAS_DB)("EP-18 · a database failure fails the run instead of r
       payload: { ...base, admissionPolicyId: policy.policyId },
     });
     const out = (await app.inject({
-      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: base,
+      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(base),
     })).json();
     if (options.run !== false) {
       expect((await runtime().runNext(agent, `w-${uid()}`, boundaryId))?.status).toBe("succeeded");

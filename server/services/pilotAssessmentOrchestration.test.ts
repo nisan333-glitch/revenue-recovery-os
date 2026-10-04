@@ -17,6 +17,7 @@ import { createPilotAssessmentAgent, PILOT_ASSESSMENT_AGENT_ID } from "../agents
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import type { AgentPolicySnapshot } from "../agents/types";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
+import { scheduleRequestFrom } from "../test/scheduleRequest";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -103,9 +104,12 @@ describe.skipIf(!HAS_DB)("EP-16 · pilot assessment orchestration", () => {
    * bar than the one that judged them. Stripping them here is what the real client must also do —
    * `additionalProperties: false` turns an attempt to send them into a 400.
    */
+  // The intake body turned into a schedule body. It already dropped the admission-policy fields — a
+  // caller cannot ask to be judged against a different bar — and S5 adds `declaredVersion` to the same
+  // list for the same reason: the authoritative declaration is the one on the admission.
   const scheduleBody = (body: Record<string, unknown>, over: Record<string, unknown> = {}) => {
     const { admissionPolicyId: _p, admissionPolicyVersion: _v, ...rest } = body;
-    return { ...rest, ...over };
+    return { ...scheduleRequestFrom(rest), ...over };
   };
 
   const schedule = async (payload: unknown, headers = OPERATOR) => {

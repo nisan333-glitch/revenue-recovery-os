@@ -281,11 +281,19 @@ export const schedulePilotAssessmentSchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "provenance"],
+    required: ["boundaryId", "datasetId", "csvText", "provenance"],
     properties: {
       boundaryId: { type: "string", minLength: 1, maxLength: 256 },
       datasetId: { type: "string", minLength: 1, maxLength: 256 },
-      declaredVersion: { type: "string", minLength: 1, maxLength: 32 },
+      // S5 · `declaredVersion` IS GONE FROM THIS BODY, not merely ignored. There is no wire format in
+      // which a scheduling request can state a contract version: the authoritative declaration is the
+      // one recorded ON the admission, and `additionalProperties: false` under `removeAdditional: false`
+      // (app.ts) makes sending one a 400 rather than a silent strip — the same treatment EP-26b gave the
+      // `policy` object. It stays REQUIRED on `/pilot/datasets`, where it is the customer's own
+      // declaration about their export and is persisted as made.
+      //
+      // Nothing replaces it. The scheduling body states no version, no threshold, no cut-off, no
+      // currency, no bar and no outcome — only WHICH admitted dataset, and which decision admitted it.
       // S4 · REFERENCE-FIRST. The admission decision this execution binds to, as the intake returned
       // it. A reference, not a capability: the service looks it up boundary-scoped, so one minted for
       // another tenant reads as absent. Optional on the wire because every admission recorded before

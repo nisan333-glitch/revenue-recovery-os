@@ -25,6 +25,7 @@ import { hashAnalysisTerms, makeAnalysisTerms } from "../../src/contract/analysi
 import { proposeAnalysisTerms } from "./pilotAnalysisTermsService";
 import { submitPilotDataset } from "./pilotIntakeService";
 import { schedulePilotAssessment } from "./pilotAssessmentService";
+import { scheduleRequestFrom } from "../test/scheduleRequest";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
@@ -125,8 +126,15 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
   const submit = (payload: unknown, headers = OPERATOR) =>
     app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
 
+  // S5 · the scheduling body cannot express `declaredVersion`; the suites' shared body still carries it
+  // for the intake call, so it is removed here rather than in every test.
   const schedule = (payload: unknown, headers = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/assessments", headers, payload: payload as object });
+    app.inject({
+      method: "POST",
+      url: "/pilot/assessments",
+      headers,
+      payload: scheduleRequestFrom(payload as object),
+    });
 
   // ── The lifecycle ───────────────────────────────────────────────────────────────────────────────
 
@@ -708,7 +716,7 @@ describe.skipIf(!HAS_DB)("EP-26 · the cut-off and the stall definition are gove
     const scheduled = await schedulePilotAssessment(actor, {
       boundaryId,
       datasetId: result.datasetId,
-      declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+      // S5 · the scheduling request type no longer has a `declaredVersion` field to pass.
       csvText: syntheticPilotCsv(40),
       provenance: SYNTHETIC_PROVENANCE,
       analysisTermsId: TERMS.termsId,

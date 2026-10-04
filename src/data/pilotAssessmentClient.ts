@@ -13,7 +13,7 @@
 // happened.
 import { apiRequest } from "./apiClient";
 import type { DevActor } from "./devActor";
-import { PILOT_DATA_CONTRACT_VERSION, type DatasetProvenance } from "../contract/pilotDataContract";
+import type { DatasetProvenance } from "../contract/pilotDataContract";
 import type { ExecutionState } from "../contract/assessmentExecution";
 import type { PolicyState } from "../contract/policyLifecycle";
 import type { ExecutionCodeSpec } from "../contract/executionCodes";
@@ -157,8 +157,9 @@ export function schedulePilotAssessment(
   return apiRequest<ScheduleAssessmentResult>("POST", "/pilot/assessments", actor, {
     boundaryId: params.boundaryId,
     datasetId: params.datasetId,
-    // S4 · INERT SERVER-SIDE, and still the build constant here rather than anything a screen holds.
-    declaredVersion: PILOT_DATA_CONTRACT_VERSION,
+    // S5 · NO `declaredVersion` IS SENT. The endpoint has no such field, and sending one would be a
+    // 400 rather than a silent strip. The intake client still sends it, because there it is the
+    // customer's declaration about their own export.
     ...(params.admissionDecisionId ? { admissionDecisionId: params.admissionDecisionId } : {}),
     csvText: params.csvText,
     // EP-26b · NO `policy` OBJECT IS SENT AT ALL. Nothing about what this run measures comes from here.

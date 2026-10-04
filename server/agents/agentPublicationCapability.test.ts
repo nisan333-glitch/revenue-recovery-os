@@ -25,6 +25,7 @@ import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/synt
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
 import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
+import { scheduleRequestFrom } from "../test/scheduleRequest";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -262,7 +263,7 @@ describe.skipIf(!HAS_DB)("EP-17 · a full assessment-only run with no fabricated
       payload: { ...base, admissionPolicyId: policy.policyId },
     });
     const out = (await app.inject({
-      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: base,
+      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(base),
     })).json();
     expect(out.scheduled).toBe(true);
 

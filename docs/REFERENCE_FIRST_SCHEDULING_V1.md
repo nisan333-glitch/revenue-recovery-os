@@ -79,7 +79,7 @@ is refused.
 
 | Request field | Treatment | Why |
 |---|---|---|
-| `declaredVersion` | **inert** — read by nothing | Not a choice anyone makes about the run: both clients send the build constant. Physical removal is a breaking wire change, deferred. |
+| `declaredVersion` | **gone** — S5 removed it from the type, the body and the client. An injected one is a 400 | Not a choice anyone makes about the run: both clients sent the build constant. See §11. |
 | `locale`, `amountFormat` | absent, or equal to the admitted value | Naming a different one and running under the admitted one anyway would report a result nobody asked for. Naming a different one and *getting* it would let the beneficiary choose the reading. |
 | `analysisTermsId` / `Version` | absent, or equal to the admitted pair | "A verdict computed under one definition does not authorise an execution under another." The extract must be **re-submitted** under new terms. |
 | `datasetId` | informational, from the request as before | Contract 2.0.0 deliberately removed the uploader-controlled label from the identity. |
@@ -176,8 +176,17 @@ plus an empty `diff`).
 | F8 | re-derive under this build's major (repeat of F3, against the new previous-major trace) | A5 | A5 |
 | F9 | `declaredVersion` from the request again | A2, **A2b** | A2 **and A2b** |
 | F10 | support authorization removed entirely | A5 | A5 (the ceiling stops binding) |
+| F11 | `declaredVersion` put back on the SCHEDULE schema | the two surface tests, A2, A2b | all four |
+| F12 | `removeAdditional: true` — silent stripping instead of a 400 | the policy pin, A2, A2b | all three |
+| F13 | the field put back on the scheduling TYPE | the source-level surface test | it did |
+| F14 | the field removed from the INTAKE schema too (over-broad deletion) | the positive control | it did |
 
-## 8 · `request.declaredVersion` inertness, reported per population
+## 8 · `request.declaredVersion` inertness, reported per population (the S4 state)
+
+> Superseded in mechanism by §11, which removed the field outright. Kept because it is the evidence the
+> removal rested on: inertness was proven for both populations BEFORE the field was taken away, so S5 is
+> a tightening of something already true rather than a change of behaviour smuggled in with a deletion.
+
 
 The claim is global, and it is proven **separately** against both populations rather than asserted from
 one. Structurally: `request.declaredVersion` is read nowhere in the scheduler — the only occurrences are
@@ -223,13 +232,66 @@ record the beneficiary cannot author; it turns no observed amount into Revenue R
 `calculationMethodVersion` stays explicitly **open** and out of the submission identity
 (`docs/ASSESSMENT_IDENTITY_V1.md`). It is not a `pds` component and this slice does not touch it.
 
-## 11 · Still open
+## 11 · S5 · physical removal
+
+**Done 2026-10-04.** S4 made the field inert; S5 removed it, so the claim stops depending on a reader
+believing a comment. Removed from: the scheduling request type, the HTTP body
+(`schedulePilotAssessmentSchema`), the assessment client, the rehearsal agent's shared request, and every
+test fixture that constructed a schedule request with it. **Not** removed from the intake, where it is the
+customer's own declaration about their export and is persisted as made.
+
+### The policy for an injected field was already decided — it is pinned, not invented
+
+`app.ts` sets `ajv: { customOptions: { removeAdditional: false } }` with the stated reason: *"so
+`additionalProperties: false` REJECTS (400) an injected field … instead of silently stripping it."* So an
+injected `declaredVersion` is a **400**, not a strip. Silent stripping would also be safe for the
+*result*, but it would tell a caller their field was accepted — so the existing policy is the right one
+and is what the tests hold. The refusal is a transport error and deliberately carries **no** `NH-AX`
+code: a malformed request is not a governed scheduling decision.
+
+### What the proof looks like after removal
+
+The question is no longer "does varying it change the outcome" but "can it be stated at all".
+
+| Population | Path | Without it | With it injected |
+|---|---|---|---|
+| snapshot-bearing | reference-first | **scheduled** | **400** ×4 values, no execution created |
+| NULL-snapshot | legacy discovery | **scheduled** | **400** ×4 values, no execution created |
+| NULL-snapshot | reference-first | refused `NH-AX-1011` (legacy, as before) | **400** ×4 values |
+
+Both A2 and A2b assert the execution list is **unchanged** after the four rejected attempts — that is what
+distinguishes *rejected* from *stripped and run*.
+
+### Structural regression test
+
+`server/http/scheduleRequestSurface.test.ts` pins the surface, because a behavioural test only covers the
+field someone thought to inject. It asserts the body's property set as an **allowlist**, so any new field
+fails until someone states what it is; that is what makes *"no caller-controlled version input re-enters
+under another name"* checkable rather than hoped for. Two of its six assertions read **source text**,
+since TypeScript types are erased and `tsconfig.server.json` excludes `server/**/*.test.ts` — the same
+technique that already pins the Stage-A revision's inertness. Each negative has a positive control: the
+intake schema must still require the field, and the intake client must still send it.
+
+### Two files deliberately NOT edited
+
+`scripts/synthetic-validation/run.mjs` and `scripts/synthetic-validation-2026-09-27/run.mjs` build their
+schedule body by stripping only the two admission-policy fields, so `declaredVersion` is in it. Their
+`run.mjs` **sha256 is a covered evidence component** (`77d30988…` for the 2026-09-27 run), so editing
+either would break `verify:evidence` — a frozen-evidence mutation. Nothing in CI or the suites executes
+them. They are records of a run under a prior request shape, and the 2026-09-27 runner's own header
+already set the precedent: *"this file is the only one that had to change: the request shape did"* — a
+shape change produces a **new** runner, never an edit to an old one. Consequence, stated rather than
+discovered later: re-running either against a current build would get a 400 on its schedule POST.
+
+## 12 · Still open
 
 * **S5 · physical removal of `request.declaredVersion`** from the service type, the HTTP schema and both
   clients. Breaking on the wire, so it is its own slice with its own migration.
 * **The pre-snapshot population.** Rows with a NULL snapshot remain reachable only by legacy discovery.
   They become fully authoritative only by being re-submitted; nothing backfills them.
 * **`calculationMethodVersion` in the submission identity** — still open, deliberately (§6). Unchanged.
-* **Build-vs-blessed calculation method.** The adjacent defect in §6: nothing refuses an execution whose
-  build no longer matches the method its governed terms were blessed for. Stage C, not stage A, and not
-  an identity question — so it needs its own slice and its own decision.
+* **Build-vs-blessed calculation method — classified, kept open, next.** The adjacent defect in §6:
+  nothing refuses an execution whose build no longer matches the `calculationMethodVersion` its governed
+  terms were blessed for. Classified as an **execution compatibility / semantic binding** defect in
+  stage C. It is explicitly **not** a submission-identity blocker and explicitly **not** a reason to
+  change `pds`; it is also explicitly **not closed**. Its own focused slice follows S5.

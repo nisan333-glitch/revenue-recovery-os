@@ -30,6 +30,7 @@ import { AgentRuntime } from "../agents/runtime";
 import { createPilotAssessmentAgent } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
+import { scheduleRequestFrom } from "../test/scheduleRequest";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -123,7 +124,8 @@ describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () =
     const boundaryId = (body as { boundaryId?: string }).boundaryId;
     // The matrix reads as of 2026-03-01, which is the definition this boundary gets.
     if (boundaryId) await ensureGovernedTerms(boundaryId, { asOf: "2026-03-01" });
-    return app.inject({ method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: body });
+    // S5 · `declaredVersion` is not a scheduling input and the body cannot express it.
+    return app.inject({ method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(body) });
   };
 
   const read = (boundaryId: string, executionId: string) =>

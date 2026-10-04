@@ -90,6 +90,9 @@ majors are concurrently supported right now.
 **Three facts that bound the customer impact of a 3.0.0 cutover.**
 1. A 2.x export is byte-identical and still parseable under 3.0.0. D2 adds, removes and renames nothing —
    only the declared version string would have to change, not the customer's pipeline.
+<!-- SUPERSEDED 2026-10-04 (S5) for the assessment client only: it sends no `declaredVersion`, and the
+     scheduling body has no such field. Left as written, because it is the evidence this decision rested
+     on. The intake client is unchanged. See REFERENCE_FIRST_SCHEDULING_V1.md. -->
 2. Both clients hardcode `declaredVersion: PILOT_DATA_CONTRACT_VERSION` (`pilotIntakeClient.ts:104,135`,
    `pilotAssessmentClient.ts:154`), so a customer using the product's own path never declares an older
    major. The promise is reachable only by a direct-API caller.

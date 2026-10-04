@@ -162,9 +162,20 @@ withdrawal of support can never report itself as the record having changed; and 
 the re-derivation comes from the decision rather than from the build, which is what finally makes §10's
 two-major window reachable at schedule time. The legacy discovery path is kept, **named and tested as
 such**, for every admission recorded before the interpretation snapshot existed — failing those closed
-would have broken scheduling for every dataset already admitted. `request.declaredVersion` is now
-structurally inert; its physical removal is a breaking wire change and is deferred to its own slice. This
-is a pilot-data trust rule and turns no observed amount into proven Revenue Returned.
+would have broken scheduling for every dataset already admitted. `request.declaredVersion` was made
+structurally inert and then **physically removed on 2026-10-04**: the scheduling type, the HTTP body and
+the assessment client no longer have the field, so there is no wire format in which a scheduling request
+can state a contract version, and an injected one is a **400** rather than a silent strip — the same
+treatment EP-26b gave the `policy` object. It stays required at the intake, where it is the customer's own
+declaration about their export and is persisted as made. This is a pilot-data trust rule and turns no
+observed amount into proven Revenue Returned.
+
+**Open, and not closed by the above (2026-10-04).** A governed AnalysisTerms version records the
+`calculationMethodVersion` it was **blessed for**, and nothing checks that the build running an execution
+still matches it: `makePolicy` stamps the current build constant into the binding regardless. This is an
+**execution compatibility / semantic binding** defect in stage C — not a submission-identity defect, and
+explicitly *not* a reason to change `pds` — and it needs its own focused slice. Audited in
+[`docs/REFERENCE_FIRST_SCHEDULING_V1.md`](docs/REFERENCE_FIRST_SCHEDULING_V1.md) §6.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

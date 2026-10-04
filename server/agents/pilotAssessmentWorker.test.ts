@@ -18,6 +18,7 @@ import { createPilotAssessmentAgent, PILOT_ASSESSMENT_AGENT_ID } from "./pilotAs
 import { createPostgresAgentTaskStore } from "./prismaTaskDatabase";
 import type { AgentPolicySnapshot } from "./types";
 import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
+import { scheduleRequestFrom } from "../test/scheduleRequest";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -110,7 +111,7 @@ describe.skipIf(!HAS_DB)("EP-16 · assessment execution under duplication, concu
     expect(submitted.admission.outcome).toBe("ADMISSIBLE");
 
     const scheduleOne = () =>
-      app.inject({ method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: base });
+      app.inject({ method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(base) });
     const first = await scheduleOne();
     expect(first.statusCode).toBe(201);
     return { boundaryId, base, submitted, scheduleOne, out: first.json() };

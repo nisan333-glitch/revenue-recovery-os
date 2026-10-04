@@ -104,9 +104,10 @@ describe.skipIf(!HAS_DB)("EP-27 · §10's two-major window, where it has to hold
       url: "/pilot/assessments",
       headers: OPERATOR,
       payload: {
+        // S5 · no `declaredVersion`: the scheduling body has no such field, and this suite is
+        // precisely about reading the admitted version from the stored decision instead.
         boundaryId,
         datasetId,
-        declaredVersion: PILOT_DATA_CONTRACT_VERSION,
         csvText,
         provenance: SYNTHETIC_PROVENANCE,
         ...GOVERNED_TERMS_FIELDS,

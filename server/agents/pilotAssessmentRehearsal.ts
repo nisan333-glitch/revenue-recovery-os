@@ -201,10 +201,15 @@ export async function runPilotAssessmentRehearsal(
     if (activatedTerms.state !== "ACTIVE") throw new Error("activation did not put the analysis terms in force");
 
     // 4 · Submit the synthetic dataset, judged against that bar and read under those terms.
-    const datasetRequest = {
+    //
+    // S5 · THE TWO BODIES ARE NOT THE SAME BODY. This used to be one object posted to both endpoints,
+    // which worked only while their shapes overlapped. `declaredVersion` is the customer's declaration
+    // about their own export: required at `/pilot/datasets`, and absent from `/pilot/assessments`,
+    // where sending it is now a 400. So the shared part is named once and the declaration is added
+    // only at the intake, where it means something.
+    const sharedRequest = {
       boundaryId,
       datasetId: `SYNTHETIC-ds-${runId.slice(0, 8)}`,
-      declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: syntheticPilotCsv(40),
       analysisTermsId: termsId,
       analysisTermsVersion: "1.0.0",
@@ -215,7 +220,8 @@ export async function runPilotAssessmentRehearsal(
       datasetFingerprint: string;
       counts: { acceptedRows: number; rejectedRows: number };
     }>(origin, "POST", "/api/pilot/datasets", OPERATOR, {
-      ...datasetRequest,
+      ...sharedRequest,
+      declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       admissionPolicyId: policyId,
       admissionPolicyVersion: "1.0.0",
     });
@@ -226,7 +232,7 @@ export async function runPilotAssessmentRehearsal(
     // 4 · Schedule the governed execution. Note what is NOT sent: no policy id, no thresholds, no
     // outcome. The bar comes from the decision that admitted the data.
     const scheduledRun = await call<{ scheduled: boolean; executionId: string; state: string }>(
-      origin, "POST", "/api/pilot/assessments", OPERATOR, datasetRequest,
+      origin, "POST", "/api/pilot/assessments", OPERATOR, sharedRequest,
     );
     if (!scheduledRun.scheduled) throw new Error("the rehearsal execution was refused");
 

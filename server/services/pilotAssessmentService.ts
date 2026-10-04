@@ -108,21 +108,12 @@ export interface SchedulePilotAssessmentRequest {
   /** Authorization REQUEST, never an assertion — `requireBoundaryAccess` decides. */
   readonly boundaryId: string;
   readonly datasetId: string;
-  /**
-   * S4 · INERT. Kept on the wire, read by nothing.
-   *
-   * It used to reach `validatePilotDataset`, where a malformed or unsupported value raises a
-   * `dataset_rejected` finding — which empties `acceptedCycles` and refused the schedule of a properly
-   * admitted dataset with NH-AX-1009 "no accepted cycle survived projection". So a caller's claim about
-   * the contract version could block the execution of a dataset the server had already judged, and the
-   * refusal blamed the data. The authoritative declaration is the one recorded ON the admission, and
-   * that is what is used now.
-   *
-   * Not yet removed: that is a breaking wire change and belongs with its own migration of the request
-   * schema and both clients. Until then, two requests differing ONLY in this field must schedule
-   * identically — asserted, not assumed.
-   */
-  readonly declaredVersion: string;
+  // S5 · `declaredVersion` IS NOT HERE. S4 made it inert; this removes it, so the type can no longer
+  // express it and no call site can pass it. It used to reach `validatePilotDataset`, where a malformed
+  // or unsupported value raises a `dataset_rejected` finding — which empties `acceptedCycles` and
+  // refused the schedule of a properly admitted dataset with NH-AX-1009, blaming the data for a claim
+  // the caller made. The authoritative declaration is `decision.declaredVersion ?? decision.contractVersion`,
+  // read from the immutable admission on both paths.
   /**
    * S4 · REFERENCE-FIRST. The admission decision this execution is to be bound to, as returned by the
    * intake that recorded it.
@@ -630,7 +621,8 @@ export async function schedulePilotAssessment(
   }
 
   const submissionInput: DatasetSubmission = {
-    // S4 · THE ADMITTED DECLARATION, never `request.declaredVersion`. See that field's own note.
+    // S4/S5 · THE ADMITTED DECLARATION. There is no longer a request field this could be confused
+    // with: the scheduling type and the HTTP body both omit it entirely.
     declaredVersion: admittedUnder,
     // The dataset LABEL is deliberately not an identity component (contract 2.0.0 removed it, because
     // the uploader controls it), so it is informational here and is taken from the request as before.
