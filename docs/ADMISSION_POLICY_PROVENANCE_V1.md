@@ -216,4 +216,70 @@ carries `"admission-2026.1"`. Hashed from *that* value, it still **reads**, stil
   trust the stored row, exactly as the admission-policy register's did. The asymmetry has now inverted:
   the policy register is the stricter of the two. Its own slice.
 * **No surface lists a tamper without being asked.** Verification is per-resolve; nothing sweeps the
-  registers. A migration that altered many rows is discovered one refusal at a time.
+  registers. A migration that altered many rows is discovered one refusal at a time. *(Addressed
+  2026-10-04 by `npm run verify:registers` — a read-only sweep over both registers, wired into CI.)*
+
+## 11 · Historical rows: preserved provenance, **not** an unresolved defect — AUDITED 2026-10-04
+
+The end of the re-assessment slice reported a possible remaining defect: §3 removed the field from the
+*request* and stamps it server-side, but **historical rows still carry whatever an operator supplied**.
+Is that a live integrity or interpretation gap, or history being preserved as rule 5 requires? It was
+reported as open rather than answered, and this section answers it on evidence.
+
+**The distinction that matters.** "An operator-authored value is stored" and "an operator-authored value
+is *believed*" are different claims. The first is a fact about the past that rule 5 forbids changing.
+Only the second is a defect. So the question is not whether the value is there — it is — but whether
+anything today reads it, displays it, or decides on it.
+
+### What reads it
+
+A grep of every non-test reader of `PilotAdmissionPolicy.calculationMethodVersion`:
+
+| Reader | What it does with the value |
+|---|---|
+| `validateAdmissionPolicy` (`pilotAdmissionPolicy.ts:105`) | checks it is a non-empty string. Nothing else |
+| `canonicalize()` → `hashAdmissionPolicy` (`policyHash.ts:26`) | folds it into the hash preimage |
+
+**That is the complete list.** No computation consumes it, no admission check consults it, no screen
+renders it, and `readPilotAdmissionPolicyGovernance` — the surface an auditor and the governance screen
+read — returns `policyHash`, `integrity` and the lifecycle facts, and **does not return the stored
+policy object at all**. So no read API surfaces the historical label. (`exportSummary.ts:50` does print a
+`calc` version, which is easy to mistake for this one: it reads `result.policy`, the **AssessmentPolicy**,
+whose `calculationMethodVersion` is the build constant `ASSESSMENT_CALC_VERSION`. Not this field, and not
+a leak of an operator label into a customer-facing export.)
+
+### What states the provenance — and always did
+
+`AdmissionDecision.calculationMethodVersion` is stamped from `ADMISSION_EVALUATOR_VERSION` at both
+construction sites (`admissionGate.ts:179` and `:335`), and has been since the field existed. The
+audit probe in §1 showed it directly: the honest and the forged policy produced decisions carrying
+`"admission-gate-2026.1"` *in both cases*. So **the authoritative statement of which evaluator judged a
+dataset is correct on every decision ever recorded**, historical ones included. The operator-authored
+label never displaced it; it sat beside it.
+
+### Integrity
+
+Intact, and not by convention. The historical value is committed by `admissionPolicyHash` → the `PAD-` →
+the frozen decision, and §10 now verifies that witness wherever the row is resolved for use. The value
+cannot be altered after the fact without the row failing its own witness and judging nothing.
+
+### The conclusion, and the one thing that remains true of it
+
+> **Preserved historical provenance.** A pre-correction policy row carries a **retired, inert label**:
+> stored, hash-committed, read by no computation, surfaced by no API, and standing beside a decision
+> whose own provenance field was always the real evaluator.
+
+The bounded ambiguity, stated rather than buried: **the field alone cannot tell a reader which regime
+wrote it.** In practice the only writers were the governance screen and the rehearsal agent, both of
+which sent `ADMISSION_CALC_VERSION` (`"admission-2026.1"`), so a row carrying that value is
+pre-correction and one carrying `ADMISSION_EVALUATOR_VERSION` (`"admission-gate-2026.1"`) is post — but
+an operator *could* have typed anything, so that discriminator is a practical observation about this
+repository's data and **not** a guarantee derivable from the schema.
+
+That ambiguity is harmless precisely because nothing consumes the field. **Were anything ever to start
+reading it — a report, a screen, a comparison — the ambiguity would become a defect at that moment**,
+and the fix then is a per-row provenance marker, not a rewrite of history. Recorded here so that change
+cannot be made without meeting this paragraph first.
+
+**No historical row, hash, `PAD-` or decision was read, restamped or rewritten to reach this
+conclusion.** It is an audit, and its output is this section.

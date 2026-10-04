@@ -160,6 +160,106 @@ revises: {
 `previousFindingExists` is reported rather than left to be taken on trust: a reader being told "this
 revises an earlier result" should not have to go and check that the earlier result is still there.
 
+## 6b · The operator flow — BUILT 2026-10-04
+
+`src/modules/assessment/ReassessmentScreen.tsx`, its own nav entry under **Assess**, because it acts on
+an execution that already exists rather than on a file being uploaded — and the operator reaching it has
+usually come back days later because a method moved.
+
+**What it cannot do is the design.** There is no file picker on the screen at all, asserted on the markup
+rather than promised in a comment, so *"without re-upload"* is a property of the thing. No threshold,
+cut-off, currency or method can be typed: the operator cites a governed definition and the server reads
+the values from it.
+
+**What it shows before submitting.** Every definition the tenant holds, each either selectable or
+carrying the code the server would answer with and the reason in plain words:
+
+| Shown in advance | Code | Why |
+|---|---|---|
+| not in force | `NH-AX-1010` | only an ACTIVE definition may measure anything |
+| changes `asOf` / `stallThresholdDays` / `currency` | `NH-AX-1016` | a different reading — **re-submit the extract** |
+| names the method already used | `NH-AX-1017` | nothing to re-assess |
+
+`src/modules/assessment/reassessment.ts` is pure, and its header is explicit that **it is not a gate**:
+each predicate is derived from values the *server* supplied and can only mark a row ineligible, never
+eligible-despite. A permissive bug is still refused server-side; a restrictive bug shows a stated reason
+the operator can check. A refusal that arrives anyway is rendered with its own code, detail and remedy.
+Ordering is the server's ordering: not-in-force is reported before anyone asks what a definition
+measures, so a draft that *also* moves the cut-off reports the governance reason and does not send an
+operator to fix the wrong thing.
+
+### Submitting exactly once, and retrying safely
+
+**`submitGate` alone was not enough, and its test is what proved it.** Three clicks dispatched before
+React re-rendered all passed the gate, because `setInFlight(true)` does not take effect until the next
+render — so the disabled attribute had not been applied, the handler ran three times, and three requests
+went out. **A disabled button is a display of the rule, never the rule.** A synchronous ref latch is;
+`submitGate` keeps its real job, which is deciding what the control looks like and saying why it is shut.
+
+For an uncertain response the screen says the request **may or may not** have reached the server and that
+retrying is safe — because the revision's identity is derived from its binding, so a repeat resolves to
+the same execution. It never sends anyone back to a file the server still holds.
+
+**The frozen attempt, which is the subtle part.** The body is captured on the first attempt and replayed
+verbatim. The reason is **not** part of the binding, so a retry carrying different wording creates no
+second execution and is answered with the first — whose *stored* reason is the original. The screen would
+then display a sentence the record does not hold. Changing the reason requires abandoning the attempt
+deliberately ("Start over").
+
+### Stated where the eye lands
+
+Both figures are a **pilot assessment** — Revenue Opportunity — and the banner sits above them, not
+below. A revision does not supersede the earlier answer, does not make it wrong, and does not make the
+newer one proven. Both findings are shown side by side, with the server's own `previousFindingExists`
+reported rather than taken on trust.
+
+### One read widened
+
+The governed-terms list now reports each definition's `calculationMethodVersion`. It is **server-stamped
+at registration** (`makeAnalysisTerms` fills it; no request can state it), so it adds no
+caller-controlled input — and without it an operator cannot tell a real method change from a no-op and
+would learn `NH-AX-1017` only by being refused.
+
+## 6c · The browser journey — BUILT 2026-10-04
+
+`e2e/journey.mjs` §11b drives it through the screen, the API, the database and the worker, and asserts
+the persisted link, the preservation, the visible change and a governance refusal. 119/119 checks.
+
+**Why history has to be seeded, and it is the one unavoidable fixture.** A re-assessment only means
+something across a method change, and the method is a build constant: every definition the governance
+screen can register is stamped with the method this build implements. A result from *before* the bump is
+a fact about the past. `scripts/seed-journey-prebump.ts` records one the way the pre-bump build did, and
+its header says why it is written and not run — §1's point, from the harness's side.
+
+| Claim | How the journey measures it |
+|---|---|
+| the revision link is persisted | read back from the **record**, not from the response the screen was handed |
+| the stated reason is persisted | `revises.reason` equals what was typed |
+| historical preservation | the earlier finding's **hash** is identical before and after — stronger than "the row is still there" — and it is still readable, still names its own method, and is not relabelled as a revision |
+| the result changed visibly | two distinct `assessmentId`s, and the delta on screen with both values |
+| a governance refusal | the bar is frozen and the re-assessment refused `NH-AX-1007` **on screen**, on a dataset admitted while it was ACTIVE — which is the proof governance is re-checked rather than inherited |
+| a genuine method change, not a no-op | every definition on offer names a method **different** from the one the result was computed with |
+| `NH-AX-1017` where a browser can reach it | the journey's original execution, already on this build's method, shows every definition as refusable and **nothing selectable at all** |
+| the claim boundary | the pilot-not-proof sentence is on the result screen |
+
+### Three defects it found, all in the code it was written to exercise
+
+1. **`Panel` accepts only `children` and `className`**, so an `aria-label` handed to it is silently
+   dropped. The refusal region looked named in the source and was unfindable. Wrapped in labelled
+   sections instead.
+2. **The completion wait matched any occurrence of the sentence**, which the *previous* execution's panel
+   already carries — so it returned instantly, every read ran while the worker was still going, and five
+   checks failed describing a revision that completed a second later. Scoping it to the revision's panel
+   was not enough either: that panel carries **two** state pills, the locator resolved two elements,
+   Playwright's strict mode threw, and the `catch` read a finished revision as one that never finished.
+   One named region, one match.
+3. **The `NH-AX-1017` check had its premise backwards.** It expected the pre-bump method to appear as a
+   refusable definition; no registered definition names it, so it never could. The evidence runs the
+   other way, and the no-op case moved to the target where it is reachable.
+
+Each was a false reading of a system that was behaving correctly — which is the failure mode a browser
+harness exists to catch, and the reason its waits are scoped to named regions rather than to text.
+
 ## 7 · Falsifiers
 
 Each applied, run, and reverted byte-identically (`sha256` compared before and after).
@@ -173,6 +273,10 @@ Each applied, run, and reverted byte-identically (`sha256` compared before and a
 | F41 | current governance is not re-checked | test 9 |
 | F42 | an unsupported method is not blocked | test 8 |
 | F43 | one of the fourteen fields stops being compared at all | both coverage tests in `assessmentRevision.test.ts` |
+| F44 | `submitGate` ignores `inFlight` | the duplicate-click test |
+| F45 | the submit latch is removed, leaving only the gate | the duplicate-click test — this is the one that was *already* failing before the latch existed |
+| F46 | `freezeAttempt` rebuilds the body on each attempt | the retry test |
+| F47 | `classifyTermsForRevision` stops checking `SAME_METHOD` | the eligibility test and the journey's no-op section |
 
 F37 is the one that earned its place: the first version of test 1 asserted only the **response**, which
 reports the link either way, so the falsifier passed. The test now asserts the row.

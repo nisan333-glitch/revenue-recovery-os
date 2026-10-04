@@ -206,6 +206,20 @@ ever read it. That constant is now **retired and relabelled**, kept only because
 `POLICY_HASH_SCHEME` is unchanged under a five-point proof, and history is untouched — no production path
 ever recomputes a historical policy hash.
 
+**Historical rows: audited and closed (2026-10-04).** The remaining question — whether rows written before
+that correction, which still carry whatever an operator supplied, are an unresolved defect — was settled on
+evidence rather than left open. The distinction that matters is that *a value is stored* and *a value is
+believed* are different claims; only the second is a defect. Nothing believes it: the only non-test readers
+are a non-blank check and the hash preimage, no API returns the stored policy object, no screen renders it,
+and `AdmissionDecision.calculationMethodVersion` was stamped from `ADMISSION_EVALUATOR_VERSION` at both
+construction sites from the beginning — so **the authoritative statement of which evaluator judged is
+correct on every decision ever recorded**. The verdict is therefore **preserved historical provenance**: a
+retired, inert label, hash-committed and now witness-verified. One bounded ambiguity is stated rather than
+buried — the field alone cannot prove which regime wrote it — and it is harmless only because nothing
+consumes it. **The day anything starts reading that field, the ambiguity becomes a defect**, and the remedy
+then is a per-row provenance marker, never a rewrite of history
+([`docs/ADMISSION_POLICY_PROVENANCE_V1.md`](docs/ADMISSION_POLICY_PROVENANCE_V1.md) §11).
+
 **Register tamper-evidence decision (2026-10-04).** The admission-policy register's stored hash was
 **never re-verified** in production — `hashAdmissionPolicy` ran only at registration, the judging path
 trusted `stored.policyHash`, and `policyHashMatches` had no production caller — while the analysis-terms
@@ -276,6 +290,22 @@ afterwards; the append-only tables refuse the alternative outright. The fact it 
 execution **cannot run on this build at all** (`NH-AX-2006` blocks it before anything is computed), so
 this is the only honest route to a current-method answer for bytes already admitted. This is a pilot-data
 trust rule and turns no observed amount into proven Revenue Returned.
+
+**The operator flow was built 2026-10-04** and is exercised in the real browser journey, UI → API →
+database → worker, on a genuine method change (119/119 checks). The screen has **no file picker at all** —
+asserted on the markup, so "without re-upload" is a property of the thing rather than a promise — and no
+threshold, cut-off, currency or method can be typed. Every governed definition is shown either selectable
+or carrying the code the server would answer with, so the refusals are read *before* submitting rather than
+discovered by being refused; the local predicates are explicitly **not a gate** and can only mark a row
+ineligible. Two things the slice learned the hard way are recorded because they generalise: **a disabled
+button is a display of a rule, never the rule** — three clicks dispatched before React re-rendered all
+passed the state-based gate and sent three requests, so the mutex is a synchronous latch — and **a retry
+must replay the attempt verbatim**, because the reason is not part of the binding, so a retry with new
+wording is answered with the execution already recorded and the screen would then show a sentence the
+record does not hold. The journey's own three defects were all **false readings of correct behaviour** (a
+dropped `aria-label`, a wait matching the previous execution's panel, a check whose premise was backwards),
+which is the failure mode a browser harness exists to catch
+([`docs/REASSESSMENT_V1.md`](docs/REASSESSMENT_V1.md) §6b–6c).
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
