@@ -503,6 +503,28 @@ the headline pending attribution — never netted, never suppressed. Full treatm
 [`docs/D2_1_RECONCILIATION_SEMANTICS_V1.md`](docs/D2_1_RECONCILIATION_SEMANTICS_V1.md); the grain itself is
 **still open** and **nothing is implemented**.
 
+**Expectation extract decision (2026-10-05).** The reconciliation core could compare expected against
+billed money but had no source — its `ExpectationRow` was a benchmark type, and contract 2.0.0 cannot
+supply one because `next_invoice_due_at` and `next_invoice_amount` are **required**, so an obligation that
+was never invoiced has either no row or a rejected one. The gap is in the contract's *shape*, so no field
+added there could close it. The governing rule is now:
+
+> **The minimum trustworthy source facts are declared as an additive, separately governed sibling artefact
+> with its own pure validator — never as a widening of the observation contract.** One row is ONE EXPECTED
+> OBLIGATION, the source enumerates the rows, and **NH never creates, expands, prorates or infers one**.
+
+**Built 2026-10-05** ([`docs/EXPECTATION_EXTRACT_V1.md`](docs/EXPECTATION_EXTRACT_V1.md)): own id, version,
+scheme and `exv-2026.1` method version; five REQUIRED facts and **three tiers with no `recommended`**,
+because that tier feeds a threshold of zero and would refuse files that previously passed; five separately
+named **fail-closed capabilities**, so a missing optional fact closes a gate and **rejects nothing** —
+capability gating per detector, never global dataset rejection. `expected_amount` **inverts 2.0.0's
+mistake**: the column is required and a blank cell is a declared UNKNOWN, counted and never valued, while an
+*unparseable* amount is a rejection rather than an UNKNOWN. Seven candidate fields were **stopped rather
+than invented**, the sharpest being cadence: a frequency NH could expand into rows would make **NH the
+author of the expectation**. The validator consults **no clock**, asserted on source. Nothing consumes it in
+production, which is deliberate — the slice that wires it must ship its consumer with it, per the
+`obligation_ref` revert rule. `OBLIGATION_IDENTITY_FIELDS` stays empty and contract 2.0.0 is unchanged.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
