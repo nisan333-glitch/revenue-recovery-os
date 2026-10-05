@@ -292,7 +292,7 @@ describe.skipIf(!HAS_DB)("EP-28 · the submission identity is the data plus what
     expect(again.json().message).toContain("NH-DC-4003");
   });
 
-  it("10 · a 1.x DECLARATION is still accepted under 2.0.0 — §10's window, end to end", async () => {
+  it("10 · a 1.x DECLARATION is still accepted under the current major — §10's window, end to end", async () => {
     // EP-27 built the mechanism with an empty declaration; EP-28 opened it. This is the promise a customer
     // reads, measured through the real intake: an export built against the previous major still works.
     const boundaryId = await boundary();
@@ -301,11 +301,15 @@ describe.skipIf(!HAS_DB)("EP-28 · the submission identity is the data plus what
     expect(res.json().accepted).toBe(true);
     const row = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
     expect(row.declaredVersion).toBe("1.1.0");
-    expect(row.contractVersion).toBe("2.0.0");
+    // S1b · the IMPLEMENTED version is read from the governed constant, not written as a literal. It is
+    // whatever this build ships; pinning "2.0.0" asserted the build's identity rather than the behaviour
+    // under test, and would have failed on any bump for a reason that has nothing to do with §10's window.
+    expect(row.contractVersion).toBe(PILOT_DATA_CONTRACT_VERSION);
 
-    // ...and the declaration does NOT move the identity: the same bytes declared as 2.0.0 are a duplicate,
-    // because an older supported minor is interpreted identically and must not buy a second reading.
-    const asCurrent = await post(body({ boundaryId, declaredVersion: "2.0.0" }));
+    // ...and the declaration does NOT move the identity: the same bytes declared as the CURRENT version are
+    // a duplicate, because an older supported minor is interpreted identically and must not buy a second
+    // reading. Derived for the same reason — the scenario is "declared as current", not "declared as 2.0.0".
+    const asCurrent = await post(body({ boundaryId, declaredVersion: PILOT_DATA_CONTRACT_VERSION }));
     expect(asCurrent.statusCode).toBe(409);
     expect(asCurrent.json().message).toContain("NH-DC-4003");
   });

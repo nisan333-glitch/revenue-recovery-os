@@ -372,14 +372,28 @@ That population is **not in the billing extract**. It is therefore disjoint from
 population *by construction* — not by a disjointness proof over cohorts, but because the rows are in a
 different file, sourced from a different system.
 
-### 7.2 · Incremental union money is **> $0.00**, unlike Detector #3
+### 7.2 · The CAPABILITY is incremental; the AMOUNT is dataset-dependent
 
 This is the decisive contrast and the reason the priority order is right:
 
 | | Population | Incremental union money |
 |---|---|---|
 | Detector #3 (failed payment) | A **subset** of D1 ∪ D2 | **$0.00** — attribution only |
-| **Missing invoice** | **Disjoint** from D1 ∪ D2 — not in the billing extract | **> $0.00 by construction** |
+| **Missing invoice** | **Disjoint** from D1 ∪ D2 — not in the billing extract | **Dataset-dependent; may be $0.00** |
+
+**The corrected claim, because an earlier draft of this section overstated it as "> $0.00 by
+construction":**
+
+> **Missing Invoice creates the capability to identify incremental exposure outside D1/D2. Actual
+> incremental union money is dataset-dependent and may be $0.00.**
+
+**Disjointness is structural; the amount is not.** The population claim is unchanged and does not depend on
+any dataset: those rows are in a different file, from a different system, and are absent from the billing
+extract. But exposure exceeds zero only when **all four** of these hold — an authoritative expectation
+exists, the expected event is genuinely absent, an **authoritative expected amount** exists (§4), and every
+exclusion/lifecycle control passes (§5). A dataset in which billing did its job correctly yields **$0.00**,
+and that is a *correct* result, not a failure of the detector. Conflating "a population we can now reach"
+with "money we will certainly find" is the same error as counting a forecast as proof, one level down.
 
 Double counting is impossible in the matched direction: a matched expectation means the invoice exists, so
 it is in the billing extract, so it is already D1/D2 territory and contributes **zero** missing-invoice
@@ -426,7 +440,7 @@ are functional requirements, not nice-to-haves.**
 | **12** | UNKNOWN-money rule | `MISSING_EVENT_UNKNOWN_AMOUNT` ⇒ **detected, counted, exposure UNKNOWN.** Never zero, never estimated, never in a money total, never averaged from prior invoices or a plan price. Reported with its own count-based recall, never blended into a monetary recall. |
 | **13** | False-positive controls | Sixteen cases in §5. The two gating ones: **invoice generated after `asOf`** (needs a *governed* invoicing grace window, an analysis term like `stallThresholdDays`, never an operator input) and **paused subscription** (needs a dated pause interval, else fail closed). |
 | **14** | Relationship to existing detectors | **Disjoint by construction**, not by proof over cohorts: the population is absent from the billing extract entirely. A *matched* expectation is in D1/D2 territory and contributes zero here, so the surfaces meet only where one is empty. |
-| **15** | Expected incremental union coverage | **> $0.00 — genuinely new money**, the first such capability since Detector #1. Unquantifiable today: the frozen corpus is a single billing extract and contains **no** expectation side, so there is no ground truth and no honest estimate. Quantification requires either a real two-system pilot extract or a new synthetic generator producing both sides. |
+| **15** | Expected incremental union coverage | **A genuinely new capability** — the first since Detector #1 — whose realised money is **dataset-dependent and may be $0.00** (§7.2). Unquantifiable today: the frozen corpus is a single billing extract and contains **no** expectation side, so there is no ground truth and no honest estimate. Quantification requires either a real two-system pilot extract or a new synthetic generator producing both sides. |
 | **16** | What NH may claim (if built) | That a contractual obligation to invoice existed, evidenced by an independently-sourced record pre-dating the period; that no corresponding billing event exists as of the governed cut-off; and the **exact** obligated amount where the expectation carries one, or an explicit **unknown** where it does not — all labelled **OBSERVED**. |
 | **17** | What NH may NOT claim | That the money is recovered, recoverable, returned or proven. That the invoice *will* be raised or collected. Any **estimated** amount for the unknown class. That a pattern of past invoices establishes a future obligation. That the omission was anyone's fault — the detector reports a missing handoff, never a cause or a culprit. And nothing here creates a Recovery Case or stages a candidate. |
 | **18** | Smallest safe implementation sequence | **S1** — close the obligation-identity gap in the data contract (a real source reference; prerequisite for this detector *and* the candidate path). **S2** — declare the expectation extract as a contract artefact: fields, requirement tiers, validation, termination/pause/amendment semantics. **S3** — the governed invoicing grace window as an analysis term, proposed and activated by two identities like every other. **S4** — contract-system namespace verification, mirroring `declaredBillingSource`. **S5** — the ordered-pair reconciliation binding as a **new artefact family**, single-dataset path untouched. **S6** — a two-sided synthetic generator and the §6 ground truth. **S7** — the pure reconciliation detector with its own scheme, method version and witness. **S8** — persistence, then operator surface. **Each step is independently useful, and S1 pays for itself regardless of whether this detector is ever built.** |

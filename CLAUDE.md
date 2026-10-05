@@ -408,8 +408,16 @@ expectation side** so that absence is a positive result rather than a lookup tha
 the two datasets as an **ordered pair** so the proof records which system was supposed to act
 ([`docs/MISSING_INVOICE_ARCHITECTURE_V1.md`](docs/MISSING_INVOICE_ARCHITECTURE_V1.md)). Unlike Detector #3
 its population is **disjoint from Detectors #1 and #2 by construction** — the rows are in a different file —
-so its incremental union money is **greater than zero**, and it is the first cross-department handoff NH
-could detect.
+and it is the first cross-department handoff NH could detect. **Disjointness is structural; the amount is
+not**, and an earlier form of this paragraph overstated it. The claim is:
+
+> **Missing Invoice creates the capability to identify incremental exposure outside D1/D2. Actual
+> incremental union money is dataset-dependent and may be $0.**
+
+Exposure exceeds zero only when an authoritative expectation exists, the expected event is genuinely absent,
+an authoritative expected **amount** exists, and every exclusion/lifecycle control passes. A dataset where
+billing did its job yields $0, which is a correct answer rather than a failed detector — treating "a
+population we can now reach" as "money we will find" is counting a forecast as proof, one level down.
 
 **Where an amount cannot be established authoritatively, the finding is real and its exposure is UNKNOWN** —
 counted, never zero, never averaged from prior invoices, never taken from a plan price, never prorated by us.
@@ -420,6 +428,41 @@ single-dataset path stays byte-identical. The prerequisite worth taking on its o
 **obligation-identity contract gap** — `OBLIGATION_IDENTITY_FIELDS` is still frozen empty, `obligation_ref`
 was staged once and reverted, and closing it unblocks both this detector and the candidate path that has been
 waiting on exactly that condition.
+
+**Obligation-identity audit decision (2026-10-05).** `obligation_ref` was declared once, on 2026-10-01, and
+reverted four commits later. The audit of that history found the revert was **not** a rejection of the
+semantic idea: the field had no production consumer (`observeObligationReferences` had two call sites, both
+in its own test file), the value died at every boundary leaving the request so **six of the seven facts the
+future decision needed were uncollectable**, the customer contract doc falsely promised the field was
+"recorded and reported back to you", and the verification gate — *"nothing is persisted"* — could not tell
+*correctly inert* from *not wired up*. Two rules follow, and both are binding:
+
+> **No identity or correlation field is declared until the production code that reads it ships in the same
+> slice.** A declared-but-unconsumed field collects no evidence and invites prose that overstates what
+> happens to it.
+
+> **Capability gating per detector, never global dataset rejection.** An identifier a detector needs is
+> *optional* at the contract level and a **named prerequisite** for that detector, which **fails closed**
+> when it is unavailable. Making it globally required would reject datasets that still measure real money
+> through Detectors #1 and #2. This follows the existing pattern deliberately: `leakInstanceIdentityStatus`
+> and `SOURCE_NAMESPACE_RESOLUTION_AVAILABLE` are separately named *"because collapsing them would let
+> closing either look like closing both."*
+
+Four prior decisions **survive** the revert and still bind ([`docs/S1_OBLIGATION_IDENTITY_AUDIT_V1.md`](docs/S1_OBLIGATION_IDENTITY_AUDIT_V1.md)):
+aggregate rows are structurally invisible and **no contract field can promote grain**, because a row-grain
+flag hands grain authority to the beneficiary; zero synonyms, with no case folding and no Unicode
+normalisation, so two visually identical references are two identities; `dedupeCollisions` runs before any
+obligation-level predicate could, and the one candidate completeness gate is satisfiable by pre-aggregating
+— *"a gate that points the incentive at the failure is worse than no gate"*; and OPTIONAL never
+RECOMMENDED, which is **the same finding** governed issue #1 re-derived independently four days later.
+
+**And the bias that disqualifies the obvious evidence-gathering plan:** references can only be observed on
+rows that survive upstream rejection — overwhelmingly single-invoice subscriptions — so the cases an identity
+model most needs (consolidation, splitting, re-keying, merges, migrations) are **discarded before any
+reference can be read**. An identity model validated on that evidence is validated on the cases it cannot
+fail. A generic invoice-level reference is therefore **not sufficient** for cross-system reconciliation: the
+two sides identify at different grains, and a billing-system migration changes every key at once, so the
+entire expected book would read as missing. The grain question is **open** and belongs to the D2 decision.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

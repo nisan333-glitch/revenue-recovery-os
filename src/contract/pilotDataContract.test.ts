@@ -173,7 +173,21 @@ describe("contract declaration", () => {
     // Fail-closed everywhere else: a newer major, a newer minor or patch, an undeclared older major.
     expect(isSupportedContractVersion("3.0.0")).toBe(false);
     expect(isSupportedContractVersion("2.99.0")).toBe(false);
-    expect(isSupportedContractVersion("2.0.1")).toBe(false);
+    //
+    // S1b · NEWER-THAN-IMPLEMENTED IS DERIVED, NOT A LITERAL. This probe used to read
+    // `isSupportedContractVersion("2.0.1")`, asserted false. That is only true while the implemented
+    // version is 2.0.0: at an implemented 2.1.0, `2.0.1` is an OLDER MINOR of the same major, which
+    // `acceptsOlderMinorOfSameMajor` PROMISES to accept — so the literal would have failed on the next
+    // minor bump, and for the wrong reason. The intent was always "implemented, plus one", so that is what
+    // it now computes. The previous staging of 2.1.0 discovered this mid-bump; deriving it here means the
+    // next bump's diff is a bump, not a bump plus two test corrections.
+    //
+    // It still bites a real regression: if `isSupportedContractVersion` stopped refusing a newer version,
+    // both probes below flip at any implemented version.
+    const impl = parseContractVersion(PILOT_DATA_CONTRACT_VERSION);
+    expect(impl, PILOT_DATA_CONTRACT_VERSION).not.toBeNull();
+    expect(isSupportedContractVersion(`${impl!.major}.${impl!.minor}.${impl!.patch + 1}`)).toBe(false);
+    expect(isSupportedContractVersion(`${impl!.major}.${impl!.minor + 1}.0`)).toBe(false);
     expect(isSupportedContractVersion("0.9.0")).toBe(false);
     expect(isSupportedContractVersion("not-a-version")).toBe(false);
   });
