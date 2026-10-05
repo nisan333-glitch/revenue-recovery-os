@@ -343,6 +343,44 @@ pinned by a test naming it as the reported limitation. That is a contract decisi
 benchmark is **synthetic**: 100% monetary recall and precision on one fixture licenses no coverage claim
 beyond it.
 
+**Attributed exposure decision (2026-10-05).** The search for a third detector produced a result worth
+binding, because the attractive mistake is a big number. The latent `revenueEvent.ts` engine — named by the
+coverage audit as the largest unused capability in the codebase — turned out to detect **nothing new**: its
+"billing event" is the *payment*, so `MISSING` collapses into existing Unpaid exposure, `INCORRECT`
+company-favourable collapses into the existing partial-payment remainder, the customer-favourable branch is
+unreachable (the adapter rejects overpayment) and is a liability rather than leakage, and `DELAYED` carries
+no outstanding exposure by design. The next candidate, **failed payment / dunning**, needs a fact the
+contract does not carry — and when it has it, every dollar it finds is one Detector #1 or #2 already counts
+in full. The governing rule is now:
+
+> **A detector that attaches evidence to a dollar an existing detector already counts reports ATTRIBUTED
+> exposure and ZERO incremental union money.** The union of detectors is the union of their *populations*,
+> never the sum of their reported figures. Where a new detector explains rather than discovers, say so in
+> the figure: *attributed* and *incremental union* are two numbers, and the second one is $0.00.
+
+The corollary is a claim rule: affirmative evidence of *why* a dollar is unpaid raises the **plausibility**
+of collecting it and establishes nothing about recovery. Plausibility is not recoverability, and
+recoverability is not Revenue Returned.
+
+**Recorded 2026-10-05, nothing implemented** — the proposal
+([`docs/DETECTOR_3_FAILED_PAYMENT_V1.md`](docs/DETECTOR_3_FAILED_PAYMENT_V1.md)), the latent-engine audit
+and its as-of defect ([`docs/REVENUE_EVENT_LATENT_V1.md`](docs/REVENUE_EVENT_LATENT_V1.md)), and three open
+governed issues ([`docs/GOVERNED_ISSUES_V1.md`](docs/GOVERNED_ISSUES_V1.md)). `revenueEvent` stays
+**unwired**: it reads `paidAt` raw rather than effective-as-of, so a post-cut-off payment would read as
+`DELAYED` ("the money arrived") where `classifyPayment` correctly says `Unpaid` — a blocker on any future
+wiring, deliberately not repaired opportunistically. Contract stays at **2.0.0**; the minimum addition for
+Detector #3 is two **optional** fields, and the field tier is forced rather than chosen, because
+`COMPATIBILITY_POLICY` lists "add a recommended field" as *minor* while the admission gate counts missing
+recommended columns against a threshold of zero — so a recommended addition would refuse datasets that
+previously passed, which is *major* by the policy's own test. Two further rules fell out and are binding on
+the implementation whenever it is authorised: **a defect in a non-money, non-identity column must never
+reject the row**, because row rejection would let the beneficiary shrink measured exposure by poisoning an
+optional column; and **payment-attempt multiplicity is one-to-many and a single row may carry only a named
+latest-attempt aggregate** — attempt history needs a separate event extract, which is itself blocked by the
+frozen-empty `OBLIGATION_IDENTITY_FIELDS`. Rows that fail intake are **quarantined, never counted**: the
+$2,000 of establishable overdue obligation among the frozen corpus's 15 rejected rows enters no detector,
+no union and no recall denominator.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
