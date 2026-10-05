@@ -78,9 +78,17 @@ residual shows `+$100` in one period and `−$100` in the other. Clamped to non-
 vanishes and the `+$100` is reported as a plain missing-invoice finding with no hint that its counterpart
 exists one period over. So:
 
-> **The residual is reported SIGNED. `clampNonNegative` is not applied, and any non-zero residual of
-> either sign in a dataset is a reason to distrust every zero in that dataset**, because offsetting is
-> demonstrably occurring in it.
+> **The residual is reported SIGNED. `clampNonNegative` is not applied.**
+
+**CORRECTED 2026-10-05 — the second half of that rule was wrong and is withdrawn.** It read *"and any
+non-zero residual of either sign in a dataset is a reason to distrust every zero in that dataset."* That is
+not merely too broad, it is **conceptually confused**: a zero at grain `g` is false only when offsetting
+errors lie **inside `g` itself** (cases 1 and 5), and a non-zero residual at some other grain is **no
+evidence at all** about `g`'s internals. Contamination does not flow from a non-zero to a zero. What is
+real is **offset pairing between PAIRED NON-ZERO residuals of opposite sign**, bounded by a named mechanism
+— and, separately, A's **permanent, grain-independent blind spot** on cases 1 and 5, which applies to every
+zero in every dataset and is a standing claim boundary rather than dataset-specific doubt. Full treatment:
+[`D2_1_RECONCILIATION_SEMANTICS_V1.md`](D2_1_RECONCILIATION_SEMANTICS_V1.md) §1.
 
 A negative residual is independently meaningful anyway: it is **over-billing**, i.e. customer-favourable
 and a potential liability — never company revenue leakage, and never added to an exposure total.
@@ -162,8 +170,9 @@ residual(E,P)     = expectedSum − billedSum          ← SIGNED. Never clamped
 
 residual > 0  UNDER-BILLED. Candidate exposure = residual. OBSERVED only.
 residual = 0  NO CLAIM OF CORRECTNESS — "no net shortfall at this grain and period".
-residual < 0  OVER-BILLED. Customer-favourable; a liability signal, never exposure;
-              AND a distrust signal for every zero residual in the same dataset.
+residual < 0  OVER-BILLED. Customer-favourable; a liability signal, never exposure.
+              It may QUALIFY a positive residual it is mechanism-linked to (D2.1 §1.2),
+              and it casts no doubt on any zero residual anywhere.
 ```
 
 Refusals rather than guesses: unallocatable consolidated invoice (event 3) · overlapping periods

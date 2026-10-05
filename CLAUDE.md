@@ -464,6 +464,45 @@ fail. A generic invoice-level reference is therefore **not sufficient** for cros
 two sides identify at different grains, and a billing-system migration changes every key at once, so the
 entire expected book would read as missing. The grain question is **open** and belongs to the D2 decision.
 
+**Zero is not correct — reconciliation claim rule (2026-10-05).** Monetary reconciliation compares expected
+money against billed money at a governed grain. The temptation it creates is a green tick, so the rule is
+constitutional rather than documentary:
+
+> **A zero monetary residual proves monetary equality at the governed reconciliation grain, and nothing
+> else.** It does **not** prove event correctness, the absence of duplicate billing, the absence of a
+> missing obligation, correct customer or entitlement allocation, correct invoice identity, correct timing,
+> or correct attribution. Monetary reconciliation may report **`MONETARILY_BALANCED`**; it may **never**
+> imply **`NO_LEAKAGE`**, which requires the independently gated event and attribution capabilities to
+> support it.
+
+`NO_LEAKAGE` is to be **unrepresentable** in the monetary surface's type rather than merely discouraged —
+the treatment `constitutesProof: false as const` already gets. Two worked cases prove the rule is not
+pedantry: a **missing obligation offset by an overcharge**, and a **duplicate invoice masking an omission**,
+both net to a zero residual at *any* grain, because both errors live inside the same reconciliation unit.
+That is a permanent, grain-independent blind spot of monetary reconciliation, not a dataset-specific doubt.
+
+**The sign convention, fixed once:** `residual = expected − observed`. Positive is **UNDER_BILLED** —
+candidate exposure, OBSERVED only. Zero is **MONETARILY_BALANCED**. Negative is **OVER_BILLED** — a
+liability signal, **never exposure and never "recovered revenue"**; money the company may owe back is not
+money it found.
+
+> **Positive and negative residuals from independent grains are NEVER netted into a smaller company-level
+> leakage figure.** A $100 missing obligation and an unrelated $100 surplus are two problems, and their sum
+> is zero problems, which is false. The primary money metric is therefore a sum over positives that have
+> **no mechanism-linked counterpart**; gross positive, gross negative, optional net, and the unresolved
+> grain count are reported separately.
+
+**Doubt is bounded by mechanism, not by co-location.** An earlier form of this analysis claimed any non-zero
+residual made every zero in the dataset untrustworthy; that is withdrawn as **conceptually wrong**, not
+merely broad — a non-zero residual elsewhere is no evidence about another grain's internals. What is real is
+pairing between **non-zero residuals of opposite sign**, and only through a named mechanism: same
+entitlement in an adjacent period within the governed grace window, same billing batch, sibling entitlements
+of one contract, or sibling contracts of one payer where that relation is authoritative. **Same currency,
+same source namespace and same dataset are not mechanisms.** A paired positive is flagged and held out of
+the headline pending attribution — never netted, never suppressed. Full treatment in
+[`docs/D2_1_RECONCILIATION_SEMANTICS_V1.md`](docs/D2_1_RECONCILIATION_SEMANTICS_V1.md); the grain itself is
+**still open** and **nothing is implemented**.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
