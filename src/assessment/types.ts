@@ -105,6 +105,34 @@ export interface ObservedSummary {
   readonly stateCounts: Readonly<Record<PaymentState, number>>;
 }
 
+/**
+ * DETECTOR #2 · Overdue exposure on obligations whose account did NOT stall.
+ *
+ * A SEPARATE TYPE, not extra fields on `ObservedSummary`, and the separation is load-bearing twice over:
+ * `ObservedSummary.stalledCount` would be a lie over this population, and the behaviour fingerprint
+ * digests the whole `ObservedSummary` object — so widening it would force a calculation-method bump and
+ * re-blessing of every governed terms version. The two surfaces are disjoint by construction and are
+ * summed only for display, never stored combined.
+ *
+ * Every figure is OBSERVED: read verbatim from the customer's own amounts in exact minor units. None is
+ * estimated, forecast, recoverable or proven, and none asserts that anything caused the non-payment.
+ */
+export interface NonStalledExposureSummary {
+  readonly currency: string;
+  /** Accepted cycles evaluated here — the accepted population minus the stalled cohort. */
+  readonly population: number;
+  /** Σ full amount over non-stalled cycles classified Unpaid. Due by asOf, nothing settled. */
+  readonly overdueUnpaid: Money;
+  /** Σ clamped (amount − paidAmount) over non-stalled PartiallyPaid cycles. The remainder only. */
+  readonly overduePartialOutstanding: Money;
+  /** Σ amount over non-stalled cycles with a DATED cancellation/refund. Visible, never silent. */
+  readonly excludedValue: Money;
+  /** Σ amount over non-stalled cycles classified Unknown. Settled, but not placeable in time. */
+  readonly unknownValue: Money;
+  /** Count of non-stalled cycles per payment state. */
+  readonly stateCounts: Readonly<Record<PaymentState, number>>;
+}
+
 /** The four money states are permanently separated. Estimated and Forecast are absent in the slice. */
 export type NotCalculated = "unavailable_in_validation_slice";
 
