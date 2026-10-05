@@ -6,6 +6,7 @@ import type { AssessmentPolicy } from "./policy";
 import type { AssessmentResult, ColumnMapping, ExclusionRecord, ExpectationCycle, RowOutcome } from "./types";
 import { splitCohorts } from "./cohort";
 import { observedSummary } from "./observed";
+import { nonStalledExposureSummary, nonStalledPopulation } from "./nonStalledExposure";
 import { shortHash, fingerprintSource } from "./fingerprint";
 import { parseCsv } from "./parse";
 import {
@@ -70,6 +71,10 @@ export function assess(outcomes: readonly RowOutcome[], policy: AssessmentPolicy
 
   const { stalled, undetermined, reference } = splitCohorts(unique, policy);
   const observed = observedSummary(stalled, policy);
+  // DETECTOR #2 · the same payment classification over the complement of the stalled cohort. The call
+  // above is unchanged and must stay so: the behaviour fingerprint digests its result, so widening it
+  // would force a calculation-method bump and re-blessing of every governed terms version.
+  const nonStalledExposure = nonStalledExposureSummary(nonStalledPopulation(unique, stalled), policy);
 
   const assessmentId =
     "A-" +
@@ -107,6 +112,7 @@ export function assess(outcomes: readonly RowOutcome[], policy: AssessmentPolicy
     undeterminedCount: undetermined.length,
     referenceCount: reference.length,
     observed,
+    nonStalledExposure,
     estimated: "unavailable_in_validation_slice" as const,
     forecast: "unavailable_in_validation_slice" as const,
     proven: zeroMoney(policy.currency),

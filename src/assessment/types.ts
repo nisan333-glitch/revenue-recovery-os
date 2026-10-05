@@ -169,6 +169,14 @@ export interface AssessmentResult {
   readonly undeterminedCount: number;
   readonly referenceCount: number;
   readonly observed: ObservedSummary;
+  /**
+   * DETECTOR #2 · overdue exposure on the accepted population MINUS the stalled cohort.
+   *
+   * Disjoint from `observed` by construction, and deliberately a sibling field rather than extra keys on
+   * `ObservedSummary`: widening that object would move the behaviour fingerprint and force a
+   * calculation-method bump. The two are summed only for display, never stored combined.
+   */
+  readonly nonStalledExposure: NonStalledExposureSummary;
   readonly estimated: NotCalculated; // structurally not calculated in the thin slice
   readonly forecast: NotCalculated; // structurally not calculated in the thin slice
   readonly proven: Money; // structurally zero in M1
