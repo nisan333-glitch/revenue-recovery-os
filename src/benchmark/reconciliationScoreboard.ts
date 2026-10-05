@@ -140,6 +140,15 @@ export function score(
     grossNegativeDiscrepancyMinor: grossNegative,
     // Nothing in this benchmark may be counted twice: the union is the sum of per-scenario incremental
     // contributions, so a scenario whose money another capability already counts contributes zero.
+    //
+    // READ THIS FIGURE PRECISELY. It is IDENTICALLY ZERO for every possible input — the accumulator and
+    // the subtrahend walk the same multiset of scenarios and read the same field, so no reading, no
+    // scenario list and no repeated entry can move it. It is therefore NOT evidence that a detector
+    // double-counted nothing; it is evidence that the ACCUMULATION PATH still reads the authored union
+    // figure and nothing else. Its only force is against a change to this file, which makes it
+    // undefendable by behaviour alone — hence the structural guard in the test beside it, and falsifier
+    // F10, which drives it to exactly 30_000 on the enabled population (272_001 accumulated against
+    // 242_001 authored: R07 + R08 + R09, the three scenarios whose money is explained, not found).
     doubleCountedUnionMinor: Math.max(0, incrementalUnion - sum(scenarios.map((s) => s.truth.incrementalUnionMinor))),
     aBlindByConstructionMinor: blind,
     incrementalUnionMinor: incrementalUnion,

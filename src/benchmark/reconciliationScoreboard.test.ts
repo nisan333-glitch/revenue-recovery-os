@@ -8,6 +8,8 @@
 // distortion to the READINGS (never to the ground truth) and asserts the scoreboard refuses to flatter
 // it. Every distortion is local to its test, so nothing is mutated and nothing needs reverting.
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { RECONCILIATION_SCENARIOS } from "./reconciliationScenarios";
 import { doNothingReconciler, score, type ReconcilerReading } from "./reconciliationScoreboard";
 
@@ -150,5 +152,44 @@ describe("SCOREBOARD FALSIFIERS · each convenient distortion must be refused", 
     const board = score(S, readings);
     expect(board.falseNegativeMinor).toBe(10_000 + 10_000);
     expect(board.capabilityGatedScenarios).toBeGreaterThan(0);
+  });
+});
+
+// ── THE ONE FIGURE NO READING CAN MOVE ────────────────────────────────────────────────────────────
+//
+// `doubleCountedUnionMinor` is identically zero for every input, because the accumulator and the
+// subtrahend walk the same scenarios and read the same field. An earlier description of it as "a
+// self-check that is not the tautology it looks like" was half the truth and the wrong half was load
+// bearing: it IS tautological in its inputs, and its only force is against a change to the
+// accumulation path. So a $0.00 in that column does NOT say a detector double-counted nothing — it
+// says the accumulator still reads the authored union figure.
+//
+// A guard with that shape cannot be defended by behaviour, which is exactly why it needs defending:
+// mutation F10 moved the accumulator to `t.positiveExposureMinor` and the figure rose to $300.00, and
+// nothing in the repository would have caught that if F10 had not been run by hand. These two tests
+// are that proof, made permanent.
+describe("the accumulation path behind doubleCountedUnionMinor", () => {
+  it("is unmovable from ANY input — which is the reason it needs a structural guard", () => {
+    // Every lever a caller has: inflate the readings, drop them, repeat a scenario, score one scenario
+    // alone, score none. The figure does not budge, so no behavioural test can protect it.
+    const inflated = perfect().map((r) => ({ ...r, reportedPositiveMinor: 9_000_000 }));
+    const repeated = [...S, ...S];
+    for (const board of [
+      score(S, perfect()), score(S, inflated), score(S, doNothingReconciler(S)), score(S, []),
+      score(repeated, perfect()), score(S.slice(0, 1), perfect()), score([], []),
+    ]) {
+      expect(board.doubleCountedUnionMinor).toBe(0);
+    }
+  });
+
+  it("accumulates the AUTHORED union figure and nothing else — checked on CODE, not on prose", () => {
+    // The assertion F10 breaks. Comments are stripped first, because the paragraph above legitimately
+    // names the mutation's own expression and a guard that reads comments measures documentation —
+    // the lesson the emitter's structural guard learned against its own fixture.
+    const src = readFileSync(resolve(__dirname, "reconciliationScoreboard.ts"), "utf8");
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    expect(code).toMatch(/incrementalUnion \+= t\.incrementalUnionMinor;/);
+    // ...and it never accumulates any OTHER money field, which is how the figure would go silently inert.
+    expect(code).not.toMatch(/incrementalUnion \+= t\.(?!incrementalUnionMinor;)/);
   });
 });
