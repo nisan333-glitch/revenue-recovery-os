@@ -305,7 +305,7 @@ describe.skipIf(!HAS_DB)("Findings 1 & 2 · calculation-method compatibility", (
     // invariant "no finding is written" was therefore proven, and the stronger claim the agent's comment
     // makes — "before the policy is rebuilt and before anything is computed" — was not.
     //
-    // It is worth pinning rather than softening. `runProjectedAssessment` is pure, so a late check
+    // It is worth pinning rather than softening. The projected assessment is pure, so a late check
     // leaves no trace to assert on behaviourally; but running the real calculation under a method the
     // binding does not name and then discarding the result is still the wrong shape, and the next person
     // to move this line should have to notice. Source-level for the same reason as the S5 surface test:
@@ -315,12 +315,25 @@ describe.skipIf(!HAS_DB)("Findings 1 & 2 · calculation-method compatibility", (
     expect(open).toBeGreaterThan(-1);
     const gate = source.indexOf("calculation_method_drift", open);
     const rebuild = source.indexOf("const policy = makePolicy({", open);
-    const compute = source.indexOf("runProjectedAssessment({", open);
+    //
+    // DETECTOR #2 re-pointed this pin, it did not relax it. The agent used to call
+    // `runProjectedAssessment({...})`, which both assessed and flattened. It now calls
+    // `projectedAssessmentResult({...})` and then `findingFromProjectedResult(...)`, so that one
+    // assessment serves both the finding and the exposure artifact. The *computation* is the first of
+    // those two; the ordering claim is unchanged and is asserted against both. The marker's absence
+    // fails the test (`toBeGreaterThan(-1)`), which is how the rename was caught rather than missed —
+    // and the agent is asserted to make no call to the old helper, so this pin cannot match a dead call.
+    const compute = source.indexOf("projectedAssessmentResult({", open);
+    const flatten = source.indexOf("findingFromProjectedResult(", open);
     expect(gate).toBeGreaterThan(-1);
     expect(rebuild).toBeGreaterThan(-1);
     expect(compute).toBeGreaterThan(-1);
+    expect(flatten).toBeGreaterThan(-1);
+    expect(source).not.toMatch(/runProjectedAssessment\s*\(/); // no live call, only a prose reference
     expect(gate).toBeLessThan(rebuild);
     expect(gate).toBeLessThan(compute);
+    expect(gate).toBeLessThan(flatten);
+    expect(compute).toBeLessThan(flatten);
   });
 
   it("6 · the HONEST execution beside the drifted one still completes — the gate is not a blanket stop", async () => {

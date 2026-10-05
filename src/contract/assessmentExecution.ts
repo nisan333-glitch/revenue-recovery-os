@@ -29,7 +29,7 @@ import { assess } from "../assessment/assess";
 import { SAAS_ADAPTER_ID, SAAS_ADAPTER_VERSION } from "../assessment/adapters/saasActivation";
 import { sha256Hex } from "../assessment/fingerprint";
 import type { AssessmentPolicy } from "../assessment/policy";
-import type { ExpectationCycle } from "../assessment/types";
+import type { AssessmentResult, ExclusionReason, ExpectationCycle } from "../assessment/types";
 import { EXCLUSION_REASON_CODES } from "./rejectionCodes";
 
 /**
@@ -523,14 +523,23 @@ export async function hashFinding(finding: AssessmentFinding): Promise<string> {
  * function has no clock and is fully deterministic: the same input, policy and binding always give
  * the same finding, which is what makes a duplicate write provably a no-op.
  */
-export function runProjectedAssessment(input: {
+export interface ProjectedAssessmentInput {
   readonly executionId: string;
   readonly binding: ExecutionBinding;
   readonly input: ExecutionInput;
   readonly policy: AssessmentPolicy;
   readonly createdAt: string;
-}): AssessmentFinding {
-  const result = assess(
+}
+
+/**
+ * The full `AssessmentResult` for a projected execution.
+ *
+ * Extracted so a caller that needs BOTH the finding and Detector #2's exposure reading can get them from
+ * ONE assessment rather than running the arithmetic twice — two runs would be two chances to disagree.
+ * `runProjectedAssessment` delegates here, so its behaviour and its finding are unchanged.
+ */
+export function projectedAssessmentResult(input: ProjectedAssessmentInput): AssessmentResult {
+  return assess(
     input.input.cycles.map((cycle) => ({ kind: "cycle" as const, cycle })),
     input.policy,
     {
@@ -548,21 +557,43 @@ export function runProjectedAssessment(input: {
       dateLocale: input.binding.interpretation.dateLocale,
     },
   );
+}
 
+export function runProjectedAssessment(input: ProjectedAssessmentInput): AssessmentFinding {
+  return findingFromProjectedResult(
+    input.executionId,
+    input.binding.boundaryId,
+    projectedAssessmentResult(input),
+  );
+}
+
+/**
+ * Flatten one `AssessmentResult` into the persisted scalar finding.
+ *
+ * NOTE WHAT IS ABSENT, deliberately: nothing from `result.nonStalledExposure`. Detector #2's figures are
+ * a SEPARATE artifact with their own canonical form, witness and method version. Folding them in here
+ * would change `canonicalFinding`, and with it every historical finding hash — a silent semantic re-grade
+ * of proof that is supposed to stay reproducible from (input, governed terms, calculation method).
+ */
+export function findingFromProjectedResult(
+  executionId: string,
+  boundaryId: string,
+  result: AssessmentResult,
+): AssessmentFinding {
   // Exclusions the assessment itself produced (cycle-identity collisions) are reported in the SAME
   // vocabulary the intake used, via the contract's total reason→code map. One exclusion vocabulary,
   // so a customer never has to learn that the same problem has two names depending on who found it.
   const counts = new Map<string, number>();
   for (const exclusion of result.exclusions) {
-    const spec = EXCLUSION_REASON_CODES[exclusion.reason];
+    const spec = EXCLUSION_REASON_CODES[exclusion.reason as ExclusionReason];
     counts.set(spec.code, (counts.get(spec.code) ?? 0) + 1);
   }
 
   return Object.freeze({
-    executionId: input.executionId,
-    boundaryId: input.binding.boundaryId,
+    executionId,
+    boundaryId,
     assessmentId: result.assessmentId,
-    calculationMethodVersion: input.policy.calculationMethodVersion,
+    calculationMethodVersion: result.policy.calculationMethodVersion,
     acceptedCycleCount: result.acceptedCycleCount,
     excludedCycleCount: result.excludedRowCount,
     exclusionCodes: Object.freeze(

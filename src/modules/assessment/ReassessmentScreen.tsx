@@ -561,11 +561,11 @@ function ReassessmentOutcome({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Observation
               title={`Earlier · ${previous.binding.assessmentPolicy.calculationMethodVersion}`}
-              finding={previous.finding.finding}
+              record={previous.finding}
             />
             <Observation
               title={`Revision · ${revision.binding.assessmentPolicy.calculationMethodVersion}`}
-              finding={revision.finding.finding}
+              record={revision.finding}
             />
           </div>
           <p className="mt-3 text-[12px] text-slate-500">
@@ -584,11 +584,13 @@ function ReassessmentOutcome({
 
 function Observation({
   title,
-  finding,
+  record,
 }: {
   title: string;
-  finding: NonNullable<AssessmentExecutionView["finding"]>["finding"];
+  record: NonNullable<AssessmentExecutionView["finding"]>;
 }) {
+  const finding = record.finding;
+  const exposure = record.exposure;
   return (
     <div className="rounded-lg border border-ink-500/40 px-3 py-2">
       <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">{title}</div>
@@ -600,6 +602,28 @@ function Observation({
           label="Observed unpaid"
           value={formatMoney({ minor: finding.observedUnpaidMinor, currency: finding.currency }, { exact: true })}
         />
+        {/*
+          DETECTOR #2 · a finding recorded before this detector existed carries NO exposure artifact.
+          "Not computed" and "zero" are different facts and the comparison must not conflate them: a
+          reader must not read an absent second surface as evidence there was nothing outside the stall.
+        */}
+        {exposure ? (
+          <>
+            <Line
+              label="OBSERVED overdue unpaid (no stall)"
+              value={formatMoney({ minor: exposure.overdueUnpaidMinor, currency: exposure.currency }, { exact: true })}
+            />
+            <Line
+              label="OBSERVED overdue partial outstanding"
+              value={formatMoney(
+                { minor: exposure.overduePartialOutstandingMinor, currency: exposure.currency },
+                { exact: true },
+              )}
+            />
+          </>
+        ) : (
+          <Line label="Non-stalled exposure" value="Not computed for this execution" />
+        )}
       </dl>
     </div>
   );

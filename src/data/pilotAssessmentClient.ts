@@ -83,6 +83,25 @@ export interface AssessmentFindingView {
   };
 }
 
+/**
+ * DETECTOR #2 · the non-stalled exposure reading, as the server stores it.
+ *
+ * `null` on every execution assessed before the detector existed, and that means **not computed** — a
+ * different fact from zero exposure. A screen that rendered null as 0.00 would be asserting that a
+ * healthy-activation population was checked and found clean, which nobody checked.
+ */
+export interface NonStalledExposureView {
+  readonly methodVersion: string;
+  readonly population: number;
+  readonly currency: string;
+  readonly overdueUnpaidMinor: number;
+  readonly overduePartialOutstandingMinor: number;
+  readonly excludedValueMinor: number;
+  readonly unknownValueMinor: number;
+  readonly stateCounts: Readonly<Record<string, number>>;
+  readonly claimBoundary: AssessmentFindingView["claimBoundary"];
+}
+
 export interface ScheduleAssessmentResult {
   readonly scheduled: boolean;
   readonly created: boolean;
@@ -111,6 +130,9 @@ export interface AssessmentExecutionView {
   readonly finding: {
     readonly finding: AssessmentFindingView;
     readonly findingHash: string;
+    /** Detector #2's reading, with its own witness. `null` = not computed for this execution. */
+    readonly exposure: NonStalledExposureView | null;
+    readonly exposureHash: string | null;
     readonly producedBy: string;
     readonly recordedAt: string;
   } | null;

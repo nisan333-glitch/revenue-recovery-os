@@ -142,6 +142,71 @@ export function AssessmentExecutionPanel({ execution }: AssessmentExecutionPanel
         </div>
       )}
 
+      {/* DETECTOR #2 · the SECOND, disjoint exposure surface. Separately labelled on purpose: the figure
+          above is unpaid value inside the activation-stall cohort, and this one is unpaid value on
+          accounts that activated on time. Summing them is meaningful only because the populations are
+          disjoint by construction, so the combined line is derived here for display and never stored. */}
+      {finding && (
+        <div aria-label="Non-stalled exposure" className="mb-4">
+          <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
+            Overdue exposure outside the activation-stall cohort — OBSERVED, never proof
+          </div>
+          {finding.exposure === null ? (
+            <p className="text-[12px] text-slate-400">
+              <strong>Not computed for this execution.</strong> This reading did not exist when the
+              assessment ran, so there is no figure — which is not the same as a figure of zero. Nothing
+              here was checked and found clean. Re-assess the retained input to compute it.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                <Counter
+                  label="Overdue unpaid (no stall)"
+                  value={formatMoney(
+                    { minor: finding.exposure.overdueUnpaidMinor, currency: finding.exposure.currency },
+                    { exact: true },
+                  )}
+                  tone="text-amber-300"
+                />
+                <Counter
+                  label="Overdue partial outstanding"
+                  value={formatMoney(
+                    {
+                      minor: finding.exposure.overduePartialOutstandingMinor,
+                      currency: finding.exposure.currency,
+                    },
+                    { exact: true },
+                  )}
+                />
+                <Counter label="Obligations examined" value={String(finding.exposure.population)} />
+              </div>
+              <div className="mt-3">
+                <Counter
+                  label="Combined observed exposure — derived for display from two disjoint surfaces"
+                  value={formatMoney(
+                    {
+                      minor:
+                        finding.finding.observedUnpaidMinor +
+                        finding.finding.partialOutstandingMinor +
+                        finding.exposure.overdueUnpaidMinor +
+                        finding.exposure.overduePartialOutstandingMinor,
+                      currency: finding.exposure.currency,
+                    },
+                    { exact: true },
+                  )}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">
+                These obligations are past their due date with nothing settled, or settled only in part,
+                on accounts whose activation was on time. No dollar here has been recovered, proven or
+                counted, nothing asserts a cause for the non-payment, and this run created no recovery
+                case. Reading computed under {finding.exposure.methodVersion}.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       {/* The lineage. Append-only: what is shown is every event, in the order it happened. */}
       <div>
         <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">

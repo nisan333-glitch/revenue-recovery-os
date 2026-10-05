@@ -577,6 +577,12 @@ model PilotAssessmentFindingRecord {
   assessmentId String   @map("assessment_id")
   finding      Json
   findingHash  String   @map("finding_hash")
+  /// DETECTOR #2 · the non-stalled exposure reading, with its OWN witness and its OWN method version.
+  /// NULL on every execution assessed before the detector existed, and NULL means "not computed" —
+  /// a different fact from zero exposure, which the read surface is required to distinguish.
+  exposure              Json?   @map("exposure")
+  exposureHash          String? @map("exposure_hash")
+  exposureMethodVersion String? @map("exposure_method_version")
   producedBy   String   @map("produced_by")
   recordedAt   DateTime @default(now()) @map("recorded_at")
 

@@ -53,6 +53,8 @@ function binding(method: string, policyVersion: string): AssessmentExecutionView
 function finding(assessmentId: string, unpaidMinor: number) {
   return {
     findingHash: `sha256:${"e".repeat(64)}`,
+    exposure: null,
+    exposureHash: null,
     producedBy: "pilot-assessment-v1",
     recordedAt: "2026-04-16T09:00:02.000Z",
     finding: {
@@ -317,6 +319,57 @@ describe("the loaded screen, through a real client render", () => {
     // The reason is locked, with the reason it must not change on a retry.
     expect((screen.container.querySelector("textarea") as HTMLTextAreaElement).readOnly).toBe(true);
     expect(screen.container.innerHTML).toMatch(/sentence the record does not hold/);
+
+    screen.teardown();
+  });
+
+  it("DETECTOR #2 · says 'not computed' for the pre-detector result and the figures for the revision", async () => {
+    // Uncomputed and zero are DIFFERENT FACTS. The earlier finding was recorded before this detector
+    // existed, so it carries no exposure artifact at all. If the comparison rendered that as $0.00 a
+    // reader would conclude there was nothing overdue outside the stall, which the record does not say.
+    const withExposure = {
+      ...finding("A-new00001", 456_700),
+      exposureHash: `sha256:${"d".repeat(64)}`,
+      exposure: {
+        methodVersion: "nse-2026.1",
+        currency: "USD",
+        population: 31,
+        overdueUnpaidMinor: 930_000,
+        overduePartialOutstandingMinor: 76_545,
+        excludedValueMinor: 0,
+        unknownValueMinor: 0,
+        stateCounts: { Unpaid: 1, PartiallyPaid: 1, NotYetDue: 29 },
+        claimBoundary: CLAIM,
+      },
+    };
+    const screen = await mount({
+      initialBoundaryId: "pb-1",
+      initialExecutionId: PREV_ID,
+      deps: {
+        read: async (_b: string, id: string) =>
+          id === NEW_ID ? { ...REVISION, finding: withExposure } : execution(),
+        listTerms,
+        reassess: async (): Promise<ReassessAssessmentResult> => ({
+          reassessed: true, created: true, executionId: NEW_ID, revisesExecutionId: PREV_ID,
+          boundaryId: "pb-1", state: "queued", binding: REVISION.binding,
+          delta: REVISION.revises!.delta, refusal: null, refusalDetail: null, claimBoundary: CLAIM,
+        }),
+      },
+    });
+    await screen.chooseEligible();
+    await screen.fillReason("the calculation method moved");
+    await screen.submit();
+
+    const html = screen.container.innerHTML;
+    expect(html).toContain("Not computed for this execution");
+    expect(html).toContain("OBSERVED overdue unpaid (no stall)");
+    expect(html).toContain("$9,300.00");
+    expect(html).toContain("$765.45");
+    // The earlier column must NOT have been given a zero it never recorded.
+    const both = html.slice(html.indexOf('aria-label="Both results"'));
+    const earlier = both.slice(both.indexOf("A-old00001"), both.indexOf("A-new00001"));
+    expect(earlier).toContain("Not computed for this execution");
+    expect(earlier).not.toContain("OBSERVED overdue unpaid");
 
     screen.teardown();
   });

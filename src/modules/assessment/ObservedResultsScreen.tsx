@@ -1,5 +1,5 @@
 import type { AssessmentResult } from "../../assessment/types";
-import { formatMoney, money } from "../../domain/money";
+import { addMoney, formatMoney, money } from "../../domain/money";
 import { SectionHeader, Panel, StatCard } from "../../components/ui";
 import { downloadSummary } from "./exportSummary";
 
@@ -20,8 +20,13 @@ export interface ObservedResultsScreenProps {
  */
 export function ObservedResultsScreen({ result, onBack, onRunGoverned, running = false }: ObservedResultsScreenProps) {
   const o = result.observed;
+  const x = result.nonStalledExposure;
   const cur = o.currency;
   const zero = money(0, cur);
+  const combined = addMoney(
+    addMoney(o.observedUnpaid, o.partialOutstanding),
+    addMoney(x.overdueUnpaid, x.overduePartialOutstanding),
+  );
 
   return (
     <div>
@@ -75,6 +80,35 @@ export function ObservedResultsScreen({ result, onBack, onRunGoverned, running =
           </tbody>
         </table>
       </Panel>
+
+      {/*
+        DETECTOR #2 · the SECOND detection surface, kept visibly apart from the headline above. The
+        populations are disjoint by construction (the complement of the stalled cohort), so the combined
+        row is an additive presentation and is never stored, hashed or made an identity component.
+        `Panel` accepts only children + className, so the accessible name goes on a wrapping section.
+      */}
+      <section aria-label="Non-stalled observed exposure" className="mb-5">
+        <Panel className="overflow-hidden">
+          <div className="border-b border-ink-600/50 px-4 py-3 text-sm font-semibold text-slate-200">
+            Observed exposure outside the activation-stall cohort ({x.currency}) — exact
+          </div>
+          <table className="w-full text-sm">
+            <tbody>
+              <Row label="Obligations examined (non-stalled accepted cycles)" value={String(x.population)} />
+              <Row label="OBSERVED overdue unpaid (no activation stall)" value={formatMoney(x.overdueUnpaid, { exact: true })} strong />
+              <Row label="OBSERVED overdue partial outstanding" value={formatMoney(x.overduePartialOutstanding, { exact: true })} strong />
+              <Row label="Excluded (dated cancelled / refunded)" value={formatMoney(x.excludedValue, { exact: true })} />
+              <Row label="Unknown / insufficient (not counted)" value={formatMoney(x.unknownValue, { exact: true })} />
+              <Row label="Combined OBSERVED exposure — derived for display from two disjoint surfaces" value={formatMoney(combined, { exact: true })} />
+            </tbody>
+          </table>
+          <div className="border-t border-ink-700/40 px-4 py-3 text-[12px] text-slate-400">
+            Overdue obligations on accounts that did <span className="text-slate-300">not</span> have an
+            activation stall. OBSERVED only: not a forecast, not an estimate, not recoverable value, not
+            proven revenue, and no claim about <em>why</em> they are overdue.
+          </div>
+        </Panel>
+      </section>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Panel className="overflow-hidden">

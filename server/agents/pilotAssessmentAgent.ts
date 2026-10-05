@@ -22,10 +22,12 @@ import {
   deriveExecutionId,
   hashExecutionInput,
   hashFinding,
-  runProjectedAssessment,
+  findingFromProjectedResult,
+  projectedAssessmentResult,
   type ExecutionInput,
 } from "../../src/contract/assessmentExecution";
 import { executionCode, type ExecutionRefusal } from "../../src/contract/executionCodes";
+import { hashExposureFinding, makeNonStalledExposureFinding } from "../../src/contract/exposureFinding";
 import { mayEvaluate, whyCannotEvaluate } from "../../src/contract/policyLifecycle";
 import { ASSESSMENT_CALC_VERSION, makePolicy } from "../../src/assessment/policy";
 import { findSubmissionByDecisionId } from "../persistence/pilotDatasetStore";
@@ -277,7 +279,11 @@ async function executeAssessment(
     asOf: binding.assessmentPolicy.asOf,
     currency: binding.assessmentPolicy.currency,
   });
-  const finding = runProjectedAssessment({
+  // ONE assessment, TWO artifacts. `projectedAssessmentResult` is the same computation
+  // `runProjectedAssessment` performs — it delegates here — so the finding below is byte-identical to
+  // what this agent produced before Detector #2 existed. Assessing twice would be two chances to
+  // disagree about the same data.
+  const assessed = projectedAssessmentResult({
     executionId,
     binding,
     input,
@@ -286,14 +292,25 @@ async function executeAssessment(
     // fingerprint, the policy and the interpretation, never from when the run happened.
     createdAt: now().toISOString(),
   });
+  const finding = findingFromProjectedResult(executionId, binding.boundaryId, assessed);
 
   // 7 · Record it, idempotently. The finding is deterministic given the binding and the input, so a
   // retry after a lost lease re-derives byte-identical content and the second write is a provable
   // no-op. A DIFFERENT hash under the same execution id is not reconciled — it is a tamper signal.
   const findingHash = await hashFinding(finding);
+  // DETECTOR #2 · the non-stalled exposure reading, carried on the SAME write. It is a SEPARATE artifact
+  // with its own canonical form, its own witness and its own method version, so adding it leaves every
+  // historical `findingHash` reproducible from (input, governed terms, calculation method) — which is
+  // exactly what folding these scalars into `canonicalFinding` would have destroyed.
+  const exposureFinding = makeNonStalledExposureFinding({
+    executionId,
+    boundaryId: binding.boundaryId,
+    summary: assessed.nonStalledExposure,
+  });
   const result = await recordFindingIfAbsent({
     finding,
     findingHash,
+    exposure: { finding: exposureFinding, hash: await hashExposureFinding(exposureFinding) },
     producedBy: PILOT_ASSESSMENT_AGENT_ID,
   });
   if (result.conflict) {

@@ -11,6 +11,7 @@
 // second filter is what survives a future refactor of the first: if id derivation were ever changed,
 // a lookup still cannot return another tenant's row — it reads as absent, never as theirs.
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma, type DbClient } from "../db";
 import type {
   ExecutionBinding,
@@ -20,6 +21,7 @@ import type {
   ExecutionTransition,
   AssessmentFinding,
 } from "../../src/contract/assessmentExecution";
+import type { NonStalledExposureFinding } from "../../src/contract/exposureFinding";
 import { deriveExecutionState } from "../../src/contract/assessmentExecution";
 
 export interface ExecutionRecord {
@@ -401,6 +403,16 @@ export interface StoredFinding {
   readonly assessmentId: string;
   readonly finding: AssessmentFinding;
   readonly findingHash: string;
+  /**
+   * DETECTOR #2 · the non-stalled exposure reading, with its own witness and method version.
+   *
+   * NULL for every execution assessed before the detector existed. That is **not computed**, which is a
+   * different fact from zero exposure — a reader that rendered it as 0.00 would be asserting that a
+   * healthy-activation population was checked and found clean, which nobody checked.
+   */
+  readonly exposure: NonStalledExposureFinding | null;
+  readonly exposureHash: string | null;
+  readonly exposureMethodVersion: string | null;
   readonly producedBy: string;
   readonly recordedAt: string;
 }
@@ -411,6 +423,9 @@ function toStoredFinding(row: {
   assessmentId: string;
   finding: unknown;
   findingHash: string;
+  exposure?: unknown;
+  exposureHash?: string | null;
+  exposureMethodVersion?: string | null;
   producedBy: string;
   recordedAt: Date;
 }): StoredFinding {
@@ -420,6 +435,9 @@ function toStoredFinding(row: {
     assessmentId: row.assessmentId,
     finding: row.finding as AssessmentFinding,
     findingHash: row.findingHash,
+    exposure: (row.exposure ?? null) as NonStalledExposureFinding | null,
+    exposureHash: row.exposureHash ?? null,
+    exposureMethodVersion: row.exposureMethodVersion ?? null,
     producedBy: row.producedBy,
     recordedAt: row.recordedAt.toISOString(),
   });
@@ -450,6 +468,15 @@ export async function recordFindingIfAbsent(
   input: {
     readonly finding: AssessmentFinding;
     readonly findingHash: string;
+    /**
+     * DETECTOR #2 · written in the SAME INSERT as the finding, so it inherits this path's idempotency
+     * and atomicity rather than needing a second write with its own conflict rule. Omitted means not
+     * computed, which is how every historical row reads.
+     */
+    readonly exposure?: {
+      readonly finding: NonStalledExposureFinding;
+      readonly hash: string;
+    };
     readonly producedBy: string;
   },
   client: DbClient = prisma,
@@ -471,6 +498,16 @@ export async function recordFindingIfAbsent(
         assessmentId: finding.assessmentId,
         finding: JSON.parse(JSON.stringify(finding)),
         findingHash: input.findingHash,
+        // All three together or none — the DB CHECK enforces the same thing, so a half-written reading
+        // cannot exist in either layer.
+        // `Prisma.DbNull`, NOT `null`. A `Json?` column given `null` stores the JSON VALUE null, which
+        // `IS NULL` does not match — so the all-three-or-none CHECK rejected every finding written
+        // without an exposure. The constraint caught it on the first write, which is what it is for.
+        exposure: input.exposure
+          ? JSON.parse(JSON.stringify(input.exposure.finding))
+          : Prisma.DbNull,
+        exposureHash: input.exposure?.hash ?? null,
+        exposureMethodVersion: input.exposure?.finding.methodVersion ?? null,
         producedBy: input.producedBy,
       },
     });

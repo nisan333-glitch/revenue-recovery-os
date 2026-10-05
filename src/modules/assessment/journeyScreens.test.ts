@@ -177,3 +177,69 @@ describe("EP-19 · the browser figure is a preview and is labelled as one", () =
     expect(html).not.toContain("Run governed execution");
   });
 });
+
+describe("DETECTOR #2 · the operator sees the second surface separately, labelled OBSERVED", () => {
+  // The CSV above is already a minimal two-surface dataset and nobody noticed: E1 never activated
+  // (stalled, $10,000 unpaid) and E2 activated in 9 days (reference) with an invoice due 2026-02-01
+  // and no payment — $5,000 overdue that the stalled-only headline cannot see. So the assertions
+  // below are a before/after on the very fixture that used to prove only the labelling.
+  async function preview() {
+    return assessCsv(CSV, makePolicy({ stallThresholdDays: 30, asOf: "2026-03-01", currency: "USD" }), {
+      createdAt: "2026-03-02T00:00:00.000Z",
+    });
+  }
+
+  it("computes the non-stalled overdue unpaid the headline misses, to the exact minor unit", async () => {
+    const r = await preview();
+    expect(r.observed.observedUnpaid.minor).toBe(1_000_000); // E1 · the unchanged headline
+    expect(r.nonStalledExposure.overdueUnpaid.minor).toBe(500_000); // E2 · invisible before this slice
+    expect(r.nonStalledExposure.overduePartialOutstanding.minor).toBe(0);
+    expect(r.nonStalledExposure.population).toBe(1);
+  });
+
+  it("renders the two surfaces in separately named regions and never merges them", async () => {
+    const html = renderToStaticMarkup(
+      createElement(ObservedResultsScreen, { result: await preview(), onBack: () => {} }),
+    );
+    expect(html).toContain('aria-label="Non-stalled observed exposure"');
+    expect(html).toContain("Observed exposure outside the activation-stall cohort");
+    expect(html).toContain("OBSERVED overdue unpaid (no activation stall)");
+    expect(html).toContain("OBSERVED overdue partial outstanding");
+    // Both figures, each in full, plus the derived combined line — and the combined line is stated to
+    // be derived for display so it cannot be read as a third, stored figure.
+    expect(html).toContain("$10,000.00");
+    expect(html).toContain("$5,000.00");
+    expect(html).toContain("$15,000.00");
+    expect(html).toMatch(/derived for display from two disjoint surfaces/);
+  });
+
+  it("claims nothing beyond observation — no recovery, recoverability, return, proof or cause", async () => {
+    const html = renderToStaticMarkup(
+      createElement(ObservedResultsScreen, { result: await preview(), onBack: () => {} }),
+    );
+    // Bounded by the section's OWN closing tag, not by a character count. A fixed window overran into
+    // the neighbouring panel, which legitimately says "it is not recovered revenue" about the headline,
+    // and the vocabulary check then failed on text this slice did not write.
+    const open = html.indexOf('aria-label="Non-stalled observed exposure"');
+    expect(open).toBeGreaterThan(-1);
+    const close = html.indexOf("</section>", open);
+    expect(close).toBeGreaterThan(open);
+    const panel = html.slice(open, close);
+    // A blanket substring ban is the WRONG instrument and the first draft of this test proved it: the
+    // panel's own disclaimer says "not recoverable value, not proven revenue", which is a DENIAL. What
+    // must be impossible is the affirmative use. So every occurrence of a claim word has to be negated
+    // by the words immediately before it — an affirmation fails, a denial passes.
+    const lower = panel.toLowerCase();
+    for (const word of ["recovered", "recoverable", "returned", "proven", "caused", "recoverab"]) {
+      let at = lower.indexOf(word);
+      while (at !== -1) {
+        const before = lower.slice(Math.max(0, at - 24), at);
+        expect(before, `"${word}" must be negated, found: ...${before}[${word}]`).toMatch(
+          /\b(not|no|never)\b[ a-z]*$/,
+        );
+        at = lower.indexOf(word, at + 1);
+      }
+    }
+    expect(panel).toMatch(/not a forecast, not an estimate, not recoverable value, not\s+proven revenue/);
+  });
+});
