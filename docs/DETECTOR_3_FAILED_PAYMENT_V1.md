@@ -56,7 +56,9 @@ the detector is and is not worth.
 
 ### A.1 · Can any existing admitted field establish a failed collection attempt? **No.**
 
-All 18 contract fields were reviewed (`src/contract/pilotDataContract.ts`). The money/payment-bearing
+All **21** contract fields were reviewed (`src/contract/pilotDataContract.ts` —
+`PILOT_DATA_CONTRACT_FIELDS`; an earlier draft of this document said 18, which was simply a miscount and
+changed no conclusion). The money/payment-bearing
 ones are `next_invoice_amount`, `next_invoice_due_at`, `next_invoice_paid_at`, `next_invoice_paid`,
 `paid_amount`, `refunded_at`, `refunded`, `cancelled_at`, `cancelled`, `status`, `status_effective_at`.
 

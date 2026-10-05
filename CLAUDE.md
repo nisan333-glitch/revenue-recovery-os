@@ -381,6 +381,46 @@ frozen-empty `OBLIGATION_IDENTITY_FIELDS`. Rows that fail intake are **quarantin
 $2,000 of establishable overdue obligation among the frozen corpus's 15 rejected rows enters no detector,
 no union and no recall denominator.
 
+**Missing-invoice expectation standard (2026-10-05).** With Detector #3 held as an approved but
+deprioritised candidate — it explains dollars rather than finding them — the mission moved to the one family
+that would find money NH cannot see at all: an obligation that *should* have been invoiced and never was.
+The word that carries the risk is **should**, and the governing rule is now:
+
+> **The expectation must originate in a system OTHER than the system that was supposed to act.** Asking the
+> billing system what billing should have done cannot detect billing's own omission, because the failure
+> that erased the invoice may have erased the schedule with it. An expectation must additionally pre-date
+> the period it governs, carry the facts that would legitimately end it, and keep *that* an invoice was due
+> separate from *how much* it was for.
+
+**A finite history of past invoices is not an obligation.** "Billed monthly for six months" does not
+establish that the seventh is owed: cancellation, expiry, pause, amendment, a free period and a term simply
+ending are all normal, and a detector that reads the pattern as the obligation manufactures money in every
+one of them. Pattern may corroborate a declared cadence; it may never be the cadence's source — the same
+shape as the semantic-equivalence correction above.
+
+**Proved, not asserted: a missing invoice is structurally unrepresentable in contract 2.0.0.**
+`next_invoice_due_at` and `next_invoice_amount` are **required**, so a subscription billing never invoiced
+either has no row (invisible) or a row with blanks (rejected `missing_required_field`, and rejected rows are
+quarantined, never counted). The gap is in the contract's shape, not in any detector — which is why no
+single-extract design can close it, however the fields are named. The architecture that can is an
+**independently-sourced expectation extract** with NH performing the join itself, **iterating the
+expectation side** so that absence is a positive result rather than a lookup that finds nothing, and binding
+the two datasets as an **ordered pair** so the proof records which system was supposed to act
+([`docs/MISSING_INVOICE_ARCHITECTURE_V1.md`](docs/MISSING_INVOICE_ARCHITECTURE_V1.md)). Unlike Detector #3
+its population is **disjoint from Detectors #1 and #2 by construction** — the rows are in a different file —
+so its incremental union money is **greater than zero**, and it is the first cross-department handoff NH
+could detect.
+
+**Where an amount cannot be established authoritatively, the finding is real and its exposure is UNKNOWN** —
+counted, never zero, never averaged from prior invoices, never taken from a plan price, never prorated by us.
+Estimation would be a separately governed product in the Revenue Opportunity ledger, never on the OBSERVED
+surface. **Nothing is implemented and nothing is authorised**: this needs a MAJOR contract version, because
+multi-extract intake changes the idempotency derivation, and it needs a new artefact family so the
+single-dataset path stays byte-identical. The prerequisite worth taking on its own merits is the
+**obligation-identity contract gap** — `OBLIGATION_IDENTITY_FIELDS` is still frozen empty, `obligation_ref`
+was staged once and reverted, and closing it unblocks both this detector and the candidate path that has been
+waiting on exactly that condition.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
