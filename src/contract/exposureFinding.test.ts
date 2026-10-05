@@ -127,7 +127,7 @@ describe("PRESERVATION · the assessment finding is untouched", () => {
     }
   });
 
-  it("the canonical finding's KEY LIST is exactly the eighteen it has always had", () => {
+  it("the canonical finding’s KEY LIST is exactly the seventeen it has always had", () => {
     // Pinned as a set, not a count, so an added key fails by name rather than by an off-by-one.
     expect(Object.keys(JSON.parse(canonicalFinding(assessment))).sort()).toEqual([
       "acceptedCycleCount", "assessmentId", "boundaryId", "calculationMethodVersion", "currency",

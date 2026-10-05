@@ -307,6 +307,42 @@ dropped `aria-label`, a wait matching the previous execution's panel, a check wh
 which is the failure mode a browser harness exists to catch
 ([`docs/REASSESSMENT_V1.md`](docs/REASSESSMENT_V1.md) §6b–6c).
 
+**Second detection surface decision (2026-10-05).** A coverage audit found NH detected exactly **one**
+leakage family, and the cause was one line: `observedSummary` is called with the stalled cohort only, so
+`for (const c of stalled)` meant payment state was never evaluated for a cycle routed to `reference` or
+`undetermined`. An overdue unpaid invoice on an account that activated on time was invisible **by
+construction**. The governing rule is now:
+
+> **A monetary obligation that is past due and unsettled is detectable on its own facts, not only when it
+> sits behind another deviation.** A new detection surface is an **additive, separately governed sibling**
+> artefact — never a widening of an existing one whose canonical form is already hashed.
+
+**Built 2026-10-05** ([`docs/DETECTOR_2_NON_STALLED_EXPOSURE_V1.md`](docs/DETECTOR_2_NON_STALLED_EXPOSURE_V1.md)).
+The rejected design — two scalars added to `canonicalFinding` — would have meant *same historical input +
+same governed terms + same `ASSESSMENT_CALC_VERSION` ⇒ **different** `findingHash`*, turning the witness
+into a function of the **build** and breaking rule 5's promise that historical proof stays *reproducible*.
+Nothing would have failed today (one production caller, no re-hashing of stored findings, append-only
+table, a finished task never re-claimed), which is exactly why "nothing fails" was never the right test.
+So the new reading got its own scheme, canonical form, witness hash and version constant
+(`NON_STALLED_EXPOSURE_METHOD_VERSION`), independent of `ASSESSMENT_CALC_VERSION`: no bump, no terms
+re-blessing, no re-assessment, and `ObservedSummary`, the behaviour fingerprint, `canonicalFinding` and
+`hashFinding` all byte-identical, each with its own preservation test. The populations are the stalled
+cohort and its **complement**, provably disjoint and additive to an independent classification of the whole
+accepted population. **"Not computed" is not "zero"** — an execution recorded before this detector carries
+no exposure at all, and rendering that as $0.00 would assert a population was checked and found clean when
+nobody checked. Everything is labelled **OBSERVED**: this is detection and valuation only, it creates no
+Recovery Case, stages no candidate, and **Revenue Returned and Auditable Revenue are unchanged**.
+
+One subpart was **stopped rather than guessed**: whether a `status = churned` row's outstanding obligation
+is void cannot be established from the contract — `status` is optional with an empty enum and no declared
+meaning, the governed projection drops it for privacy so any status control would be inert in the worker
+where the money is measured, and `excludedStatuses` is ungoverned and unhashed, so wiring it would hand the
+beneficiary a free-text lever over which rows count. Detector #2 therefore adds **no new status
+interpretation**, and the gap's current behaviour (undated `churned`, overdue, unpaid ⇒ **counted**) is
+pinned by a test naming it as the reported limitation. That is a contract decision with an owner. The
+benchmark is **synthetic**: 100% monetary recall and precision on one fixture licenses no coverage claim
+beyond it.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
