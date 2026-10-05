@@ -30,9 +30,31 @@ export const EXPECTATION_EXTRACT_ID = "nh.expectation-extract";
  * different files from different systems, and tying them would mean an expectation-side clarification
  * forced a bump on every observation extract already in the field.
  */
-export const EXPECTATION_EXTRACT_VERSION = "1.0.0";
+export const EXPECTATION_EXTRACT_VERSION = "1.1.0";
 
 export const EXPECTATION_EXTRACT_REF = `${EXPECTATION_EXTRACT_ID}@${EXPECTATION_EXTRACT_VERSION}`;
+
+/**
+ * Why 1.1.0 is a MINOR by the test the compatibility policy applies: no extract that 1.0.0 accepted is
+ * now refused, and no extract it refused is now accepted. The field table, the tiers and the required
+ * set are identical. What changed is the PRECISION of two reports and the addition of a per-unit
+ * declaration:
+ *
+ *   • `NH-EX-2006` ("zero or negative") is RETIRED and replaced by `NH-EX-2018` (explicit zero) and
+ *     `NH-EX-2019` (negative). The same rows are refused; they are now told which error they made.
+ *   • `monetaryQuantification` is declared PER UNIT, with `NH-EX-3006`. A unit with no authoritative
+ *     amount already survived as an UNKNOWN; what is new is that it now SAYS the quantification is
+ *     unavailable rather than leaving a caller to infer it from a null.
+ */
+export const EXPECTATION_EXTRACT_VERSION_HISTORY: readonly { readonly version: string; readonly change: string }[] =
+  Object.freeze([
+    Object.freeze({ version: "1.0.0", change: "First declaration: row grain, 12 fields, five capabilities." }),
+    Object.freeze({
+      version: "1.1.0",
+      change:
+        "SCHEMA PRESENCE vs ROW-LEVEL AVAILABILITY pinned: a required `expected_amount` COLUMN never means a required VALUE. Four amount states are now distinguishable — blank (UNKNOWN, row preserved), malformed (NH-EX-2005), explicit zero (NH-EX-2018), negative (NH-EX-2019) — and monetary quantification is declared per unit (NH-EX-3006).",
+    }),
+  ]);
 
 /** A change to the extract's SHAPE is a new scheme id, never a silent re-reading of the old one. */
 export const EXPECTATION_EXTRACT_SCHEME = "nh-expectation-extract-v1";

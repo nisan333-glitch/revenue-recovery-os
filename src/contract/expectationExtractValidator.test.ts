@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import {
   EXPECTATION_EXTRACT_COLUMNS, EXPECTATION_EXTRACT_SCHEME,
 } from "./expectationExtract";
+import { ALL_EXPECTATION_CODES, RETIRED_CODES } from "./expectationExtractCodes";
 import {
   expectationValidationWitness, validateExpectationExtract,
   type ExpectationExtractTerms, type RawExpectationRow,
@@ -55,13 +56,133 @@ describe("validator · UNKNOWN is never zero", () => {
     expect(r.unknownAmountCount).toBe(0);
   });
 
-  it("zero and negative expectations are refused, never treated as unknown or as a credit", () => {
-    expect(codes(run([row({ expected_amount: "0.00" })]))).toEqual(["NH-EX-2006"]);
-    expect(codes(run([row({ expected_amount: "-100.00" })]))).toEqual(["NH-EX-2006"]);
+  it("zero and negative are refused, and under SEPARATE codes — never as one another", () => {
+    // This test originally asserted the single retired NH-EX-2006 ("zero or negative"). Splitting it
+    // is the point: an explicit zero and a credit are different source errors with different fixes.
+    expect(codes(run([row({ expected_amount: "0.00" })]))).toEqual(["NH-EX-2018"]);
+    expect(codes(run([row({ expected_amount: "-100.00" })]))).toEqual(["NH-EX-2019"]);
   });
 
   it("refuses more precision than the currency supports rather than rounding a cent", () => {
     expect(codes(run([row({ expected_amount: "100.005" })]))).toEqual(["NH-EX-2005"]);
+  });
+});
+
+// ── THE DISTINCTION THAT CARRIES THE MOST RISK ───────────────────────────────────────────────────
+//
+// SCHEMA PRESENCE of `expected_amount` is not ROW-LEVEL AVAILABILITY of an authoritative amount. The
+// column is required, so an extract omitting it is unusable; the VALUE is not, because a genuine
+// obligation may exist while its price cannot be authoritatively stated, and an expectation does not
+// stop existing because nobody can price it.
+//
+// Four states, four different answers, and no two may ever collapse:
+//
+//   BLANK     → UNKNOWN. Row PRESERVED, non-monetary facts in force, this unit's monetary
+//               quantification fails closed. Never 0.00, never estimated.
+//   MALFORMED → REJECTED (NH-EX-2005). The source stated something unreadable, which is a different
+//               fact from being unable to state it.
+//   ZERO      → REJECTED (NH-EX-2018). Writing 0 ASSERTS nothing is owed — a claim that satisfies
+//               itself against any billing at all.
+//   NEGATIVE  → REJECTED (NH-EX-2019). A credit, which belongs to the observation side.
+describe("validator · schema presence is NOT row-level availability", () => {
+  it("the four amount states produce four DIFFERENT outcomes", () => {
+    const outcome = (amount: string) => {
+      const r = run([row({ expected_amount: amount })]);
+      return {
+        codes: codes(r),
+        accepted: r.accepted.length,
+        // NOT `?? "no-row"`: a blank amount IS null, and `??` would collapse the very distinction
+        // this test exists to pin — the bug this check caught on its first run.
+        amount: r.accepted.length === 0 ? "no-row" : r.accepted[0]!.expectedAmountMinor,
+        quant: r.accepted.length === 0 ? "no-row" : r.accepted[0]!.monetaryQuantification,
+      };
+    };
+    expect(outcome("")).toEqual({
+      codes: [], accepted: 1, amount: null, quant: "UNAVAILABLE_NO_AUTHORITATIVE_AMOUNT",
+    });
+    expect(outcome("not a number")).toEqual({ codes: ["NH-EX-2005"], accepted: 0, amount: "no-row", quant: "no-row" });
+    expect(outcome("0.00")).toEqual({ codes: ["NH-EX-2018"], accepted: 0, amount: "no-row", quant: "no-row" });
+    expect(outcome("-100.00")).toEqual({ codes: ["NH-EX-2019"], accepted: 0, amount: "no-row", quant: "no-row" });
+    // ...and the three rejection codes are distinct, so no caller can conflate them downstream.
+    expect(new Set(["NH-EX-2005", "NH-EX-2018", "NH-EX-2019"]).size).toBe(3);
+  });
+
+  it("a blank amount PRESERVES the expectation and every non-monetary fact it carries", () => {
+    // The row exists, it is in force, and all of its lifecycle and identity facts survive. What is
+    // unavailable is only the money.
+    const r = run([row({
+      expected_amount: "", payer_ref: "payer-7", terminated_at: "2026-09-01",
+      pause_start: "2026-05-01", pause_end: "2026-05-31", schedule_line_ref: "sl-7",
+    })]);
+    expect(r.rejections).toEqual([]);
+    const a = r.accepted[0]!;
+    expect(a.entitlementRef).toBe("ent-1");
+    expect(a.periodStart).toBe("2026-03-01");
+    expect(a.terminatedAt).toBe("2026-09-01");
+    expect(a.pauseStart).toBe("2026-05-01");
+    expect(a.scheduleLineRef).toBe("sl-7");
+    expect(a.payerRef).toBe("payer-7");
+    // ...and the money, specifically, fails closed.
+    expect(a.expectedAmountMinor).toBeNull();
+    expect(a.monetaryQuantification).toBe("UNAVAILABLE_NO_AUTHORITATIVE_AMOUNT");
+    expect(a.monetaryQuantificationCode).toBe("NH-EX-3006");
+  });
+
+  it("an unpriced unit still participates in identity and cardinality checks", () => {
+    // Being unpriceable is not a free pass: a blank-amount row is a real obligation, so it collides
+    // like one. Exempting it would let a beneficiary dodge duplicate detection by blanking a price.
+    const dup = run([row({ expected_amount: "", schedule_line_ref: "sl-d" }),
+      row({ entitlement_ref: "ent-2", expected_amount: "", schedule_line_ref: "sl-d" })]);
+    expect(codes(dup)).toEqual(["NH-EX-2015", "NH-EX-2015"]);
+    const ambiguous = run([row({ entitlement_ref: "ent-z", expected_amount: "", schedule_line_ref: "sl-1" }),
+      row({ entitlement_ref: "ent-z", expected_amount: "100.00", schedule_line_ref: "sl-2" })]);
+    expect(codes(ambiguous)).toEqual(["NH-EX-2016", "NH-EX-2016"]);
+  });
+
+  it("quantification is declared PER UNIT — nine priced and one unpriced is PARTIAL", () => {
+    // The roll-up is allowed to say PARTIAL rather than being forced to lie in one direction: an
+    // extract-level flag would either discard nine real figures or claim a tenth that does not exist.
+    const rows = [...Array(9)].map((_, i) => row({ entitlement_ref: `ent-${i}`, expected_amount: "100.00" }));
+    rows.push(row({ entitlement_ref: "ent-9", expected_amount: "" }));
+    const r = run(rows);
+    expect(r.rejections).toEqual([]);
+    expect(r.accepted).toHaveLength(10);
+    expect(r.monetaryQuantification).toBe("PARTIAL");
+    expect(r.unknownAmountCount).toBe(1);
+    expect(r.unquantifiableUnitRows).toHaveLength(1);
+    expect(r.accepted.filter((a) => a.monetaryQuantification === "AVAILABLE")).toHaveLength(9);
+  });
+
+  it("all priced is AVAILABLE and none priced is UNAVAILABLE — and neither is ever zero money", () => {
+    expect(run([row({ expected_amount: "100.00" })]).monetaryQuantification).toBe("AVAILABLE");
+    const none = run([row({ expected_amount: "" }), row({ entitlement_ref: "ent-2", expected_amount: "" })]);
+    expect(none.monetaryQuantification).toBe("UNAVAILABLE");
+    expect(none.accepted).toHaveLength(2); // the expectations still EXIST
+    expect(none.accepted.every((a) => a.expectedAmountMinor === null)).toBe(true);
+    expect(none.accepted.some((a) => a.expectedAmountMinor === 0)).toBe(false);
+  });
+
+  it("a SUPERSEDED line is neither priced nor unpriced — it is not an obligation", () => {
+    const r = run([
+      row({ entitlement_ref: "ent-s", expected_amount: "", schedule_line_ref: "sl-old" }),
+      row({ entitlement_ref: "ent-s", expected_amount: "60.00", schedule_line_ref: "sl-new", supersedes_ref: "sl-old", amended_at: "2026-02-20" }),
+    ]);
+    expect(r.rejections).toEqual([]);
+    // The retired line carries no amount, but it must not drag the roll-up to PARTIAL: the obligation
+    // in force is priced, and counting a retired line's blank would understate what NH can quantify.
+    expect(r.monetaryQuantification).toBe("AVAILABLE");
+    expect(r.unknownAmountCount).toBe(0);
+    expect(r.unquantifiableUnitRows).toEqual([]);
+  });
+
+  it("the retired code is never emitted and never reused", () => {
+    // NH-EX-2006 meant "zero or negative" and is retired rather than narrowed, because the rule in the
+    // catalogue is stated without an exception. Nothing may answer with it again.
+    for (const amount of ["", "0.00", "-1.00", "-0.01", "0", "nonsense", "100.00"]) {
+      expect(codes(run([row({ expected_amount: amount })]))).not.toContain("NH-EX-2006");
+    }
+    expect(RETIRED_CODES.map((r) => r.code)).toContain("NH-EX-2006");
+    expect(ALL_EXPECTATION_CODES.map((c) => c.code)).not.toContain("NH-EX-2006");
   });
 });
 

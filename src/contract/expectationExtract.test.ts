@@ -6,7 +6,7 @@ import {
   EXPECTATION_CAPABILITIES, EXPECTATION_EXTRACT_CLAIM_BOUNDARY, EXPECTATION_EXTRACT_COLUMNS,
   EXPECTATION_EXTRACT_FIELDS, EXPECTATION_EXTRACT_REF, EXPECTATION_EXTRACT_SCHEME,
   EXPECTATION_EXTRACT_VERSION, EXPECTATION_REQUIRED_COLUMNS, EXPECTATION_ROW_GRAIN,
-  EXPECTATION_VALIDATION_METHOD_VERSION, STOPPED_FIELDS,
+  EXPECTATION_VALIDATION_METHOD_VERSION, EXPECTATION_EXTRACT_VERSION_HISTORY, STOPPED_FIELDS,
 } from "./expectationExtract";
 import { ALL_EXPECTATION_CODES } from "./expectationExtractCodes";
 import { PILOT_DATA_CONTRACT_VERSION } from "./pilotDataContract";
@@ -16,7 +16,7 @@ describe("expectation extract · identity, separate from everything it must not 
   it("owns its scheme, version and method version, colliding with none in use", () => {
     expect(EXPECTATION_EXTRACT_SCHEME).toBe("nh-expectation-extract-v1");
     expect(EXPECTATION_VALIDATION_METHOD_VERSION).toBe("exv-2026.1");
-    expect(EXPECTATION_EXTRACT_REF).toBe("nh.expectation-extract@1.0.0");
+    expect(EXPECTATION_EXTRACT_REF).toBe("nh.expectation-extract@1.1.0");
     for (const foreign of ["nh-expectation-reconciliation-v1", "nh-non-stalled-exposure-v1",
       "nh-pilot-assessment-execution-v1", "nh-admission-policy-v1", "nh-analysis-terms-v2",
       "nh-leak-instance-v1", "nh-source-namespace-v1", "nh-validation-evidence-v1"]) {
@@ -163,7 +163,8 @@ describe("expectation extract · the code catalogue", () => {
   it("gives every code a remediation that says what to DO", () => {
     for (const c of ALL_EXPECTATION_CODES) {
       expect(c.remediation.length).toBeGreaterThan(40);
-      expect(c.since).toBe("1.0.0");
+      // `since` must name a version this artefact actually declares — not a free-text label.
+      expect(EXPECTATION_EXTRACT_VERSION_HISTORY.map((v) => v.version)).toContain(c.since);
     }
   });
 

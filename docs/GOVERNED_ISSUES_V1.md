@@ -204,3 +204,63 @@ figure.
 
 No quarantined figure may be presented as exposure, added to a detector union, or used in a recall or
 precision denominator, under any label, until this is decided.
+
+---
+
+## Issue #4 · Execution-lifecycle events order arbitrarily on a same-millisecond tie
+
+**Found 2026-10-05, while reading a CI failure. Not caused by the slice that found it, and NOT fixed in
+it — the slice's authorised scope excluded production files. Owner decision required.**
+
+### The defect
+
+`executionEvents` (`server/persistence/pilotExecutionStore.ts:330`) orders by
+`[{ at: "asc" }, { id: "asc" }]` under a comment that reads *"`id` breaks ties so ordering is total."*
+
+The ordering **is** total. It is **not chronological**, because `id` is `PXE-${randomUUID()}` — random,
+not monotonic. And ties are not rare: the column is `timestamp(3)` in Postgres, so **millisecond**
+precision, while two lifecycle events can be appended within the same millisecond.
+
+So on a tie, which event is "latest" is decided by a coin flip.
+
+### Measured, not reasoned
+
+A probe appending `CLAIMED` then `COMPLETED` back to back, 40 trials:
+
+```
+trials 40 · same-millisecond ties 4 · LATEST EVENT WRONG 2
+```
+
+Ties occurred in 10% of trials and **half of those ordered wrongly** — the expected result if the
+tie-break is random. This is exactly the observed CI failure: `reassessment.test.ts:266` read the
+execution state as `running` because `CLAIMED` won the tie, so the last event was not `COMPLETED`.
+
+The same SHA's `pull_request` run passed all four jobs. **A test that passes in one run and fails in
+another on identical code is the signature of a race, and it was treated as one rather than retried
+until green.**
+
+### Blast radius, stated precisely
+
+* **In the test fixture**, two events are appended in a tight loop, so collisions are likely — ~10% here.
+* **In production**, `CLAIMED` and `COMPLETED` are separated by real work, so a collision needs the whole
+  computation to finish inside one millisecond. Unlikely, **not impossible**, and it is not a
+  probability anyone should have to reason about on the execution-state path.
+* What is affected is the **projected lifecycle state** of an execution. No finding, witness, hash or
+  money figure is computed from event order, so **no proven number is at risk** — this is a
+  liveness/observability defect, not a proof defect. That is the reason it is reportable rather than
+  urgent, and it is not a reason to leave it.
+
+### The fix, when authorised
+
+Make the tie-break monotonic rather than random, so ordering is total **and** chronological. The
+candidates, in preference order: a monotonic sequence column on the event row; or a lexicographically
+sortable time-ordered id (ULID/UUIDv7) replacing `PXE-${randomUUID()}` for new rows; or raising `at` to
+`timestamp(6)`, which shrinks the window without closing it and is therefore the weakest option.
+
+**Historical rows must not be rewritten.** Any change applies to new rows, and the ordering of existing
+rows stays whatever it is — the same rule every other correction in this repository has honoured.
+
+### What must not happen
+
+The test must not be made to pass by retrying it, by sleeping between appends, or by asserting a weaker
+state. Each of those hides a real ordering defect behind a green tick.

@@ -66,16 +66,54 @@ discard money NH can still measure.
 terminations"*, so an empty cell means *not terminated* — a fact. For an identity or a relation a blank
 carries no information, so the value must be present on every row.
 
-## 4 · `expected_amount` inverts 2.0.0's mistake
+## 4 · Schema presence is NOT row-level availability (v1.1.0)
 
-The **column** is required; a **blank cell is a declared UNKNOWN**. Counted, never valued, never
-averaged from prior invoices, never taken from a plan price, never prorated by NH. Making the value
-required here would reproduce, in the artefact built to fix it, the exact defect that makes a missing
-invoice unrepresentable in 2.0.0.
+This is the distinction that carries the most risk, and it is now pinned in both directions.
 
-And the two are kept apart: an **unparseable** amount is `NH-EX-2005`, not an UNKNOWN. *"The source
-could not state it"* and *"the source stated something unreadable"* are different facts, and collapsing
-them would let a malformed cell escape its rejection.
+**Schema presence** of `expected_amount` and **row-level availability** of an authoritative amount are
+different facts. The *column* is required — an extract omitting it is unusable. The *value* is not,
+because a genuine obligation may exist while its price cannot be authoritatively stated, and **an
+expectation does not stop existing because nobody can price it**. Requiring the value would reproduce,
+in the artefact built to fix it, the exact defect that makes a missing invoice unrepresentable in 2.0.0.
+
+**Four states, four outcomes, no two of which may ever collapse:**
+
+| Cell | Outcome | Why it is its own case |
+|---|---|---|
+| **blank** | **UNKNOWN.** Row **preserved**, every non-monetary fact in force, this unit's monetary quantification fails closed | the source cannot price it; the obligation is still real |
+| **malformed** | REJECTED `NH-EX-2005` | *"could not state it"* and *"stated something unreadable"* are different facts; folding them would let a malformed cell escape its rejection |
+| **explicit zero** | REJECTED `NH-EX-2018` | writing `0` **asserts nothing is owed** — a claim that satisfies itself against any billing at all |
+| **negative** | REJECTED `NH-EX-2019` | a credit, which belongs to the observation side: a row in the wrong file, not a modelling mistake |
+
+Never coerced to zero, never estimated, never averaged from prior invoices, never taken from a plan
+price, never prorated by NH.
+
+### Per-unit monetary quantification
+
+`monetaryQuantification` is declared **per unit**, not per extract, with `NH-EX-3006`. An extract may
+price nine obligations and be unable to price the tenth, and a single extract-level flag would have to
+lie in one direction or the other — claim the whole file is unpriceable, or claim the tenth unit has a
+figure. The roll-up is therefore allowed to say **`PARTIAL`**, and `unquantifiableUnitRows` names
+exactly which units fail closed so no caller has to infer it from a count.
+
+Downstream, monetary reconciliation for such a unit is `NO_RESIDUAL_UNPRICED` — **never $0.00**, which
+would assert the obligation was checked and found satisfied.
+
+Two consequences worth stating because they are easy to get wrong:
+
+* **An unpriced unit still participates in identity and cardinality checks.** Being unpriceable is not
+  a free pass: a blank-amount row is a real obligation and collides like one. Exempting it would let a
+  beneficiary dodge duplicate detection by blanking a price.
+* **A superseded line is neither priced nor unpriced** — it is not an obligation, so its blank must not
+  drag the roll-up to `PARTIAL` and understate what NH can quantify.
+
+### `NH-EX-2006` is retired, not narrowed
+
+It meant *"zero or negative"*, conflating two different source errors behind one remediation.
+**Nothing ever cited it** — no production consumer, nothing persisted, no customer received it — so
+narrowing it in place would have been harmless *in fact*. It is retired anyway, recorded in
+`RETIRED_CODES`, because the rule in the catalogue header is stated without an exception and a rule
+that bends when breaking it is convenient is not a rule. The cost of honouring it is one unused integer.
 
 ## 5 · Stopped rather than invented
 
@@ -126,11 +164,17 @@ hash of the data pretending to be a hash of the judgement.
 
 ## 8 · Falsifiers
 
-Thirteen mutations, each biting for its primary reason, each restored byte-identically with a green
+Twenty-two mutations, each biting for its primary reason, each restored byte-identically with a green
 rerun: blank amount → zero · unparseable → UNKNOWN · capability → rejection · capability fails **open** ·
 duplicate keeps the first row (position as a lever) · ambiguous live lines summed · non-governed currency
 accepted · reversed period reordered · dangling supersession ignored · a clock enters the validator · a
-`recommended` tier reappears · a `cadence` column is declared · two capabilities collapsed into one code.
+`recommended` tier reappears · a `cadence` column is declared · two capabilities collapsed into one code ·
+a production module imports the artefact.
+
+And eight for the v1.1.0 distinction specifically: the required column read as a required **value** · a
+blank folded into **malformed** · zero and negative **re-conflated** · an unpriced unit **claiming**
+quantification · the roll-up collapsing `PARTIAL` into `AVAILABLE` · an unpriced row **exempted** from
+collision detection · the **retired** code resurrected · a superseded blank dragging the roll-up.
 
 ## 8b · One finding about an existing guard, recorded because it generalises
 

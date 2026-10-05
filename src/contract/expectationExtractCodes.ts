@@ -119,13 +119,21 @@ export const ROW_CODES = Object.freeze({
       "Emit a plain decimal, or register the amount format as a governed term. A cell that cannot be parsed is NOT treated as an unknown amount — an unknown is a BLANK, and the two must stay distinguishable.",
     since: "1.0.0",
   }),
-  NON_POSITIVE_AMOUNT: code({
-    code: "NH-EX-2006",
+  EXPLICIT_ZERO_AMOUNT: code({
+    code: "NH-EX-2018",
     severity: "row_quarantined",
-    title: "The expected amount is zero or negative.",
+    title: "The expected amount is explicitly zero.",
     remediation:
-      "An obligation of zero is not an obligation, and a negative expectation is a credit — which belongs to the observation side, never here. Leave the cell blank if the amount is genuinely unknown.",
-    since: "1.0.0",
+      "An obligation of zero is not an obligation. If the amount is genuinely UNKNOWN, leave the cell BLANK — that is a declared unknown and the expectation survives it. Writing 0 asserts that nothing is owed, which is a different claim and one that would silently satisfy itself against any billing at all.",
+    since: "1.1.0",
+  }),
+  NEGATIVE_AMOUNT: code({
+    code: "NH-EX-2019",
+    severity: "row_quarantined",
+    title: "The expected amount is negative.",
+    remediation:
+      "A negative expectation is a credit, and a credit belongs to the observation side — never to a statement of what is owed. Kept separate from an explicit zero because the two are different source errors with different fixes: one is a modelling mistake, the other is a row in the wrong file.",
+    since: "1.1.0",
   }),
   UNSUPPORTED_CURRENCY: code({
     code: "NH-EX-2007",
@@ -260,9 +268,42 @@ export const CAPABILITY_CODES = Object.freeze({
   }),
 });
 
+export const UNIT_CAPABILITY_CODES = Object.freeze({
+  MONETARY_QUANTIFICATION_UNAVAILABLE: code({
+    code: "NH-EX-3006",
+    severity: "capability_unavailable",
+    title: "This unit has no authoritative amount, so it cannot be quantified in money.",
+    remediation:
+      "Supply the amount if the source can state it authoritatively; otherwise this is the correct and final answer for this unit. The EXPECTATION IS STILL REAL and is still carried — what is unavailable is its monetary quantification, and every capability that needs an exact figure fails closed for this unit alone. The amount is never estimated, never averaged from prior invoices, never taken from a plan price and never rendered as $0.00.",
+    since: "1.1.0",
+  }),
+});
+
+/**
+ * RETIRED. Never recycled, never re-pointed at a new meaning.
+ *
+ * `NH-EX-2006` once meant "zero or negative", which conflated two different source errors — a
+ * modelling mistake and a row in the wrong file — behind one remediation. It is replaced by
+ * `NH-EX-2018` and `NH-EX-2019`, one meaning each.
+ *
+ * Nothing ever cited it: the validator has no production consumer, nothing is persisted and no
+ * customer received it, so narrowing it in place would have been harmless IN FACT. It is retired
+ * anyway, because the rule in this file's header is stated without an exception and a rule that bends
+ * when breaking it is convenient is not a rule. The cost of honouring it here is one unused integer.
+ */
+export const RETIRED_CODES: readonly { readonly code: string; readonly meant: string; readonly replacedBy: readonly string[] }[] =
+  Object.freeze([
+    Object.freeze({
+      code: "NH-EX-2006",
+      meant: "The expected amount is zero or negative.",
+      replacedBy: Object.freeze(["NH-EX-2018", "NH-EX-2019"]),
+    }),
+  ]);
+
 /** Every code, for the exhaustiveness and uniqueness guards. */
 export const ALL_EXPECTATION_CODES: readonly ExpectationCodeSpec[] = Object.freeze([
   ...Object.values(EXTRACT_CODES),
   ...Object.values(ROW_CODES),
   ...Object.values(CAPABILITY_CODES),
+  ...Object.values(UNIT_CAPABILITY_CODES),
 ]);

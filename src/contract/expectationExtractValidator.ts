@@ -27,7 +27,9 @@ import {
   EXPECTATION_EXTRACT_SCHEME, EXPECTATION_REQUIRED_COLUMNS, EXPECTATION_VALIDATION_METHOD_VERSION,
   type ExpectationCapability,
 } from "./expectationExtract";
-import { CAPABILITY_CODES, EXTRACT_CODES, ROW_CODES } from "./expectationExtractCodes";
+import {
+  CAPABILITY_CODES, EXTRACT_CODES, ROW_CODES, UNIT_CAPABILITY_CODES,
+} from "./expectationExtractCodes";
 
 /**
  * Governed reading terms. Every one of these decides what the bytes MEAN, so each is supplied by the
@@ -58,6 +60,14 @@ export interface ExpectationRowRejection {
 }
 
 /**
+ * Whether THIS UNIT can be quantified in money. Per-unit rather than per-extract, because an extract
+ * may price nine obligations authoritatively and be unable to price the tenth, and a single
+ * extract-level flag would have to lie in one direction or the other: claim the whole file is
+ * unpriceable, or claim the tenth unit has a figure.
+ */
+export type UnitMonetaryQuantification = "AVAILABLE" | "UNAVAILABLE_NO_AUTHORITATIVE_AMOUNT";
+
+/**
  * An accepted obligation, normalised. Money is INTEGER MINOR UNITS; `expectedAmountMinor` is `null`
  * when the source declared the amount unknown, and `null` here never means zero.
  */
@@ -77,6 +87,22 @@ export interface AcceptedExpectation {
   readonly scheduleLineRef: string | null;
   /** True when another accepted row supersedes this one. A superseded line is NOT a second obligation. */
   readonly superseded: boolean;
+  /**
+   * SCHEMA PRESENCE AND ROW-LEVEL AVAILABILITY ARE DIFFERENT FACTS, and this field is the second one.
+   *
+   * `expected_amount` is a required COLUMN — an extract that omits it is unusable. It is NOT a
+   * required VALUE: a genuine obligation may exist while its monetary value is not authoritatively
+   * priceable, and the expectation does not stop existing because the price is unknown. So a blank
+   * cell preserves the row, its non-monetary facts stay in force, and THIS unit's monetary
+   * quantification fails closed.
+   *
+   * What that forecloses, per unit and not per extract: any capability needing an exact figure.
+   * Downstream, monetary reconciliation for the unit is NO_RESIDUAL_UNPRICED — never $0.00, which
+   * would assert the obligation was checked and found satisfied.
+   */
+  readonly monetaryQuantification: UnitMonetaryQuantification;
+  /** The NH-EX-3006 code when this unit cannot be quantified. An UNKNOWN, never a rejection. */
+  readonly monetaryQuantificationCode: string | null;
 }
 
 export interface CapabilityDeclaration {
@@ -99,6 +125,15 @@ export interface ExpectationExtractValidation {
   readonly capabilities: readonly CapabilityDeclaration[];
   /** Accepted rows whose amount the source declared UNKNOWN. A COUNT beside the money, never money. */
   readonly unknownAmountCount: number;
+  /**
+   * The roll-up, and it is allowed to say PARTIAL rather than being forced to lie in one direction.
+   * An extract that prices nine obligations and cannot price the tenth is neither quantifiable nor
+   * unquantifiable, and collapsing that to a single flag would either discard nine real figures or
+   * claim a tenth that does not exist.
+   */
+  readonly monetaryQuantification: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+  /** Exactly which units fail closed, so a caller never has to infer it from a count. */
+  readonly unquantifiableUnitRows: readonly number[];
   readonly claimBoundary: {
     readonly observationOnly: true;
     readonly constitutesProof: false;
@@ -149,6 +184,8 @@ export function validateExpectationExtract(
         capability: c.capability, available: false, unavailableCode: c.unavailableCode.code,
       })),
       unknownAmountCount: 0,
+      monetaryQuantification: "UNAVAILABLE",
+      unquantifiableUnitRows: [],
     });
   }
 
@@ -158,7 +195,7 @@ export function validateExpectationExtract(
     rejections.push(Object.freeze({ rowNumber, code, field, detail }));
   };
 
-  type Draft = Omit<AcceptedExpectation, "superseded">;
+  type Draft = Omit<AcceptedExpectation, "superseded" | "monetaryQuantification" | "monetaryQuantificationCode">;
   const drafts: Draft[] = [];
 
   for (const row of rows) {
@@ -221,8 +258,16 @@ export function validateExpectationExtract(
         const minor = toMinor(parsed.decimal, digits);
         if (minor === null) {
           fail(ROW_CODES.MALFORMED_AMOUNT.code, "expected_amount", `more precision than ${currency} supports`);
-        } else if (minor <= 0) {
-          fail(ROW_CODES.NON_POSITIVE_AMOUNT.code, "expected_amount", parsed.decimal);
+        } else if (minor === 0) {
+          // EXPLICIT ZERO is not a blank. Writing 0 asserts that nothing is owed — a claim that
+          // satisfies itself against any billing whatsoever — where a blank asserts only that the
+          // source cannot price it. Separate code, separate remediation.
+          fail(ROW_CODES.EXPLICIT_ZERO_AMOUNT.code, "expected_amount", parsed.decimal);
+        } else if (minor < 0) {
+          // NEGATIVE is a credit, which belongs to the observation side. A different source error
+          // from an explicit zero, so a different code: one is a modelling mistake, the other is a
+          // row in the wrong file.
+          fail(ROW_CODES.NEGATIVE_AMOUNT.code, "expected_amount", parsed.decimal);
         } else {
           expectedAmountMinor = minor;
         }
@@ -361,6 +406,12 @@ export function validateExpectationExtract(
     .map((d) => Object.freeze({
       ...d,
       superseded: d.scheduleLineRef !== null && supersededRefs.has(d.scheduleLineRef),
+      monetaryQuantification: (d.expectedAmountMinor === null
+        ? "UNAVAILABLE_NO_AUTHORITATIVE_AMOUNT"
+        : "AVAILABLE") as UnitMonetaryQuantification,
+      monetaryQuantificationCode: d.expectedAmountMinor === null
+        ? UNIT_CAPABILITY_CODES.MONETARY_QUANTIFICATION_UNAVAILABLE.code
+        : null,
     }));
 
   // ── CAPABILITIES · fail-closed, each on its own basis ───────────────────────────────────────────
@@ -376,9 +427,16 @@ export function validateExpectationExtract(
     });
   });
 
+  // A superseded line is not an obligation, so it is neither priced nor unpriced for this purpose.
+  const live = accepted.filter((a) => !a.superseded);
+  const unquantifiable = live.filter((a) => a.monetaryQuantification !== "AVAILABLE");
   return freezeResult({
     currency: terms.currency, usable: true, extractFaults, accepted, rejections, capabilities,
-    unknownAmountCount: accepted.filter((a) => a.expectedAmountMinor === null && !a.superseded).length,
+    unknownAmountCount: unquantifiable.length,
+    monetaryQuantification: live.length === 0 || unquantifiable.length === live.length
+      ? "UNAVAILABLE"
+      : unquantifiable.length === 0 ? "AVAILABLE" : "PARTIAL",
+    unquantifiableUnitRows: Object.freeze(unquantifiable.map((a) => a.rowNumber)),
   });
 }
 
@@ -421,6 +479,8 @@ function freezeResult(parts: {
   rejections: readonly ExpectationRowRejection[];
   capabilities: readonly CapabilityDeclaration[];
   unknownAmountCount: number;
+  monetaryQuantification: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+  unquantifiableUnitRows: readonly number[];
 }): ExpectationExtractValidation {
   return Object.freeze({
     scheme: EXPECTATION_EXTRACT_SCHEME,
@@ -433,6 +493,8 @@ function freezeResult(parts: {
     rejections: Object.freeze([...parts.rejections]),
     capabilities: Object.freeze([...parts.capabilities]),
     unknownAmountCount: parts.unknownAmountCount,
+    monetaryQuantification: parts.monetaryQuantification,
+    unquantifiableUnitRows: Object.freeze([...parts.unquantifiableUnitRows]),
     claimBoundary: Object.freeze({
       observationOnly: true as const,
       constitutesProof: false as const,
@@ -471,11 +533,13 @@ export async function expectationValidationWitness(
       accepted: result.accepted.map((a) => [
         a.rowNumber, a.entitlementRef, a.periodStart, a.periodEnd, a.expectedAmountMinor, a.currency,
         a.payerRef, a.terminatedAt, a.pauseStart, a.pauseEnd, a.amendedAt, a.supersedesRef,
-        a.scheduleLineRef, a.superseded,
+        a.scheduleLineRef, a.superseded, a.monetaryQuantification, a.monetaryQuantificationCode,
       ]),
       rejections: result.rejections.map((r) => [r.rowNumber, r.code, r.field]),
       capabilities: result.capabilities.map((c) => [c.capability, c.available, c.unavailableCode]),
       unknownAmountCount: result.unknownAmountCount,
+      monetaryQuantification: result.monetaryQuantification,
+      unquantifiableUnitRows: [...result.unquantifiableUnitRows],
     },
   });
   return `sha256:${await sha256Hex(canonical)}`;

@@ -517,13 +517,28 @@ added there could close it. The governing rule is now:
 scheme and `exv-2026.1` method version; five REQUIRED facts and **three tiers with no `recommended`**,
 because that tier feeds a threshold of zero and would refuse files that previously passed; five separately
 named **fail-closed capabilities**, so a missing optional fact closes a gate and **rejects nothing** —
-capability gating per detector, never global dataset rejection. `expected_amount` **inverts 2.0.0's
-mistake**: the column is required and a blank cell is a declared UNKNOWN, counted and never valued, while an
-*unparseable* amount is a rejection rather than an UNKNOWN. Seven candidate fields were **stopped rather
+capability gating per detector, never global dataset rejection. **Schema presence is not row-level availability** (v1.1.0): the
+`expected_amount` *column* is required, the *value* is not, and four states stay distinguishable — blank is
+an UNKNOWN that **preserves the row** with every non-monetary fact in force, malformed is `NH-EX-2005`,
+explicit zero is `NH-EX-2018` (writing 0 *asserts* nothing is owed), negative is `NH-EX-2019` (a credit, and
+a row in the wrong file). Monetary quantification is declared **per unit** (`NH-EX-3006`) with a roll-up
+allowed to say `PARTIAL`, because one flag for a nine-priced, one-unpriced extract would have to lie in one
+direction. An unpriced unit still collides like a real obligation — exempting it would let a beneficiary
+dodge duplicate detection by blanking a price. `NH-EX-2006` was **retired rather than narrowed** although
+nothing cited it, because the catalogue's rule carries no exception. Seven candidate fields were **stopped rather
 than invented**, the sharpest being cadence: a frequency NH could expand into rows would make **NH the
 author of the expectation**. The validator consults **no clock**, asserted on source. Nothing consumes it in
 production, which is deliberate — the slice that wires it must ship its consumer with it, per the
 `obligation_ref` revert rule. `OBLIGATION_IDENTITY_FIELDS` stays empty and contract 2.0.0 is unchanged.
+
+**Found while reading a CI failure, 2026-10-05 — not fixed, owner decision required.** `executionEvents`
+orders lifecycle events by `[at, id]` under a comment claiming `id` *"breaks ties so ordering is total"*.
+It is total but **not chronological**: `id` is a random UUID and `at` is `timestamp(3)`, so a
+same-millisecond tie is resolved by a coin flip. Measured at 4 ties in 40 trials with **2 ordered wrongly**.
+No finding, witness, hash or money figure depends on event order, so **no proven number is at risk** — it is
+a liveness/observability defect on the execution-state path, which is why it is recorded rather than
+patched mid-slice ([`docs/GOVERNED_ISSUES_V1.md`](docs/GOVERNED_ISSUES_V1.md) §4). It must not be fixed by
+retrying the test, sleeping between appends, or asserting a weaker state.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
