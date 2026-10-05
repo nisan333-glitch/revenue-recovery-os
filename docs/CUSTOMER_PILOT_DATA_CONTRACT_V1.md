@@ -35,6 +35,30 @@ cannot drift apart and tell a customer one thing while validating another.
 
 ## 1 · Fields
 
+### 1.0 · The row grain — ONE ROW IS ONE BILLING OBLIGATION
+
+Read this before building the export, because every other rule depends on it.
+
+**One row = one billing cycle = one invoice = one obligation.** A customer with six invoices in the
+coverage window contributes **six rows**, not one. A row is never a summary, a subscription, an account,
+or several invoices added together.
+
+**`subscription_id` is a CYCLE identity, not a subscription group.** Its name is historical and
+misleading, so the contract states the meaning explicitly: it identifies **the single billing obligation
+that this row represents**. It must be *stable* for the same obligation and *distinct* for genuinely
+different obligations.
+
+> **If two rows share one `subscription_id`, both are excluded** as a colliding cycle identity
+> (`NH-DC-2016`), and neither is chosen — no row may win by file position. So populating it with a
+> **group** id that is shared across several invoices loses **every one of those invoices**, and their
+> money is not assessed. If your billing system's subscription id is stable across invoices, do **not**
+> put it here: use your invoice or billing-cycle id, or use `cycle_id`, or leave `subscription_id` out
+> and let the cycle key be derived.
+
+**Aggregated rows cannot be detected.** If one row bundles two obligations, nothing in this contract can
+see it — the row looks like a single, well-formed obligation. Row grain is your assertion, and the
+assessment is only as correct as that assertion.
+
 | Field | Requirement | Kind | Typical source |
 |---|---|---|---|
 | `entity_id` | **required** | identifier | CRM |
@@ -42,7 +66,7 @@ cannot drift apart and tell a customer one thing while validating another.
 | `next_invoice_due_at` | **required** | date | billing |
 | `next_invoice_amount` | **required** | money | billing |
 | `currency` | **required** | ISO 4217 | billing |
-| `subscription_id` | recommended | identifier | billing |
+| `subscription_id` — **one cycle/invoice, not a group (§1.0)** | recommended | identifier | billing |
 | `activation_at` | recommended | date | product |
 | `next_invoice_paid_at` | recommended | date | billing |
 | `paid_amount` | recommended | money | billing |

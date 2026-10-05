@@ -145,7 +145,16 @@ export const PILOT_DATA_CONTRACT_FIELDS: readonly FieldSpec[] = Object.freeze([
     requirement: "recommended",
     kind: "identifier",
     piiClass: "identifier_pseudonymous",
-    description: "Stable cycle-level join key. Without it the cycle key is derived, and two real cycles can collide.",
+    // EDITORIAL ONLY — this string states the semantics that have ALWAYS been in force; no behaviour,
+    // parsing, acceptance, identity or hash is affected by it. `description` has zero non-test readers
+    // and never enters a preimage. It is corrected because the field's NAME says "subscription" while
+    // its meaning is per-cycle, and the customer-facing document described neither.
+    description:
+      "ONE BILLING CYCLE / INVOICE, not a subscription group. Identifies the single billing " +
+      "obligation this row represents: stable for the same obligation, and DISTINCT for genuinely " +
+      "different obligations. Two rows sharing this value are treated as one colliding cycle identity " +
+      "and BOTH are excluded — so a group id reused across several invoices loses every one of them. " +
+      "Without it the cycle key is derived, and two real cycles can collide.",
     typicalSourceSystem: "billing",
     since: "1.0.0",
   }),
