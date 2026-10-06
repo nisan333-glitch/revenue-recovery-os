@@ -16,17 +16,12 @@ const DIR = "e2e/fixtures/reconciliation-synthetic";
 const sha = (t) => createHash("sha256").update(t).digest("hex");
 
 // ── The freeze gate · refuse to score an experiment that moved ───────────────────────────────────
-const frozen = JSON.parse(readFileSync(`${DIR}/FROZEN.json`, "utf8"));
-const { compositeSha256, ...record } = frozen;
-const problems = [];
-if (sha(JSON.stringify(record)) !== compositeSha256) problems.push("FROZEN.json itself was edited");
-for (const [name, want] of Object.entries(frozen.files)) {
-  if (sha(readFileSync(`${DIR}/${name}`, "utf8")) !== want) problems.push(`${name} changed since the freeze`);
-}
-if (problems.length > 0) {
-  process.stdout.write(`REFUSING TO SCORE\n${problems.map((p) => `  - ${p}`).join("\n")}\n`);
-  process.exit(1);
-}
+//
+// It checks the TRACKED lock, which covers the data AND every script including this one. Gating on the
+// generator's own record instead was the first form's mistake: that record was rewritten on every
+// regeneration, so it always agreed with whatever was on disk.
+import { assertFrozen } from "./freeze.mjs";
+assertFrozen("REFUSING TO SCORE");
 
 const csv = (path) => {
   const [h, ...lines] = readFileSync(path, "utf8").trim().split("\n");

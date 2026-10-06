@@ -11,12 +11,10 @@
 //   3. THE FREEZE HOLDS. Every artefact, and the generator itself, hashes to what was frozen — so the
 //      experiment cannot be quietly adjusted after a result is seen.
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { frozenProblems, DATA_FILES, SCRIPT_FILES } from "./freeze.mjs";
 
-const DIR = "e2e/fixtures/reconciliation-synthetic";
 const GEN = "scripts/reconciliation-synthetic/generate.mjs";
-const sha = (t) => createHash("sha256").update(t).digest("hex");
 const problems = [];
 
 // ── 1 · generator independence ────────────────────────────────────────────────────────────────────
@@ -39,15 +37,8 @@ const walk = (dir) => {
 };
 for (const root of ["src", "server"]) walk(root);
 
-// ── 3 · the freeze ────────────────────────────────────────────────────────────────────────────────
-const frozen = JSON.parse(readFileSync(`${DIR}/FROZEN.json`, "utf8"));
-const { compositeSha256, ...record } = frozen;
-if (sha(JSON.stringify(record)) !== compositeSha256) problems.push("FROZEN.json itself was edited");
-for (const [name, want] of Object.entries(frozen.files)) {
-  const got = sha(readFileSync(`${DIR}/${name}`, "utf8"));
-  if (got !== want) problems.push(`${name} changed since the freeze`);
-}
-if (sha(gen) !== frozen.generator) problems.push("the generator changed since the freeze");
+// ── 3 · the freeze, from the TRACKED lock · data AND every script ────────────────────────────────
+problems.push(...frozenProblems());
 
 if (problems.length > 0) {
   process.stdout.write(`VERIFY FAILED\n${problems.map((p) => `  - ${p}`).join("\n")}\n`);
@@ -55,5 +46,5 @@ if (problems.length > 0) {
 }
 process.stdout.write(
   `verified · generator imports only node builtins · no product module reads the ground truth · ` +
-  `${Object.keys(frozen.files).length} artefacts + the generator hash to the freeze\n`,
+  `${DATA_FILES.length} data artefacts + ${SCRIPT_FILES.length} scripts match the tracked freeze lock\n`,
 );

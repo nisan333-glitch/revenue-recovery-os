@@ -25,6 +25,39 @@ a composite hash over every artefact **and the generator's own source**, so the 
 adjusted after a result is seen. The generator imports only node builtins; the scorer never imports the
 product; no product module can read the answer key. All three are asserted by `verify.mjs`.
 
+## 1b · The freeze control, and a disclosure about how this run was actually conducted
+
+**The required order is now enforced, not described:**
+
+```
+generate -> validate the source package -> FREEZE -> record hashes -> run NH -> score
+```
+
+The lock lives at `scripts/reconciliation-synthetic/FREEZE.lock.json`, is **committed to git**, and
+covers the four data artefacts **and all five harness scripts**. The runner refuses to let NH near an
+unfrozen or moved package; the scorer refuses to score one; both refuse when no lock exists at all.
+Re-freezing prints that it is a **governed benchmark revision**, and because the lock is tracked it
+appears as a diff a reviewer must approve.
+
+**Two defects in the first form of this control, and the second one is a disclosure about this run.**
+
+1. **The freeze record was self-healing.** It was written by the generator into a gitignored directory,
+   so every regeneration rewrote it and it always agreed with whatever was on disk. Nothing in version
+   control said what had been frozen when a result was taken. A gate that updates itself cannot detect
+   the only thing it exists to detect.
+
+2. **The scorer was not covered, and the scorer was edited after the first NH run.** The correction was
+   sound on its merits — it was double-counting money across mechanisms that share a payer, and the
+   same change made the result *worse* on attribution by exposing that 12 of 19 cases are not
+   individually attributable. But it moved **false-positive money from $22,598.80 down to $9,800.00
+   after the result was visible**, which is the flattering direction, and no gate stopped it. Under the
+   control as it now stands that edit would have been refused and would have required a re-freeze with
+   stated evidence.
+
+   The figures below were re-derived under the completed control, against a package whose data hashes
+   are unchanged, and they are **identical** to the pre-control run. That is evidence the package itself
+   was never tuned — but it is not a substitute for the gate, which is why the gate now exists.
+
 ## 2 · Results · five candidate grains through the unmodified core
 
 | Candidate | Detected | True positive | **False positive** | Recall | Precision | Refusals (unwarranted) |

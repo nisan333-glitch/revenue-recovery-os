@@ -586,6 +586,29 @@ fail-closed, rather than one universal key. A bare re-key with no retained key i
 The scorer's own first form double-counted $12,798.80 across co-located mechanisms and was corrected to
 score attribution **clusters**; everything is synthetic and turns no observed amount into Revenue Returned.
 
+**Benchmark freeze control (2026-10-06).** The required order — *generate → validate → freeze → record
+hashes → run → score* — is enforced rather than described: a **tracked** lock
+(`scripts/reconciliation-synthetic/FREEZE.lock.json`) covers the data artefacts **and every harness
+script**, the runner refuses to let NH near a moved package, and the scorer refuses to score one. The
+governing rule is now:
+
+> **The ruler is part of the experiment.** Scenarios, amounts, identities, mechanisms, expected outcomes,
+> denominators **and the scorer** are frozen before the first detection run. If the frozen package exposes
+> a defect in NH, fix NH and re-run against the SAME package. If the ground truth is later proven
+> objectively wrong, that is a **governed benchmark revision** with explicit evidence and a new freeze —
+> never a silent edit, and never one that improves a result.
+
+Two defects in the first form are recorded because both generalise
+([`docs/SYNTHETIC_RECONCILIATION_V1.md`](docs/SYNTHETIC_RECONCILIATION_V1.md) §1b). The freeze record was
+written by the generator into a gitignored directory, so it was **self-healing**: every regeneration
+rewrote it and it always agreed with the bytes on disk — a gate that updates itself cannot detect the only
+thing it exists to detect. And the scorer was **not covered, and was edited after the first run**: the
+correction was sound (it double-counted money across mechanisms sharing a payer, and it exposed that 12 of
+19 cases are unattributable at payer grain) but it moved false-positive money **$22,598.80 → $9,800.00
+after the result was visible**, which is the flattering direction. Re-derived under the completed control
+the figures are **identical** and the data hashes unchanged, which evidences that the package was never
+tuned — and is not a substitute for the gate.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

@@ -11,6 +11,13 @@ import { reconcile, reconciliationWitness, type GovernedReconciliationTerms } fr
 
 const DIR = "e2e/fixtures/reconciliation-synthetic";
 
+// NH MAY NOT RUN ON AN UNFROZEN PACKAGE. Checked here and not only at scoring time, because the order
+// the control requires is generate -> validate -> FREEZE -> run -> score, and a run taken before the
+// freeze would already have seen the data it is supposed to be blind to.
+// @ts-expect-error — the harness gate is plain JS beside this file, deliberately product-free.
+const { assertFrozen } = await import("./freeze.mjs");
+assertFrozen("REFUSING TO RUN");
+
 /** Minimal CSV reader: the generator quotes only when it must, and nothing here contains newlines. */
 function readCsv(path: string): Readonly<Record<string, string>>[] {
   const [header, ...lines] = readFileSync(path, "utf8").trim().split("\n");
