@@ -561,8 +561,14 @@ model PilotAssessmentExecutionEventRecord {
   byId        String   @map("by_id")
   detail      String
   at          DateTime @default(now())
+  /// Append order within the log. Database-allocated, strictly increasing, no clock involved — it is
+  /// what makes the order chronological when `at` (millisecond precision) ties. NULL on every row
+  /// appended before this column existed: "no append order was recorded", which is a different fact
+  /// from a number, and is never backfilled. See governed issue #4.
+  seq         BigInt?  @default(dbgenerated("nextval('pilot_assessment_execution_events_seq'::regclass)"))
 
   @@index([boundaryId, executionId, at], map: "pilot_assessment_events_identity_idx")
+  @@index([boundaryId, executionId, at, seq], map: "pilot_assessment_events_order_idx")
   @@map("pilot_assessment_execution_events")
 }
 

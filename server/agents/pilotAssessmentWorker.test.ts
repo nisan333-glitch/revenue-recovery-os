@@ -314,7 +314,13 @@ describe.skipIf(!HAS_DB)("EP-16 · assessment execution under duplication, concu
     const submission = await prisma.pilotDatasetSubmissionRecord.findFirstOrThrow({ where: { boundaryId } });
     expect(JSON.stringify(submission)).not.toContain(marker);
     const events = await prisma.pilotAssessmentExecutionEventRecord.findMany({ where: { boundaryId } });
-    expect(JSON.stringify(events)).not.toContain(marker);
+    // The replacer exists because the event row now carries `seq`, a BigInt that `JSON.stringify`
+    // refuses outright (governed issue #4's append order). It is a REPLACER and not a narrower
+    // `select`, deliberately: this assertion's whole value is that it scans EVERY column, so a future
+    // column cannot quietly become a place a rejected row's content could hide.
+    const scanAll = (v: unknown) =>
+      JSON.stringify(v, (_key, value) => (typeof value === "bigint" ? value.toString() : value));
+    expect(scanAll(events)).not.toContain(marker);
   });
 
   it("4b · no customer identifier from an ACCEPTED row survives into the execution input either", async () => {

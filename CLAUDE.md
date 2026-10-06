@@ -531,14 +531,29 @@ author of the expectation**. The validator consults **no clock**, asserted on so
 production, which is deliberate — the slice that wires it must ship its consumer with it, per the
 `obligation_ref` revert rule. `OBLIGATION_IDENTITY_FIELDS` stays empty and contract 2.0.0 is unchanged.
 
-**Found while reading a CI failure, 2026-10-05 — not fixed, owner decision required.** `executionEvents`
-orders lifecycle events by `[at, id]` under a comment claiming `id` *"breaks ties so ordering is total"*.
-It is total but **not chronological**: `id` is a random UUID and `at` is `timestamp(3)`, so a
-same-millisecond tie is resolved by a coin flip. Measured at 4 ties in 40 trials with **2 ordered wrongly**.
-No finding, witness, hash or money figure depends on event order, so **no proven number is at risk** — it is
-a liveness/observability defect on the execution-state path, which is why it is recorded rather than
-patched mid-slice ([`docs/GOVERNED_ISSUES_V1.md`](docs/GOVERNED_ISSUES_V1.md) §4). It must not be fixed by
-retrying the test, sleeping between appends, or asserting a weaker state.
+**Event-ordering decision (2026-10-05, fixed 2026-10-06).** Found by reading a CI failure rather than
+retrying it: the `push` run failed where the `pull_request` run passed on the identical SHA, which is the
+signature of a race. `executionEvents` ordered by `[at, id]` under a comment claiming `id` *"breaks ties so
+ordering is total"* — total but **not chronological**, because `id` is a random UUID and `at` is
+`timestamp(3)`. Measured at 4 ties in 40 trials with **2 ordered wrongly**, and not cosmetic:
+`deriveExecutionState` gates transitions by legality, so a reversed pair **drops the terminal transition**
+and a finished execution reads as `running`. The governing rule is now:
+
+> **An append-only log's order is the order it was appended in, established by a fact the database
+> allocates — never by a clock alone and never by a random tie-breaker. Where no append order was
+> recorded, the uncertainty is stated, not resolved retroactively.**
+
+**Built 2026-10-06** ([`docs/GOVERNED_ISSUES_V1.md`](docs/GOVERNED_ISSUES_V1.md) §4): `at ASC, seq ASC
+NULLS FIRST, id ASC` with `seq` from a Postgres sequence; `at` stays primary so the order holds across the
+migration. **`BIGSERIAL` was the trap** — it backfills in physical heap order, committing a fabricated
+chronology to disk — so the column is nullable with a sequence default, legacy rows keep `NULL`, and
+`orderCertain`/`orderUncertainAt` label the ambiguity while **leaving every historical derived state
+exactly as it was**. A legacy row alone at its timestamp is certain, because `at` alone decides it. `seq`
+enters no hash, no API and not `ExecutionLifecycleEvent`. Verified by simulating a live upgrade, which is
+the only honest test of the legacy path. The blast radius was classified rather than assumed: no monetary,
+finding or identity surface reads event order, `canTransitionExecution` has no production caller, and the
+SQL purge guard reads `max(at)` and existence — so it **refused** a mis-branched purge instead of
+permitting one.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

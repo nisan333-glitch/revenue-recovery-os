@@ -264,3 +264,60 @@ rows stays whatever it is — the same rule every other correction in this repos
 
 The test must not be made to pass by retrying it, by sleeping between appends, or by asserting a weaker
 state. Each of those hides a real ordering defect behind a green tick.
+
+### RESOLVED 2026-10-06 · a database-allocated append order
+
+**Fixed, with a deterministic regression test — not with a green run.**
+
+The ordering is now `at ASC, seq ASC NULLS FIRST, id ASC`, where `seq` is a Postgres sequence allocated
+inside the inserting transaction. `at` stays **primary** because the log spans the migration: rows older
+than it have real timestamps and no append order, and making `seq` primary would hoist every legacy row
+to one end. `seq` resolves same-timestamp ties in true append order. `id` remains last and is now honest
+about its job — keeping the order total for two legacy rows with nothing between them.
+
+**Why a sequence and not the alternatives.** An application-allocated counter needs read-then-write to
+find the maximum, so two workers racing allocate the same value unless a lock is added — a clock race
+traded for a write race. A time-sortable id (UUIDv7/ULID) still rests on the clock, does not guarantee
+intra-millisecond monotonicity across processes, and would change the format of an existing primary key.
+
+**The migration's trap, avoided.** `ADD COLUMN seq BIGSERIAL` is one word shorter and wrong: it backfills
+existing rows in **physical heap order**, which is neither append order nor chronology. It would have
+committed a precise-looking fabricated history to disk. The column is nullable with a sequence default:
+new rows always get an order from the **column default** rather than from application code, and legacy
+rows keep `NULL`, meaning *"appended before an append order was recorded"*.
+
+**Verified on a simulated live upgrade**, which is the only honest test of the legacy path — a freshly
+migrated database has no legacy rows. Migrating to the previous migration, writing two events tied on one
+millisecond, then deploying: all three legacy rows kept `seq IS NULL`, and the read path reports
+
+```
+LEGACY LOG  state: running | orderCertain: false
+            uncertainAt: ["2026-03-01T12:00:00.000Z"]
+            events: SCHEDULED -> COMPLETED -> CLAIMED
+```
+
+The state is **unchanged from before the fix**. That is deliberate: changing what history says is
+re-deriving it. The ambiguity is *labelled* through `orderCertain` and `orderUncertainAt` on
+`executionStatus`, and resolved for nothing already written.
+
+**A legacy row alone at its timestamp is certain**, because `at` alone decides it. Only a tie with
+nothing to break it is uncertain, and reporting doubt where none exists would be as dishonest as the
+reverse.
+
+**`seq` enters nothing.** It is not on `ExecutionLifecycleEvent`, not returned by any API, and absent
+from every hash preimage — asserted structurally, and by a falsifier that leaks it and fails.
+
+**The blast-radius classification stands**, with one correction to the record: the SQL purge guard reads
+`max(at)` and event existence, never order, so it **refused** a mis-branched purge rather than permitting
+one. The retention consequence was a stuck retention surfaced as an error, not a wrong deletion.
+
+**Seven falsifiers**, each biting for its primary reason and restored byte-identically: the random UUID
+restored as tie-breaker · `seq` outranking the timestamp · a legacy tie silently reported certain · a lone
+legacy row reported uncertain · `seq` leaking to a consumer · an ordering fact entering a hash preimage ·
+the SQL purge guard weakened.
+
+One of them, G5, **did not bite on its first form, and the test was at fault**: "the event type is
+unchanged" built a literal of the type and checked *its* keys, so it measured the fixture rather than the
+store, and leaking `seq` passed it cleanly. Re-aimed at what `executionEvents` actually returns. The
+general lesson is the one this repository keeps re-learning: **a guard must take the subject as its
+subject.**

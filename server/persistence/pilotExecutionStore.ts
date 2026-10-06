@@ -327,25 +327,81 @@ export async function appendExecutionEvent(
   });
 }
 
-/** Full lifecycle history, oldest first. Boundary-scoped; `id` breaks ties so ordering is total. */
+/**
+ * The ordered rows. ONE query, shared by the two public readers so neither pays for the other.
+ *
+ * `at` ASC stays PRIMARY, and that is deliberate rather than inherited: the log spans the migration
+ * that introduced `seq`, so rows older than it have a real timestamp and no append order. Making `seq`
+ * primary would hoist every legacy row to one end of the log.
+ *
+ * `seq` ASC then resolves same-timestamp ties in TRUE APPEND ORDER. `at` is timestamp(3), so ties are
+ * not rare — they are what governed issue #4 was about.
+ *
+ * `id` ASC remains last and is now honest about its job: it keeps the order TOTAL for two legacy rows
+ * that tie on `at` and have no sequence between them. That order is arbitrary, it is no longer trusted,
+ * and `executionStatus` reports it as uncertain rather than presenting it as chronology.
+ */
+async function orderedEventRows(
+  executionId: string,
+  boundaryId: string,
+  client: DbClient,
+): Promise<readonly { transition: string; code: string | null; byId: string; at: Date; seq: bigint | null }[]> {
+  return client.pilotAssessmentExecutionEventRecord.findMany({
+    where: { executionId, boundaryId },
+    orderBy: [{ at: "asc" }, { seq: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    select: { transition: true, code: true, byId: true, at: true, seq: true },
+  });
+}
+
+const toLifecycleEvent = (r: {
+  transition: string; code: string | null; byId: string; at: Date;
+}): ExecutionLifecycleEvent =>
+  Object.freeze({
+    transition: r.transition as ExecutionTransition,
+    code: r.code,
+    byId: r.byId,
+    at: r.at.toISOString(),
+  });
+
+/**
+ * Full lifecycle history, oldest first, chronologically — see `orderedEventRows`.
+ *
+ * `seq` is NOT exposed. A sequence number is not a fact any consumer needs, and the smallest surface is
+ * the right one; what a consumer may need is whether the ORDER can be trusted, and that is reported by
+ * `executionStatus` where a state is actually derived from it.
+ */
 export async function executionEvents(
   executionId: string,
   boundaryId: string,
   client: DbClient = prisma,
 ): Promise<readonly ExecutionLifecycleEvent[]> {
-  const rows = await client.pilotAssessmentExecutionEventRecord.findMany({
-    where: { executionId, boundaryId },
-    orderBy: [{ at: "asc" }, { id: "asc" }],
-  });
+  const rows = await orderedEventRows(executionId, boundaryId, client);
+  return Object.freeze(rows.map(toLifecycleEvent));
+}
+
+/**
+ * Which timestamps in this log hold two or more events with NO append order between them.
+ *
+ * This is the uncertainty preserved explicitly rather than resolved retroactively. Note what does NOT
+ * count: a legacy row ALONE at its timestamp is ordered with certainty, because `at` alone decides it.
+ * Only a tie with nothing to break it is uncertain.
+ */
+function uncertainTimestamps(
+  rows: readonly { at: Date; seq: bigint | null }[],
+): readonly string[] {
+  const byAt = new Map<string, { total: number; withoutSeq: number }>();
+  for (const r of rows) {
+    const k = r.at.toISOString();
+    const g = byAt.get(k) ?? { total: 0, withoutSeq: 0 };
+    g.total += 1;
+    if (r.seq === null) g.withoutSeq += 1;
+    byAt.set(k, g);
+  }
   return Object.freeze(
-    rows.map((r) =>
-      Object.freeze({
-        transition: r.transition as ExecutionTransition,
-        code: r.code,
-        byId: r.byId,
-        at: r.at.toISOString(),
-      }),
-    ),
+    [...byAt.entries()]
+      .filter(([, g]) => g.total > 1 && g.withoutSeq > 1)
+      .map(([k]) => k)
+      .sort(),
   );
 }
 
@@ -354,6 +410,14 @@ export interface ExecutionStatus {
   readonly events: readonly ExecutionLifecycleEvent[];
   /** The code of the most recent stopping transition, if the execution is blocked or failed. */
   readonly code: string | null;
+  /**
+   * False when some timestamp in this log holds two or more events with no append order between them,
+   * which can only be legacy rows written before `seq` existed. The derived state is then the reading
+   * of an ambiguous log, and saying so is the point: it is NOT re-derived, invented or reordered.
+   */
+  readonly orderCertain: boolean;
+  /** The exact timestamps whose internal order is unknown. Empty whenever `orderCertain` is true. */
+  readonly orderUncertainAt: readonly string[];
 }
 
 export async function executionStatus(
@@ -361,13 +425,17 @@ export async function executionStatus(
   boundaryId: string,
   client: DbClient = prisma,
 ): Promise<ExecutionStatus> {
-  const events = await executionEvents(executionId, boundaryId, client);
+  const rows = await orderedEventRows(executionId, boundaryId, client);
+  const events = Object.freeze(rows.map(toLifecycleEvent));
   const state = deriveExecutionState(events);
   const stopped = [...events].reverse().find((e) => e.transition === "BLOCKED" || e.transition === "FAILED");
+  const uncertainAt = uncertainTimestamps(rows);
   return Object.freeze({
     state,
     events,
     code: state === "blocked" || state === "failed" ? (stopped?.code ?? null) : null,
+    orderCertain: uncertainAt.length === 0,
+    orderUncertainAt: uncertainAt,
   });
 }
 
