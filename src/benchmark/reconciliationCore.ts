@@ -157,7 +157,19 @@ export function reconcile(
   }
 
   const obsByUnit = new Map<string, ObservationRow[]>();
-  const unmatchedEntitlements = new Set<string>();
+  /**
+   * The unmatched observations THEMSELVES, not merely their keys.
+   *
+   * The first form of this module kept a dataset-wide Set of entitlement refs and refused every
+   * positive residual whenever it was non-empty. Against a realistic export that is fatal: 98
+   * unmatched entitlements refused $85,942.00 of genuine leakage down to $0.00. The direction was
+   * right — an unmatched invoice may be the missing one under another key — and the SCOPE had no
+   * causal basis, because a dataset is not a settlement relationship.
+   *
+   * Keeping the rows lets the doubt be scoped by the facts that decide whether settlement between a
+   * given invoice and a given obligation is POSSIBLE. See `couldSettle` and docs/TAINT_SCOPE_V1.md.
+   */
+  const unmatchedObservations: ObservationRow[] = [];
   // Entitlements where both sides name the SAME obligation but draw its period differently. Held apart
   // from an unmatched identity on purpose. The first form of this module had no such set and tested the
   // bounds inside the unit loop instead — which could never fire, because a unit's bucket key IS
@@ -178,7 +190,7 @@ export function reconcile(
         && intersects(e.periodStart, e.periodEnd, o.periodStart, o.periodEnd))) {
         boundaryDisagreement.add(ref);
       } else {
-        unmatchedEntitlements.add(ref);
+        unmatchedObservations.push(o);
       }
       continue;
     }
@@ -194,6 +206,31 @@ export function reconcile(
       if (a !== b && a.entitlementRef === b.entitlementRef && overlaps(a, b)) overlapping.add(a.entitlementRef);
     }
   }
+
+  const payerRoot = (payer: string) => terms.payerHierarchy[payer] ?? payer;
+
+  /**
+   * COULD THIS UNMATCHED INVOICE SETTLE THIS OBLIGATION? Three authoritative facts, conjunctive, and
+   * nothing else is consulted:
+   *
+   *   PAYER    — the same payer, or both under one root of the SUPPLIED hierarchy. An invoice billed to
+   *              payer X cannot settle payer Y's obligation; the company billed someone else.
+   *   PERIOD   — the same period, or within the GOVERNED displacement window. September cannot settle
+   *              March unless a term says timing may move that far.
+   *   CURRENCY — the governed currency. A EUR invoice cannot settle a USD obligation with no governed
+   *              rate, and that unit is refused on its own grounds anyway.
+   *
+   * Deliberately NOT consulted, each for a reason that cost something to learn: amount similarity (two
+   * unrelated obligations on one plan price are identical in amount — pairing them is the netting
+   * defect under another name), date proximity on its own (co-location is not a mechanism), and any
+   * name or prefix resemblance (that is inventing an alias, which the architecture test rejects).
+   */
+  const couldSettle = (unit: { entitlementRef: string; periodStart: string }, o: ObservationRow) => {
+    const unitPayer = liveExpectations.find((e) => e.entitlementRef === unit.entitlementRef)?.customerRef ?? "";
+    if (payerRoot(unitPayer) !== payerRoot(o.customerRef)) return false;
+    if (Math.abs(monthIndex(o.periodStart) - monthIndex(unit.periodStart)) > terms.invoicingGracePeriods) return false;
+    return o.currency === terms.currency;
+  };
 
   const draft: UnitResult[] = [];
   for (const k of unitKeys) {
@@ -217,7 +254,8 @@ export function reconcile(
     // reported as $100 of missing money. If any observation could not be matched, NH cannot tell
     // whether that invoice settles one of these unbilled units, so no unbilled unit may be reported as
     // exposure. Applied below, once the residual is known.
-    if (unmatchedEntitlements.has(first.entitlementRef)) {
+    if (unmatchedObservations.some((o) => alias(o.entitlementRef) === first.entitlementRef
+      && couldSettle(base, o))) {
       draft.push(Object.freeze({ ...base, state: "REFUSED_UNMATCHED_IDENTITY", residualMinor: null,
         expectedMinor: null, observedMinor,
         note: "an observation names an identity with no expectation and no authoritative alias; a re-key or migration cannot be told from an unexpected invoice" }));
@@ -280,12 +318,17 @@ export function reconcile(
     }
 
     const residualMinor = expectedMinor - observedMinor;
-    if (residualMinor > 0 && unmatchedEntitlements.size > 0) {
-      // See REFUSAL 1. An unmatched invoice elsewhere in the extract may be exactly this unit's missing
-      // one under another key, so reporting it as exposure would manufacture money out of a re-key.
+    const settlers = residualMinor > 0
+      ? unmatchedObservations.filter((o) => couldSettle(base, o))
+      : [];
+    if (settlers.length > 0) {
+      // An unmatched invoice THAT COULD HAVE SETTLED THIS OBLIGATION may be exactly this unit's missing
+      // one under another key, so reporting the residual would manufacture money out of a re-key. The
+      // doubt is scoped to the invoices for which settlement is authoritatively possible — not to the
+      // dataset, which was the defect.
       draft.push(Object.freeze({ ...base, state: "REFUSED_UNMATCHED_IDENTITY", residualMinor: null,
         expectedMinor, observedMinor,
-        note: "an observation elsewhere could not be matched to any expectation, so this unbilled unit cannot be distinguished from a re-keyed invoice" }));
+        note: `an unmatched observation for this payer within the governed window could have settled this obligation (${settlers.length}), so it cannot be distinguished from a re-keyed invoice` }));
       continue;
     }
     const state: UnitState = residualMinor > 0 ? "UNDER_BILLED" : residualMinor < 0 ? "OVER_BILLED" : "MONETARILY_BALANCED";

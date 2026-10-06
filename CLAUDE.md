@@ -632,6 +632,33 @@ residual** — the path is sound and one guard's scope defeats it — while the 
 detect $56,858.30 at 66.16% recall, with $9,800.00 fabricated and 12 of 19 cases unattributable**, and
 must not ship as the reconciliation grain.
 
+**Taint-scope correction (2026-10-06).** The dataset-global unmatched-identity taint was replaced with a
+scope derived from settlement causality ([`docs/TAINT_SCOPE_V1.md`](docs/TAINT_SCOPE_V1.md)). The rule:
+
+> **Doubt reaches a residual only where authoritative facts make SETTLEMENT possible** — the same payer or
+> both under a **supplied** hierarchy, the same period or inside the **governed** displacement window, and
+> the governed currency. Conjunctive. Amount similarity, date proximity alone and any name resemblance are
+> excluded, because each would make NH the author of the relationship it is supposed to be reading.
+
+On the **same frozen V2 package**, core `c80b35c5…` → `831b2dab…`, data byte-identical: recall **0.00% →
+72.56%**, true positive **$0.00 → $62,356.30**, baseless refusals withdrawn (107 → 77, unwarranted 9 → 1)
+while **M14's re-key and M15's whole-book migration remain refused**, because for those payers and periods
+settlement really is possible. `D_PAYER_PERIOD` is unchanged in every figure — the expected control. The
+frozen abstract examiner still passes in full.
+
+**$0.00 of fabricated money is attributable to the correction**, and the $8,969.10 that remains is
+decomposed rather than excused: **$8,879.40 is a pre-existing core gap the global taint was masking** — the
+reconciliation path has **no ambiguous-live-lines refusal at all** and sums two unsuperseded lines into an
+amount neither asserts, which the unwired expectation validator already refuses as `NH-EX-2016`; and
+**$89.70 is a measurement transport defect** — `ground-truth.csv` builds its header from `Object.keys(rows[0])`,
+so a column present only on the last row was silently dropped, and correctly-detected money was scored as
+fabricated. The second was **deliberately left unfixed**, because correcting it would *improve* the result
+and may only happen as a governed revision with its own evidence and freeze.
+
+**So the honest answer is: not yet.** The approach is sound and the pipeline still reports $8,879.40 nobody
+owes. The next minimum slice is the ambiguity refusal in the core — not a grain decision, not production
+wiring.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
