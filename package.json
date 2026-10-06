@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Revenue Recovery Operating System \u2014 identify, assign, fix, and prove recovered revenue.",
+  "description": "Revenue Recovery Operating System — identify, assign, fix, and prove recovered revenue.",
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
     "dev": "vite",
@@ -27,7 +27,11 @@
     "screenshots": "node scripts/screenshots.mjs",
     "fixture:journey": "vite-node scripts/write-journey-fixture.ts",
     "test:journey": "npm run fixture:journey && node e2e/journey.mjs",
-    "verify:registers": "vite-node scripts/verify-register-integrity.ts"
+    "verify:registers": "vite-node scripts/verify-register-integrity.ts",
+    "recon:generate": "node scripts/reconciliation-synthetic/generate.mjs",
+    "recon:run": "vite-node scripts/reconciliation-synthetic/run.ts",
+    "recon:score": "node scripts/reconciliation-synthetic/score.mjs",
+    "recon:verify": "node scripts/reconciliation-synthetic/verify.mjs"
   },
   "dependencies": {
     "@fastify/static": "^8.3.0",

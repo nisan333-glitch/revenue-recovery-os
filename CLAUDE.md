@@ -555,6 +555,37 @@ finding or identity surface reads event order, `canTransitionExecution` has no p
 SQL purge guard reads `max(at)` and existence — so it **refused** a mis-branched purge instead of
 permitting one.
 
+**Synthetic reconciliation result (2026-10-06).** The reconciliation core had only ever met an abstract
+fixture. Given a realistic two-sided export — 614 contract rows and 597 billing rows, 60 payers, 119
+entitlements, 43 of them left clean as noise, with **$85,942.00** of planted money and a 28-entitlement
+billing migration — it detected **$0.00**. The cause is one line: the unmatched-identity taint is
+**dataset-global**, so 98 unmatched entitlements anywhere refuse every positive residual everywhere. I
+introduced that guard deliberately, because an entitlement-scoped taint missed the re-key case. The
+governing rule is now:
+
+> **Doubt is scoped to the evidence that creates it.** An unmatched observation taints only units whose
+> *plausible counterpart* set it could belong to — same payer, adjacent period inside the governed window,
+> comparable amount. A refusal with no evidence behind it is not caution, and a detector that refuses
+> everything is not cautious but unusable.
+
+**Recorded, not fixed** ([`docs/SYNTHETIC_RECONCILIATION_V1.md`](docs/SYNTHETIC_RECONCILIATION_V1.md)):
+the core is preserved in this slice, and recall must never be bought by weakening epistemics. Six further
+findings bind the grain decision. **No single identifier survives** the seven lifecycle events: contract
+grain and schedule-line grain are **NOT CONSTRUCTIBLE** because billing emits neither — `invoice_line_id`
+is a position within an invoice, not a reference to the obligation it settles, which *demonstrates* that
+**the obligation reference must be on the billing side**. Payer×period grain is the only one that finds
+money (66.16% recall) and **12 of 19 cases are not individually attributable** under it, which collides
+with the north star directly: *a grain that cannot attribute a residual to an obligation is not a
+reconciliation grain, it is an aggregate*. It also **fabricates $12,798.80** because a per-entitlement
+pause cannot be represented when a unit merges siblings, and it turns the duplicate-masking blind spot
+into something worse — $19,600.00 of real missing money **mechanism-paired with the duplicate that hid
+it**, which is worse than invisible. Dataset-level `coverage.monetary` collapses to REFUSED on 9 rows of
+600. The proposal is therefore **governed semantic roles** — obligation-group identity, period identity,
+authoritative alias, payer relation (attribution only, never identity) — each separately gated and
+fail-closed, rather than one universal key. A bare re-key with no retained key is **correctly a refusal**.
+The scorer's own first form double-counted $12,798.80 across co-located mechanisms and was corrected to
+score attribution **clusters**; everything is synthetic and turns no observed amount into Revenue Returned.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
