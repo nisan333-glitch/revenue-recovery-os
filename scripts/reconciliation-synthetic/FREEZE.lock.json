@@ -1,6 +1,15 @@
 {
   "frozenAt": "2026-10-06",
-  "order": "generate -> validate -> FREEZE -> run -> score",
+  "revision": "V2",
+  "supersedes": {
+    "revision": "V1",
+    "status": "HISTORICAL MEASUREMENT · INVALIDATED FOR DECISION USE",
+    "reason": "the scorer double-counted monetary attribution across co-located mechanisms at payer grain",
+    "artefact": "scripts/reconciliation-synthetic/history/score.v1.invalidated.mjs",
+    "diff": "scripts/reconciliation-synthetic/history/score.v1-to-v2.diff",
+    "businessDataUnchanged": true
+  },
+  "order": "generate -> validate -> FREEZE -> record hashes -> run NH -> score",
   "data": {
     "expectation.csv": "31992d23dc8cd86d25aca9cb993d760d396f78e15294e88be5f17ce912959939",
     "observation.csv": "0ef21e4097f488877a09f35ab9fa8f1c7ac61e167bc4163dce1b5199a6dfb186",
@@ -9,10 +18,10 @@
   },
   "scripts": {
     "generate.mjs": "e946aca38e41b074511195b725079ae254952cfc49e9f81218313a161f73f290",
-    "freeze.mjs": "d3bca3fc4261122e0c50498dc87f93ebb15299d66b1072397b090c4cd5063332",
+    "freeze.mjs": "dcaeaffea43522a60342e1aa9fdafa2931c9294587f245d4fb2f7d3f1cc2ba2b",
     "run.ts": "b39ce394589068c80cace17c310efedd892fb18382c7cdf37e938d3ec18d41c8",
     "score.mjs": "060359f5e70cb2541c22c4c5468de8cce53d18f450ea5d7192f3f297c207b4e8",
     "verify.mjs": "0288ea33429c508e0d589a26b760b62e22519553a3319ea91a70cb40b68d2ed9"
   },
-  "compositeSha256": "1375c73881809644a96e3b1dc37965079c48a724c79ae77135b1fc1e46de941e"
+  "compositeSha256": "f5c98810a797f0546ddffcfaea5d70a3a3f0a4d34445025d34c64f53020d61b3"
 }

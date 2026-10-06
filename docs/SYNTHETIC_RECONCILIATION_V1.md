@@ -58,6 +58,13 @@ appears as a diff a reviewer must approve.
    are unchanged, and they are **identical** to the pre-control run. That is evidence the package itself
    was never tuned — but it is not a substitute for the gate, which is why the gate now exists.
 
+**Resolved as a governed revision, not by restoring the known-wrong scorer**
+([`docs/BENCHMARK_REVISION_V2.md`](docs/BENCHMARK_REVISION_V2.md)). V1 is preserved as
+**HISTORICAL MEASUREMENT · INVALIDATED FOR DECISION USE**, including its reported $22,598.80, and V2 is
+the governed measurement. Business-data byte identity is proved three ways and the freeze lock now names
+the revision it governs. The figures below are the **official PRE-FIX baseline**, taken against the
+unmodified core `c80b35c5…`.
+
 ## 2 · Results · five candidate grains through the unmodified core
 
 | Candidate | Detected | True positive | **False positive** | Recall | Precision | Refusals (unwarranted) |

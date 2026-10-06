@@ -609,6 +609,29 @@ after the result was visible**, which is the flattering direction. Re-derived un
 the figures are **identical** and the data hashes unchanged, which evidences that the package was never
 tuned — and is not a substitute for the gate.
 
+**Resolved as a governed revision on 2026-10-06, not by restoring the known-wrong scorer**
+([`docs/BENCHMARK_REVISION_V2.md`](docs/BENCHMARK_REVISION_V2.md)). The rule it establishes:
+
+> **A defective measurement is INVALIDATED and preserved, never deleted and never silently replaced.**
+> A revision must prove the business data byte-identical, record both rulers' hashes and the exact diff,
+> and state which metrics it affects and which it does not. The freeze names the revision it governs, so
+> no figure can be quoted without one.
+
+V1 is kept as **HISTORICAL MEASUREMENT · INVALIDATED FOR DECISION USE** with its reported $22,598.80
+intact. Its bytes had **never been committed**, so the artefact is a reconstruction from the recorded
+patches, validated by reproducing $22,598.80 and $12,798.80 exactly — and that it needed reconstructing
+is the compounding half of the disclosure. The $12,798.80 gap is the M12 pause figure charged twice,
+to two mechanisms sharing one payer. **Affected:** only the payer-grain candidate's false-positive
+accounting and its per-mechanism attribution. **Unaffected:** planted total, every entitlement-grain
+figure, and detected/TP/FN/recall/precision on all candidates — the headline finding does not move.
+
+The **official PRE-FIX baseline** is recorded against the unmodified core `c80b35c5…` before any taint
+work, and the two findings are kept distinct, because conflating them would be wrong: the intended
+entitlement/subscription path detected **$0.00 because dataset-global taint poisoned every positive
+residual** — the path is sound and one guard's scope defeats it — while the payer-period aggregate **did
+detect $56,858.30 at 66.16% recall, with $9,800.00 fabricated and 12 of 19 cases unattributable**, and
+must not ship as the reconciliation grain.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

@@ -115,7 +115,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
   const { data, scripts } = currentHashes();
-  const record = { frozenAt: "2026-10-06", order: "generate -> validate -> FREEZE -> run -> score", data, scripts };
+  const record = {
+    frozenAt: "2026-10-06",
+    // The freeze states WHICH MEASUREMENT REGIME it governs, so a result can never be quoted without
+    // one. V1 is preserved under history/ and is INVALIDATED FOR DECISION USE: it double-counted
+    // monetary attribution across co-located mechanisms at payer grain. The business data is
+    // byte-identical between the two revisions — only the ruler changed.
+    revision: "V2",
+    supersedes: {
+      revision: "V1",
+      status: "HISTORICAL MEASUREMENT · INVALIDATED FOR DECISION USE",
+      reason: "the scorer double-counted monetary attribution across co-located mechanisms at payer grain",
+      artefact: "scripts/reconciliation-synthetic/history/score.v1.invalidated.mjs",
+      diff: "scripts/reconciliation-synthetic/history/score.v1-to-v2.diff",
+      businessDataUnchanged: true,
+    },
+    order: "generate -> validate -> FREEZE -> record hashes -> run NH -> score",
+    data, scripts,
+  };
   const next = `${JSON.stringify({ ...record, compositeSha256: sha(JSON.stringify(record)) }, null, 2)}\n`;
 
   if (existsSync(LOCK) && readFileSync(LOCK, "utf8") !== next) {
