@@ -247,3 +247,37 @@ is what the word correctly means there.
 Full treatment, including why the successor is `1.0.0` rather than `2.0.0` and why the predecessor's
 schema is preserved while its validator is not, in
 [`docs/BILLING_EXTRACT_RENAME_V1.md`](BILLING_EXTRACT_RENAME_V1.md).
+
+---
+
+## 10 · APPEND-ONLY · a provenance channel now exists (2026-10-07)
+
+§6 above says **nothing in this slice reaches `AUTHORITY_VERIFIED`** and that the ceiling is
+`SOURCE_NATIVE`. Both statements stay true of `AUTHORITY_VERIFIED`, and the second is now **incomplete**:
+a submission accompanied by a corroborating data-owner attestation reaches a new rung, **`SOURCE_ATTESTED`**,
+between `SOURCE_NATIVE` and `AUTHORITY_VERIFIED`.
+
+**What has NOT changed, which is most of it.** Authority is still **UNVERIFIED** and every level is still
+reported **PROVISIONAL** — `provisional` is `reached !== "AUTHORITY_VERIFIED"`, and the new rung sits
+below that, so the predicate did not move. The ladder is still ordered, `AUTHORITY_UNVERIFIED` is still
+terminal and outside it, a request parameter still cannot declare a source authoritative, and
+`attested` is still refused as a request key. Every level, gate, conjunct, count and refusal in §1–§5 is
+exactly as described, and both frozen packages still report `SOURCE_NATIVE` with no attestation —
+V3 at **L1**, the variant at **L2**.
+
+**What is new:**
+
+| | |
+|---|---|
+| rung | `SOURCE_ATTESTED`, reached only when every claim NH can check agrees with the files |
+| channel | `DATA_OWNER_ATTESTATION`, separate from `SYSTEM_OF_RECORD_ATTESTATION`, which stays unimplemented |
+| method version | `DATA_READINESS_METHOD_VERSION` → **`rdy-2026.2`**; the **scheme stays `-v2`** |
+| report | an optional `attestation` block — per-claim states and counts, still **no money** |
+| customer artefact | `docs/pilot-intake/ATTESTATION.md`, the eleventh in the package |
+
+**The rule it adds:** *a rung may rest only on what NH can CHECK; a claim NH cannot check is recorded,
+attributed and labelled, never counted as evidence for it.* Three of the six things a pilot wants to know
+about provenance have real corroboration and three have none, and the report distinguishes them.
+
+Full treatment, including the proof that this is not `AUTHORITY_VERIFIED` and why it is not named
+`VERIFIED_FOR_PILOT`, in [`docs/PROVENANCE_ATTESTATION_V1.md`](PROVENANCE_ATTESTATION_V1.md).

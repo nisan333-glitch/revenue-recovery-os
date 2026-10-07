@@ -1164,6 +1164,69 @@ a prose mention is not an import, and a string literal is not a dependency.
 120/120 journey. What still blocks a first real export is unchanged and is not the naming: **nothing
 reaches `AUTHORITY_VERIFIED`**, so every readiness level stays PROVISIONAL at a `SOURCE_NATIVE` ceiling.
 
+**Minimal provenance attestation decision (2026-10-07).** The owner's call: the absence of verified
+authority must **not** block requesting or inspecting the first real customer exports — data may be
+accepted at `SOURCE_NATIVE`/PROVISIONAL with that qualification preserved — and the smallest practical
+step towards verified authority should be built without delaying the request. Built as a one-page
+declaration by the customer's data-owning **role**, sent with the exports, which NH then checks against
+the files ([`docs/PROVENANCE_ATTESTATION_V1.md`](docs/PROVENANCE_ATTESTATION_V1.md)).
+
+**A new authority rung was necessary, and it was proved rather than assumed.** It cannot be
+`AUTHORITY_VERIFIED`: that rung means *evidenced by a channel the beneficiary cannot unilaterally alter*,
+and the repository already holds its one implementation — `sourceVerification.ts` verifies Ed25519 over a
+payload signed by a key **the source system holds and the submitter does not**. An attestation is written
+by the submitting side, which the Trust Invariant's standing test names explicitly, and that side can
+revise the attestation and the file together. It also cannot stay `SOURCE_NATIVE`, whose own ceiling
+reason says *NOTHING* establishes the bytes left the system unaltered — with a row count committed before
+the result was known and then checked, that is false. And the two may not be collapsed, because *the
+unavailable states stay distinguishable*. So: **`SOURCE_ATTESTED`**, between them, via a new
+`DATA_OWNER_ATTESTATION` channel kept separate from `SYSTEM_OF_RECORD_ATTESTATION` — that one means the
+*system* asserts it, which is why it can reach the top rung and a person's declaration about the system
+cannot. Channels now carry `reaches`, so implementing a weak channel can never imply a strong rung. The rules:
+
+> **A rung may rest only on what NH can CHECK. A claim NH cannot check is recorded, attributed and
+> labelled — never counted as evidence for it.** Every declared fact is classified once as
+> `CORROBORATED`, `WELL_FORMED` or `UNCORROBORATED_CLAIM`. **Three of the six things a pilot wants to know
+> about provenance have real corroboration and three have none**, and the report distinguishes them.
+> Denying all three uncheckable claims leaves the rung standing — they were never holding it up.
+
+> **A pre-commitment is evidence; a shape is not.** The row count is the only entry that makes a later
+> change visible, which is why it is there. The join check catches independently pseudonymised files,
+> which produce no overlap at all. Both are **necessary evidence and never proof** — a consistently
+> re-keyed pair passes them, and the rung does not claim otherwise.
+
+> **A contradicted attestation fails CLOSED and the contradiction is NAMED**, because a declaration that
+> disagrees with the file is worse evidence than no declaration. An unreadable export makes the row count
+> `NOT_CHECKABLE` rather than contradicted — an extract fault has its own code and blaming the attestation
+> would point the customer at the wrong thing — and *we could not look* still does not pass.
+
+**It is deliberately not named `VERIFIED_FOR_PILOT`**, which the owner proposed and which was argued down
+on evidence: a rung whose name contains VERIFIED gets quoted without its qualifier, and this repository
+had just spent two slices fixing exactly that (`settled_at`). `attested` **stays refused** as a request
+key — the rung is derived from checks, never supplied, and the caller hands over a *declaration* while NH
+computes the *verdict*. That asymmetry is structural. **A role, never a person**, reusing
+`DatasetProvenance`'s own choice: minimization says the pilot needs joins, dates and amounts, not people.
+
+**Nothing is gated on it.** With no attestation the report is byte-for-byte what it was, asserted by a
+control that strips authority and compares the rest, and the form tells the customer the exports may be
+sent without it. `DATA_READINESS_METHOD_VERSION` → **`rdy-2026.2`** because a new state is genuinely
+reachable; the **scheme stays `-v2`**, because an optional field is additive and scheme ids move on
+*breaking* changes. **215/215** package checks with five mutations proved to fail, **25/25** control with
+both frozen packages still `SOURCE_NATIVE`/PROVISIONAL, 1094 + 1 skipped with and without a database,
+599/599 ep2, 120/120 journey, every frozen artefact byte-identical.
+
+**Two findings recorded rather than patched.** `ReadinessReport.level` documents itself as *"never above
+what authority permits"* while the level is computed from capabilities alone and authority only sets
+`provisional` — the `coverage.event` shape, harmless today because `provisional` is always true, pinned
+by a test that measures the gap and left for its owner. And a structural guard matched
+`provenanceEstablished` **inside the comment saying the field is not accepted** — the **ninth** instance
+of a guard reading prose instead of code.
+
+**What would justify `AUTHORITY_VERIFIED`**, unchanged and still the only thing blocking a first *trusted*
+export: a signed export, a fetch NH performs itself, a machine-issued system-of-record attestation, or
+third-party reconciliation — the last being the only one whose corroborating party is not party to the
+claim.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
