@@ -678,8 +678,10 @@ Questions on any single field are welcome and usually faster than guessing.
   a("One page. It is what lets us say more about your data than *\"the columns are the right shape\"* —");
   a("and it is deliberately short, because a long form gets delegated and a delegated form gets guessed at.");
   a();
-  a("**Please do not send this before the exports, or after them. Send it with them.** The whole value is");
-  a("that the row counts below were written down *before* anyone saw a result.");
+  a("**Please send this with the exports**, so we can read the two together. We are not claiming that");
+  a("sending them together proves anything about the files — you hold both until they reach us, so a row");
+  a("count that matches shows the two are consistent and nothing more. It is still worth having: it");
+  a("catches the ordinary mix-up, and it puts an accountable role against the submission.");
   a();
   a("## Who is signing");
   a();
@@ -712,10 +714,11 @@ Questions on any single field are welcome and usually faster than guessing.
   a("If `other_described`, add one line saying what it was. We ask because a warehouse view means a");
   a("transformation layer sits between the source system and the file, which changes what we can conclude.");
   a();
-  a("> **Why the row count is the important line.** It is the only entry here that makes a later change");
-  a("> visible. We compare it against the rows we actually receive, so an export quietly shortened after");
-  a("> the fact no longer matches its own declaration. Everything else on this form is either shape or");
-  a("> assertion; this one is evidence.");
+  a("> **What the row count does and does not do.** We compare it against the rows we actually receive.");
+  a("> If they disagree, something went wrong between the export and us, and we will tell you rather than");
+  a("> proceeding. If they agree, that shows the two things you sent are consistent with each other — it");
+  a("> does **not** show the file is complete, because you hold both the file and this form until they");
+  a("> reach us. We are not going to describe it as more than that.");
   a();
   a("## What you are confirming");
   a();

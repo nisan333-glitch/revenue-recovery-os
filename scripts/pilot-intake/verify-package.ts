@@ -488,7 +488,11 @@ check(readiness.billing.creditRows === 1, "the credit is recognised as a credit,
   }
   // The three it cannot check must be segregated AND must say NOTHING, in those words.
   const uncheckable = ATTESTATION_CLAIMS.filter((c) => c.kind === "UNCORROBORATED_CLAIM");
-  check(uncheckable.length === 3, "exactly three claims are declared uncheckable", String(uncheckable.length));
+  // FOUR, not three. Completeness joined them when a review showed the row count had been described as a
+  // pre-commitment, which it is not — the declaration and the files arrive together from the same party.
+  check(uncheckable.length === 4, "exactly four claims are declared uncheckable", String(uncheckable.length));
+  check(uncheckable.some((c) => c.id === "EXPORT_IS_COMPLETE"),
+    "...and export completeness is one of them, stated rather than implied");
   check(/## What you are asserting, and we cannot check/.test(att),
     "ATTESTATION.md · the uncheckable claims have their own named section");
   for (const c of uncheckable) {
@@ -513,10 +517,26 @@ check(readiness.billing.creditRows === 1, "the credit is recognised as a credit,
     "the contract itself says a ROLE is asked for and a person is not", ownerSpec.howNhChecksIt);
   check(att.includes(ownerSpec.howNhChecksIt),
     "ATTESTATION.md · renders that sentence, so the reason travels with the request");
+  // "puts a NAME against the submission" slipped into my own new prose and contradicted this rule, so the
+  // sweep now covers the phrasing as well as the request for one.
+  check(!/puts a name|a name against/i.test(att),
+    "ATTESTATION.md · does not say a NAME is put against the submission — it is a role");
   for (const personal of ["full name", "your name", "signature of", "individual's name", "email"]) {
     check(!new RegExp(personal, "i").test(att), `ATTESTATION.md · does not ask for "${personal}"`);
   }
   check(read("README.md").includes("ATTESTATION.md"), "README.md · the index lists the attestation form");
+  // ── CONSISTENCY IS NOT COMPLETENESS ────────────────────────────────────────────────────────────
+  //
+  // The form must not sell the row count as proof the export is whole. A review found exactly that claim
+  // in the first version, so the absence is now checked and the honest version is required present.
+  check(/does \*\*not\*\* show the file is complete|not show the file is complete/.test(att),
+    "ATTESTATION.md · says the row count does NOT show the file is complete");
+  check(/you hold both/i.test(att),
+    "...and says why: the customer holds the file and the form until they reach us");
+  for (const overclaim of [/\bpre-?commit/i, /\bpre-?regist/i, /untrimmed/i,
+    /proves? (?:the|this) (?:file|export) is complete/i, /makes a later (?:change|trim) visible/i]) {
+    check(!overclaim.test(att), `ATTESTATION.md · makes no pre-commitment or completeness claim (${overclaim.source})`);
+  }
 }
 
 // ── report ──────────────────────────────────────────────────────────────────────────────────────

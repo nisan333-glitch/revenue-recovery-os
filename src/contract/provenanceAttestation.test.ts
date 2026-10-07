@@ -23,6 +23,7 @@ import {
   ATTESTATION_CLAIMS, EXTRACTION_METHODS, RUNG_BEARING_CLAIMS, corroborateAttestation,
   type ProvenanceAttestation,
 } from "./provenanceAttestation";
+import { PROVENANCE_CHANNELS } from "./sourceFactAuthority";
 
 const E_TERMS = Object.freeze({ currency: "USD", asOf: "2026-06-30" });
 const S_TERMS = Object.freeze({ currency: "USD" });
@@ -119,11 +120,15 @@ describe("1 · the claim catalogue classifies every claim exactly once", () => {
     }
   });
 
-  it("three of the six pilot requirements are corroborated and three are not — the honest split", () => {
+  it("FOUR claims are uncheckable, not three — completeness joined them on review", () => {
+    // The fourth is EXPORT_IS_COMPLETE. It was previously IMPLIED by calling the row count a
+    // pre-commitment, which was false; it is now stated as its own uncheckable claim so the gap is
+    // visible rather than inferred.
     const corroborated = ATTESTATION_CLAIMS.filter((c) => c.kind === "CORROBORATED").length;
-    const uncorroborated = ATTESTATION_CLAIMS.filter((c) => c.kind === "UNCORROBORATED_CLAIM").length;
+    const uncorroborated = ATTESTATION_CLAIMS.filter((c) => c.kind === "UNCORROBORATED_CLAIM");
     expect(corroborated).toBeGreaterThanOrEqual(3);
-    expect(uncorroborated).toBe(3);
+    expect(uncorroborated).toHaveLength(4);
+    expect(uncorroborated.map((c) => c.id)).toContain("EXPORT_IS_COMPLETE");
   });
 });
 
@@ -173,7 +178,8 @@ describe("3 · a corroborating attestation reaches SOURCE_ATTESTED and stays PRO
     expect(r.attestation!.dataOwnerRole).toBe("Revenue Operations");
     expect(r.attestation!.contradictions).toEqual([]);
     expect([...r.attestation!.uncorroboratedClaims].sort()).toEqual([
-      "AMOUNTS_NOT_RECONSTRUCTED", "FILES_CAME_FROM_STATED_SYSTEMS", "NO_DERIVED_IDENTIFIERS",
+      "AMOUNTS_NOT_RECONSTRUCTED", "EXPORT_IS_COMPLETE", "FILES_CAME_FROM_STATED_SYSTEMS",
+      "NO_DERIVED_IDENTIFIERS",
     ]);
   });
 
@@ -204,10 +210,10 @@ describe("4 · a contradicted attestation fails CLOSED and names the contradicti
 
   it("a declared row count that disagrees with the file", () => {
     const { r, c } = contradicts(attest({ billingExport: { ...EXPORT_OK, declaredRowCount: 7 } }));
-    expect(outcomeOf(c, "ROW_COUNT_PRECOMMITTED")).toBe("CONTRADICTED");
+    expect(outcomeOf(c, "DECLARED_ROW_COUNT_AGREES")).toBe("CONTRADICTED");
     expect(r.authority.reached).toBe("SOURCE_NATIVE");
     expect(r.authority.ceilingReason).toContain("CONTRADICTS");
-    expect(r.attestation!.contradictions).toContain("ROW_COUNT_PRECOMMITTED");
+    expect(r.attestation!.contradictions).toContain("DECLARED_ROW_COUNT_AGREES");
   });
 
   it("a coverage window that excludes a date present in the file", () => {
@@ -286,7 +292,7 @@ describe("4 · a contradicted attestation fails CLOSED and names the contradicti
       billing: validateBillingExtract(["invoice_ref"], [], S_TERMS),
     };
     const c = corroborateAttestation(attest(), p.expectation, p.billing);
-    expect(outcomeOf(c, "ROW_COUNT_PRECOMMITTED")).toBe("NOT_CHECKABLE");
+    expect(outcomeOf(c, "DECLARED_ROW_COUNT_AGREES")).toBe("NOT_CHECKABLE");
     expect(c.allRungBearingClaimsPassed).toBe(false);
     // And the reported rung is AUTHORITY_UNVERIFIED rather than SOURCE_NATIVE, because the ladder's
     // "the fact is absent" branch outranks every later one: an unreadable export supplies no fact for any
@@ -388,5 +394,117 @@ describe("7 · a reported finding, pinned rather than patched", () => {
     // And the only thing that would make the cap observable stays unreachable.
     expect(with_.provisional).toBe(true);
     expect(without.provisional).toBe(true);
+  });
+});
+
+describe("8 · CONSISTENCY IS NOT COMPLETENESS — the correction, and the hole it admits", () => {
+  it("THE COORDINATED EDIT: remove a row, adjust the count, and NH reports SOURCE_ATTESTED anyway", () => {
+    // THIS TEST DOCUMENTS A HOLE RATHER THAN CLOSING ONE, which is the only honest way to hold this rung.
+    //
+    // An independent review found that the row count was being described as a PRE-COMMITMENT that made a
+    // later trim detectable. It does not. The declaration and the files reach NH together, from the same
+    // party, so a submitter who removes rows can adjust the declared number to match and the check sees a
+    // perfect agreement. This reproduces exactly that, and asserts the outcome we actually get — because
+    // a test that pretended NH caught it would be worse than no test.
+    const keep = owe();
+    const dropped = owe();           // this obligation is exported, then removed from the file
+    const ob = keep.cells.schedule_line_ref!;
+    void dropped;
+
+    const honest = {
+      expectation: validateExpectationExtract(E_FULL, [keep, dropped], E_TERMS),
+      billing: validateBillingExtract(S_FULL, [billed(ob)], S_TERMS),
+    };
+    const trimmed = {
+      expectation: validateExpectationExtract(E_FULL, [keep], E_TERMS),   // one row removed
+      billing: validateBillingExtract(S_FULL, [billed(ob)], S_TERMS),
+    };
+    // The honest declaration says 2 and matches the untrimmed file.
+    const two = attest({ expectationExport: { ...EXPORT_OK, declaredRowCount: 2 } });
+    expect(corroborateAttestation(two, honest.expectation, honest.billing)
+      .checks.find((c) => c.claimId === "DECLARED_ROW_COUNT_AGREES")!.outcome).toBe("PASS");
+    // Trim the file and leave the declaration alone: CAUGHT. This is the careless case, and the common one.
+    expect(corroborateAttestation(two, trimmed.expectation, trimmed.billing)
+      .checks.find((c) => c.claimId === "DECLARED_ROW_COUNT_AGREES")!.outcome).toBe("CONTRADICTED");
+    // Trim the file AND adjust the declaration: NOT CAUGHT, and the rung is still reached.
+    const one = attest();  // declaredRowCount: 1
+    const r = evaluateDataReadiness(trimmed.expectation, trimmed.billing, {}, one);
+    expect(r.attestation!.contradictions).toEqual([]);
+    expect(r.authority.reached).toBe("SOURCE_ATTESTED");
+    expect(r.provisional).toBe(true);
+    // ...and the thing that is NOT established says so, by name.
+    const complete = r.attestation!.checks.find((c) => c.claimId === "EXPORT_IS_COMPLETE")!;
+    expect(complete.outcome).toBe("NOT_CHECKABLE");
+    expect(complete.detail).toContain("NOT ESTABLISHED");
+  });
+
+  it("completeness cannot be asserted into existence — there is no field for it", () => {
+    const { expectation, billing } = pair();
+    const r = evaluateDataReadiness(expectation, billing, {}, attest());
+    const complete = r.attestation!.checks.find((c) => c.claimId === "EXPORT_IS_COMPLETE")!;
+    expect(complete.kind).toBe("UNCORROBORATED_CLAIM");
+    expect(RUNG_BEARING_CLAIMS).not.toContain("EXPORT_IS_COMPLETE");
+    // Its detail never varies with anything the submission says, because nothing it could say would help.
+    const denied = attest({
+      expectationExport: { ...EXPORT_OK, cameFromStatedSystem: false, amountsAndDatesNotReconstructed: false },
+    });
+    const r2 = evaluateDataReadiness(expectation, billing, {}, denied);
+    expect(r2.attestation!.checks.find((c) => c.claimId === "EXPORT_IS_COMPLETE")!.detail)
+      .toBe(complete.detail);
+  });
+
+  it("STRUCTURAL: a channel reaching SOURCE_ATTESTED must declare what the submitter still controls", () => {
+    // The strongest guard in this slice, because it cannot be paraphrased around the way a word list can.
+    // A residual weakness recorded as prose can be rewritten into optimism; a required non-empty list
+    // cannot be, and a channel claiming the top rung must declare that nothing is left in those hands.
+    for (const c of PROVENANCE_CHANNELS) {
+      if (c.reaches === "AUTHORITY_VERIFIED") {
+        expect(c.submitterStillControls, c.channel).toEqual([]);
+      } else {
+        expect(c.submitterStillControls.length, c.channel).toBeGreaterThan(0);
+      }
+    }
+    const attestation = PROVENANCE_CHANNELS.find((c) => c.channel === "DATA_OWNER_ATTESTATION")!;
+    expect(attestation.submitterStillControls.join(" ")).toMatch(/declaration/i);
+    expect(attestation.submitterStillControls.join(" ")).toMatch(/files|export/i);
+  });
+
+  it("TRIPWIRE, not a proof: no pre-commitment vocabulary around the attestation channel", () => {
+    // A word list cannot stop a paraphrase, so this is a tripwire for the specific wording that was
+    // wrong, not a guarantee that the claim cannot return in other words. The structural check above is
+    // the one that does real work.
+    const BANNED = /pre-?commit|pre-?regist|untrimmed|complete (?:export|original)/i;
+    const NEGATED = /\bnot\b|\bnever\b|NOTHING|does not|cannot|is false|was false|incorrect|wrong|may NOT borrow/i;
+    for (const file of ["provenanceAttestation.ts", "sourceFactAuthority.ts"]) {
+      // SENTENCES, NOT LINES. The line-based form flagged three sentences whose negation sat on the
+      // FOLLOWING line — the same defect as the rendered `isNot` bullets two slices ago, where the
+      // negating word was in the heading above the bullet. A claim is a sentence, so the unit of
+      // judgement is a sentence: comment markers are stripped and the text is split on sentence ends.
+      const src = readFileSync(resolve(__dirname, file), "utf8")
+        .replace(/^\s*(?:\/\/|\*|\/\*\*?)\s?/gm, " ")
+        .replace(/\n/g, " ");
+      const offending = src.split(/(?<=[.;:])\s+/)
+        .filter((l) => BANNED.test(l) && !NEGATED.test(l))
+        // The SYSTEM_OF_RECORD channel keeps the claim legitimately: there the SYSTEM issues the
+        // attestation, so the submitter never holds it. Its own line says why, and says the attestation
+        // channel may not borrow it.
+        // Two exemptions, both for text that DEFINES the bar rather than claiming to meet it: the
+        // SYSTEM_OF_RECORD channel, where the system issues the attestation so the claim is true, and the
+        // sentence stating the CONDITION under which pre-registration means anything at all.
+        .filter((l) => !/SYSTEM issues the attestation|pre-registration shape the admission bar|pass beyond the committer's reach/.test(l))
+        .map((l) => l.trim().slice(0, 80));
+      expect(offending, file).toEqual([]);
+    }
+    // And the attestation channel's own two statements must not carry it at all.
+    const ch = PROVENANCE_CHANNELS.find((c) => c.channel === "DATA_OWNER_ATTESTATION")!;
+    expect(BANNED.test(ch.whatItWouldEstablish)).toBe(false);
+    expect(BANNED.test(ch.whyTheBeneficiaryCannotAlterIt)).toBe(false);
+  });
+
+  it("the row-count claim is NAMED for what it decides", () => {
+    const spec = ATTESTATION_CLAIMS.find((c) => c.id === "DECLARED_ROW_COUNT_AGREES")!;
+    expect(ATTESTATION_CLAIMS.map((c) => c.id)).not.toContain("ROW_COUNT_PRECOMMITTED");
+    expect(spec.requirement).toMatch(/agree/i);
+    expect(spec.howNhChecksIt).toMatch(/does NOT show the file is complete/);
   });
 });

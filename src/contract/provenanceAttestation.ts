@@ -5,7 +5,26 @@
 // reconciliation, and could say nothing at all about whether the files came from the systems they claim
 // to come from. The ceiling was `SOURCE_NATIVE` with `AUTHORITY_UNVERIFIED`, because no provenance
 // channel existed. This adds the cheapest channel that carries real evidence: a short declaration by the
-// customer's data-owning ROLE, made BEFORE the result is known, which NH then checks against the files.
+// customer's data-owning ROLE, which NH then checks against the files.
+//
+// THE LIMIT OF WHAT ANY OF THIS CAN ESTABLISH, and the first version of this module got it wrong, so it
+// is stated before anything else. `corroborateAttestation` takes three inputs — the declaration, the
+// expectation validation and the billing validation — and ALL THREE COME FROM THE SAME PARTY. A predicate
+// whose every input is controlled by one party can decide INTERNAL CONSISTENCY and can never decide
+// CORRESPONDENCE WITH AN EXTERNAL REFERENT. So:
+//
+//   • "the file we received has the number of rows the declaration states" is inside the closure, and is
+//     genuinely checkable.
+//   • "this is the complete, untrimmed export the source system produced" relates the file to the source
+//     system's actual state, which appears in no input at all, so it is not merely unchecked but
+//     UNREACHABLE.
+//
+// The first version wrongly called the row count a PRE-COMMITMENT that would make a later trim
+// detectable; the declaration and the file arrive together, so anyone willing to delete rows can adjust
+// the number to match. **Pre-registration is meaningful only when the committed artefact passes beyond
+// the committer's reach, and this one never does.** The row-count check is kept because an uncoordinated
+// mismatch is the common real-world failure and refusing it costs nothing — and it is now named and
+// described for what it decides.
 //
 // WHY IT IS NOT AUTHORITY_VERIFIED, stated here because the temptation is to round up. That rung means
 // *evidenced by a channel the beneficiary cannot unilaterally alter* (`sourceFactAuthority.ts`), and this
@@ -41,7 +60,7 @@ import type { BillingExtractValidation } from "./billingExtractValidator";
 export const ATTESTATION_SCHEME = "nh-provenance-attestation-v1";
 
 /** This corroboration method's own version line, independent of every extract and of readiness. */
-export const ATTESTATION_METHOD_VERSION = "pav-2026.1";
+export const ATTESTATION_METHOD_VERSION = "pav-2026.2";
 
 // ── 1 · WHAT THE CUSTOMER DECLARES ────────────────────────────────────────────────────────────────
 
@@ -73,10 +92,14 @@ export interface ExportAttestation {
   readonly coverageStart: string;
   readonly coverageEnd: string;
   /**
-   * THE PRE-COMMITMENT THAT DOES THE WORK. A row count stated before the result is known makes a later
-   * trim detectable: an export quietly shortened to drop inconvenient rows no longer matches its own
-   * declaration. It is the same shape the admission bar uses, and it is the single reason this
-   * attestation is evidence rather than a courtesy.
+   * The number of rows the declaration says each export contains.
+   *
+   * WHAT THIS IS NOT, stated here because the first version of this module got it wrong. It is **not a
+   * pre-commitment** and it does **not** make a later trim detectable. The declaration and the file reach
+   * NH together, from the same party, so anyone willing to remove rows can adjust this number to match
+   * and NH sees a perfect agreement. What a match establishes is that the declaration and the file WE
+   * RECEIVED agree with each other — which catches the careless case, which is the common one, and
+   * catches nothing deliberate.
    */
   readonly declaredRowCount: number;
   /** UNCORROBORATED. That the rows were not estimated, back-filled or reconstructed by hand. */
@@ -151,11 +174,11 @@ export const ATTESTATION_CLAIMS: readonly AttestationClaimSpec[] = Object.freeze
     howNhChecksIt: "As above: the name and the method are checked for shape. The origin itself is your assertion.",
   }),
   claim({
-    id: "ROW_COUNT_PRECOMMITTED",
+    id: "DECLARED_ROW_COUNT_AGREES",
     kind: "CORROBORATED",
-    requirement: "the export was not trimmed after the fact",
+    requirement: "the declaration and the file we received agree with each other",
     statement: "Each export contains exactly the number of rows stated in the table, counted at the moment of export.",
-    howNhChecksIt: "We count the rows we received and compare. A mismatch is reported as a contradiction — this is the check that makes the attestation evidence rather than a courtesy.",
+    howNhChecksIt: "We count the rows we received and compare them with your number. A match shows the two things you sent us are consistent; it does NOT show the file is complete, because you send us both and could change both. A mismatch is reported as a contradiction.",
   }),
   claim({
     id: "COVERAGE_WINDOW_HONOURED",
@@ -205,6 +228,13 @@ export const ATTESTATION_CLAIMS: readonly AttestationClaimSpec[] = Object.freeze
     requirement: "6b · pseudonyms are not derived from the data",
     statement: "No identifier was replaced by a value derived from an amount, a date or a row position.",
     howNhChecksIt: "NOTHING in general. A pseudonym that happens to encode an amount is indistinguishable from an opaque one.",
+  }),
+  claim({
+    id: "EXPORT_IS_COMPLETE",
+    kind: "UNCORROBORATED_CLAIM",
+    requirement: "no rows were removed after the export was taken",
+    statement: "Neither export had rows removed, filtered out or held back after it was taken from the source system.",
+    howNhChecksIt: "NOTHING, and this is the one most worth understanding. The declaration and the file arrive together from the same party, so a row count that matches proves only that the two agree. Establishing completeness needs something we do not have: a record of what the source system actually held, made where you could not revise it.",
   }),
   claim({
     id: "FILES_CAME_FROM_STATED_SYSTEMS",
@@ -311,7 +341,12 @@ export function corroborateAttestation(
       bad.length === 0 ? "both exports were taken on or after their window closed" : bad.join("; "));
   }
 
-  // ── CORROBORATED · the pre-committed row count ──────────────────────────────────────────────────
+  // ── CORROBORATED · the declared row count AGREES WITH THE FILE WE RECEIVED ─────────────────────
+  //
+  // Not a pre-commitment and not a completeness check. Both artefacts arrive from the same party, so a
+  // match establishes only that they are consistent with each other. That still has value — an
+  // uncoordinated mismatch is the common real-world failure and refusing it costs nothing — and it
+  // establishes nothing against anyone willing to change both.
   {
     const parts: string[] = [];
     let contradicted = false;
@@ -332,7 +367,7 @@ export function corroborateAttestation(
         parts.push(`${label}: ${actual} rows, as declared`);
       }
     }
-    add("ROW_COUNT_PRECOMMITTED",
+    add("DECLARED_ROW_COUNT_AGREES",
       contradicted ? "CONTRADICTED" : uncheckable ? "NOT_CHECKABLE" : "PASS", parts.join("; "));
   }
 
@@ -426,17 +461,25 @@ export function corroborateAttestation(
   }
 
   // ── UNCORROBORATED · recorded, attributed, and never evidence for the rung ──────────────────────
-  for (const id of ["AMOUNTS_NOT_RECONSTRUCTED", "NO_DERIVED_IDENTIFIERS", "FILES_CAME_FROM_STATED_SYSTEMS"]) {
+  for (const id of ["AMOUNTS_NOT_RECONSTRUCTED", "NO_DERIVED_IDENTIFIERS", "FILES_CAME_FROM_STATED_SYSTEMS",
+    "EXPORT_IS_COMPLETE"]) {
+    // EXPORT_IS_COMPLETE has no field of its own, deliberately: there is no box to tick that would make
+    // it checkable, so it is reported as unestablished whatever the submission says. Giving it a boolean
+    // would invite the reading that ticking it achieved something.
     const asserted = id === "AMOUNTS_NOT_RECONSTRUCTED"
       ? attestation.expectationExport.amountsAndDatesNotReconstructed
         && attestation.billingExport.amountsAndDatesNotReconstructed
       : id === "NO_DERIVED_IDENTIFIERS"
         ? attestation.pseudonymisation.noIdentifierDerivedFromAmountDateOrPosition
-        : attestation.expectationExport.cameFromStatedSystem && attestation.billingExport.cameFromStatedSystem;
+        : id === "EXPORT_IS_COMPLETE"
+          ? false
+          : attestation.expectationExport.cameFromStatedSystem && attestation.billingExport.cameFromStatedSystem;
     add(id, "NOT_CHECKABLE",
-      asserted
-        ? "asserted by the data owner; NH performs no check and this does not raise authority"
-        : "NOT asserted by the data owner — recorded as such");
+      id === "EXPORT_IS_COMPLETE"
+        ? "NOT ESTABLISHED. The declaration and the file arrive together from the same party, so nothing here speaks to completeness. This does not raise authority and cannot be asserted into existence."
+        : asserted
+          ? "asserted by the data owner; NH performs no check and this does not raise authority"
+          : "NOT asserted by the data owner — recorded as such");
   }
 
   const frozen = Object.freeze(checks.map((c) => Object.freeze(c)));

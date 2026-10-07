@@ -13,11 +13,12 @@
 //   SOURCE_NATIVE       it is the SOURCE SYSTEM'S OWN identifier or value, not something NH or the
 //                       operator composed. Establishable from the contract: a field declared
 //                       source-native and carrying no NH-derived component.
-//   SOURCE_ATTESTED     the customer's data-owning ROLE declared the export's origin, method, window and
-//                       ROW COUNT before the result was known, and every claim NH can check against the
-//                       files agrees with them. Strictly stronger than SOURCE_NATIVE, because a trim or a
-//                       broken join would now be visible. Strictly weaker than AUTHORITY_VERIFIED,
-//                       because the party that wrote the attestation can revise it and the file together.
+//   SOURCE_ATTESTED     the customer's data-owning ROLE is on record as declaring each export's origin,
+//                       method, window and row count, and every claim NH can check agrees with the files.
+//                       Stronger than SOURCE_NATIVE because an accountable declarant exists at all and
+//                       because the two files are mutually consistent in ways the declaration does not
+//                       control. Weaker than AUTHORITY_VERIFIED because the declaration and the files
+//                       arrive together from the same party, so NOTHING here establishes completeness.
 //   AUTHORITY_VERIFIED  the fact is evidenced by a channel the BENEFICIARY CANNOT UNILATERALLY ALTER
 //
 // and one terminal state:
@@ -29,11 +30,21 @@
 // AUTHORITY_VERIFIED: the attestation is written by the submitting side, which is on the beneficiary side
 // of a larger recovery number — the Trust Invariant's standing test names the customer explicitly — and
 // this repository's one implementation of that rung (`server/services/sourceVerification.ts`) requires an
-// Ed25519 key the SOURCE SYSTEM holds and the submitter does not. It also cannot stay SOURCE_NATIVE,
-// whose own ceiling reason says NOTHING establishes that the bytes left the system unaltered: with a
-// pre-committed row count checked against the file, that sentence is no longer true. And the two may not
-// be collapsed, because the unavailable states stay DISTINGUISHABLE — collapsing hides which half is
-// missing, which is the only part of the answer that says what to go and get.
+// Ed25519 key the SOURCE SYSTEM holds and the submitter does not.
+//
+// It also cannot stay SOURCE_NATIVE, and the reason had to be CORRECTED. The first version argued
+// wrongly that a pre-committed row count made a later trim detectable; it does not, because the declaration and the file
+// arrive together from the same party. What survives that objection is narrower and real:
+//
+//   • an ACCOUNTABLE ROLE is on record, which nothing at SOURCE_NATIVE has at all;
+//   • the declaration is internally consistent with the files received;
+//   • the two files are MUTUALLY CONSISTENT IN WAYS THE DECLARATION DOES NOT CONTROL — the attestation
+//     never states the payer overlap or the obligation join, so NH derives both from the two exports
+//     independently. Defeating those means repairing the join itself across both files, not editing a
+//     number, which is a different and much larger thing to ask of a bad actor.
+//
+// And the two may not be collapsed, because the unavailable states stay DISTINGUISHABLE — collapsing
+// hides which half is missing, which is the only part of the answer that says what to go and get.
 //
 // IT IS DELIBERATELY NOT NAMED "VERIFIED_FOR_PILOT". A rung whose name contains VERIFIED gets quoted
 // without its qualifier, and this repository has already paid for that once: `settled_at` recorded a
@@ -94,17 +105,30 @@ export interface ProvenanceChannelSpec {
   readonly implemented: boolean;
   /** The highest rung this channel can establish. Only an unalterable channel may name AUTHORITY_VERIFIED. */
   readonly reaches: SourceFactAuthority;
+  /**
+   * WHAT THE SUBMITTING PARTY STILL CONTROLS once this channel has done its work. Structural rather than
+   * prose, because prose about a residual weakness can be rewritten into optimism and a required
+   * non-empty list cannot. A channel reaching AUTHORITY_VERIFIED must declare `[]` — that is what the
+   * rung means — and a channel reaching SOURCE_ATTESTED must declare what remains in the submitter's
+   * hands, which is why it stops where it stops.
+   */
+  readonly submitterStillControls: readonly string[];
 }
 
 export const PROVENANCE_CHANNELS: readonly ProvenanceChannelSpec[] = Object.freeze([
   Object.freeze({
     channel: "DATA_OWNER_ATTESTATION" as const,
     whatItWouldEstablish:
-      "That the customer's data-owning role committed to each export's origin, extraction method, coverage window and ROW COUNT before the result was known, and that every claim NH can check against the files agrees.",
+      "That the customer's data-owning role is on record as declaring each export's origin, extraction method, coverage window and row count, and that every claim NH can check agrees with the files received.",
     whyTheBeneficiaryCannotAlterIt:
-      "THEY PARTLY CAN, and that is why this channel reaches SOURCE_ATTESTED and never AUTHORITY_VERIFIED. What it does buy is real: a pre-committed row count makes a later trim visible, and a broken cross-file join makes independent pseudonymisation visible. What it cannot buy is the origin of the bytes, because the party that wrote the attestation can revise it and the file together.",
+      "THEY LARGELY CAN, which is why this channel reaches SOURCE_ATTESTED and never AUTHORITY_VERIFIED. The declaration and the files arrive together from the same party, so a matching row count shows the two are consistent and establishes NOTHING about completeness — an export with rows removed and a number adjusted to match reads as a perfect agreement. What survives is narrower: an accountable role exists at all, and the two files are mutually consistent in ways the declaration does not control, because the attestation never states the payer overlap or the obligation join and NH derives both independently.",
     implemented: true,
     reaches: "SOURCE_ATTESTED" as const,
+    submitterStillControls: Object.freeze([
+      "the declaration itself, which they write",
+      "the exported files, which they may alter before sending",
+      "whether rows were removed before export — nothing here can see it",
+    ]),
   }),
   Object.freeze({
     channel: "SIGNED_EXPORT" as const,
@@ -113,6 +137,7 @@ export const PROVENANCE_CHANNELS: readonly ProvenanceChannelSpec[] = Object.free
       "The signature is made by the source system's key, which the party assembling the submission does not hold. Editing a row invalidates it.",
     implemented: false,
     reaches: "AUTHORITY_VERIFIED" as const,
+    submitterStillControls: Object.freeze([]),
   }),
   Object.freeze({
     channel: "SYSTEM_OF_RECORD_ATTESTATION" as const,
@@ -122,9 +147,10 @@ export const PROVENANCE_CHANNELS: readonly ProvenanceChannelSpec[] = Object.free
     // one's guarantee.
     whatItWouldEstablish: "That the system of record ITSELF asserts this extract is its own complete statement for the period.",
     whyTheBeneficiaryCannotAlterIt:
-      "The attestation names the period and the row count before the result is known, so a later trim is detectable — the same pre-registration shape the admission bar uses.",
+      "The SYSTEM issues the attestation, so the submitter never holds it: it names the period and the row count in a form they cannot rewrite, and a later trim is therefore detectable — the pre-registration shape the admission bar uses. This is exactly the sentence DATA_OWNER_ATTESTATION may NOT borrow. There, the submitter writes the declaration and holds the file, so the same words would be false. The committed artefact must pass beyond the committer's reach for pre-registration to mean anything, and only this channel does that.",
     implemented: false,
     reaches: "AUTHORITY_VERIFIED" as const,
+    submitterStillControls: Object.freeze([]),
   }),
   Object.freeze({
     channel: "NH_PERFORMED_FETCH" as const,
@@ -132,6 +158,7 @@ export const PROVENANCE_CHANNELS: readonly ProvenanceChannelSpec[] = Object.free
     whyTheBeneficiaryCannotAlterIt: "There is no intermediate step in which a row can be changed.",
     implemented: false,
     reaches: "AUTHORITY_VERIFIED" as const,
+    submitterStillControls: Object.freeze([]),
   }),
   Object.freeze({
     channel: "THIRD_PARTY_RECONCILIATION" as const,
@@ -139,6 +166,7 @@ export const PROVENANCE_CHANNELS: readonly ProvenanceChannelSpec[] = Object.free
     whyTheBeneficiaryCannotAlterIt: "The third party is not party to the recovery claim.",
     implemented: false,
     reaches: "AUTHORITY_VERIFIED" as const,
+    submitterStillControls: Object.freeze([]),
   }),
 ]);
 
@@ -218,7 +246,7 @@ export function assessSourceFactAuthority(input: {
       return Object.freeze({
         reached: "SOURCE_ATTESTED",
         ceilingReason:
-          `the data-owning role ${input.attestation.dataOwnerRole} declared each export's origin, method, window and row count before the result was known, and every claim NH can check agrees with the files. Authority is still UNVERIFIED and every level resting on it is PROVISIONAL: the party that wrote the attestation can revise it and the file together, so this evidences care and not independence.`,
+          `the data-owning role ${input.attestation.dataOwnerRole} is on record declaring each export's origin, method, window and row count, and every claim NH can check agrees with the files received. Authority is still UNVERIFIED and every level resting on it is PROVISIONAL. The declaration and the files came together from the same party, so this establishes an accountable declarant and internal consistency — NOT that either export is the complete, untrimmed output of the system named.`,
         wouldBeLiftedBy: toVerified,
       });
     }

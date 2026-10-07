@@ -258,7 +258,9 @@ describe("4 · authority · nothing may vouch for itself", () => {
     const attested = PROVENANCE_CHANNELS.find((c) => c.implemented)!;
     expect(attested.channel).toBe("DATA_OWNER_ATTESTATION");
     expect(attested.reaches).toBe("SOURCE_ATTESTED");
-    expect(attested.whyTheBeneficiaryCannotAlterIt).toContain("THEY PARTLY CAN");
+    expect(attested.whyTheBeneficiaryCannotAlterIt).toContain("THEY LARGELY CAN");
+    // And the residual weakness is STRUCTURAL rather than prose, so it cannot be written into optimism.
+    expect(attested.submitterStillControls.length).toBeGreaterThan(0);
   });
 
   it("even a fully capable L3 pair is PROVISIONAL — a level is about shape, not trust", () => {
