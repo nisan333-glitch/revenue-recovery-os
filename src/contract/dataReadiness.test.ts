@@ -234,14 +234,31 @@ describe("3 · NO MONEY may appear in a readiness report", () => {
 });
 
 describe("4 · authority · nothing may vouch for itself", () => {
-  it("nothing in this slice reaches AUTHORITY_VERIFIED", () => {
+  it("with NO attestation the answer is exactly what it has always been", () => {
     const { expectation, settlement } = capable();
     const r = evaluateDataReadiness(expectation, settlement);
     expect(r.authority.reached).toBe("SOURCE_NATIVE");
     expect(r.provisional).toBe(true);
     expect(r.authority.ceilingReason).toContain("no implemented provenance channel");
     expect(r.authority.wouldBeLiftedBy.length).toBeGreaterThan(0);
-    for (const c of PROVENANCE_CHANNELS) expect(c.implemented).toBe(false);
+    expect(r.attestation).toBeNull();
+  });
+
+  it("NOTHING reaches AUTHORITY_VERIFIED — and the invariant is about REACH, not about being unbuilt", () => {
+    // The first form of this test asserted that NO channel is implemented. That became false the moment
+    // the attestation channel shipped, and it was the wrong property anyway: what protects the rung is
+    // that no channel CAPABLE of reaching AUTHORITY_VERIFIED exists here. A weak channel being built is
+    // not a weakening; a weak channel claiming a strong rung would be.
+    for (const c of PROVENANCE_CHANNELS) {
+      if (c.reaches === "AUTHORITY_VERIFIED") expect(c.implemented, c.channel).toBe(false);
+    }
+    const verifiedReachable = PROVENANCE_CHANNELS.filter((c) => c.implemented && c.reaches === "AUTHORITY_VERIFIED");
+    expect(verifiedReachable).toEqual([]);
+    // And the one implemented channel is honest about why it cannot reach it.
+    const attested = PROVENANCE_CHANNELS.find((c) => c.implemented)!;
+    expect(attested.channel).toBe("DATA_OWNER_ATTESTATION");
+    expect(attested.reaches).toBe("SOURCE_ATTESTED");
+    expect(attested.whyTheBeneficiaryCannotAlterIt).toContain("THEY PARTLY CAN");
   });
 
   it("even a fully capable L3 pair is PROVISIONAL — a level is about shape, not trust", () => {
@@ -264,7 +281,13 @@ describe("4 · authority · nothing may vouch for itself", () => {
   });
 
   it("the ladder is ordered and AUTHORITY_UNVERIFIED is outside it, not the bottom rung", () => {
-    expect(AUTHORITY_LADDER).toEqual(["PRESENT", "VALID_FORMAT", "SOURCE_NATIVE", "AUTHORITY_VERIFIED"]);
+    expect(AUTHORITY_LADDER).toEqual([
+      "PRESENT", "VALID_FORMAT", "SOURCE_NATIVE", "SOURCE_ATTESTED", "AUTHORITY_VERIFIED",
+    ]);
+    // SOURCE_ATTESTED sits BELOW AUTHORITY_VERIFIED, which is what keeps `provisional` true for it
+    // without any change to that predicate.
+    expect(AUTHORITY_LADDER.indexOf("SOURCE_ATTESTED"))
+      .toBeLessThan(AUTHORITY_LADDER.indexOf("AUTHORITY_VERIFIED"));
     expect(AUTHORITY_LADDER).not.toContain("AUTHORITY_UNVERIFIED");
     expect(assessSourceFactAuthority({ present: false, validFormat: false, declaredSourceNative: false }).reached)
       .toBe("AUTHORITY_UNVERIFIED");

@@ -95,6 +95,11 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
       "scripts/pilot-intake/verify-package.ts",
       "src/contract/dataReadiness.test.ts",
       "src/contract/dataReadiness.ts",
+      // The provenance attestation's corroborator and its falsifiers: they read the two VALIDATIONS to
+      // check a declared row count, coverage window and join against what the files actually contain.
+      // Readiness path, pure, and they compute no money.
+      "src/contract/provenanceAttestation.test.ts",
+      "src/contract/provenanceAttestation.ts",
     ]);
   });
 

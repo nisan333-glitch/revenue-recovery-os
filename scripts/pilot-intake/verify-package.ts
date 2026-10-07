@@ -21,6 +21,7 @@ import {
 } from "../../src/contract/billingExtract";
 import { validateBillingExtract, type RawBillingRow } from "../../src/contract/billingExtractValidator";
 import { evaluateDataReadiness } from "../../src/contract/dataReadiness";
+import { ATTESTATION_CLAIMS } from "../../src/contract/provenanceAttestation";
 import { EXPECTATION_EXAMPLE, BILLING_EXAMPLE, UNKNOWN_AMOUNT_OBLIGATION } from "./examples";
 
 const DIR = "docs/pilot-intake";
@@ -470,6 +471,52 @@ check(readiness.billing.creditRows === 1, "the credit is recognised as a credit,
         `${f} · does not call Export B a settlement or payments export`);
     }
   }
+}
+
+// ── THE ATTESTATION FORM ────────────────────────────────────────────────────────────────────────
+//
+// The form is what a data owner signs, so the risk is specific: a signature collected against work we do
+// not do. The guards therefore check the opposite direction from everywhere else — not only that the
+// document says what the contract says, but that it ADMITS what the contract cannot check.
+{
+  const att = read("ATTESTATION.md");
+  // Every governed claim appears verbatim. A form that paraphrased one would be collecting agreement to
+  // a sentence the checks do not implement.
+  for (const c of ATTESTATION_CLAIMS) {
+    check(att.includes(c.statement), `ATTESTATION.md · renders the claim ${c.id} verbatim from the contract`);
+    check(att.includes(c.howNhChecksIt), `ATTESTATION.md · states what NH does about ${c.id}`);
+  }
+  // The three it cannot check must be segregated AND must say NOTHING, in those words.
+  const uncheckable = ATTESTATION_CLAIMS.filter((c) => c.kind === "UNCORROBORATED_CLAIM");
+  check(uncheckable.length === 3, "exactly three claims are declared uncheckable", String(uncheckable.length));
+  check(/## What you are asserting, and we cannot check/.test(att),
+    "ATTESTATION.md · the uncheckable claims have their own named section");
+  for (const c of uncheckable) {
+    const after = att.slice(att.indexOf("and we cannot check"));
+    check(after.includes(c.statement), `ATTESTATION.md · ${c.id} appears in the cannot-check section`);
+  }
+  // It must never promise verification, and the refusal must be explicit rather than merely absent.
+  check(/does not make the data independently verified/.test(att),
+    "ATTESTATION.md · says in terms that this does not make the data verified");
+  check(/stays marked provisional/i.test(att),
+    "...and that everything reported stays provisional until a real channel exists");
+  check(!/AUTHORITY_VERIFIED|VERIFIED_FOR_PILOT/.test(att),
+    "ATTESTATION.md · names no internal authority state, and promises no verified one");
+  // The sending of the exports must not be gated on the form — the owner's explicit constraint.
+  check(/You can send the exports without this form/.test(att),
+    "ATTESTATION.md · states that the exports may be sent without it");
+  // A ROLE, never a person. Minimization is the reason, and the form says so.
+  // Asserted on the CONTRACT and not on the page's wording. The first form matched a literal phrase that
+  // the generator then stopped using, so the guard failed while the property it cared about still held.
+  const ownerSpec = ATTESTATION_CLAIMS.find((c) => c.id === "OWNER_ROLE")!;
+  check(/\brole\b/i.test(ownerSpec.howNhChecksIt) && /not a person/i.test(ownerSpec.howNhChecksIt),
+    "the contract itself says a ROLE is asked for and a person is not", ownerSpec.howNhChecksIt);
+  check(att.includes(ownerSpec.howNhChecksIt),
+    "ATTESTATION.md · renders that sentence, so the reason travels with the request");
+  for (const personal of ["full name", "your name", "signature of", "individual's name", "email"]) {
+    check(!new RegExp(personal, "i").test(att), `ATTESTATION.md · does not ask for "${personal}"`);
+  }
+  check(read("README.md").includes("ATTESTATION.md"), "README.md · the index lists the attestation form");
 }
 
 // ── report ──────────────────────────────────────────────────────────────────────────────────────

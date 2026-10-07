@@ -273,6 +273,7 @@ process.stdout.write(`  ${OUT} · ${lines.length} lines\n`);
 
 import { EXPECTATION_EXTRACT_COLUMNS } from "../../src/contract/expectationExtract";
 import { BILLING_EXTRACT_COLUMNS } from "../../src/contract/billingExtract";
+import { ATTESTATION_CLAIMS, EXTRACTION_METHODS } from "../../src/contract/provenanceAttestation";
 import { EXPECTATION_EXAMPLE, BILLING_EXAMPLE } from "./examples";
 
 const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
@@ -654,10 +655,100 @@ it would produce confident findings that are wrong.
 | \`PSEUDONYMIZATION_GUIDE.md\` | how to anonymise without breaking the join |
 | \`PRE_SUBMISSION_CHECKLIST.md\` | 13 checks before you send |
 | \`WHAT_NH_WILL_DO.md\` | what we may identify, and what we will not claim |
+| \`ATTESTATION.md\` | one page to send **with** the exports, so we can say where they came from |
 | \`*_template.csv\` | headers only, ready to fill |
 | \`*_example.csv\` | small fictional examples of the tricky cases |
 
 Questions on any single field are welcome and usually faster than guessing.
 `);
+
+// ── ATTESTATION.md · the eleventh artefact ────────────────────────────────────────────────────────
+//
+// GENERATED FROM `ATTESTATION_CLAIMS`, so the form a data owner signs and the checks NH runs cannot
+// drift apart. Each claim prints its own statement and, beside it, what NH does about it — including the
+// three where the honest answer is "nothing". A form that hid that distinction would collect a signature
+// against work we never do.
+{
+  const att: string[] = [];
+  const a = (x = "") => att.push(x);
+  const of = (id: string) => ATTESTATION_CLAIMS.find((c) => c.id === id)!;
+
+  a("# Export attestation");
+  a();
+  a("One page. It is what lets us say more about your data than *\"the columns are the right shape\"* —");
+  a("and it is deliberately short, because a long form gets delegated and a delegated form gets guessed at.");
+  a();
+  a("**Please do not send this before the exports, or after them. Send it with them.** The whole value is");
+  a("that the row counts below were written down *before* anyone saw a result.");
+  a();
+  a("## Who is signing");
+  a();
+  a(`**${of("OWNER_ROLE").statement}**`);
+  a();
+  a("| | |");
+  a("|---|---|");
+  a("| Role or team | |");
+  a("| Date | |");
+  a();
+  // The governed sentence, not a hand-written paraphrase of it. The first form of this section wrote its
+  // own version and the verifier caught that the contract's text was nowhere on the page.
+  a(`> ${of("OWNER_ROLE").howNhChecksIt}`);
+  a("> If your process needs a named signatory, that belongs in the contract, not in the data.");
+  a();
+  a("## About each export");
+  a();
+  a("Fill this in **twice** — once for Export A (expectation / contract) and once for Export B (billing).");
+  a();
+  a("| | Export A | Export B |");
+  a("|---|---|---|");
+  a("| System it came from | | |");
+  a("| How it was produced | | |");
+  a("| Date taken (`YYYY-MM-DD`) | | |");
+  a("| Window it covers, from | | |");
+  a("| Window it covers, to | | |");
+  a("| **Number of rows** | | |");
+  a();
+  a(`**How it was produced** — one of: ${EXTRACTION_METHODS.map((m) => `\`${m}\``).join(" · ")}.`);
+  a("If `other_described`, add one line saying what it was. We ask because a warehouse view means a");
+  a("transformation layer sits between the source system and the file, which changes what we can conclude.");
+  a();
+  a("> **Why the row count is the important line.** It is the only entry here that makes a later change");
+  a("> visible. We compare it against the rows we actually receive, so an export quietly shortened after");
+  a("> the fact no longer matches its own declaration. Everything else on this form is either shape or");
+  a("> assertion; this one is evidence.");
+  a();
+  a("## What you are confirming");
+  a();
+  for (const kind of ["WELL_FORMED", "CORROBORATED"] as const) {
+    for (const c of ATTESTATION_CLAIMS.filter((x) => x.kind === kind && x.id !== "OWNER_ROLE")) {
+      a(`- [ ] ${c.statement}`);
+      a(`      *What we do with it:* ${c.howNhChecksIt}`);
+    }
+  }
+  a();
+  a("## What you are asserting, and we cannot check");
+  a();
+  a("These three matter and we have no way to test them. We record them against the role above and they");
+  a("**do not raise how far we say your data can be relied on**. Saying so is the point: a form that");
+  a("implied we had checked these would be collecting a signature against work we never do.");
+  a();
+  for (const c of ATTESTATION_CLAIMS.filter((x) => x.kind === "UNCORROBORATED_CLAIM")) {
+    a(`- [ ] ${c.statement}`);
+    a(`      *What we do with it:* ${c.howNhChecksIt}`);
+  }
+  a();
+  a("## What this does and does not buy");
+  a();
+  a("**Does:** we can report that your exports were declared and that everything we can check agrees with");
+  a("the declaration. If a row count or a join disagrees, we tell you rather than proceeding quietly.");
+  a();
+  a("**Does not:** it does not make the data independently verified, and we will not describe it that way.");
+  a("Only a signed export from the source system, or a connection where we read the data ourselves, could");
+  a("do that — and neither exists yet. **Everything we report stays marked provisional until it does.**");
+  a();
+  a("You can send the exports without this form. We will still tell you what they support; we will simply");
+  a("be able to say less about where they came from.");
+  write("ATTESTATION.md", att.join("\n") + "\n");
+}
 
 process.stdout.write(`\npilot intake package written to ${DIR}\n`);

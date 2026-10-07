@@ -215,8 +215,9 @@ their identifiers are your systems' own; we cannot yet verify that the bytes lef
 unaltered. Until one of the following exists, readiness is a statement about **shape**, never about
 **trustworthiness**:
 
+* **DATA_OWNER_ATTESTATION** — That the customer's data-owning role committed to each export's origin, extraction method, coverage window and ROW COUNT before the result was known, and that every claim NH can check against the files agrees. *(THEY PARTLY CAN, and that is why this channel reaches SOURCE_ATTESTED and never AUTHORITY_VERIFIED. What it does buy is real: a pre-committed row count makes a later trim visible, and a broken cross-file join makes independent pseudonymisation visible. What it cannot buy is the origin of the bytes, because the party that wrote the attestation can revise it and the file together.)*
 * **SIGNED_EXPORT** — That these bytes left the named source system unaltered. *(The signature is made by the source system's key, which the party assembling the submission does not hold. Editing a row invalidates it.)*
-* **SYSTEM_OF_RECORD_ATTESTATION** — That the system of record asserts this extract is its own complete statement for the period. *(The attestation names the period and the row count before the result is known, so a later trim is detectable — the same pre-registration shape the admission bar uses.)*
+* **SYSTEM_OF_RECORD_ATTESTATION** — That the system of record ITSELF asserts this extract is its own complete statement for the period. *(The attestation names the period and the row count before the result is known, so a later trim is detectable — the same pre-registration shape the admission bar uses.)*
 * **NH_PERFORMED_FETCH** — That NH read the facts from the source system itself rather than receiving a file. *(There is no intermediate step in which a row can be changed.)*
 * **THIRD_PARTY_RECONCILIATION** — That a settled amount agrees with an independent record such as a payment processor or bank. *(The third party is not party to the recovery claim.)*
 

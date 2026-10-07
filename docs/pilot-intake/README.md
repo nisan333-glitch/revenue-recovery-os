@@ -68,6 +68,7 @@ it would produce confident findings that are wrong.
 | `PSEUDONYMIZATION_GUIDE.md` | how to anonymise without breaking the join |
 | `PRE_SUBMISSION_CHECKLIST.md` | 13 checks before you send |
 | `WHAT_NH_WILL_DO.md` | what we may identify, and what we will not claim |
+| `ATTESTATION.md` | one page to send **with** the exports, so we can say where they came from |
 | `*_template.csv` | headers only, ready to fill |
 | `*_example.csv` | small fictional examples of the tricky cases |
 

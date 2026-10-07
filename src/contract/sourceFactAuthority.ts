@@ -13,12 +13,32 @@
 //   SOURCE_NATIVE       it is the SOURCE SYSTEM'S OWN identifier or value, not something NH or the
 //                       operator composed. Establishable from the contract: a field declared
 //                       source-native and carrying no NH-derived component.
+//   SOURCE_ATTESTED     the customer's data-owning ROLE declared the export's origin, method, window and
+//                       ROW COUNT before the result was known, and every claim NH can check against the
+//                       files agrees with them. Strictly stronger than SOURCE_NATIVE, because a trim or a
+//                       broken join would now be visible. Strictly weaker than AUTHORITY_VERIFIED,
+//                       because the party that wrote the attestation can revise it and the file together.
 //   AUTHORITY_VERIFIED  the fact is evidenced by a channel the BENEFICIARY CANNOT UNILATERALLY ALTER
 //
 // and one terminal state:
 //
 //   AUTHORITY_UNVERIFIED  the rung above could not be reached. Stated explicitly, never implied by
 //                         silence, and never rounded up to the rung below it.
+//
+// WHY SOURCE_ATTESTED IS A RUNG AND NOT A ROUNDING, proved rather than asserted. It cannot be
+// AUTHORITY_VERIFIED: the attestation is written by the submitting side, which is on the beneficiary side
+// of a larger recovery number — the Trust Invariant's standing test names the customer explicitly — and
+// this repository's one implementation of that rung (`server/services/sourceVerification.ts`) requires an
+// Ed25519 key the SOURCE SYSTEM holds and the submitter does not. It also cannot stay SOURCE_NATIVE,
+// whose own ceiling reason says NOTHING establishes that the bytes left the system unaltered: with a
+// pre-committed row count checked against the file, that sentence is no longer true. And the two may not
+// be collapsed, because the unavailable states stay DISTINGUISHABLE — collapsing hides which half is
+// missing, which is the only part of the answer that says what to go and get.
+//
+// IT IS DELIBERATELY NOT NAMED "VERIFIED_FOR_PILOT". A rung whose name contains VERIFIED gets quoted
+// without its qualifier, and this repository has already paid for that once: `settled_at` recorded a
+// charge being raised and was read as a payment until it was renamed. The name says who acted — the
+// source side attested — and claims nothing about verification.
 //
 // THE RULE THAT DOES THE WORK:
 //
@@ -27,30 +47,37 @@
 //   `verified`, `trusted` or `signed_by` arriving in a request is the beneficiary vouching for
 //   themselves, which Trust Invariant rules 1 and 8 forbid outright.
 //
-// WHERE THIS SLICE ACTUALLY STOPS, stated rather than aspired to: **no fact can reach
-// AUTHORITY_VERIFIED today**, because no provenance channel exists — no signed export, no
-// system-of-record attestation, no direct fetch NH performed itself. The ceiling is therefore
-// SOURCE_NATIVE + AUTHORITY_UNVERIFIED, every readiness level that depends on it is reported
-// PROVISIONAL, and the path FAILS CLOSED at that named state. This is the capability-reporting rule one
-// layer out: a layer may not declare what it cannot establish.
+// WHERE THIS STOPS, stated rather than aspired to: **no fact can reach AUTHORITY_VERIFIED**, because no
+// channel the beneficiary cannot alter exists here — no signed export, no machine-issued system-of-record
+// attestation, no direct fetch NH performed itself. The ceiling is SOURCE_ATTESTED when an attestation
+// accompanies the submission and corroborates, SOURCE_NATIVE when it does not, and in BOTH cases
+// authority is unverified and every readiness level resting on it is reported PROVISIONAL. The path FAILS
+// CLOSED at the named state. This is the capability-reporting rule one layer out: a layer may not declare
+// what it cannot establish.
+
+import type { AttestationCorroboration } from "./provenanceAttestation";
 
 export type SourceFactAuthority =
   | "PRESENT"
   | "VALID_FORMAT"
   | "SOURCE_NATIVE"
+  | "SOURCE_ATTESTED"
   | "AUTHORITY_VERIFIED"
   | "AUTHORITY_UNVERIFIED";
 
 /** Ordered weakest to strongest. `AUTHORITY_UNVERIFIED` is terminal and deliberately outside the order. */
 export const AUTHORITY_LADDER: readonly SourceFactAuthority[] = Object.freeze([
-  "PRESENT", "VALID_FORMAT", "SOURCE_NATIVE", "AUTHORITY_VERIFIED",
+  "PRESENT", "VALID_FORMAT", "SOURCE_NATIVE", "SOURCE_ATTESTED", "AUTHORITY_VERIFIED",
 ]);
 
 /**
  * The channels that COULD establish authority, declared so the gap has a shape rather than being a
- * vague future. None is implemented, and `implemented: false` is what the ceiling test reads.
+ * vague future. Exactly ONE is implemented — DATA_OWNER_ATTESTATION, which reaches SOURCE_ATTESTED —
+ * and the other four remain the only routes to AUTHORITY_VERIFIED. `reaches` is what the ceiling test
+ * reads, because "implemented" alone would let a weak channel imply a strong rung.
  */
 export type ProvenanceChannel =
+  | "DATA_OWNER_ATTESTATION"
   | "SIGNED_EXPORT"
   | "SYSTEM_OF_RECORD_ATTESTATION"
   | "NH_PERFORMED_FETCH"
@@ -59,36 +86,59 @@ export type ProvenanceChannel =
 export interface ProvenanceChannelSpec {
   readonly channel: ProvenanceChannel;
   readonly whatItWouldEstablish: string;
+  /**
+   * Why the beneficiary cannot alter it — and for the ONE implemented channel, the honest admission that
+   * they partly can. A channel that reaches AUTHORITY_VERIFIED must answer this with no caveat.
+   */
   readonly whyTheBeneficiaryCannotAlterIt: string;
-  readonly implemented: false;
+  readonly implemented: boolean;
+  /** The highest rung this channel can establish. Only an unalterable channel may name AUTHORITY_VERIFIED. */
+  readonly reaches: SourceFactAuthority;
 }
 
 export const PROVENANCE_CHANNELS: readonly ProvenanceChannelSpec[] = Object.freeze([
+  Object.freeze({
+    channel: "DATA_OWNER_ATTESTATION" as const,
+    whatItWouldEstablish:
+      "That the customer's data-owning role committed to each export's origin, extraction method, coverage window and ROW COUNT before the result was known, and that every claim NH can check against the files agrees.",
+    whyTheBeneficiaryCannotAlterIt:
+      "THEY PARTLY CAN, and that is why this channel reaches SOURCE_ATTESTED and never AUTHORITY_VERIFIED. What it does buy is real: a pre-committed row count makes a later trim visible, and a broken cross-file join makes independent pseudonymisation visible. What it cannot buy is the origin of the bytes, because the party that wrote the attestation can revise it and the file together.",
+    implemented: true,
+    reaches: "SOURCE_ATTESTED" as const,
+  }),
   Object.freeze({
     channel: "SIGNED_EXPORT" as const,
     whatItWouldEstablish: "That these bytes left the named source system unaltered.",
     whyTheBeneficiaryCannotAlterIt:
       "The signature is made by the source system's key, which the party assembling the submission does not hold. Editing a row invalidates it.",
-    implemented: false as const,
+    implemented: false,
+    reaches: "AUTHORITY_VERIFIED" as const,
   }),
   Object.freeze({
     channel: "SYSTEM_OF_RECORD_ATTESTATION" as const,
-    whatItWouldEstablish: "That the system of record asserts this extract is its own complete statement for the period.",
+    // NOT the same channel as DATA_OWNER_ATTESTATION, and kept separate on purpose: here the SYSTEM
+    // asserts it, machine-issued, which is why this one can reach AUTHORITY_VERIFIED and a person's
+    // declaration about the system cannot. Collapsing them would let the weaker one wear the stronger
+    // one's guarantee.
+    whatItWouldEstablish: "That the system of record ITSELF asserts this extract is its own complete statement for the period.",
     whyTheBeneficiaryCannotAlterIt:
       "The attestation names the period and the row count before the result is known, so a later trim is detectable — the same pre-registration shape the admission bar uses.",
-    implemented: false as const,
+    implemented: false,
+    reaches: "AUTHORITY_VERIFIED" as const,
   }),
   Object.freeze({
     channel: "NH_PERFORMED_FETCH" as const,
     whatItWouldEstablish: "That NH read the facts from the source system itself rather than receiving a file.",
     whyTheBeneficiaryCannotAlterIt: "There is no intermediate step in which a row can be changed.",
-    implemented: false as const,
+    implemented: false,
+    reaches: "AUTHORITY_VERIFIED" as const,
   }),
   Object.freeze({
     channel: "THIRD_PARTY_RECONCILIATION" as const,
     whatItWouldEstablish: "That a settled amount agrees with an independent record such as a payment processor or bank.",
     whyTheBeneficiaryCannotAlterIt: "The third party is not party to the recovery claim.",
-    implemented: false as const,
+    implemented: false,
+    reaches: "AUTHORITY_VERIFIED" as const,
   }),
 ]);
 
@@ -118,9 +168,19 @@ export function assessSourceFactAuthority(input: {
   readonly validFormat: boolean;
   /** Declared by the CONTRACT, not by the caller: is this field the source system's own value? */
   readonly declaredSourceNative: boolean;
-  /** True only if some implemented provenance channel evidenced it. Always false in this slice. */
+  /** True only if some channel that REACHES AUTHORITY_VERIFIED evidenced it. Nothing can set this yet. */
   readonly provenanceEstablished?: boolean;
+  /**
+   * The corroboration NH COMPUTED from the files, never a flag a caller set. The whole defence against
+   * self-vouching is this asymmetry: the caller supplies a DECLARATION, and the layer above derives this
+   * object from the declaration and the data before calling here.
+   */
+  readonly attestation?: AttestationCorroboration;
 }): AuthorityAssessment {
+  /** Channels that could raise whatever rung we end up reporting. */
+  const toVerified = Object.freeze(
+    PROVENANCE_CHANNELS.filter((c) => c.reaches === "AUTHORITY_VERIFIED").map((c) => c.channel),
+  );
   const lifted = Object.freeze(PROVENANCE_CHANNELS.filter((c) => !c.implemented).map((c) => c.channel));
   if (!input.present) {
     return Object.freeze({
@@ -150,10 +210,30 @@ export function assessSourceFactAuthority(input: {
       wouldBeLiftedBy: Object.freeze([]),
     });
   }
+  // AN ATTESTATION THAT CONTRADICTS THE FILES IS WORSE THAN NO ATTESTATION, so it does not merely fail to
+  // lift the rung: the contradiction is named in the ceiling reason. Silently falling back to
+  // SOURCE_NATIVE would discard the most interesting thing NH learned.
+  if (input.attestation !== undefined) {
+    if (input.attestation.allRungBearingClaimsPassed) {
+      return Object.freeze({
+        reached: "SOURCE_ATTESTED",
+        ceilingReason:
+          `the data-owning role ${input.attestation.dataOwnerRole} declared each export's origin, method, window and row count before the result was known, and every claim NH can check agrees with the files. Authority is still UNVERIFIED and every level resting on it is PROVISIONAL: the party that wrote the attestation can revise it and the file together, so this evidences care and not independence.`,
+        wouldBeLiftedBy: toVerified,
+      });
+    }
+    return Object.freeze({
+      reached: "SOURCE_NATIVE",
+      ceilingReason: input.attestation.contradictions.length > 0
+        ? `an attestation accompanied the submission and CONTRADICTS the files on: ${input.attestation.contradictions.join(", ")}. That is worse than no attestation, and no implemented provenance channel evidences these bytes — authority is UNVERIFIED and every level resting on it is PROVISIONAL.`
+        : `an attestation accompanied the submission but a claim NH must check could not be checked, so it fails closed. No implemented provenance channel evidences these bytes — authority is UNVERIFIED and every level resting on it is PROVISIONAL.`,
+      wouldBeLiftedBy: lifted,
+    });
+  }
   return Object.freeze({
     reached: "SOURCE_NATIVE",
     ceilingReason:
-      "no implemented provenance channel evidences these bytes. The file is the source system's own shape and values as far as NH can check, and NOTHING establishes that it left that system unaltered — so authority is UNVERIFIED and every level resting on it is PROVISIONAL.",
+      "no attestation accompanied the submission and no implemented provenance channel evidences these bytes. The file is the source system's own shape and values as far as NH can check, and NOTHING establishes that it left that system unaltered — so authority is UNVERIFIED and every level resting on it is PROVISIONAL.",
     wouldBeLiftedBy: lifted,
   });
 }

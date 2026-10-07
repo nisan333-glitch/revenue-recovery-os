@@ -22,8 +22,19 @@ import {
   assessSourceFactAuthority, declaresOwnAuthority,
   type AuthorityAssessment,
 } from "./sourceFactAuthority";
+import {
+  corroborateAttestation, type AttestationCheck, type ProvenanceAttestation,
+} from "./provenanceAttestation";
 
 /**
+ * `rdy-2026.2` because a new authority state is genuinely REACHABLE: a submission accompanied by a
+ * corroborating attestation now reports SOURCE_ATTESTED where it previously reported SOURCE_NATIVE.
+ * That is a behavioural difference, unlike the rename below, which moved names and nothing else.
+ *
+ * The SCHEME stays `-v2`. The report gains an optional `attestation` summary, and this repository's
+ * precedent is that a scheme id moves on a BREAKING shape change — expectation extract 1.0.0 → 1.1.0
+ * added a per-unit declaration without moving its scheme. An additive field is not a break.
+ *
  * `-v2` because the report's SHAPE moved: `settlement` became `billing` when
  * `nh.settlement-extract@1.0.0` was retired in favour of `nh.billing-extract@1.0.0`. A reported key is
  * part of the shape, and a surface that keeps naming a thing it no longer is was the `coverage.event`
@@ -34,7 +45,7 @@ import {
  * defect, and it would force a re-reading of every report to express a dependency that does not exist.
  */
 export const DATA_READINESS_SCHEME = "nh-customer-data-readiness-v2";
-export const DATA_READINESS_METHOD_VERSION = "rdy-2026.1";
+export const DATA_READINESS_METHOD_VERSION = "rdy-2026.2";
 
 /**
  * Ordered. Each level requires everything below it; none may be reported without the level beneath.
@@ -129,6 +140,18 @@ export interface ReadinessReport {
   /** What a non-zero dangling count means, so a reader never has to infer it. Null when zero. */
   readonly danglingObligationRefNote: string | null;
   readonly currencyCompatible: boolean;
+  /**
+   * Present only when an attestation accompanied the submission. It carries COUNTS and per-claim states
+   * and no money — the no-money guarantee covers it, and the same structural test walks it.
+   */
+  readonly attestation: {
+    readonly dataOwnerRole: string;
+    readonly checks: readonly AttestationCheck[];
+    /** Claims where the declaration and the files disagree. Reported first because they outrank a pass. */
+    readonly contradictions: readonly string[];
+    /** Recorded, attributed, and explicitly not evidence for the rung. */
+    readonly uncorroboratedClaims: readonly string[];
+  } | null;
   readonly capabilities: readonly CapabilityReadiness[];
   readonly blocked: readonly BlockedCapability[];
   readonly claimBoundary: {
@@ -161,15 +184,24 @@ export function evaluateDataReadiness(
   expectation: ExpectationExtractValidation,
   billing: BillingExtractValidation,
   submission: Readonly<Record<string, unknown>> = {},
+  attestation?: ProvenanceAttestation,
 ): ReadinessReport {
   const refusedSelfAssertedAuthority = declaresOwnAuthority(submission);
 
-  // AUTHORITY FIRST, and it gates what any level may be relied on for. Nothing in this slice can reach
+  // THE ASYMMETRY THAT DEFENDS AGAINST SELF-VOUCHING. The caller may hand over a DECLARATION; it may not
+  // hand over a verdict about that declaration. So the corroboration is computed HERE, from the
+  // declaration and the two validations, and only the computed object reaches the authority assessment.
+  const corroboration = attestation === undefined
+    ? undefined
+    : corroborateAttestation(attestation, expectation, billing);
+
+  // AUTHORITY FIRST, and it gates what any level may be relied on for. Nothing can reach
   // AUTHORITY_VERIFIED: `provenanceEstablished` is not even accepted from the caller.
   const authority = assessSourceFactAuthority({
     present: expectation.usable && billing.usable,
     validFormat: expectation.usable && billing.usable,
     declaredSourceNative: true, // both contracts declare every field source-observable
+    attestation: corroboration,
   });
   const provisional = authority.reached !== "AUTHORITY_VERIFIED";
 
@@ -357,6 +389,12 @@ export function evaluateDataReadiness(
     danglingObligationRefNote: danglingObligationRefs === 0 ? null
       : `${danglingObligationRefs} billing line(s) name an obligation that is not in the accepted expectation population, so those units cannot be joined. This does NOT make reconciliation impossible for the rest: the affected units are reported and excluded, never guessed at. See expectation.rejectionCodes for why those obligations were not accepted.`,
     currencyCompatible,
+    attestation: corroboration === undefined ? null : Object.freeze({
+      dataOwnerRole: corroboration.dataOwnerRole,
+      checks: corroboration.checks,
+      contradictions: corroboration.contradictions,
+      uncorroboratedClaims: corroboration.uncorroboratedClaims,
+    }),
     capabilities,
     blocked: Object.freeze(blocked),
     claimBoundary: Object.freeze({
