@@ -1006,6 +1006,62 @@ exist, or the package could rot with nothing noticing.
 `expectation extract 1.1.0` / `settlement extract 1.0.0` / contract **2.0.0** unmoved. Validation only: no
 production reconciliation, no multi-extract identity, no API, no UI, no customer data.
 
+**Customer-package semantic audit (2026-10-07).** An independent read of the GENERATED artefacts found
+three contradictions that **every existing check had passed** — 55/55 package checks, 25/25 control, CI
+green. The lesson is the slice's main output:
+
+> **Proving a generated document matches its specs is a different claim from the document being
+> internally coherent.** A generator can render two governed facts that are each true at their own layer
+> and contradict each other on the page. A formal tier is a statement about what the VALIDATOR rejects; a
+> capability is a statement about what the EVALUATOR can then do; rendering the first and calling it the
+> answer is how a minimal ask stops being sufficient for what it promises.
+
+**Defect 1 · requested and stopped at once.** The request rendered `STOPPED_FIELDS` verbatim, so it told a
+customer that *"obligation_ref as a cross-system join key"* is NOT requested, three sections after
+requesting exactly that. The entry is real, **SUPERSEDED IN PART**, and is **preserved unchanged**. The
+rule: *a superseded conclusion may be referenced as history and must never instruct a customer.* The
+filter is driven by the append-only erratum rather than a hand-kept exclusion list, so a future correction
+needs no change at the render site.
+
+**Defect 2 · a dependency the ask did not state.** `obligation_ref` was called mandatory in practice while
+`schedule_line_ref` — the thing it resolves against — was listed as merely optional. **Proved by
+measurement, not argued:** dropping either one, as an absent column *or* as blank cells, takes readiness
+from *exact money* to *structurally valid*. Two independent mechanisms require it —
+`EXPECTATION_EVENT_IDENTITY_AVAILABLE` is a conjunct of monetary reconciliation, and `acceptedObligations`
+is built from `scheduleLineRef`, so every reference dangles without it. Both now appear as a
+**mandatory-in-practice pair**, with the formal tier stated beside it, because both facts are true.
+
+**Defect 3 · a column and a cell are different events.** `expected_amount` was documented as *"may a cell
+be blank? YES — blank = UNKNOWN"* and, three rows below, *"effect of absence: REJECTS THE ROW"*. Both came
+from the tier, and the tier cannot answer both questions.
+
+**So no customer-facing consequence is derived from a tier any more — it is PROBED.** A new
+`scripts/pilot-intake/dependency.ts` runs minimal fixtures through the real validators and the real
+readiness evaluator, once whole, once with the column removed, once with every cell blank, and the
+document states what happened. The probe immediately distinguished three cases one sentence could never
+have covered: a missing `expected_amount` column is an extract fault while a blank cell is an **accepted
+UNKNOWN**; a blank `is_credit` is **harmless** because blank is its declared meaning; a blank
+`obligation_ref` **forfeits the capability entirely**. The rule:
+
+> **A customer-facing claim about what a field is worth is generated from the behaviour of the code that
+> will judge their file, never authored beside it.**
+
+Three further contradictions in the same family were found by sweeping every entry. **Supplier is not
+issuer:** `obligation_ref` arrives in the billing export but its value is the contract system's, and
+listing only *"owned by: Billing / ERP"* invites a billing team to supply their own key — the exact failure
+the field exists to prevent. **A refusal must name its export:** three stopped entries refuse a column on
+one side that is genuinely requested on the other (`expected_amount`, `invoice_ref`), which reads as a
+contradiction without the qualifier. **`settled_at` meant "raised or settled"** — raised is not settled;
+it is now the date the line was RAISED, explicitly not a payment-clearing date. Two spec descriptions were
+clarified; **no field, tier, validator behaviour or version moved**, so expectation extract stays
+**1.1.0** and settlement extract **1.0.0**.
+
+**Two of the four new falsifiers caught my own instruments first**, both the same recurring shape: the
+requested-versus-stopped check had no notion of which export a refusal was about and reported three false
+contradictions, and the self-contradiction sweep matched `/reject/i` inside *"No row is rejected"* — the
+**sixth** instance of a guard matching a term rather than a claim. **88/88** package checks, 25/25 control,
+every frozen artefact byte-identical.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

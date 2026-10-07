@@ -66,11 +66,23 @@ read.
 | `currency` | required | Billing / ERP | The unit the amount is denominated in. |
 | `payer_ref` | required | Billing / ERP | Who was charged. |
 
-### And one more, which is mandatory in practice
+### And two more, which are MANDATORY IN PRACTICE
 
-| Column | Tier | Owned by | What it establishes |
-|---|---|---|---|
-| `obligation_ref` | conditional | Billing / ERP | WHICH OBLIGATION this settlement claims to settle — the cross-system join. |
+These two are *formally* optional or conditional — leaving them out refuses no row. But the
+cross-system join is **unreachable without either of them**, and that is measured rather than
+asserted: with both present our readiness check reaches
+**reconcilable, every obligation priced**, and dropping either one takes it down to
+**a valid file we cannot reconcile**.
+
+| Column | Export | Formal tier | Who supplies it | Without it |
+|---|---|---|---|---|
+| `obligation_ref` | B · settlement | conditional | Billing / ERP | a valid file we cannot reconcile — no join |
+| `schedule_line_ref` | A · expectation | optional | Contract / CRM / CLM | a valid file we cannot reconcile — nothing for the join to resolve against |
+
+They are a **pair**: `obligation_ref` on the billing line names an obligation, and
+`schedule_line_ref` on the contract row is the thing it names. Supplying one without the other buys
+nothing — every reference would point at an obligation we cannot see. **Please treat both as
+required**, even though our validators will accept a file without them.
 
 `obligation_ref` is formally *conditional* — its absence refuses no row — but it is the field the
 whole exercise turns on. It must carry **the identifier your CONTRACT system issued for the
@@ -144,21 +156,24 @@ not a prerequisite.
 Each of these was considered and deliberately refused. Several are refused *because* supplying them
 would let the number be influenced by whoever benefits from it being larger.
 
-| Not requested | Why |
-|---|---|
-| cadence / billing_frequency | A finite history of past invoices is not an obligation — cancellation, expiry, pause, amendment, a free period and a term simply ending are all normal. Worse, a cadence NH could EXPAND INTO ROWS would make NH the author of the expectation, which is the beneficiary problem one level up. The source enumerates obligations; pattern may corroborate a declared cadence and may never be its source. |
-| status (active / churned / ...) | A state label is a free-text lever held by the party who benefits from the number, where a DATED fact is checkable against a period. The observation side already stopped on exactly this: `status` is optional there with an empty enum and no declared meaning. Lifecycle is admitted here only as dated facts. |
-| expected_amount_estimated / proration_basis | An estimate is a number NH authored. Where an authoritative amount cannot be established the finding is real and its exposure is UNKNOWN — counted, never zero, never averaged from prior invoices, never taken from a plan price. Estimation would be a separately governed product in the Revenue Opportunity ledger, never on the OBSERVED surface. |
-| invoice_ref / allocation | Observation-side facts. Carrying them here would let the expectation side assert what billing did, and the whole point of a second extract is that the expectation originates in a system other than the one that was supposed to act. |
-| obligation_ref as a cross-system join key | A generic invoice-level reference is not sufficient for a cross-system join: the two sides identify at different grains, consolidation and splitting are many-to-many, and a billing migration re-keys the entire book at once, so the whole expected book would read as missing. `schedule_line_ref` is scoped WITHIN this extract and is deliberately not that key. The grain question is open and belongs to the D2 decision. |
-| any composite or NH-derived identity | Explicitly not authorised, and the reason is not merely procedural: every derived key breaks on re-keying and migration, which are the two events most likely to produce a six-figure false finding. |
-| a row-grain flag | It would hand grain authority to the beneficiary. An aggregate row stays structurally invisible, stated as a limitation rather than solved by a field the customer controls. |
-| expected_amount / amount_due | The exact mirror of the expectation extract's stopped `invoice_ref`. It would let the BILLING system assert what was OWED, and the whole architecture rests on the expectation originating in a system other than the one that was supposed to act. Billing stating the expectation is billing auditing itself. |
-| is_duplicate / is_erroneous / write_off | A beneficiary-controlled flag over which lines count. Whoever wants a larger recovery number marks the inconvenient lines erroneous. Duplication is a CONCLUSION NH must reach from evidence, never a field the customer supplies. |
-| settlement_count / expected_attempts | Billing cannot state how many settlements an obligation EXPECTED — that is a fact about the contract, not about what billing did. It belongs to the expectation side if anywhere, and is declared here only as the unavailable capability EXPECTED_SETTLEMENT_COUNT_AVAILABLE so the gap has a name and an owner. It upgrades event-level proof and unlocks no additional money on the synthetic evidence. |
-| any NH-derived or composite obligation_ref | Explicitly not authorised. Never from payer, amount, date, invoice number, subscription id, row position or any composite of them. Every derived key breaks on re-keying and migration — the two events most likely to produce a six-figure false finding — and a reference NH authored is not a fact the source stated. |
-| a row-grain flag (line / invoice / aggregate) | It would hand grain authority to the beneficiary. An aggregate line stays structurally invisible at obligation grain, stated as a limitation rather than solved by a field the customer controls. |
-| payment_status / dunning_state | Not stopped on principle — it is the Detector #3 family, approved and deprioritised because it EXPLAINS dollars an existing detector already counts rather than finding new ones. Declaring it here would collect it before any consumer reads it, which is the defect the obligation_ref revert established. |
+| Not requested | On which export | Why |
+|---|---|---|
+| cadence / billing_frequency | A · expectation | A finite history of past invoices is not an obligation — cancellation, expiry, pause, amendment, a free period and a term simply ending are all normal. Worse, a cadence NH could EXPAND INTO ROWS would make NH the author of the expectation, which is the beneficiary problem one level up. The source enumerates obligations; pattern may corroborate a declared cadence and may never be its source. |
+| status (active / churned / ...) | A · expectation | A state label is a free-text lever held by the party who benefits from the number, where a DATED fact is checkable against a period. The observation side already stopped on exactly this: `status` is optional there with an empty enum and no declared meaning. Lifecycle is admitted here only as dated facts. |
+| expected_amount_estimated / proration_basis | A · expectation | An estimate is a number NH authored. Where an authoritative amount cannot be established the finding is real and its exposure is UNKNOWN — counted, never zero, never averaged from prior invoices, never taken from a plan price. Estimation would be a separately governed product in the Revenue Opportunity ledger, never on the OBSERVED surface. |
+| invoice_ref / allocation | A · expectation | Observation-side facts. Carrying them here would let the expectation side assert what billing did, and the whole point of a second extract is that the expectation originates in a system other than the one that was supposed to act. |
+| any composite or NH-derived identity | A · expectation | Explicitly not authorised, and the reason is not merely procedural: every derived key breaks on re-keying and migration, which are the two events most likely to produce a six-figure false finding. |
+| a row-grain flag | A · expectation | It would hand grain authority to the beneficiary. An aggregate row stays structurally invisible, stated as a limitation rather than solved by a field the customer controls. |
+| expected_amount / amount_due | B · settlement | The exact mirror of the expectation extract's stopped `invoice_ref`. It would let the BILLING system assert what was OWED, and the whole architecture rests on the expectation originating in a system other than the one that was supposed to act. Billing stating the expectation is billing auditing itself. |
+| is_duplicate / is_erroneous / write_off | B · settlement | A beneficiary-controlled flag over which lines count. Whoever wants a larger recovery number marks the inconvenient lines erroneous. Duplication is a CONCLUSION NH must reach from evidence, never a field the customer supplies. |
+| settlement_count / expected_attempts | B · settlement | Billing cannot state how many settlements an obligation EXPECTED — that is a fact about the contract, not about what billing did. It belongs to the expectation side if anywhere, and is declared here only as the unavailable capability EXPECTED_SETTLEMENT_COUNT_AVAILABLE so the gap has a name and an owner. It upgrades event-level proof and unlocks no additional money on the synthetic evidence. |
+| any NH-derived or composite obligation_ref | B · settlement | Explicitly not authorised. Never from payer, amount, date, invoice number, subscription id, row position or any composite of them. Every derived key breaks on re-keying and migration — the two events most likely to produce a six-figure false finding — and a reference NH authored is not a fact the source stated. |
+| a row-grain flag (line / invoice / aggregate) | B · settlement | It would hand grain authority to the beneficiary. An aggregate line stays structurally invisible at obligation grain, stated as a limitation rather than solved by a field the customer controls. |
+| payment_status / dunning_state | B · settlement | Not stopped on principle — it is the Detector #3 family, approved and deprioritised because it EXPLAINS dollars an existing detector already counts rather than finding new ones. Declaring it here would collect it before any consumer reads it, which is the defect the obligation_ref revert established. |
+
+*(Our own design record also carries conclusions we have since revised on evidence. Those are kept and
+marked as superseded rather than rewritten, and they are deliberately not repeated here — a conclusion
+we no longer hold has no business instructing you.)*
 
 ---
 

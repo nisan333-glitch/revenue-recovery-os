@@ -18,6 +18,17 @@ import {
   SETTLEMENT_STOPPED_FIELDS,
 } from "../../src/contract/settlementExtract";
 import { PROVENANCE_CHANNELS } from "../../src/contract/sourceFactAuthority";
+import { CORRECTED_CANDIDATES } from "../../src/contract/expectationExtractCorrections";
+import { BASELINE_LEVEL, dependencyFor, type Side } from "./dependency";
+
+/** Readiness levels in the customer's language. The codes are ours; the sentence is theirs. */
+const levelLabel = (level: string): string => ({
+  L0_NOT_READABLE: "unreadable",
+  L1_STRUCTURALLY_VALID: "a valid file we cannot reconcile",
+  L2_MONETARY_RECONCILIATION_POSSIBLE: "reconcilable",
+  L3_EXACT_MONEY: "reconcilable, every obligation priced",
+  L4_EVENT_PROOF: "reconcilable with event-level proof",
+}[level] ?? level);
 
 const DIR = "docs/pilot-intake";
 const OUT = `${DIR}/PILOT_DATA_REQUEST_V1.md`;
@@ -98,11 +109,23 @@ w("| Column | Tier | Owned by | What it establishes |");
 w("|---|---|---|---|");
 sRows("required").forEach(w);
 w();
-w("### And one more, which is mandatory in practice");
+w("### And two more, which are MANDATORY IN PRACTICE");
 w();
-w("| Column | Tier | Owned by | What it establishes |");
-w("|---|---|---|---|");
-SETTLEMENT_EXTRACT_FIELDS.filter((f) => f.name === "obligation_ref").forEach((f) => w(row(f.name, "conditional", owner(f.owningSourceSystem), f.establishes)));
+w("These two are *formally* optional or conditional — leaving them out refuses no row. But the");
+w("cross-system join is **unreachable without either of them**, and that is measured rather than");
+w("asserted: with both present our readiness check reaches");
+w(`**${levelLabel(BASELINE_LEVEL)}**, and dropping either one takes it down to`);
+w(`**${levelLabel(dependencyFor("obligation_ref", "settlement").levelWithoutColumn)}**.`);
+w();
+w("| Column | Export | Formal tier | Who supplies it | Without it |");
+w("|---|---|---|---|---|");
+w(`| \`obligation_ref\` | B · settlement | conditional | Billing / ERP | ${levelLabel(dependencyFor("obligation_ref", "settlement").levelWithoutColumn)} — no join |`);
+w(`| \`schedule_line_ref\` | A · expectation | optional | Contract / CRM / CLM | ${levelLabel(dependencyFor("schedule_line_ref", "expectation").levelWithoutColumn)} — nothing for the join to resolve against |`);
+w();
+w("They are a **pair**: `obligation_ref` on the billing line names an obligation, and");
+w("`schedule_line_ref` on the contract row is the thing it names. Supplying one without the other buys");
+w("nothing — every reference would point at an obligation we cannot see. **Please treat both as");
+w("required**, even though our validators will accept a file without them.");
 w();
 w("`obligation_ref` is formally *conditional* — its absence refuses no row — but it is the field the");
 w("whole exercise turns on. It must carry **the identifier your CONTRACT system issued for the");
@@ -164,9 +187,34 @@ w();
 w("Each of these was considered and deliberately refused. Several are refused *because* supplying them");
 w("would let the number be influenced by whoever benefits from it being larger.");
 w();
-w("| Not requested | Why |");
-w("|---|---|");
-[...STOPPED_FIELDS, ...SETTLEMENT_STOPPED_FIELDS].forEach((s) => w(`| ${s.candidate} | ${s.why} |`));
+// EACH REFUSAL NAMES ITS EXPORT, which is a readability fix and not a formality. Three of these entries
+// refuse a column on ONE side that we genuinely ask for on the OTHER — `expected_amount` is requested on
+// the contract export and refused on the billing export, `invoice_ref` the mirror image. Rendered without
+// the side, a customer reads "not requested" three sections after being asked for it and cannot tell
+// which of us is confused.
+w("| Not requested | On which export | Why |");
+w("|---|---|---|");
+// SUPERSEDED REASONING IS EXCLUDED, not reworded.
+//
+// The semantic audit found this table telling a customer that "obligation_ref as a cross-system join
+// key" is NOT requested — three sections after the document requests exactly that and calls it the field
+// the exercise turns on. The entry is real and is PRESERVED UNCHANGED in `STOPPED_FIELDS`, because it is
+// the record of what was concluded and why; it is also SUPERSEDED IN PART, and a superseded conclusion
+// may be referenced as history but must never instruct a customer.
+//
+// So the filter is driven by the append-only erratum rather than by a hand-maintained exclusion list: any
+// candidate carrying a correction drops out of the customer-facing table automatically, and a future
+// correction needs no change here.
+const superseded = new Set(CORRECTED_CANDIDATES);
+const current = [
+  ...STOPPED_FIELDS.map((x) => ({ ...x, on: "A · expectation" })),
+  ...SETTLEMENT_STOPPED_FIELDS.map((x) => ({ ...x, on: "B · settlement" })),
+].filter((x) => !superseded.has(x.candidate));
+current.forEach((x) => w(`| ${x.candidate} | ${x.on} | ${x.why} |`));
+w();
+w("*(Our own design record also carries conclusions we have since revised on evidence. Those are kept and");
+w("marked as superseded rather than rewritten, and they are deliberately not repeated here — a conclusion");
+w("we no longer hold has no business instructing you.)*");
 w();
 w("---");
 w();
@@ -240,15 +288,59 @@ const firstExample = (rows: readonly Readonly<Record<string, string>>[], col: st
   return hit ? `\`${hit[col]}\`` : "*(blank in the example — that is the point)*";
 };
 
-const mayBeBlank = (name: string, tier: string): string => {
-  if (name === "expected_amount") return "**Yes** — a blank is a declared UNKNOWN";
-  return tier === "required" ? "No" : "Yes";
+// ── THE COLUMN / CELL DISTINCTION, WHICH THE FIRST FORM COLLAPSED ────────────────────────────────
+//
+// The semantic audit found `expected_amount` documented as "may a cell be blank? YES — blank = UNKNOWN"
+// and, three rows below, "effect of absence: REJECTS THE ROW". Both lines came from the same tier, and
+// the tier cannot answer both questions: a MISSING COLUMN and a BLANK CELL are different events with
+// different consequences, and `expected_amount` is the field where they diverge most.
+//
+// So neither answer is derived from the tier any more. Both are PROBED — the real validators and the real
+// readiness evaluator, run with the column removed and again with every cell blank — and the dictionary
+// states what actually happened. `is_credit` turns out to be the mirror case: a blank is HARMLESS there
+// (it means "not a credit", which is the declared meaning), while a blank `obligation_ref` forfeits the
+// join entirely. One sentence could never have covered all three.
+const columnAbsent = (name: string, side: Side): string => {
+  const d = dependencyFor(name, side);
+  if (d.levelWithoutColumn === "L0_NOT_READABLE") {
+    // The real code, per side. A `?` placeholder in a customer-facing document is not a code, and the
+    // first form of this line emitted one.
+    const code = side === "expectation" ? "NH-EX-1002" : "NH-SX-1002";
+    return `**The file cannot be read.** A missing required column is an extract-level fault — \`${code}\` — and no row is processed.`;
+  }
+  if (d.costsALevel) return `**No row is rejected**, and readiness falls to *${levelLabel(d.levelWithoutColumn)}*.`;
+  return "**No row is rejected** and readiness is unaffected.";
 };
 
-const effect = (tier: string): string =>
-  tier === "required"
-    ? "**Rejects the row** (or the file, if the column is absent)"
-    : "**Reduces capability only** — nothing is rejected";
+const cellBlank = (name: string, side: Side, tier: string): string => {
+  const d = dependencyFor(name, side);
+  if (name === "expected_amount") {
+    return `**Permitted, and meaningful.** The row is **ACCEPTED** with its monetary amount recorded as UNKNOWN — never as 0 and never estimated. Readiness reaches *${levelLabel(d.levelWithBlankCells)}*: everything but the exact-money level still holds.`;
+  }
+  if (tier === "required") return "**Not permitted.** The row is rejected — this is a row-level fault, not a file-level one.";
+  if (d.blankCostsALevel) return `**Permitted but costly.** No row is rejected, and readiness falls to *${levelLabel(d.levelWithBlankCells)}* — a blank here forfeits the capability, so a partly-filled column buys nothing.`;
+  return "**Permitted and harmless.** A blank is read as the declared default for this field, which is itself a fact.";
+};
+
+const mandatoryInPractice = (name: string, side: Side, tier: string): string => {
+  const d = dependencyFor(name, side);
+  if (tier === "required") return "n/a — it is formally required";
+  if (!d.costsALevel) return "No — genuinely optional";
+  return `**YES** — without it readiness is only *${levelLabel(d.levelWithoutColumn)}*, so please treat it as required even though our validators accept a file without it`;
+};
+
+/**
+ * WHO ISSUES THE VALUE, as distinct from who sends us the file.
+ *
+ * The audit's fourth class. `obligation_ref` arrives in the BILLING export, so billing is who we ask —
+ * but the value is the CONTRACT system's identifier, which is the whole point of it. Listing only "owned
+ * by: Billing / ERP" invites a billing team to supply their own key, which is precisely the failure the
+ * field exists to avoid. Declared rather than inferred, and the verifier asserts no identifier field that
+ * names another system in its description is missing from this map.
+ */
+const VALUE_ISSUED_BY: Readonly<Record<string, string>> = Object.freeze({
+  obligation_ref: "**Contract / CRM / CLM** — billing only carries it",
+});
 
 const dict: string[] = [];
 const d = (s = "") => dict.push(s);
@@ -283,15 +375,18 @@ for (const [label, cols, fields, rows] of [
     d(`| **Export** | ${label.startsWith("A") ? "A · expectation" : "B · settlement"} |`);
     d(`| **What it means** | ${f.description} |`);
     d(`| **Business fact it establishes** | ${f.establishes} |`);
-    d(`| **Who normally owns it** | ${ownerLabel} |`);
-    d(`| **Tier** | ${f.tier === "required" ? "**REQUIRED**" : f.tier === "conditional" ? "conditional" : "optional"} |`);
-    d(`| **May a cell be blank?** | ${mayBeBlank(f.name, f.tier)} |`);
+    const side: Side = label.startsWith("A") ? "expectation" : "settlement";
+    d(`| **Who sends it to us** | ${ownerLabel} |`);
+    d(`| **Who issues the value** | ${VALUE_ISSUED_BY[f.name] ?? (f.piiClass === "identifier_pseudonymous" ? `${ownerLabel} — its own identifier` : "n/a")} |`);
+    d(`| **Formal tier** | ${f.tier === "required" ? "**REQUIRED**" : f.tier === "conditional" ? "conditional" : "optional"} |`);
+    d(`| **Mandatory in practice?** | ${mandatoryInPractice(f.name, side, f.tier)} |`);
+    d(`| **If the COLUMN is absent** | ${columnAbsent(f.name, side)} |`);
+    d(`| **If a CELL is blank** | ${cellBlank(f.name, side, f.tier)} |`);
     d(`| **Must be your system's own value?** | ${f.piiClass === "identifier_pseudonymous" ? "**Yes** — source-native, never composed by you or by us" : "n/a"} |`);
     d(`| **Format** | ${FORMAT[f.kind] ?? "text"} |`);
     d(`| **Example** | ${firstExample(rows, f.name)} |`);
     d(`| **What is lost without it** | ${f.withoutIt} |`);
     d(`| **Capability affected** | ${f.neededBy === "every_unit" || f.neededBy === "every_settlement" ? "all of them — this is a required fact" : `\`${f.neededBy}\``} |`);
-    d(`| **Effect of absence** | ${effect(f.tier)} |`);
     d();
   }
 }

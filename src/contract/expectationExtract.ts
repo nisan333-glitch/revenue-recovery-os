@@ -392,7 +392,7 @@ export const EXPECTATION_EXTRACT_FIELDS: readonly ExpectationFieldSpec[] = Objec
     kind: "identifier",
     piiClass: "identifier_pseudonymous",
     description:
-      "Per-obligation identity WITHIN this extract. Not a cross-system join key: the two sides identify at different grains and that question is open.",
+      "Per-obligation identity. It is not itself a cross-system key — it does not reach into the billing export — but it IS THE TARGET a billing-side `obligation_ref` resolves against, which is how the two sides join. The grain question remains open: see expectationExtractCorrections.ts.",
     establishes: "WHICH obligation this row is, distinctly from its siblings.",
     neededBy: "EXPECTATION_EVENT_IDENTITY_AVAILABLE",
     withoutIt:

@@ -12,7 +12,9 @@
 // will meet. An example that would be rejected in practice fails this build instead.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { EXPECTATION_EXTRACT_COLUMNS } from "../../src/contract/expectationExtract";
+import { EXPECTATION_EXTRACT_COLUMNS, STOPPED_FIELDS } from "../../src/contract/expectationExtract";
+import { CORRECTED_CANDIDATES } from "../../src/contract/expectationExtractCorrections";
+import { dependencyFor } from "./dependency";
 import { validateExpectationExtract, type RawExpectationRow } from "../../src/contract/expectationExtractValidator";
 import { SETTLEMENT_EXTRACT_COLUMNS } from "../../src/contract/settlementExtract";
 import { validateSettlementExtract, type RawSettlementRow } from "../../src/contract/settlementExtractValidator";
@@ -237,6 +239,136 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
   check(production.length === 0, "NO PRODUCTION module under src/ or server/ consumes the package", production.join(", "));
   check(tests.length > 0, "...and a test DOES, so drift from the governed specs is caught", tests.join(", "));
   check(statSync(DIR).isDirectory(), "the package is a plain directory of documents and CSVs");
+}
+
+// ── 10 · SEMANTIC CONTRADICTION SWEEP ───────────────────────────────────────────────────────────
+//
+// Added after an independent read of the GENERATED documents found three contradictions that every
+// existing check had passed. The lesson generalises past this package: the earlier verifier proved the
+// documents matched the specs, which is a different claim from the documents being internally coherent.
+// A generator can render two governed facts that are each true at their own layer and contradict each
+// other on the page — a formal tier beside a capability requirement, a permitted blank beside a row
+// rejection, a requested field beside a list of fields we do not request.
+{
+  const requestBody = read("PILOT_DATA_REQUEST_V1.md");
+  const dictBody = read("FIELD_DICTIONARY.md");
+  const customerFacing = readdirSync(DIR).filter((f) => f.endsWith(".md"));
+
+  // ── A · nothing may be REQUESTED and STOPPED in the same artefact ─────────────────────────────
+  const requestedFields = [...EXPECTATION_EXTRACT_COLUMNS, ...SETTLEMENT_EXTRACT_COLUMNS];
+  for (const f of customerFacing) {
+    const body = read(f);
+    const stoppedSection = body.includes("## What we will NOT ask you for")
+      ? body.slice(body.indexOf("## What we will NOT ask you for"))
+      : "";
+    if (stoppedSection === "") continue;
+    // A refusal is only a CONTRADICTION when it is unqualified. Three entries refuse a column on one
+    // export that we genuinely request on the OTHER — `expected_amount` is asked for on the contract
+    // side and refused on the billing side — so the table now states the export per row, and this check
+    // requires that qualifier to be present on any row naming a column we request. The first form had no
+    // notion of sides and reported three false contradictions.
+    const contradictions = requestedFields.filter((col) => {
+      const requested = body.slice(0, body.indexOf("## What we will NOT ask you for")).includes(`\`${col}\``);
+      if (!requested) return false;
+      const rows = stoppedSection.split("\n").filter((l) => new RegExp(`(^|[^\\w])${col}([^\\w]|$)`).test(l));
+      // Every row naming it must say which export it is refused on, or be about a DERIVED form of it.
+      return rows.some((l) => !/A · expectation|B · settlement/.test(l) && !/derived|composite|estimated/i.test(l));
+    });
+    check(contradictions.length === 0,
+      `${f} · no field is both REQUESTED and listed as NOT requested`, contradictions.join(", "));
+  }
+
+  // ...and the mechanism that keeps it true: every corrected candidate is excluded from the ask.
+  for (const candidate of CORRECTED_CANDIDATES) {
+    const inRequest = requestBody.includes(candidate);
+    check(!inRequest, `superseded design conclusion is absent from the customer request · "${candidate.slice(0, 48)}…"`);
+  }
+  check(CORRECTED_CANDIDATES.length > 0,
+    "...and at least one correction exists, so that filter is not vacuous", `${CORRECTED_CANDIDATES.length}`);
+  // The historical record itself is UNTOUCHED — history is referenced, never rewritten.
+  check(STOPPED_FIELDS.some((x) => CORRECTED_CANDIDATES.includes(x.candidate)),
+    "the superseded entry is still PRESERVED in the design record it was written in");
+
+  // ── B · the obligation-link dependency is stated truthfully and is MEASURED ────────────────────
+  for (const [field, side] of [["obligation_ref", "settlement"], ["schedule_line_ref", "expectation"]] as const) {
+    const dep = dependencyFor(field, side);
+    check(dep.costsALevel,
+      `${field} · dropping it provably costs a readiness level — the dependency is measured, not asserted`,
+      `${dep.levelWith} -> ${dep.levelWithoutColumn}`);
+    check(dep.blankCostsALevel,
+      `${field} · a BLANK cell costs the same level, so a partly-filled column buys nothing`,
+      `blank -> ${dep.levelWithBlankCells}`);
+    check(dictBody.includes(`### \`${field}\``) && new RegExp(`### \`${field}\`[\\s\\S]*?\\*\\*Mandatory in practice\\?\\*\\* \\| \\*\\*YES\\*\\*`).test(dictBody),
+      `FIELD_DICTIONARY.md · ${field} is marked MANDATORY IN PRACTICE`);
+  }
+  check(requestBody.includes("MANDATORY IN PRACTICE"),
+    "PILOT_DATA_REQUEST_V1.md · names the mandatory-in-practice pair in the ask itself");
+  check(requestBody.includes("`schedule_line_ref`"),
+    "PILOT_DATA_REQUEST_V1.md · asks for schedule_line_ref, which obligation_ref resolves against");
+
+  // ── C · the column / cell distinction for expected_amount ─────────────────────────────────────
+  {
+    const entry = dictBody.slice(dictBody.indexOf("### `expected_amount`"), dictBody.indexOf("### `currency`"));
+    check(entry.includes("If the COLUMN is absent") && entry.includes("If a CELL is blank"),
+      "FIELD_DICTIONARY.md · expected_amount distinguishes a missing COLUMN from a blank CELL");
+    check(/If the COLUMN is absent\*\* \| \*\*The file cannot be read/.test(entry),
+      "...a missing column is an extract fault");
+    check(/If a CELL is blank\*\* \| \*\*Permitted, and meaningful\.\*\* The row is \*\*ACCEPTED\*\*/.test(entry),
+      "...a blank cell ACCEPTS the row as UNKNOWN");
+    check(!/If a CELL is blank[^|]*\|[^\n]*(The row is rejected|rejects the row|Not permitted)/.test(entry),
+      "...and a blank cell is NEVER described as a row rejection");
+    check(entry.includes("never as 0 and never estimated"), "...and never becomes zero");
+  }
+
+  // ── D · the general sweep · a permitted blank may never also reject the row ────────────────────
+  {
+    const entries = [...dictBody.matchAll(/### `([^`]+)`\n([\s\S]*?)(?=\n### |\n## |$)/g)];
+    check(entries.length === EXPECTATION_EXTRACT_COLUMNS.length + SETTLEMENT_EXTRACT_COLUMNS.length,
+      "FIELD_DICTIONARY.md · every governed field has exactly one entry", `${entries.length}`);
+    const bad: string[] = [];
+    for (const [, name, body] of entries) {
+      const blankRow = /\*\*If a CELL is blank\*\* \| ([^\n]*)/.exec(body)?.[1] ?? "";
+      const colRow = /\*\*If the COLUMN is absent\*\* \| ([^\n]*)/.exec(body)?.[1] ?? "";
+      if (blankRow === "" || colRow === "") { bad.push(`${name}: missing a column/cell row`); continue; }
+      // A blank described as permitted must not also be described as rejecting.
+      // AFFIRMATIVE rejection only. The first form matched /reject/i and fired on "No row is rejected" —
+      // the word inside a negation, which is the sixth time a guard here has matched a term rather than a
+      // claim. The three affirmative forms the emitter can produce are enumerated instead.
+      const affirmativelyRejects = /\bThe row is rejected\b|\brejects the row\b|\bNot permitted\b/.test(blankRow);
+      if (/Permitted/.test(blankRow) && affirmativelyRejects) bad.push(`${name}: blank is both permitted and rejecting`);
+      // A formally required field must never advertise a permitted blank, EXCEPT expected_amount, whose
+      // declared UNKNOWN is the governed exception and is asserted explicitly above.
+      const tier = /\*\*Formal tier\*\* \| ([^\n|]*)/.exec(body)?.[1] ?? "";
+      if (/REQUIRED/.test(tier) && /Permitted/.test(blankRow) && name !== "expected_amount") {
+        bad.push(`${name}: required yet advertises a permitted blank`);
+      }
+      // A field marked genuinely optional must not be contradicted by a measured level cost.
+      const practice = /\*\*Mandatory in practice\?\*\* \| ([^\n|]*)/.exec(body)?.[1] ?? "";
+      if (/No — genuinely optional/.test(practice) && /readiness falls to/.test(colRow)) {
+        bad.push(`${name}: called optional yet its absence costs a level`);
+      }
+    }
+    check(bad.length === 0, "FIELD_DICTIONARY.md · no entry contradicts itself across tier, column and cell", bad.join("; "));
+  }
+
+  // ── E · supplier vs issuer, and consistent money terminology ──────────────────────────────────
+  {
+    const entries = [...dictBody.matchAll(/### `([^`]+)`\n([\s\S]*?)(?=\n### |\n## |$)/g)];
+    const missingIssuer = entries
+      .filter(([, , body]) => /CONTRACT system/.test(body) && /\*\*Who issues the value\*\* \| n\/a/.test(body))
+      .map(([, n]) => n);
+    check(missingIssuer.length === 0,
+      "FIELD_DICTIONARY.md · a field whose value another system issues says so", missingIssuer.join(", "));
+    const oblig = entries.find(([, n]) => n === "obligation_ref")![2];
+    check(/Who sends it to us\*\* \| Billing/.test(oblig) && /Who issues the value\*\* \| \*\*Contract/.test(oblig),
+      "obligation_ref · billing SENDS it, the contract system ISSUES it — stated separately");
+    // "settled" must not be presented as a payment-clearing date anywhere.
+    for (const f of customerFacing) {
+      check(!/settled_at[^\n]*(cleared|payment date|paid)/i.test(read(f)),
+        `${f} · does not describe settled_at as a payment-clearing date`);
+    }
+    check(/RAISED this line/.test(dictBody), "FIELD_DICTIONARY.md · settled_at says it is the date the line was RAISED");
+  }
 }
 
 // ── report ──────────────────────────────────────────────────────────────────────────────────────

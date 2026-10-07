@@ -87,6 +87,10 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
       // The customer-facing intake package: its emitter renders the request and the dictionary FROM these
       // specs, and its verifier re-derives them to prove the committed documents have not drifted. Both
       // are readiness-path consumers; neither computes money.
+      // The dependency PROBE: it runs minimal fixtures through the validators and the readiness evaluator
+      // so the customer-facing document can state a MEASURED consequence of omitting a field rather than
+      // an authored one. Read-only, and it computes no money.
+      "scripts/pilot-intake/dependency.ts",
       "scripts/pilot-intake/emit-package.ts",
       "scripts/pilot-intake/verify-package.ts",
       "src/contract/dataReadiness.test.ts",

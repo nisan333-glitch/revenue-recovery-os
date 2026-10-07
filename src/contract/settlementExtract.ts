@@ -240,7 +240,7 @@ export const SETTLEMENT_EXTRACT_FIELDS: readonly SettlementFieldSpec[] = Object.
     tier: "required",
     kind: "date",
     piiClass: "operational",
-    description: "The date the billing system raised or settled this line, as it holds it.",
+    description: "The date the billing system RAISED this line, as it holds it. Not a payment-clearing date and not the period the charge covers — the period is its own pair of fields.",
     establishes: "When the settlement event occurred.",
     neededBy: "every_settlement",
     withoutIt: "Nothing can be placed inside or outside the period under analysis, so the population is undefined.",
