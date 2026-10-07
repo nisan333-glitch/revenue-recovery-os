@@ -48,13 +48,18 @@ describe("expectation extract · identity, separate from everything it must not 
   });
 });
 
-describe("expectation extract · nothing consumes it yet, and that is asserted", () => {
-  it("has NO production importer — the single-dataset path cannot have moved", () => {
-    // Requirement: existing single-dataset behaviour is byte-identical. The strongest form of that
-    // proof is that no production module can reach these files at all, so it is checked rather than
-    // claimed. When the slice that wires this lands, it must ship its consumer WITH it — the rule the
-    // `obligation_ref` revert established, after a declared-but-unconsumed field collected nothing
-    // and left false customer-facing prose behind.
+describe("expectation extract · its consumer has shipped, and the guard moved with it", () => {
+  // THE GUARD'S HISTORY, because deleting it would be the wrong move and weakening it silently would
+  // be worse. It was written when this extract was deliberately unwired, asserting NO production
+  // importer at all — the `obligation_ref` revert rule: *the slice that wires a field must ship its
+  // consumer with it*, after a declared-but-unconsumed field collected no evidence and left false
+  // customer-facing prose behind.
+  //
+  // That consumer has now shipped: the CUSTOMER DATA READINESS path. So the guard is not retired, it is
+  // NARROWED to the thing it was actually protecting — that wiring this extract did not disturb the
+  // single-dataset money path. The importers must be exactly the readiness path and nothing else, and
+  // in particular **no monetary, reconciliation or assessment module may reach it**.
+  const importers = (): string[] => {
     const roots = ["src", "server", "e2e", "scripts"];
     const hits: string[] = [];
     const walk = (dir: string): void => {
@@ -62,12 +67,37 @@ describe("expectation extract · nothing consumes it yet, and that is asserted",
         const full = join(dir, entry.name);
         if (entry.isDirectory()) { walk(full); continue; }
         if (!/\.(ts|tsx|mjs|js)$/.test(entry.name)) continue;
-        if (/^expectationExtract(Codes|Validator)?(\.test)?\.ts$/.test(entry.name)) continue;
-        if (/expectationExtract/.test(readFileSync(full, "utf8"))) hits.push(full);
+        if (/^expectationExtract(Codes|Validator|Corrections)?(\.test)?\.ts$/.test(entry.name)) continue;
+        // COMMENTS AND STRING LITERALS STRIPPED. The guard's question is "does this module IMPORT the
+        // extract", and a prose mention is not an import: `settlementExtract.ts` names the erratum file
+        // in a comment, which the first form of this scan counted as a dependency. Fourth instance of
+        // that lesson in this repository — a structural guard must read code, not documentation.
+        const code = readFileSync(full, "utf8")
+          .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+        if (/expectationExtract/.test(code)) hits.push(full.replace(/.*\/(src|server|e2e|scripts)\//, "$1/"));
       }
     };
     for (const r of roots) walk(resolve(__dirname, "..", "..", r));
-    expect(hits).toEqual([]);
+    return hits.sort();
+  };
+
+  it("is imported ONLY by the readiness path — named, so a new importer must be justified here", () => {
+    expect(importers()).toEqual([
+      "scripts/data-readiness/control.ts",
+      "scripts/data-readiness/emit-pilot-request.ts",
+      "src/contract/dataReadiness.test.ts",
+      "src/contract/dataReadiness.ts",
+    ]);
+  });
+
+  it("NO monetary, reconciliation or assessment module reaches it — the money path is undisturbed", () => {
+    const forbidden = /(reconciliationCore|obligationAwareReconciliation|assessmentExecution|exposureFinding|provenLedger|domain\/(money|outcomes|invariants))/;
+    for (const f of importers()) {
+      expect(f, `${f} imports the expectation extract`).not.toMatch(forbidden);
+    }
+    // ...and the readiness evaluator itself imports none of them either, so the wiring cannot leak.
+    const readiness = readFileSync(resolve(__dirname, "dataReadiness.ts"), "utf8");
+    expect(readiness).not.toMatch(forbidden);
   });
 });
 

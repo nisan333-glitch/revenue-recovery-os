@@ -443,6 +443,12 @@ export const STOPPED_FIELDS: readonly { readonly candidate: string; readonly why
       why:
         "Observation-side facts. Carrying them here would let the expectation side assert what billing did, and the whole point of a second extract is that the expectation originates in a system other than the one that was supposed to act.",
     }),
+    // ⚠ SUPERSEDED IN PART on 2026-10-07 — see `expectationExtractCorrections.ts`.
+    // The `why` below is PRESERVED VERBATIM as the record of what was concluded and why. Its
+    // whole-book-re-key objection was REFUTED BY MEASUREMENT (M14/M15 resolved from the obligation
+    // reference alone, with no alias map); its grain and many-to-many objections STILL BIND; and the
+    // key relocated to the BILLING side rather than being revived here. Read the correction before
+    // treating any of this as current architecture.
     Object.freeze({
       candidate: "obligation_ref as a cross-system join key",
       why:
