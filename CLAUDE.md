@@ -962,6 +962,50 @@ and a test asserts it matches, because a data request derived by hand drifts sil
 discovers it at reconciliation. **Expected settlement count is NOT mandatory** — the evidence is that it
 upgrades event-level proof and unlocks no additional money.
 
+**Pilot intake package (2026-10-07).** Readiness V1 could judge a customer's files and there was nothing a
+finance or data owner could be handed. Built as ten artefacts in `docs/pilot-intake/` — the governed
+request, two header-only templates, two synthetic examples, a field dictionary, a pseudonymisation guide, a
+13-point checklist, a may/will-not explainer and a one-page README — **generated from the same governed
+field arrays** so a column cannot appear in a template, a dictionary entry or an example without appearing
+in the contract that validates it. The rule it adds:
+
+> **An artefact that LEAVES the repository is verified by the code a customer's file will actually meet,
+> not by a bespoke checker.** The examples are run through the real validators and the real readiness
+> evaluator; an example that would be rejected in practice fails the build instead of reaching a data
+> owner who gathers the wrong thing and discovers it weeks later.
+
+**Two claims are deliberately bounded rather than quoted.** `obligation_ref` is presented as *the
+highest-value field we tested in a controlled experiment on synthetic data, the only one that increased
+claimable money, with no fabricated findings* — and the **figure is withheld on purpose**, stated in the
+document itself: a number from data we generated would read as a forecast for the customer's book. The
+first draft quoted **+32.5%**, and the guard that was supposed to catch it banned only `$`-amounts, so the
+verifier now refuses **any uplift percentage** in a customer-facing document too. Expected settlement count
+is **not mandatory**, worded strictly inside the evidence — *in that experiment it improved event-level
+proof without increasing monetary coverage, a result about that experiment* — with no generalisation.
+
+**Additive components are not demonstrated, because they are not supported.** The expectation contract
+declares no component-identity field, so the package says plainly: *if two obligation lines legitimately
+cover one period, tell us — we refuse to price that unit rather than add them, and we are not asking you to
+invent a field to unlock it, because a flag declaring two lines separate would increase the exposure we
+report.* Inventing the column to satisfy an example would have been the exact thing the contract refuses.
+
+**Five of the verifier's own checks were defects in the instrument, not the package**, and all five are the
+same family this repository keeps meeting. A phone-number pattern matched **ISO dates**, because
+`2026-01-01` is ten characters of digits and hyphens — fixed by scanning per cell and excluding valid
+dates, amounts and flags. A containment test flagged `SL-7781` for containing the invoice **line number
+"1"** — fixed by requiring a value to be long enough to be a key before containment counts. The
+forbidden-import scan **flagged the verifier for naming the forbidden modules in its own list** — fifth
+instance of *a structural guard must read code, not the words the code is talking about*. The
+package-consumer scan matched the bare word `pilot-intake` and flagged a pre-existing
+`INTAKE_KIT_VERSION = "pilot-intake-2026.1"`, which would have had me "fix" two files that were never
+wrong. And it flagged `dataReadiness.test.ts`, which is a consumer we **want**: the guard's subject is
+production code, so tests are now separated and the **positive** half is asserted too — a drift test must
+exist, or the package could rot with nothing noticing.
+
+**55/55 package checks and 25/25 readiness control**, with every frozen artefact byte-identical and
+`expectation extract 1.1.0` / `settlement extract 1.0.0` / contract **2.0.0** unmoved. Validation only: no
+production reconciliation, no multi-extract identity, no API, no UI, no customer data.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

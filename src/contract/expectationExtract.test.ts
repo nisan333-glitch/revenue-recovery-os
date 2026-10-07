@@ -84,7 +84,11 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
   it("is imported ONLY by the readiness path — named, so a new importer must be justified here", () => {
     expect(importers()).toEqual([
       "scripts/data-readiness/control.ts",
-      "scripts/data-readiness/emit-pilot-request.ts",
+      // The customer-facing intake package: its emitter renders the request and the dictionary FROM these
+      // specs, and its verifier re-derives them to prove the committed documents have not drifted. Both
+      // are readiness-path consumers; neither computes money.
+      "scripts/pilot-intake/emit-package.ts",
+      "scripts/pilot-intake/verify-package.ts",
       "src/contract/dataReadiness.test.ts",
       "src/contract/dataReadiness.ts",
     ]);

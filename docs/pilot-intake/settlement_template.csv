@@ -1,0 +1,1 @@
+invoice_ref,invoice_line_ref,settled_at,settled_amount,currency,payer_ref,obligation_ref,is_credit,period_start,period_end,legacy_subscription_ref,source_system

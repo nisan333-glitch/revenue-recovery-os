@@ -386,7 +386,7 @@ describe("7 · the customer-facing pilot request is GENERATED, not written", () 
     // The reason this is a test rather than a convention: a customer-facing artefact derived by hand
     // from a governed definition drifts silently, and here the stale version would be a DATA REQUEST —
     // the customer gathers the wrong columns and finds out at reconciliation.
-    const committed = readFileSync(resolve(__dirname, "../../docs/PILOT_DATA_REQUEST_V1.md"), "utf8");
+    const committed = readFileSync(resolve(__dirname, "../../docs/pilot-intake/PILOT_DATA_REQUEST_V1.md"), "utf8");
     // Render into a temporary location by re-running the emitter's own logic through a child process
     // would couple this test to the filesystem; instead assert the invariants the render guarantees.
     for (const f of SETTLEMENT_REQUIRED_COLUMNS) {
@@ -401,7 +401,7 @@ describe("7 · the customer-facing pilot request is GENERATED, not written", () 
   });
 
   it("expected settlement count is NOT requested as mandatory", () => {
-    const committed = readFileSync(resolve(__dirname, "../../docs/PILOT_DATA_REQUEST_V1.md"), "utf8");
+    const committed = readFileSync(resolve(__dirname, "../../docs/pilot-intake/PILOT_DATA_REQUEST_V1.md"), "utf8");
     const mandatory = committed.slice(
       committed.indexOf("## MANDATORY FOR MONEY DISCOVERY"),
       committed.indexOf("## OPTIONAL / CAPABILITY ENHANCING"),
@@ -413,7 +413,7 @@ describe("7 · the customer-facing pilot request is GENERATED, not written", () 
   });
 
   it("the request asks for no personal data and no derived values", () => {
-    const committed = readFileSync(resolve(__dirname, "../../docs/PILOT_DATA_REQUEST_V1.md"), "utf8");
+    const committed = readFileSync(resolve(__dirname, "../../docs/pilot-intake/PILOT_DATA_REQUEST_V1.md"), "utf8");
     expect(committed).toContain("Pseudonymised");
     expect(committed).toContain("No names, emails, addresses");
     expect(committed).toContain("Do not substitute a default, a zero, an estimate or a derived value");
@@ -421,7 +421,7 @@ describe("7 · the customer-facing pilot request is GENERATED, not written", () 
   });
 
   it("the request promises NO money in the readiness report", () => {
-    const committed = readFileSync(resolve(__dirname, "../../docs/PILOT_DATA_REQUEST_V1.md"), "utf8");
+    const committed = readFileSync(resolve(__dirname, "../../docs/pilot-intake/PILOT_DATA_REQUEST_V1.md"), "utf8");
     expect(committed).toContain("readiness report contains no money");
     expect(committed).toContain("PROVISIONAL");
   });

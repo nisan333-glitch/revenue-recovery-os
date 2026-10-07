@@ -76,9 +76,13 @@ read.
 whole exercise turns on. It must carry **the identifier your CONTRACT system issued for the
 obligation**, as billing received it at provisioning. It is **not** billing's internal subscription
 key, **not** the invoice number, and **never** a value composed from payer, amount, date or row
-order. Measured on a controlled synthetic experiment, supplying it moved claimable money by
-**+32.5%** with **zero** fabricated money; without it, real missing money is held out pending
-attribution rather than claimed.
+order.
+
+In a controlled experiment on **synthetic data** it was the **highest-value field we tested** — the
+only one that increased the money we could claim, and it did so with **no fabricated findings**. We
+deliberately do not quote the figure here: it came from data we generated, and a number from a
+synthetic run would read as a forecast for your book, which it is not. Without this field, real
+missing money is held out pending attribution rather than claimed.
 
 **If billing genuinely does not carry it, tell us.** That is a true answer we can work with. A
 reference assembled to fill the column is one we cannot detect, and it would produce confident
@@ -128,8 +132,10 @@ still measures money through every capability that remains.
 **Expected settlement count** — how many settlement events an obligation expected. It is the only
 thing standing between us and *event-level* proof: without it, two lines settling one obligation are
 indistinguishable from two instalments of it, so we report **multiple settlements observed** and never
-**duplicate**. On the synthetic evidence it unlocks **no additional money**, so we are not asking for
-it in the first pilot. Supply it if it is cheap; it is an upgrade, not a prerequisite.
+**duplicate**. In the synthetic experiment described above, adding it improved **event-level proof
+without increasing monetary coverage** — a result about that experiment, which we do not extend to
+your data. So we are not asking for it in the first pilot. Supply it if it is cheap; it is an upgrade,
+not a prerequisite.
 
 ---
 
