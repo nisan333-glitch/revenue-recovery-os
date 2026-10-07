@@ -891,6 +891,77 @@ compared a dataset with itself and proved nothing, and the real property needed 
 **capability** while agreeing in **money** — a credit supplies it, since credits are excluded from billed
 money. **A test that cannot fail is not a control.**
 
+**Customer data readiness decision (2026-10-07).** The synthetic phase answered *can NH find money*
+($60,246.00 → $79,846.00 claimable, $0.00 fabricated, synthetic only). The next question is different and
+is answered by looking at files rather than at money: **can a real customer supply the authoritative facts
+that capability rests on?** Built as a **validation-only** path — no customer leakage, no monetary finding,
+no Recovery Case, nothing persisted, no API and no screen
+([`docs/CUSTOMER_DATA_READINESS_V1.md`](docs/CUSTOMER_DATA_READINESS_V1.md)). The rules:
+
+> **A capability is declared available only by a layer holding the facts to perform it, and the answer is
+> a LEVEL, never a boolean.** The presence of `obligation_ref` licenses *monetary reconciliation possible*
+> and leaves *exact money* and *event proof* closed. A boolean "ready" would announce a capability from a
+> subset of the facts it needs — the `coverage.event` error one layer out.
+
+> **Structural presence is not authority, and a request parameter can never declare a source
+> authoritative.** The caller is the beneficiary of a larger number. The ladder is `PRESENT` →
+> `VALID_FORMAT` → `SOURCE_NATIVE` → `AUTHORITY_VERIFIED`, with `AUTHORITY_UNVERIFIED` terminal and
+> **outside** the order. **Nothing in this slice reaches `AUTHORITY_VERIFIED`** — no provenance channel
+> exists — so the ceiling is `SOURCE_NATIVE`, every level is **PROVISIONAL**, and the refusal of
+> self-vouching is *structural*: the evaluator has no parameter by which provenance could be asserted.
+
+> **A readiness report contains NO money.** Estimating blocked dollars before reconciliation has run on a
+> customer's data would be a forecast presented as a finding. Enforced by a test that walks the whole
+> returned object for monetary keys and `$`-figures.
+
+The billing side **did not exist**: contract 2.0.0 describes a subscription observation whose
+`next_invoice_due_at` is required and cannot carry an invoice line, and the synthetic `observation.csv` was
+a benchmark artefact with no schema. So `nh.settlement-extract@1.0.0` is a third **additive sibling** —
+own scheme, `sxv-2026.1`, `NH-SX-####` catalogue, one row = ONE SETTLEMENT LINE, six required facts, five
+fail-closed capabilities that reject no row, and every code carrying `ownedBy` so a report says which team
+to route it to. Its own stopped fields mirror the expectation side's: **`expected_amount` on the billing
+side is refused** exactly as `invoice_ref` is refused on the contract side, because billing stating the
+expectation is billing auditing itself; `is_duplicate` is refused because duplication is a conclusion NH
+must reach, never a field the customer supplies. **`settled_amount` has no declared UNKNOWN** while
+`expected_amount` does — what was *owed* can genuinely be unknown, what was *billed* cannot.
+
+**The control caught a defect in my own gate, and it was the dataset-global taint repeated.** The first
+obligation-link gate also required zero dangling references; on the frozen variant that dropped the whole
+dataset to L1 because **11 settlement rows of 597** name obligations whose expectation rows were correctly
+quarantined (2 × `NH-EX-2016` ambiguous lines, 9 × `NH-EX-2008` non-governed currency). Blocking a
+98%-joinable book is not caution:
+
+> **A dangling reference is a PER-UNIT condition** — counted, carrying its interpretation, gating nothing
+> at dataset level. L2 means *the join can be formed*; L3 means *amounts are authoritative throughout*.
+
+**The `obligation_ref` stopped-field record is PRESERVED UNCHANGED and corrected by an append-only
+erratum** in its own file, so append-only is structural rather than promised: *a superseded conclusion is
+corrected and preserved, never deleted and never silently rewritten.* **No longer valid:** that a
+whole-book migration defeats an obligation reference — refuted by measurement, M14 and M15 both resolving
+from the reference alone with no alias map, because a stable external reference was never billing's
+internal key. **Still binding:** different grains, many-to-many consolidation and splitting,
+`schedule_line_ref` staying scoped within its extract, and **the grain question remaining open**.
+**Resolved by relocation:** the key lives on the billing side and stays stopped on the expectation side.
+A `SUPERSEDED IN PART` marker sits beside the original while its prose stays byte-identical, pinned by a
+test; `EXPECTATION_EXTRACT_VERSION` stays **1.1.0**, because fields, tiers, validator semantics and
+acceptance behaviour did not move and a version signalling a change that did not happen is its own defect.
+
+**The no-production-importer guard moved with its consumer rather than being deleted.** It existed because
+the extract was deliberately unwired, enforcing *the slice that wires a field must ship its consumer with
+it*; this slice is that consumer, so the guard is **narrowed** to the property it was protecting — the
+importers are exactly the four readiness-path files, named, and **no monetary, reconciliation or assessment
+module may reach it.** Its scan now strips comments, because a prose mention in `settlementExtract.ts` is
+not a dependency: fourth instance of **a structural guard must read code, not documentation.**
+
+**Control: 25/25, read-only over both frozen packages**, which `recon:verify` and `recon:ref:verify` both
+confirm afterwards. V3 → `NH-SX-3001`, ceiling **L1**; the variant → **L2**; M16's blanks stay UNKNOWN with
+rows preserved and L3 refused; M17 stays unresolved at `NH-EX-2016`; M19 converts nothing; neither package
+fabricates authority. The customer-facing request
+([`docs/PILOT_DATA_REQUEST_V1.md`](docs/PILOT_DATA_REQUEST_V1.md)) is **generated from the field specs**
+and a test asserts it matches, because a data request derived by hand drifts silently and the customer
+discovers it at reconciliation. **Expected settlement count is NOT mandatory** — the evidence is that it
+upgrades event-level proof and unlocks no additional money.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
