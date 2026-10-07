@@ -1101,6 +1101,69 @@ first** — including rendered `isNot` bullets that carry no negating word on th
 instance of a guard matching a term rather than a claim, and a stale document proving that **editing the
 emitter is not regenerating the package**.
 
+**Billing-extract rename decision (2026-10-07).** The owner's call, on the archaeology above: a caveat
+telling a customer to read `settled_at` as a raise date is a **stand-in for the fix**, and the fix was
+cheapest before the package was ever sent — the extract had reached nobody, held no customer data and had
+no production consumer. So `settled_at` → **`invoice_raised_at`**, `settled_amount` →
+**`invoice_line_amount`**, and the artefact itself `nh.settlement-extract` → **`nh.billing-extract`**.
+The semantics do not move: the event has always been A CHARGE WAS RAISED.
+
+**The audit finding that makes it more than readability:** the token was already overloaded **inside this
+repository with the opposite meaning**. `saasActivation.ts` declares `settled_amount` as a header synonym
+for **`paid_amount`** in contract 2.0.0, and `pilotDataContract.ts` carries
+`settledAmountMayNotExceedObligation`. In the observation contract *settled* means **paid**; in the
+settlement extract it meant **billed**. One token, two opposite events, two live artefacts. Both
+contract-2.0.0 sites are correct in their own artefact and were left alone. The rules:
+
+> **A version is a claim about THAT ID's history.** The successor is `nh.billing-extract@1.0.0`, not
+> `2.0.0`: a `2.0.0` would assert a `1.0.0` under the new id which never existed and which no customer
+> could have built against — a version signalling a change that did not happen. Succession is recorded as
+> a **link**, never as a number. Nor is it compatibility: a file declaring the old id is refused outright
+> as an unknown artefact, which is **stronger** than a major bump because there is no silent upgrade path
+> at all. Had the id stayed, `COMPATIBILITY_POLICY` would have forced a MAJOR — it lists *"Remove or
+> rename a field"* verbatim.
+
+> **A frozen record of DATA is evidence; a parser is MACHINERY.** That is how "keep 1.0.0 inspectable"
+> and "invent no compatibility layer" stop contradicting each other. The declaration and the `NH-SX-`
+> catalogue are preserved unchanged in `src/contract/historical/`; the **validator is not**, because it
+> could accept the retired column again, so it was renamed forward. A test asserts the historical
+> directory exports no function and validates nothing.
+
+> **The rename stops at the artefact boundary.** Where *settlement* names the act of settling an
+> obligation it is correct and stays: `EXPECTED_SETTLEMENT_COUNT_AVAILABLE`, the settlement-count stopped
+> candidate, and every use in the frozen reconciliation core — which is byte-identical afterwards.
+> Renaming it would have destroyed a true distinction, which is the *stay distinguishable* rule again.
+
+**Built 2026-10-07** ([`docs/BILLING_EXTRACT_RENAME_V1.md`](docs/BILLING_EXTRACT_RENAME_V1.md)), and the
+equivalence is **derived rather than asserted**: a 10-test succession proof applies the two-entry rename
+map to the old column list and requires it to reproduce the new one **in order**, checks every field's
+tier, kind, PII class, capability, observability and owner field-for-field, and proves `NH-BX-####` is
+`NH-SX-####` with the numbers, severities and owners intact. **Five mutations were tried and all five
+fail**, including a tier change smuggled in as a rename. `DATA_READINESS_SCHEME` → `-v2` because
+`ReadinessReport.settlement` became `.billing` and a reported key is part of the shape; its **method
+version does not move**, because no level, gate, conjunct, count or refusal changed. Contract **2.0.0**
+and expectation extract **1.1.0** unmoved; every frozen artefact byte-identical; no monetary or readiness
+figure moved.
+
+**The caveat's absence is now itself a checked obligation** — a stale warning about names that no longer
+exist is the same class of defect as the contradiction it covered for — and the ban extends to the four
+CSVs, not just the seven documents. The *"Export B is INVOICES, not payments"* block **stays**: that
+hazard is a finance team reaching for the cash-application system, which is about the concept and not the
+column name.
+
+**Two of the new guards caught my own instruments first, and the second one generalises.** The readiness
+control pinned the code family as `/^NH-(EX|SX)-\d{4}$/` — an alternation a literal rename cannot see —
+and failed 2 of 25 on codes that were perfectly correct. Then the importer guard **counted a citation as a
+dependency**: it stripped comments and matched the retired filename anywhere, so it flagged the successor,
+whose *version-history string* names the retired module, and flagged the record for importing its own
+catalogue. It now reads **import specifiers only**. **Eighth instance** of the same lesson: a structural
+guard must read code, and specifically the construct it is actually asking about — a term is not a claim,
+a prose mention is not an import, and a string literal is not a dependency.
+
+**165/165** package checks, **25/25** control, 1071 + 1 skipped with and without a database, 599/599 ep2,
+120/120 journey. What still blocks a first real export is unchanged and is not the naming: **nothing
+reaches `AUTHORITY_VERIFIED`**, so every readiness level stays PROVISIONAL at a `SOURCE_NATIVE` ceiling.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

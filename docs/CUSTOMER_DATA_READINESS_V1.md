@@ -211,3 +211,39 @@ Observation only. `claimBoundary` carries `computesMoney: false`. No production 
 Missing Invoice detector, no multi-extract production identity, no contract bump, no API, no screen, no
 persistence. Nothing here turns any observed amount into proven **Revenue Returned** or **Auditable
 Revenue**, and no customer data has been seen.
+
+---
+
+## 9 · APPEND-ONLY · the artefact was renamed on 2026-10-07
+
+**Everything above is preserved as written.** It describes `nh.settlement-extract@1.0.0`, which is now
+**RETIRED**, and its `NH-SX-####` codes, which are now `NH-BX-####` with the same numbers. Those
+references are left intact on purpose: they record what was built and what the V3 package actually
+answered, and the retired catalogue is preserved at
+`src/contract/historical/settlementExtractCodes_1_0_0.ts` so every code cited above still resolves.
+A historical record keeps the codes it recorded.
+
+**What changed, and nothing else:**
+
+| above | now |
+|---|---|
+| `nh.settlement-extract@1.0.0` | **`nh.billing-extract@1.0.0`** (new id, fresh version line) |
+| `settled_at` | **`invoice_raised_at`** |
+| `settled_amount` | **`invoice_line_amount`** |
+| `NH-SX-####` | **`NH-BX-####`**, same numbers, severities and owners |
+| `sxv-2026.1` | **`bxv-2026.1`** |
+| `ReadinessReport.settlement` | **`.billing`**, so `DATA_READINESS_SCHEME` is now `…-v2` |
+| `SETTLEMENT_OBLIGATION_LINK_AVAILABLE`, `SETTLEMENT_PERIOD_AVAILABLE` | `BILLING_…` |
+
+**Unchanged:** every readiness level, gate, conjunct, count and refusal — so
+`DATA_READINESS_METHOD_VERSION` stays `rdy-2026.1`. The ladder, the authority semantics, the
+`AUTHORITY_UNVERIFIED` terminal state, the per-unit dangling rule, the no-money guarantee, the field
+tiers, the capabilities and the stopped fields are all exactly as described above. V3 still caps at
+**L1** and the variant at **L2**.
+
+`EXPECTED_SETTLEMENT_COUNT_AVAILABLE` kept its name deliberately: it is about settlement *events*, which
+is what the word correctly means there.
+
+Full treatment, including why the successor is `1.0.0` rather than `2.0.0` and why the predecessor's
+schema is preserved while its validator is not, in
+[`docs/BILLING_EXTRACT_RENAME_V1.md`](BILLING_EXTRACT_RENAME_V1.md).
