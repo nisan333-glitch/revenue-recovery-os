@@ -275,8 +275,17 @@ export function reconcileWithObligationIdentity(
     observations.length === 0 || unkeyed === observations.length ? "UNAVAILABLE_BILLING_SIDE_UNKEYED"
       : unkeyed > 0 ? "PARTIAL_BILLING_SIDE" : "AVAILABLE";
 
+  // THE CAPABILITY UPGRADE, and it is the only layer entitled to make it. The core declares the
+  // billing side unkeyed because its row type carries no reference; here the references exist, so when
+  // BOTH sides are fully keyed — every live expectation has a schedule line, no billing row is
+  // unkeyed, and no reference dangles — an event join is genuinely performable and `event` becomes
+  // AVAILABLE. Anything less leaves the core's honest answer in place rather than rounding it up.
+  const everyExpectationKeyed = expectations.length > 0 && expectations.every((e) => e.scheduleLineRef !== null);
+  const bothSidesKeyed = everyExpectationKeyed && obligationIdentity === "AVAILABLE" && dangling.length === 0;
+
   return Object.freeze({
     ...base,
+    coverage: Object.freeze({ ...base.coverage, event: bothSidesKeyed ? "AVAILABLE" as const : base.coverage.event }),
     scheme: OBLIGATION_RECONCILIATION_SCHEME,
     methodVersion: OBLIGATION_RECONCILIATION_METHOD_VERSION,
     underlyingMethodVersion: base.methodVersion,

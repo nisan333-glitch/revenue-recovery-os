@@ -182,7 +182,25 @@ export interface UnitResult {
 
 export interface DeclaredCoverage {
   readonly monetary: "AVAILABLE" | "REFUSED";
-  readonly event: "AVAILABLE" | "UNAVAILABLE_NO_OBLIGATION_IDENTITY";
+  /**
+   * Event reconciliation asks whether the expected settlement EVENTS happened — and that is a join
+   * between two keyed sides, so it needs a per-obligation key on BOTH of them.
+   *
+   * This field used to read AVAILABLE whenever every live EXPECTATION carried a schedule line, which
+   * claimed the capability from one side alone. `ObservationRow` carries no obligation reference at
+   * all, so the billing side was never keyed and an event check was never possible — the field
+   * announced availability exactly where the work could not be done. Found while measuring the
+   * obligation-reference counterfactual, reported there, corrected here.
+   *
+   * So the core now reports the honest reason, and the two unavailable states stay DISTINGUISHABLE:
+   * nothing keyed at all is a different position from the expectation side keyed and the billing side
+   * silent, and collapsing them would hide which half is missing. A capability is declared available
+   * only by a layer that holds the facts to perform it.
+   */
+  readonly event:
+    | "AVAILABLE"
+    | "UNAVAILABLE_NO_OBLIGATION_IDENTITY"
+    | "UNAVAILABLE_BILLING_SIDE_UNKEYED";
   readonly correlation: "AVAILABLE" | "UNAVAILABLE_NO_AUTHORITATIVE_RELATION";
 }
 
@@ -533,8 +551,12 @@ export function reconcile(
   const unpairedPositiveMinor = under.filter((u) => u.pairedWith === null).reduce((n, u) => n + u.residualMinor!, 0);
   const pairedPositiveMinor = under.filter((u) => u.pairedWith !== null).reduce((n, u) => n + u.residualMinor!, 0);
 
-  // Event reconciliation needs a per-obligation key on EVERY live expectation; correlation needs an
-  // authoritative relation. Both are declared UNAVAILABLE rather than scored as zero when absent.
+  // Event reconciliation needs a per-obligation key on BOTH sides; correlation needs an authoritative
+  // relation. Both are declared UNAVAILABLE rather than scored as zero when absent.
+  //
+  // The expectation side is all this layer can see: `ObservationRow` has no obligation reference, so
+  // the billing side is unkeyed here BY CONSTRUCTION and never merely in this dataset. A layer that
+  // does hold that fact may upgrade this to AVAILABLE; this one may not, and saying so is the fix.
   const everyLineKeyed = liveExpectations.length > 0 && liveExpectations.every((e) => e.scheduleLineRef !== null);
   const anyRelation = Object.keys(terms.payerHierarchy).length > 0;
 
@@ -544,7 +566,7 @@ export function reconcile(
     currency: terms.currency,
     coverage: Object.freeze({
       monetary: units.some((u) => u.state.startsWith("REFUSED")) ? "REFUSED" : "AVAILABLE",
-      event: everyLineKeyed ? "AVAILABLE" : "UNAVAILABLE_NO_OBLIGATION_IDENTITY",
+      event: everyLineKeyed ? "UNAVAILABLE_BILLING_SIDE_UNKEYED" : "UNAVAILABLE_NO_OBLIGATION_IDENTITY",
       correlation: anyRelation ? "AVAILABLE" : "UNAVAILABLE_NO_AUTHORITATIVE_RELATION",
     }) as DeclaredCoverage,
     units: Object.freeze(units),

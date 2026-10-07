@@ -223,9 +223,29 @@ describe("3 · identity resolved from the source's own reference", () => {
   it("coverage is UNAVAILABLE when the billing side is wholly unkeyed — not AVAILABLE from one side", () => {
     const { r } = look([owe("e1", "03", 10_000)], [paid("e1", "03", 10_000, null)]);
     expect(r.obligationCoverage.obligationIdentity).toBe("UNAVAILABLE_BILLING_SIDE_UNKEYED");
-    // The core's own event coverage reads AVAILABLE from the EXPECTATION side alone. That is an
-    // overstatement this module refuses to inherit; recorded as a finding rather than patched here.
+    // `coverage.event` once read AVAILABLE here, from the EXPECTATION side alone. It was recorded as a
+    // finding and then corrected: an event join needs both sides keyed, and this row names no
+    // obligation, so the capability is unavailable and says which half is missing.
+    expect(r.coverage.event).toBe("UNAVAILABLE_BILLING_SIDE_UNKEYED");
+  });
+
+  it("...and becomes AVAILABLE once BOTH sides are keyed — the upgrade is earned, not assumed", () => {
+    const { r } = look([owe("e1", "03", 10_000)], [paid("e1", "03", 10_000, "e1-03")]);
+    expect(r.obligationCoverage.obligationIdentity).toBe("AVAILABLE");
     expect(r.coverage.event).toBe("AVAILABLE");
+  });
+
+  it("a DANGLING reference does not earn the upgrade — a key that joins to nothing is not a key", () => {
+    const { r } = look([owe("e1", "03", 10_000)], [paid("e1", "03", 10_000, "ghost-obligation")]);
+    expect(r.coverage.event).toBe("UNAVAILABLE_BILLING_SIDE_UNKEYED");
+  });
+
+  it("one unkeyed billing row among keyed ones is enough to withhold it", () => {
+    const { r } = look(
+      [owe("e1", "03", 10_000), owe("e2", "03", 10_000)],
+      [paid("e1", "03", 10_000, "e1-03"), paid("e2", "03", 10_000, null)],
+    );
+    expect(r.coverage.event).toBe("UNAVAILABLE_BILLING_SIDE_UNKEYED");
   });
 });
 

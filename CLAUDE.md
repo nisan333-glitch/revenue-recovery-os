@@ -864,6 +864,33 @@ held across a *measurement* correction and cannot hold across a *product* correc
 is preserved as the historical record of the pre-correction product, and what reproduces byte-identically now
 is every monetary and count field — which is the claim worth making.
 
+**Capability-reporting decision (2026-10-07).** `coverage.event` answers whether NH can reconcile the
+settlement *events* and not merely the money. It read AVAILABLE whenever every live **expectation** carried
+a schedule line — one side of a two-sided join. `ObservationRow` carries no obligation reference at all, so
+the billing side was unkeyed **by construction**, and the field announced the capability in exactly the
+situation where the work could not be done, on every run of the frozen package. Reported as a finding by the
+counterfactual and corrected here, in its own commit. The rules:
+
+> **A capability is declared AVAILABLE only by a layer that holds the facts required to perform it.**
+> Reporting availability from a subset of those facts is a claim about the product, not about the data.
+
+> **The unavailable states stay DISTINGUISHABLE.** *Nothing keyed* and *the expectation side keyed while the
+> billing side is silent* are different positions, and collapsing them hides **which half is missing** — the
+> only part of the answer that says what to go and get. The same reason `leakInstanceIdentityStatus` and
+> `SOURCE_NAMESPACE_RESOLUTION_AVAILABLE` are named separately.
+
+**Built 2026-10-07** ([`docs/CAPABILITY_REPORTING_V1.md`](docs/CAPABILITY_REPORTING_V1.md)): a third state,
+`UNAVAILABLE_BILLING_SIDE_UNKEYED`, is now the core's answer **always** — it cannot reach AVAILABLE, which
+is the point and not a limitation, because its row type has nothing to join on. The obligation-reference
+reading earns the upgrade only when it is genuinely earned: every expectation keyed, **no** billing row
+unkeyed and **no reference dangling**, because a key that joins to nothing is not a key. **Every monetary
+and count field on every candidate of both frozen packages is identical**; the claim is withdrawn exactly
+where it was false and kept exactly where it is true — `F_OBLIGATION_REF` has both sides keyed and stays
+AVAILABLE. One lesson recorded because it is the fifth instance: the "no money moves" test's first form
+compared a dataset with itself and proved nothing, and the real property needed two datasets differing in
+**capability** while agreeing in **money** — a credit supplies it, since credits are excluded from billed
+money. **A test that cannot fail is not a control.**
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

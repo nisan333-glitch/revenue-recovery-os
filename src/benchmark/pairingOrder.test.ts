@@ -290,3 +290,66 @@ describe("6 · the defect cannot come back", () => {
     expect(selectPairing([compound], () => [])!.mechanism).toBe("SIBLING_ENTITLEMENT_SAME_PAYER");
   });
 });
+
+// ── CAPABILITY REPORTING · a capability is declared only by a layer that can perform it ──────────
+//
+// Separate commit, separate concern, and deliberately asserted here too: `coverage.event` once read
+// AVAILABLE whenever every live EXPECTATION carried a schedule line. `ObservationRow` has no
+// obligation reference at all, so the billing side was never keyed and an event join was never
+// possible — the field announced availability exactly where the work could not be done.
+//
+// The money must not notice. That is the point of the tests below, and it is checked on the same
+// scenarios the monetary suite uses rather than on a fixture built to agree.
+describe("7 · event coverage requires BOTH keyed sides, and moves no money", () => {
+  const es = [owe("e1", "03", 10_000, "payer-1")];
+
+  it("expectation-side identity ALONE is not event coverage", () => {
+    // The core cannot see a billing-side key; it must say so, and name which half is missing.
+    const r = reconcile(es, [{
+      invoiceRef: "i1", entitlementRef: "e1", customerRef: "payer-1", ...P("03"),
+      billedAmountMinor: 10_000, currency: "USD", isCredit: false,
+    }], TERMS);
+    expect(es[0]!.scheduleLineRef).not.toBeNull();   // the one side IS keyed
+    expect(r.coverage.event).toBe("UNAVAILABLE_BILLING_SIDE_UNKEYED");
+  });
+
+  it("neither side keyed is a DIFFERENT answer — collapsing them would hide which half is missing", () => {
+    const unkeyed = [{ ...es[0]!, scheduleLineRef: null }] as typeof es;
+    const r = reconcile(unkeyed, [], TERMS);
+    expect(r.coverage.event).toBe("UNAVAILABLE_NO_OBLIGATION_IDENTITY");
+  });
+
+  it("both sides keyed → AVAILABLE, declared by the layer that holds the facts", () => {
+    expect(look(es, [paid("e1", "03", 10_000, "e1-03", "payer-1")]).r.coverage.event).toBe("AVAILABLE");
+  });
+
+  it("NO MONETARY FIGURE MOVES when the capability flips · money and capability are independent", () => {
+    // The first form of this test compared a dataset with itself and proved nothing — a tautology of
+    // exactly the kind the structural guards in this repo exist to catch, written by hand this time.
+    //
+    // The real property needs two datasets that differ in CAPABILITY and agree in MONEY. A CREDIT
+    // supplies it: credits are excluded from billed money by the core, so adding one with no
+    // obligation reference withholds the event upgrade while leaving every monetary figure alone.
+    const keyed = [paid("e1", "03", 10_000, "e1-03", "payer-1")];
+    const withUnkeyedCredit: ObligationObservationRow[] = [...keyed, Object.freeze({
+      invoiceRef: "credit-1", entitlementRef: "e1", customerRef: "payer-1", ...P("03"),
+      billedAmountMinor: 500, currency: "USD", isCredit: true, obligationRef: null,
+    }) as ObligationObservationRow];
+
+    const a = look(es, keyed);
+    const b = look(es, withUnkeyedCredit);
+    expect(a.r.coverage.event).toBe("AVAILABLE");
+    expect(b.r.coverage.event).toBe("UNAVAILABLE_BILLING_SIDE_UNKEYED"); // the capability DID flip
+    // ...and not one monetary figure moved with it.
+    expect(b.headline).toBe(a.headline);
+    expect(b.held).toBe(a.held);
+    expect(b.gross).toBe(a.gross);
+    expect(b.r.grossNegativeMinor).toBe(a.r.grossNegativeMinor);
+    expect(b.r.units.map((u) => [u.state, u.residualMinor])).toEqual(a.r.units.map((u) => [u.state, u.residualMinor]));
+  });
+
+  it("and the pairing correction's own figures are unchanged by any of this", () => {
+    expect(look(...Object.values(withRefs()) as [never, never]).headline).toBe(19_600);
+    expect(look(...Object.values(withoutRefs()) as [never, never]).headline).toBe(0);
+  });
+});
