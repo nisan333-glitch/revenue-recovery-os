@@ -76,19 +76,19 @@ export const EXPECTATION_EXAMPLE: readonly Readonly<Record<string, string>>[] = 
   }),
 ]);
 
-/** One settlement line per row. */
-export const SETTLEMENT_EXAMPLE: readonly Readonly<Record<string, string>>[] = Object.freeze([
+/** One billing line per row. */
+export const BILLING_EXAMPLE: readonly Readonly<Record<string, string>>[] = Object.freeze([
   // A plain invoice line, naming the obligation it settles.
   Object.freeze({
-    invoice_ref: "INV-55010", invoice_line_ref: "1", settled_at: "2026-01-05",
-    settled_amount: "2400.00", currency: "USD", payer_ref: "PAYER-NORTH",
+    invoice_ref: "INV-55010", invoice_line_ref: "1", invoice_raised_at: "2026-01-05",
+    invoice_line_amount: "2400.00", currency: "USD", payer_ref: "PAYER-NORTH",
     obligation_ref: "SL-7781", is_credit: "false",
     period_start: "2026-01-01", period_end: "2026-01-31",
     legacy_subscription_ref: "", source_system: "BILL-CORE",
   }),
   Object.freeze({
-    invoice_ref: "INV-55044", invoice_line_ref: "1", settled_at: "2026-02-04",
-    settled_amount: "2400.00", currency: "USD", payer_ref: "PAYER-NORTH",
+    invoice_ref: "INV-55044", invoice_line_ref: "1", invoice_raised_at: "2026-02-04",
+    invoice_line_amount: "2400.00", currency: "USD", payer_ref: "PAYER-NORTH",
     obligation_ref: "SL-7782", is_credit: "false",
     period_start: "2026-02-01", period_end: "2026-02-28",
     legacy_subscription_ref: "", source_system: "BILL-CORE",
@@ -96,8 +96,8 @@ export const SETTLEMENT_EXAMPLE: readonly Readonly<Record<string, string>>[] = O
   // ONE INVOICE, TWO OBLIGATIONS — a consolidated invoice, which is perfectly normal. Each line names its
   // own obligation and its own service period, so NH reads two settlements rather than one double charge.
   Object.freeze({
-    invoice_ref: "INV-55100", invoice_line_ref: "1", settled_at: "2026-02-06",
-    settled_amount: "900.00", currency: "USD", payer_ref: "PAYER-SOUTH",
+    invoice_ref: "INV-55100", invoice_line_ref: "1", invoice_raised_at: "2026-02-06",
+    invoice_line_amount: "900.00", currency: "USD", payer_ref: "PAYER-SOUTH",
     obligation_ref: "SL-8120", is_credit: "false",
     period_start: "2026-02-01", period_end: "2026-02-28",
     legacy_subscription_ref: "", source_system: "BILL-CORE",
@@ -105,8 +105,8 @@ export const SETTLEMENT_EXAMPLE: readonly Readonly<Record<string, string>>[] = O
   // ...and the second line covers a DIFFERENT month from the date the invoice was raised, which is why the
   // service period is its own fact and the issue date cannot stand in for it.
   Object.freeze({
-    invoice_ref: "INV-55100", invoice_line_ref: "2", settled_at: "2026-02-06",
-    settled_amount: "1500.00", currency: "USD", payer_ref: "PAYER-SOUTH",
+    invoice_ref: "INV-55100", invoice_line_ref: "2", invoice_raised_at: "2026-02-06",
+    invoice_line_amount: "1500.00", currency: "USD", payer_ref: "PAYER-SOUTH",
     obligation_ref: "SL-8440", is_credit: "false",
     period_start: "2026-01-01", period_end: "2026-01-31",
     legacy_subscription_ref: "", source_system: "BILL-CORE",
@@ -114,8 +114,8 @@ export const SETTLEMENT_EXAMPLE: readonly Readonly<Record<string, string>>[] = O
   // A CREDIT, reversing the paused month. Negative, and marked. A negative line that is not marked is
   // refused, because reading it as a charge would subtract it from billed money.
   Object.freeze({
-    invoice_ref: "INV-55210", invoice_line_ref: "1", settled_at: "2026-03-03",
-    settled_amount: "-900.00", currency: "USD", payer_ref: "PAYER-SOUTH",
+    invoice_ref: "INV-55210", invoice_line_ref: "1", invoice_raised_at: "2026-03-03",
+    invoice_line_amount: "-900.00", currency: "USD", payer_ref: "PAYER-SOUTH",
     obligation_ref: "SL-8120", is_credit: "true",
     period_start: "2026-02-01", period_end: "2026-02-28",
     legacy_subscription_ref: "", source_system: "BILL-CORE",
@@ -125,17 +125,17 @@ export const SETTLEMENT_EXAMPLE: readonly Readonly<Record<string, string>>[] = O
   // was never billing's internal key. That is the whole reason it is worth asking for: a migration that
   // would otherwise make an entire book read as unbilled passes straight through.
   Object.freeze({
-    invoice_ref: "INV-55300", invoice_line_ref: "1", settled_at: "2026-03-05",
-    settled_amount: "2750.00", currency: "USD", payer_ref: "PAYER-NORTH",
+    invoice_ref: "INV-55300", invoice_line_ref: "1", invoice_raised_at: "2026-03-05",
+    invoice_line_amount: "2750.00", currency: "USD", payer_ref: "PAYER-NORTH",
     obligation_ref: "SL-7783-A2", is_credit: "false",
     period_start: "2026-03-01", period_end: "2026-03-31",
     legacy_subscription_ref: "SUB-OLD-4471", source_system: "BILL-CORE-2",
   }),
-  // A settlement against the obligation whose expected amount is UNKNOWN. NH records that it was settled
+  // A billing line against the obligation whose expected amount is UNKNOWN. NH records that it was settled
   // and still reports the obligation as unpriced — it does not treat the billed figure as what was owed.
   Object.freeze({
-    invoice_ref: "INV-55310", invoice_line_ref: "1", settled_at: "2026-03-06",
-    settled_amount: "1800.00", currency: "USD", payer_ref: "PAYER-WEST",
+    invoice_ref: "INV-55310", invoice_line_ref: "1", invoice_raised_at: "2026-03-06",
+    invoice_line_amount: "1800.00", currency: "USD", payer_ref: "PAYER-WEST",
     obligation_ref: "SL-9005", is_credit: "false",
     period_start: "2026-03-01", period_end: "2026-03-31",
     legacy_subscription_ref: "", source_system: "BILL-CORE",

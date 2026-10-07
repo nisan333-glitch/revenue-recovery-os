@@ -16,10 +16,12 @@ import { EXPECTATION_EXTRACT_COLUMNS, STOPPED_FIELDS } from "../../src/contract/
 import { CORRECTED_CANDIDATES } from "../../src/contract/expectationExtractCorrections";
 import { dependencyFor } from "./dependency";
 import { validateExpectationExtract, type RawExpectationRow } from "../../src/contract/expectationExtractValidator";
-import { SETTLEMENT_EVENT_DEFINITION, SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_EXTRACT_FIELDS } from "../../src/contract/settlementExtract";
-import { validateSettlementExtract, type RawSettlementRow } from "../../src/contract/settlementExtractValidator";
+import {
+  BILLING_EVENT_DEFINITION, BILLING_EXTRACT_COLUMNS, BILLING_EXTRACT_FIELDS, BILLING_EXTRACT_REF,
+} from "../../src/contract/billingExtract";
+import { validateBillingExtract, type RawBillingRow } from "../../src/contract/billingExtractValidator";
 import { evaluateDataReadiness } from "../../src/contract/dataReadiness";
-import { EXPECTATION_EXAMPLE, SETTLEMENT_EXAMPLE, UNKNOWN_AMOUNT_OBLIGATION } from "./examples";
+import { EXPECTATION_EXAMPLE, BILLING_EXAMPLE, UNKNOWN_AMOUNT_OBLIGATION } from "./examples";
 
 const DIR = "docs/pilot-intake";
 const checks: { ok: boolean; label: string; detail: string }[] = [];
@@ -44,37 +46,37 @@ const parseCsv = (text: string) => {
 // ── 1 · template headers exactly equal the governed column lists, in order ──────────────────────
 for (const [name, cols] of [
   ["expectation_template.csv", EXPECTATION_EXTRACT_COLUMNS],
-  ["settlement_template.csv", SETTLEMENT_EXTRACT_COLUMNS],
+  ["billing_template.csv", BILLING_EXTRACT_COLUMNS],
 ] as const) {
   const header = read(name).trim();
   check(header === cols.join(","), `${name} · header is exactly the governed schema, in order`,
     header === cols.join(",") ? "" : `got "${header.slice(0, 80)}…"`);
   check(read(name).trim().split("\n").length === 1, `${name} · headers ONLY, no data rows`);
 }
-check(read("settlement_template.csv").includes("obligation_ref"),
-  "settlement_template.csv · obligation_ref is present, per the accepted readiness contract");
+check(read("billing_template.csv").includes("obligation_ref"),
+  "billing_template.csv · obligation_ref is present, per the accepted readiness contract");
 
 // ── 2 · the examples carry only declared columns and pass their own validators ───────────────────
 const eCsv = parseCsv(read("expectation_example.csv"));
-const sCsv = parseCsv(read("settlement_example.csv"));
+const sCsv = parseCsv(read("billing_example.csv"));
 check(eCsv.cols.join(",") === EXPECTATION_EXTRACT_COLUMNS.join(","), "expectation_example.csv · declared columns only, in order");
-check(sCsv.cols.join(",") === SETTLEMENT_EXTRACT_COLUMNS.join(","), "settlement_example.csv · declared columns only, in order");
+check(sCsv.cols.join(",") === BILLING_EXTRACT_COLUMNS.join(","), "billing_example.csv · declared columns only, in order");
 
 const eVal = validateExpectationExtract(
   eCsv.cols,
   eCsv.rows.map((cells, i) => ({ rowNumber: i + 1, cells })) as RawExpectationRow[],
   { currency: "USD" },
 );
-const sVal = validateSettlementExtract(
+const sVal = validateBillingExtract(
   sCsv.cols,
-  sCsv.rows.map((cells, i) => ({ rowNumber: i + 1, cells })) as RawSettlementRow[],
+  sCsv.rows.map((cells, i) => ({ rowNumber: i + 1, cells })) as RawBillingRow[],
   { currency: "USD" },
 );
 check(eVal.usable && eVal.extractFaults.length === 0, "expectation_example.csv · no extract fault", JSON.stringify(eVal.extractFaults));
-check(sVal.usable && sVal.extractFaults.length === 0, "settlement_example.csv · no extract fault", JSON.stringify(sVal.extractFaults));
+check(sVal.usable && sVal.extractFaults.length === 0, "billing_example.csv · no extract fault", JSON.stringify(sVal.extractFaults));
 check(eVal.rejections.length === 0, "expectation_example.csv · every row ACCEPTED by the real validator",
   eVal.rejections.map((r) => `${r.rowNumber}:${r.code}`).join(" "));
-check(sVal.rejections.length === 0, "settlement_example.csv · every row ACCEPTED by the real validator",
+check(sVal.rejections.length === 0, "billing_example.csv · every row ACCEPTED by the real validator",
   sVal.rejections.map((r) => `${r.rowNumber}:${r.code}`).join(" "));
 
 // ── 3 · the example pair reaches L2 through the real readiness evaluator ────────────────────────
@@ -87,22 +89,22 @@ check(readiness.expectation.monetaryQuantification === "PARTIAL",
   "...and stops at L2 because one obligation is deliberately unpriced", readiness.expectation.monetaryQuantification);
 check(readiness.provisional === true && readiness.authority.reached === "SOURCE_NATIVE",
   "the example package is PROVISIONAL and claims no verified authority", readiness.authority.reached);
-check(readiness.settlement.creditRows === 1, "the credit is recognised as a credit, not a charge", `${readiness.settlement.creditRows}`);
+check(readiness.billing.creditRows === 1, "the credit is recognised as a credit, not a charge", `${readiness.billing.creditRows}`);
 
 // ── 4 · the generated documents have not drifted from the governed definitions ───────────────────
 {
   const dict = read("FIELD_DICTIONARY.md");
-  const missing = [...EXPECTATION_EXTRACT_COLUMNS, ...SETTLEMENT_EXTRACT_COLUMNS]
+  const missing = [...EXPECTATION_EXTRACT_COLUMNS, ...BILLING_EXTRACT_COLUMNS]
     .filter((c) => !dict.includes(`### \`${c}\``));
   check(missing.length === 0, "FIELD_DICTIONARY.md · every governed field has an entry", missing.join(", "));
   // ...and no entry for a field that does not exist.
   const entries = [...dict.matchAll(/^### `([^`]+)`$/gm)].map((m) => m[1]!);
-  const governed = new Set([...EXPECTATION_EXTRACT_COLUMNS, ...SETTLEMENT_EXTRACT_COLUMNS]);
+  const governed = new Set([...EXPECTATION_EXTRACT_COLUMNS, ...BILLING_EXTRACT_COLUMNS]);
   const invented = entries.filter((e) => !governed.has(e));
   check(invented.length === 0, "FIELD_DICTIONARY.md · documents NO field the contracts do not declare", invented.join(", "));
 
   const request = read("PILOT_DATA_REQUEST_V1.md");
-  const absent = [...EXPECTATION_EXTRACT_COLUMNS, ...SETTLEMENT_EXTRACT_COLUMNS].filter((c) => !request.includes(`\`${c}\``));
+  const absent = [...EXPECTATION_EXTRACT_COLUMNS, ...BILLING_EXTRACT_COLUMNS].filter((c) => !request.includes(`\`${c}\``));
   check(absent.length === 0, "PILOT_DATA_REQUEST_V1.md · every governed field appears", absent.join(", "));
   check(request.includes("Generated from the governed definitions"), "PILOT_DATA_REQUEST_V1.md · declares itself generated");
 }
@@ -132,7 +134,7 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
     }
   }
   check(hits.length === 0, "examples carry NO direct personal data", hits.join(", "));
-  const nameCols = [...EXPECTATION_EXTRACT_COLUMNS, ...SETTLEMENT_EXTRACT_COLUMNS]
+  const nameCols = [...EXPECTATION_EXTRACT_COLUMNS, ...BILLING_EXTRACT_COLUMNS]
     .filter((c) => /name|email|phone|address|contact/i.test(c));
   check(nameCols.length === 0, "no governed column asks for personal data at all", nameCols.join(", "));
 }
@@ -255,7 +257,7 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
   const customerFacing = readdirSync(DIR).filter((f) => f.endsWith(".md"));
 
   // ── A · nothing may be REQUESTED and STOPPED in the same artefact ─────────────────────────────
-  const requestedFields = [...EXPECTATION_EXTRACT_COLUMNS, ...SETTLEMENT_EXTRACT_COLUMNS];
+  const requestedFields = [...EXPECTATION_EXTRACT_COLUMNS, ...BILLING_EXTRACT_COLUMNS];
   for (const f of customerFacing) {
     const body = read(f);
     const stoppedSection = body.includes("## What we will NOT ask you for")
@@ -290,7 +292,7 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
     "the superseded entry is still PRESERVED in the design record it was written in");
 
   // ── B · the obligation-link dependency is stated truthfully and is MEASURED ────────────────────
-  for (const [field, side] of [["obligation_ref", "settlement"], ["schedule_line_ref", "expectation"]] as const) {
+  for (const [field, side] of [["obligation_ref", "billing"], ["schedule_line_ref", "expectation"]] as const) {
     const dep = dependencyFor(field, side);
     check(dep.costsALevel,
       `${field} · dropping it provably costs a readiness level — the dependency is measured, not asserted`,
@@ -323,7 +325,7 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
   // ── D · the general sweep · a permitted blank may never also reject the row ────────────────────
   {
     const entries = [...dictBody.matchAll(/### `([^`]+)`\n([\s\S]*?)(?=\n### |\n## |$)/g)];
-    check(entries.length === EXPECTATION_EXTRACT_COLUMNS.length + SETTLEMENT_EXTRACT_COLUMNS.length,
+    check(entries.length === EXPECTATION_EXTRACT_COLUMNS.length + BILLING_EXTRACT_COLUMNS.length,
       "FIELD_DICTIONARY.md · every governed field has exactly one entry", `${entries.length}`);
     const bad: string[] = [];
     for (const [, name, body] of entries) {
@@ -365,13 +367,13 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
     // ── THE SETTLED-AT SEMANTIC GUARD ───────────────────────────────────────────────────────────
     //
     // Archaeology established the event: a CHARGE WAS RAISED. The core's `ObservationRow` carries no date
-    // but the service period, nothing reads `AcceptedSettlement.settledAt`, the frozen billing export
+    // but the service period, nothing reads `AcceptedBillingLine.invoiceRaisedAt`, the frozen billing export
     // feeds it from `issued_at` and has no payment column, and payment lives elsewhere entirely as
     // `next_invoice_paid_at`. Usage has never been inconsistent — the NAME is, and it is three commits
     // old and ours.
     //
     // So the guard is on the CLAIM, in both directions: the documents must state the charge event and
-    // must never describe either `settled_at` or Export B as a payment, a receipt, a clearing or a
+    // must never describe either `invoice_raised_at` or Export B as a payment, a receipt, a clearing or a
     // settlement in the payments sense.
     const PAYMENT_SENSE = /\b(payment date|paid on|paid at|cash receipt|receipt date|collected|collection date|cleared|clearing|remittance|settlement (?:occurred|event|date)|when (?:money|cash|payment) (?:arrived|was received))\b/i;
     for (const f of customerFacing) {
@@ -384,38 +386,84 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
       // the bullet line at all — the negation lives in the heading above it. A guard that cannot tell an
       // assertion from its own disclaimer flags the disclaimer, which is the seventh time a check here
       // has matched a term instead of a claim.
-      const disclaimers = new Set(SETTLEMENT_EVENT_DEFINITION.isNot.map((x) => `* ${x}`));
+      const disclaimers = new Set(BILLING_EVENT_DEFINITION.isNot.map((x) => `* ${x}`));
       const claims = body.split(/\n/).filter((l) => {
         if (disclaimers.has(l.trim())) return false;
         return !/\bnot\b|\bnever\b|rather than|instead of|⚠|do NOT|wrong file/i.test(l);
       });
       const offending = claims.filter((l) => PAYMENT_SENSE.test(l)).map((l) => l.trim().slice(0, 70));
       check(offending.length === 0,
-        `${f} · never describes the billing export or settled_at in the PAYMENT sense`, offending.join(" | "));
+        `${f} · never describes the billing export or invoice_raised_at in the PAYMENT sense`, offending.join(" | "));
     }
     // ...and the positive half: the charge event is stated, or the guard above is satisfied by silence.
-    check(dictBody.includes(SETTLEMENT_EVENT_DEFINITION.theEvent),
+    check(dictBody.includes(BILLING_EVENT_DEFINITION.theEvent),
       "FIELD_DICTIONARY.md · states the canonical charge event verbatim from the contract");
-    check(requestBody.includes(SETTLEMENT_EVENT_DEFINITION.theEvent),
+    check(requestBody.includes(BILLING_EVENT_DEFINITION.theEvent),
       "PILOT_DATA_REQUEST_V1.md · states the canonical charge event verbatim from the contract");
-    for (const body of [dictBody, requestBody]) {
-      check(body.includes(SETTLEMENT_EVENT_DEFINITION.nameCaveat),
-        "the misleading column names are flagged where they are read");
+    // ── THE RENAME, PROVED RATHER THAN TRUSTED ──────────────────────────────────────────────────
+    //
+    // The predecessor's remedy was a caveat telling the customer to read `settled_at` as a raise date.
+    // The owner renamed the columns and the artefact instead, so the caveat is GONE — and its absence is
+    // itself a proof obligation: a stale warning about names that no longer exist would be the same class
+    // of defect as the contradiction it was covering for.
+    for (const f of customerFacing.concat(["billing_template.csv", "billing_example.csv",
+      "expectation_template.csv", "expectation_example.csv"])) {
+      const body = read(f);
+      for (const dead of ["settled_at", "settled_amount", "nh.settlement-extract", "settlement_template",
+        "settlement_example"]) {
+        check(!body.includes(dead), `${f} · no trace of the retired name "${dead}"`);
+      }
+      check(!/name is misleading|names are ours and they are misleading/i.test(body),
+        `${f} · carries no warning about a misleading column name — there is nothing left to warn about`);
+    }
+    // The successor's own names, asserted on the SCHEMA so a document cannot be the only place they exist.
+    check(BILLING_EXTRACT_COLUMNS.includes("invoice_raised_at")
+      && BILLING_EXTRACT_COLUMNS.includes("invoice_line_amount"),
+      "billingExtract.ts · the successor schema declares invoice_raised_at and invoice_line_amount");
+    check(!BILLING_EXTRACT_COLUMNS.some((c) => /^settled_/.test(c)),
+      "...and declares no column named settled_*");
+    check(BILLING_EXTRACT_REF === "nh.billing-extract@1.0.0",
+      "the artefact the customer is asked to supply is nh.billing-extract@1.0.0", BILLING_EXTRACT_REF);
+    check(requestBody.includes(BILLING_EXTRACT_REF),
+      "PILOT_DATA_REQUEST_V1.md · names that artefact, so the customer cites the one we validate");
+    // NO COMPATIBILITY LAYER. The owner's constraint was that none be invented without a consumer. A
+    // mapping from an old column name to a new one is exactly what such a layer looks like, so the only
+    // place one may exist is the historical record's own inert `renameMap`.
+    {
+      const roots = ["src", "server", "scripts", "e2e"];
+      const offenders: string[] = [];
+      const walk = (dir: string): void => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, e.name);
+          if (e.isDirectory()) { walk(full); continue; }
+          if (!/\.(ts|tsx|mjs)$/.test(e.name)) continue;
+          const rel = full.replace(/.*\/(src|server|scripts|e2e)\//, "$1/");
+          // The historical record declares the rename as DATA, and its test reads it. Nothing else may.
+          if (/^src\/contract\/historical\//.test(rel)) continue;
+          const code = readFileSync(full, "utf8")
+            .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+          if (/settled_at|settled_amount/.test(code)
+            && !/paid_amount|settledAmountMayNotExceedObligation/.test(code)) offenders.push(rel);
+        }
+      };
+      for (const r of roots) walk(r);
+      check(offenders.length === 0,
+        "no module outside the historical record maps or reads a retired column name", offenders.join(", "));
     }
     check(/Export B is INVOICES, not payments/.test(requestBody),
       "PILOT_DATA_REQUEST_V1.md · tells the customer explicitly that Export B is invoices and not payments");
     check(/An unpaid invoice/.test(requestBody) && /exactly as/.test(requestBody),
       "...and that an unpaid invoice belongs in it just as much as a paid one");
     // The contract's own two statements must agree with each other.
-    const settledAtSpec = SETTLEMENT_EXTRACT_FIELDS.find((f) => f.name === "settled_at")!;
-    check(/RAISED/.test(settledAtSpec.description) && /RAISED/.test(settledAtSpec.establishes),
-      "settlementExtract.ts · settled_at's meaning and the fact it establishes BOTH say raised",
-      settledAtSpec.establishes);
-    check(!/settlement event occurred/i.test(settledAtSpec.establishes),
+    const invoiceRaisedAtSpec = BILLING_EXTRACT_FIELDS.find((f) => f.name === "invoice_raised_at")!;
+    check(/RAISED/.test(invoiceRaisedAtSpec.description) && /RAISED/.test(invoiceRaisedAtSpec.establishes),
+      "billingExtract.ts · invoice_raised_at's meaning and the fact it establishes BOTH say raised",
+      invoiceRaisedAtSpec.establishes);
+    check(!/settlement event occurred/i.test(invoiceRaisedAtSpec.establishes),
       "...and it no longer claims a settlement event occurred");
-    const amountSpec = SETTLEMENT_EXTRACT_FIELDS.find((f) => f.name === "settled_amount")!;
+    const amountSpec = BILLING_EXTRACT_FIELDS.find((f) => f.name === "invoice_line_amount")!;
     check(/CHARGED/.test(amountSpec.establishes) && /[Nn]ot how much was paid/.test(amountSpec.establishes),
-      "settlementExtract.ts · settled_amount establishes what was CHARGED, not paid", amountSpec.establishes);
+      "billingExtract.ts · invoice_line_amount establishes what was CHARGED, not paid", amountSpec.establishes);
     // No customer-facing document may call Export B a settlement/payments export.
     for (const f of customerFacing) {
       check(!/settlement export|payments export|cash application/i.test(read(f)),

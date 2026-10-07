@@ -17,8 +17,8 @@ import {
   CORRECTED_CANDIDATES, ORPHANED_CORRECTIONS, STOPPED_FIELD_CORRECTIONS, correctionsFor,
 } from "./expectationExtractCorrections";
 import { validateExpectationExtract, type RawExpectationRow } from "./expectationExtractValidator";
-import { SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_REQUIRED_COLUMNS } from "./settlementExtract";
-import { validateSettlementExtract, type RawSettlementRow } from "./settlementExtractValidator";
+import { BILLING_EXTRACT_COLUMNS, BILLING_REQUIRED_COLUMNS } from "./billingExtract";
+import { validateBillingExtract, type RawBillingRow } from "./billingExtractValidator";
 import { evaluateDataReadiness, READINESS_LEVELS } from "./dataReadiness";
 import {
   AUTHORITY_LADDER, PROVENANCE_CHANNELS, SELF_ASSERTED_AUTHORITY_PARAMETERS,
@@ -30,7 +30,7 @@ const E_TERMS = Object.freeze({ currency: "USD", asOf: "2026-06-30" });
 const S_TERMS = Object.freeze({ currency: "USD" });
 
 const E_FULL = Object.freeze([...EXPECTATION_EXTRACT_COLUMNS]);
-const S_FULL = Object.freeze([...SETTLEMENT_EXTRACT_COLUMNS]);
+const S_FULL = Object.freeze([...BILLING_EXTRACT_COLUMNS]);
 
 let n = 0;
 const owe = (over: Record<string, string> = {}): RawExpectationRow => {
@@ -46,13 +46,13 @@ const owe = (over: Record<string, string> = {}): RawExpectationRow => {
     },
   };
 };
-const paid = (obligation: string, over: Record<string, string> = {}): RawSettlementRow => {
+const paid = (obligation: string, over: Record<string, string> = {}): RawBillingRow => {
   n += 1;
   return {
     rowNumber: n,
     cells: {
-      invoice_ref: `inv-${n}`, invoice_line_ref: "L1", settled_at: "2026-03-05",
-      settled_amount: "100.00", currency: "USD", payer_ref: "payer-1",
+      invoice_ref: `inv-${n}`, invoice_line_ref: "L1", invoice_raised_at: "2026-03-05",
+      invoice_line_amount: "100.00", currency: "USD", payer_ref: "payer-1",
       obligation_ref: obligation, is_credit: "false",
       period_start: "2026-03-01", period_end: "2026-03-31",
       legacy_subscription_ref: "", source_system: "billing-v1",
@@ -67,16 +67,16 @@ const capable = () => {
   const ob = e.cells.schedule_line_ref!;
   return {
     expectation: validateExpectationExtract(E_FULL, [e], E_TERMS),
-    settlement: validateSettlementExtract(S_FULL, [paid(ob)], S_TERMS),
+    settlement: validateBillingExtract(S_FULL, [paid(ob)], S_TERMS),
     obligation: ob,
   };
 };
 
-const report = (cols: readonly string[], obligation: string, sRows?: readonly RawSettlementRow[], eRows?: readonly RawExpectationRow[]) => {
+const report = (cols: readonly string[], obligation: string, sRows?: readonly RawBillingRow[], eRows?: readonly RawExpectationRow[]) => {
   const e = eRows ?? [owe({ schedule_line_ref: obligation })];
   return evaluateDataReadiness(
     validateExpectationExtract(E_FULL, e, E_TERMS),
-    validateSettlementExtract(cols, sRows ?? [paid(obligation)], S_TERMS),
+    validateBillingExtract(cols, sRows ?? [paid(obligation)], S_TERMS),
   );
 };
 
@@ -92,17 +92,17 @@ describe("1 · the answer is a LEVEL, and it is cumulative", () => {
     const e = owe();
     const r = report(S_FULL.filter((c) => c !== "obligation_ref"), e.cells.schedule_line_ref!, [paid("")], [e]);
     expect(r.level).toBe("L1_STRUCTURALLY_VALID");
-    expect(r.settlement.rejectedRows).toBe(0);
-    expect(r.settlement.acceptedRows).toBe(1);
+    expect(r.billing.rejectedRows).toBe(0);
+    expect(r.billing.acceptedRows).toBe(1);
   });
 
   it("an unreadable file is L0, and it is NOT reported as 'nothing was billed'", () => {
     const r = evaluateDataReadiness(
       validateExpectationExtract(E_FULL, [owe()], E_TERMS),
-      validateSettlementExtract(S_FULL, [], S_TERMS),
+      validateBillingExtract(S_FULL, [], S_TERMS),
     );
     expect(r.level).toBe("L0_NOT_READABLE");
-    expect(r.settlement.usable).toBe(false);
+    expect(r.billing.usable).toBe(false);
   });
 
   it("L3 refuses while ANY accepted unit has an UNKNOWN amount — PARTIAL is never rounded up", () => {
@@ -120,8 +120,8 @@ describe("1 · the answer is a LEVEL, and it is cumulative", () => {
     const e = owe();
     const r = report(S_FULL, e.cells.schedule_line_ref!, [paid(e.cells.schedule_line_ref!, { currency: "EUR" })], [e]);
     expect(r.currencyCompatible).toBe(false);
-    expect(r.settlement.currencyMismatchRows).toBe(1);
-    expect(r.settlement.rejectedRows).toBe(0);
+    expect(r.billing.currencyMismatchRows).toBe(1);
+    expect(r.billing.rejectedRows).toBe(0);
     expect(r.level).toBe("L1_STRUCTURALLY_VALID");
   });
 
@@ -153,7 +153,7 @@ describe("1 · the answer is a LEVEL, and it is cumulative", () => {
     const unkeyed = owe({ schedule_line_ref: "" });
     const noTarget = evaluateDataReadiness(
       validateExpectationExtract(E_FULL, [unkeyed], E_TERMS),
-      validateSettlementExtract(S_FULL, [paid("ob-anything")], S_TERMS),
+      validateBillingExtract(S_FULL, [paid("ob-anything")], S_TERMS),
     );
     expect(noTarget.capabilities.find((c) => c.capability === "MONETARY_RECONCILIATION")!.available).toBe(false);
   });
@@ -167,7 +167,7 @@ describe("2 · every blocked capability names fact, owner and what is blocked", 
       expect(b.missingSourceFact.length).toBeGreaterThan(20);
       expect(["contract_or_clm", "billing_or_erp", "payments_processor", "either_but_must_be_one"]).toContain(b.owningSourceSystem);
       expect(b.blockedMoneyDiscoveryCapability.length).toBeGreaterThan(20);
-      expect(b.code).toMatch(/^NH-(EX|SX)-\d{4}$/);
+      expect(b.code).toMatch(/^NH-(EX|BX)-\d{4}$/);
     }
   });
 
@@ -176,7 +176,7 @@ describe("2 · every blocked capability names fact, owner and what is blocked", 
     const b = r.blocked.find((x) => x.capability === "MONETARY_RECONCILIATION")!;
     expect(b.owningSourceSystem).toBe("billing_or_erp");
     expect(b.missingSourceFact).toContain("obligation_ref");
-    expect(b.code).toBe("NH-SX-3001");
+    expect(b.code).toBe("NH-BX-3001");
   });
 
   it("EVENT_PROOF is blocked, owned by the CONTRACT system, and says it unlocks no money", () => {
@@ -365,17 +365,17 @@ describe("6 · the required-only floor", () => {
       cells: { entitlement_ref: "e1", period_start: "2026-03-01", period_end: "2026-03-31", expected_amount: "10.00", currency: "USD" },
     };
     const eCols = E_FULL.filter((c) => ["entitlement_ref", "period_start", "period_end", "expected_amount", "currency"].includes(c));
-    const s: RawSettlementRow = {
+    const s: RawBillingRow = {
       rowNumber: 1,
-      cells: { invoice_ref: "i1", invoice_line_ref: "L1", settled_at: "2026-03-05", settled_amount: "10.00", currency: "USD", payer_ref: "p1" },
+      cells: { invoice_ref: "i1", invoice_line_ref: "L1", invoice_raised_at: "2026-03-05", invoice_line_amount: "10.00", currency: "USD", payer_ref: "p1" },
     };
     const r = evaluateDataReadiness(
       validateExpectationExtract(eCols, [e], E_TERMS),
-      validateSettlementExtract(SETTLEMENT_REQUIRED_COLUMNS, [s], S_TERMS),
+      validateBillingExtract(BILLING_REQUIRED_COLUMNS, [s], S_TERMS),
     );
     expect(r.level).toBe("L1_STRUCTURALLY_VALID");
     expect(r.expectation.rejectedRows).toBe(0);
-    expect(r.settlement.rejectedRows).toBe(0);
+    expect(r.billing.rejectedRows).toBe(0);
     // Every capability that is closed says what is missing and who owns it.
     expect(r.blocked.length).toBe(r.capabilities.filter((c) => !c.available).length);
   });
@@ -389,7 +389,7 @@ describe("7 · the customer-facing pilot request is GENERATED, not written", () 
     const committed = readFileSync(resolve(__dirname, "../../docs/pilot-intake/PILOT_DATA_REQUEST_V1.md"), "utf8");
     // Render into a temporary location by re-running the emitter's own logic through a child process
     // would couple this test to the filesystem; instead assert the invariants the render guarantees.
-    for (const f of SETTLEMENT_REQUIRED_COLUMNS) {
+    for (const f of BILLING_REQUIRED_COLUMNS) {
       expect(committed, `required settlement column ${f} missing from the request`).toContain(`\`${f}\``);
     }
     for (const f of EXPECTATION_EXTRACT_COLUMNS) {

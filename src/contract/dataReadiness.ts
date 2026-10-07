@@ -17,13 +17,23 @@
 // constitution forbids outright. The report carries counts and capability states and no amounts. A test
 // asserts that structurally over the returned object, not in a comment.
 import type { ExpectationExtractValidation } from "./expectationExtractValidator";
-import type { SettlementExtractValidation } from "./settlementExtractValidator";
+import type { BillingExtractValidation } from "./billingExtractValidator";
 import {
   assessSourceFactAuthority, declaresOwnAuthority,
   type AuthorityAssessment,
 } from "./sourceFactAuthority";
 
-export const DATA_READINESS_SCHEME = "nh-customer-data-readiness-v1";
+/**
+ * `-v2` because the report's SHAPE moved: `settlement` became `billing` when
+ * `nh.settlement-extract@1.0.0` was retired in favour of `nh.billing-extract@1.0.0`. A reported key is
+ * part of the shape, and a surface that keeps naming a thing it no longer is was the `coverage.event`
+ * error — announcing one state of the world from a surface describing another.
+ *
+ * The METHOD VERSION deliberately does not move. No level, gate, conjunct, count or refusal changed:
+ * the same facts are read under new names. A version signalling a change that did not happen is its own
+ * defect, and it would force a re-reading of every report to express a dependency that does not exist.
+ */
+export const DATA_READINESS_SCHEME = "nh-customer-data-readiness-v2";
 export const DATA_READINESS_METHOD_VERSION = "rdy-2026.1";
 
 /**
@@ -100,7 +110,7 @@ export interface ReadinessReport {
     readonly unknownAmountRows: number;
     readonly monetaryQuantification: ExpectationExtractValidation["monetaryQuantification"];
   };
-  readonly settlement: {
+  readonly billing: {
     readonly usable: boolean;
     readonly acceptedRows: number;
     readonly rejectedRows: number;
@@ -110,7 +120,7 @@ export interface ReadinessReport {
     readonly obligationRefPopulatedRows: number;
   };
   /**
-   * Settlement rows whose `obligation_ref` matches no ACCEPTED expectation. Reported, never joined, and
+   * Billing lines whose `obligation_ref` matches no ACCEPTED expectation. Reported, never joined, and
    * deliberately NOT a dataset-level block — see the note in the evaluator. A non-zero count means
    * billing named an obligation the contract side did not validly state; `expectation.rejectionCodes`
    * says why those obligations were not accepted.
@@ -132,11 +142,11 @@ export interface ReadinessReport {
 const EXPECTATION_CAP = (v: ExpectationExtractValidation, name: string): boolean =>
   v.capabilities.find((c) => c.capability === name)?.available === true;
 
-const SETTLEMENT_CAP = (v: SettlementExtractValidation, name: string): boolean =>
+const BILLING_CAP = (v: BillingExtractValidation, name: string): boolean =>
   v.capabilities.find((c) => c.capability === name)?.available === true;
 
-const settlementCode = (v: SettlementExtractValidation, name: string): string =>
-  v.capabilities.find((c) => c.capability === name)?.unavailableCode ?? "NH-SX-3001";
+const billingCode = (v: BillingExtractValidation, name: string): string =>
+  v.capabilities.find((c) => c.capability === name)?.unavailableCode ?? "NH-BX-3001";
 
 const expectationCode = (v: ExpectationExtractValidation, name: string): string =>
   v.capabilities.find((c) => c.capability === name)?.unavailableCode ?? "NH-EX-3005";
@@ -149,7 +159,7 @@ const expectationCode = (v: ExpectationExtractValidation, name: string): string 
  */
 export function evaluateDataReadiness(
   expectation: ExpectationExtractValidation,
-  settlement: SettlementExtractValidation,
+  billing: BillingExtractValidation,
   submission: Readonly<Record<string, unknown>> = {},
 ): ReadinessReport {
   const refusedSelfAssertedAuthority = declaresOwnAuthority(submission);
@@ -157,23 +167,23 @@ export function evaluateDataReadiness(
   // AUTHORITY FIRST, and it gates what any level may be relied on for. Nothing in this slice can reach
   // AUTHORITY_VERIFIED: `provenanceEstablished` is not even accepted from the caller.
   const authority = assessSourceFactAuthority({
-    present: expectation.usable && settlement.usable,
-    validFormat: expectation.usable && settlement.usable,
+    present: expectation.usable && billing.usable,
+    validFormat: expectation.usable && billing.usable,
     declaredSourceNative: true, // both contracts declare every field source-observable
   });
   const provisional = authority.reached !== "AUTHORITY_VERIFIED";
 
-  const obligationRefPopulated = settlement.accepted.filter((a) => a.obligationRef !== null).length;
+  const obligationRefPopulated = billing.accepted.filter((a) => a.obligationRef !== null).length;
   const acceptedObligations = new Set(
     expectation.accepted.map((a) => a.scheduleLineRef).filter((r): r is string => typeof r === "string" && r !== ""),
   );
-  const danglingObligationRefs = settlement.accepted.filter(
+  const danglingObligationRefs = billing.accepted.filter(
     (a) => a.obligationRef !== null && !acceptedObligations.has(a.obligationRef),
   ).length;
 
-  const currencyCompatible = expectation.usable && settlement.usable
-    && expectation.currency === settlement.currency
-    && settlement.currencyMismatchCount === 0;
+  const currencyCompatible = expectation.usable && billing.usable
+    && expectation.currency === billing.currency
+    && billing.currencyMismatchCount === 0;
 
   // ── the capability map · each one named, each one fail-closed ──────────────────────────────────
   /**
@@ -181,12 +191,12 @@ export function evaluateDataReadiness(
    * reference happens to resolve.
    *
    * The first form of this gate also required `danglingObligationRefs === 0`, and the control caught it:
-   * on the frozen variant 11 settlement rows of 597 name an obligation whose EXPECTATION row was
+   * on the frozen variant 11 billing lines of 597 name an obligation whose EXPECTATION row was
    * correctly quarantined — 2 for ambiguous live lines (NH-EX-2016) and 9 for a non-governed currency
    * (NH-EX-2008). Blocking monetary reconciliation for the whole dataset over 11 rows is the
    * DATASET-GLOBAL TAINT DEFECT in new clothing, and this repository already governs against it:
    * *doubt is scoped to the evidence that creates it, and a detector that refuses everything is not
-   * cautious but unusable.* 586 settlements resolve perfectly, and telling a customer reconciliation is
+   * cautious but unusable.* 586 billing lines resolve perfectly, and telling a customer reconciliation is
    * impossible would be false.
    *
    * So a dangling reference is a PER-UNIT condition, reported as a first-class count with its reason,
@@ -194,20 +204,20 @@ export function evaluateDataReadiness(
    * an obligation the contract side did not validly state, so those units cannot be joined — and the
    * expectation rejection codes in this report say why.
    */
-  const obligationLink = SETTLEMENT_CAP(settlement, "SETTLEMENT_OBLIGATION_LINK_AVAILABLE");
-  const settlementPeriod = SETTLEMENT_CAP(settlement, "SETTLEMENT_PERIOD_AVAILABLE");
-  const creditDistinction = SETTLEMENT_CAP(settlement, "CREDIT_DISTINCTION_AVAILABLE");
+  const obligationLink = BILLING_CAP(billing, "BILLING_OBLIGATION_LINK_AVAILABLE");
+  const billingPeriod = BILLING_CAP(billing, "BILLING_PERIOD_AVAILABLE");
+  const creditDistinction = BILLING_CAP(billing, "CREDIT_DISTINCTION_AVAILABLE");
   const expectationEventIdentity = EXPECTATION_CAP(expectation, "EXPECTATION_EVENT_IDENTITY_AVAILABLE");
   const amendmentLineage = EXPECTATION_CAP(expectation, "AMENDMENT_LINEAGE_AVAILABLE");
   const lifecycle = EXPECTATION_CAP(expectation, "LIFECYCLE_TERMINATION_AVAILABLE")
     && EXPECTATION_CAP(expectation, "LIFECYCLE_PAUSE_AVAILABLE");
   const payerRelation = EXPECTATION_CAP(expectation, "PAYER_RELATION_AVAILABLE");
 
-  const bothUsable = expectation.usable && settlement.usable;
+  const bothUsable = expectation.usable && billing.usable;
 
   // MONETARY RECONCILIATION needs BOTH sides keyed and both able to form a period unit. The expectation
   // side alone is not it — the mistake `coverage.event` made and this slice must not repeat.
-  const monetaryReconciliation = bothUsable && obligationLink && expectationEventIdentity && settlementPeriod && currencyCompatible;
+  const monetaryReconciliation = bothUsable && obligationLink && expectationEventIdentity && billingPeriod && currencyCompatible;
 
   // EXACT MONEY additionally needs an authoritative amount on EVERY accepted unit, and credits told
   // apart. A PARTIAL quantification is not rounded up.
@@ -219,7 +229,7 @@ export function evaluateDataReadiness(
   const additiveObligation = false;
 
   // EVENT PROOF · needs an authoritative expected settlement count, which no side carries.
-  const eventProof = SETTLEMENT_CAP(settlement, "EXPECTED_SETTLEMENT_COUNT_AVAILABLE");
+  const eventProof = BILLING_CAP(billing, "EXPECTED_SETTLEMENT_COUNT_AVAILABLE");
 
   const attribution = bothUsable && payerRelation;
 
@@ -241,20 +251,20 @@ export function evaluateDataReadiness(
       missingSourceFact: !bothUsable
         ? "a readable extract on both sides"
         : !obligationLink
-          ? "`obligation_ref` on every settlement line: the contract system's own obligation identifier, carried by billing onto the line that settles it"
+          ? "`obligation_ref` on every billing line: the contract system's own obligation identifier, carried by billing onto the line that settles it"
           : !expectationEventIdentity
             ? "`schedule_line_ref` on every expected obligation, so the billing reference has something to resolve to"
-            : !settlementPeriod
-              ? "`period_start` and `period_end` on the settlement lines — the issue date is not what the charge covers"
+            : !billingPeriod
+              ? "`period_start` and `period_end` on the billing lines — the issue date is not what the charge covers"
               : "a single governed currency across both extracts",
       owningSourceSystem: (!obligationLink && bothUsable ? "billing_or_erp" : !expectationEventIdentity ? "contract_or_clm" : "either_but_must_be_one") as OwningSourceSystem,
       blockedMoneyDiscoveryCapability:
         "Comparing expected money against billed money at obligation grain. Without the join, a re-key or migration destroys the match and a timing-displacement hypothesis cannot be refuted, so real missing money is held out pending attribution rather than claimed.",
-      code: !bothUsable ? "NH-SX-1002"
-        : !obligationLink ? settlementCode(settlement, "SETTLEMENT_OBLIGATION_LINK_AVAILABLE")
+      code: !bothUsable ? "NH-BX-1002"
+        : !obligationLink ? billingCode(billing, "BILLING_OBLIGATION_LINK_AVAILABLE")
           : !expectationEventIdentity ? expectationCode(expectation, "EXPECTATION_EVENT_IDENTITY_AVAILABLE")
-            : !settlementPeriod ? settlementCode(settlement, "SETTLEMENT_PERIOD_AVAILABLE")
-              : "NH-SX-2007",
+            : !billingPeriod ? billingCode(billing, "BILLING_PERIOD_AVAILABLE")
+              : "NH-BX-2007",
     })),
     cap("EXACT_MONEY", exactMoney, () => Object.freeze({
       capability: "EXACT_MONEY" as const,
@@ -262,11 +272,11 @@ export function evaluateDataReadiness(
         ? "monetary reconciliation itself, which is blocked above"
         : expectation.monetaryQuantification !== "AVAILABLE"
           ? "an authoritative `expected_amount` on every expected obligation. Blanks are preserved as declared UNKNOWNs and are NEVER valued, averaged from prior invoices, taken from a plan price or prorated"
-          : "`is_credit` on the settlement side, so a credit is not read as a charge",
+          : "`is_credit` on the billing side, so a credit is not read as a charge",
       owningSourceSystem: (expectation.monetaryQuantification !== "AVAILABLE" ? "contract_or_clm" : "billing_or_erp") as OwningSourceSystem,
       blockedMoneyDiscoveryCapability:
         "An exact residual for every unit. Units without an authoritative amount stay UNKNOWN — counted beside the money, never as zero, because $0.00 would assert the obligation was checked and found satisfied.",
-      code: expectation.monetaryQuantification !== "AVAILABLE" ? "NH-EX-3006" : settlementCode(settlement, "CREDIT_DISTINCTION_AVAILABLE"),
+      code: expectation.monetaryQuantification !== "AVAILABLE" ? "NH-EX-3006" : billingCode(billing, "CREDIT_DISTINCTION_AVAILABLE"),
     })),
     cap("EVENT_PROOF", eventProof, () => Object.freeze({
       capability: "EVENT_PROOF" as const,
@@ -275,7 +285,7 @@ export function evaluateDataReadiness(
       owningSourceSystem: "contract_or_clm" as OwningSourceSystem,
       blockedMoneyDiscoveryCapability:
         "Establishing a DUPLICATE as an event. Two lines settling one obligation stay indistinguishable from two instalments of it, so NH reports MULTIPLE SETTLEMENTS OBSERVED and never a duplicate. On the synthetic evidence this upgrades event-level proof and unlocks NO additional money.",
-      code: settlementCode(settlement, "EXPECTED_SETTLEMENT_COUNT_AVAILABLE"),
+      code: billingCode(billing, "EXPECTED_SETTLEMENT_COUNT_AVAILABLE"),
     })),
     cap("ATTRIBUTION", attribution, () => Object.freeze({
       capability: "ATTRIBUTION" as const,
@@ -334,18 +344,18 @@ export function evaluateDataReadiness(
       unknownAmountRows: expectation.unknownAmountCount,
       monetaryQuantification: expectation.monetaryQuantification,
     }),
-    settlement: Object.freeze({
-      usable: settlement.usable,
-      acceptedRows: settlement.accepted.length,
-      rejectedRows: settlement.rejections.length,
-      rejectionCodes: Object.freeze([...new Set(settlement.rejections.map((r) => r.code))].sort()),
-      creditRows: settlement.creditRowCount,
-      currencyMismatchRows: settlement.currencyMismatchCount,
+    billing: Object.freeze({
+      usable: billing.usable,
+      acceptedRows: billing.accepted.length,
+      rejectedRows: billing.rejections.length,
+      rejectionCodes: Object.freeze([...new Set(billing.rejections.map((r) => r.code))].sort()),
+      creditRows: billing.creditRowCount,
+      currencyMismatchRows: billing.currencyMismatchCount,
       obligationRefPopulatedRows: obligationRefPopulated,
     }),
     danglingObligationRefs,
     danglingObligationRefNote: danglingObligationRefs === 0 ? null
-      : `${danglingObligationRefs} settlement line(s) name an obligation that is not in the accepted expectation population, so those units cannot be joined. This does NOT make reconciliation impossible for the rest: the affected units are reported and excluded, never guessed at. See expectation.rejectionCodes for why those obligations were not accepted.`,
+      : `${danglingObligationRefs} billing line(s) name an obligation that is not in the accepted expectation population, so those units cannot be joined. This does NOT make reconciliation impossible for the rest: the affected units are reported and excluded, never guessed at. See expectation.rejectionCodes for why those obligations were not accepted.`,
     currencyCompatible,
     capabilities,
     blocked: Object.freeze(blocked),

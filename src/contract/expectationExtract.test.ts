@@ -69,7 +69,7 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
         if (!/\.(ts|tsx|mjs|js)$/.test(entry.name)) continue;
         if (/^expectationExtract(Codes|Validator|Corrections)?(\.test)?\.ts$/.test(entry.name)) continue;
         // COMMENTS AND STRING LITERALS STRIPPED. The guard's question is "does this module IMPORT the
-        // extract", and a prose mention is not an import: `settlementExtract.ts` names the erratum file
+        // extract", and a prose mention is not an import: `billingExtract.ts` names the erratum file
         // in a comment, which the first form of this scan counted as a dependency. Fourth instance of
         // that lesson in this repository — a structural guard must read code, not documentation.
         const code = readFileSync(full, "utf8")

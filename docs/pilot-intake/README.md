@@ -10,7 +10,7 @@ This folder contains everything you need.
 | | Export | Normally comes from | Template |
 |---|---|---|---|
 | **A** | **What was owed** — one row per expected billing obligation | your contract, CRM or CLM system; sometimes a revenue or order-management module | `expectation_template.csv` |
-| **B** | **What was charged** — one row per **invoice line** (not payments) | your billing platform or ERP; sometimes the invoicing module of your finance system | `settlement_template.csv` |
+| **B** | **What was charged** — one row per **invoice line** (not payments) | your billing platform or ERP; sometimes the invoicing module of your finance system | `billing_template.csv` |
 
 They must come from **different** systems. Asking the billing system what billing should have done cannot
 find billing's own omission — if the failure erased an invoice, it may have erased the schedule with it.
@@ -36,7 +36,7 @@ it would produce confident findings that are wrong.
 1. Open the two templates. The headers are exactly what we validate — please do not rename, reorder or add.
 2. Export straight from the source system to CSV where you can. It avoids the spreadsheet problems in the
    checklist.
-3. Look at `expectation_example.csv` and `settlement_example.csv`. Between them they show a normal month,
+3. Look at `expectation_example.csv` and `billing_example.csv`. Between them they show a normal month,
    an amendment, a pause, an ended entitlement, an obligation nobody can price, a consolidated invoice, a
    credit, and a re-keyed subscription. Those are the cases that usually need a decision.
 4. Read `PSEUDONYMIZATION_GUIDE.md` **before** replacing identifiers. The join has to survive it.

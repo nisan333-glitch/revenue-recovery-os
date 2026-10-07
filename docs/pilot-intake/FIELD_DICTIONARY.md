@@ -12,7 +12,8 @@ omission.
 An unpaid invoice belongs in it exactly as much as a paid one — we compare what was *charged* against
 what was *owed*, and we are not tracking cash.
 
-> The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`.
+> `invoice_raised_at` is the date the billing system RAISED the line, as that system holds it, and `invoice_line_amount` is
+> the amount CHARGED on that line, not an amount received. There is no payment column on either export.
 
 ## A · Expectation / contract export
 
@@ -257,7 +258,7 @@ what was *owed*, and we are not tracking cash.
 | **Who issues the value** | Billing / ERP — its own identifier |
 | **Formal tier** | **REQUIRED** |
 | **Mandatory in practice?** | n/a — it is formally required |
-| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-SX-1002` — and no row is processed. |
+| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-BX-1002` — and no row is processed. |
 | **If a CELL is blank** | **Not permitted.** The row is rejected — this is a row-level fault, not a file-level one. |
 | **Must be your system's own value?** | **Yes** — source-native, never composed by you or by us |
 | **Format** | text, as your system holds it |
@@ -276,27 +277,27 @@ what was *owed*, and we are not tracking cash.
 | **Who issues the value** | Billing / ERP — its own identifier |
 | **Formal tier** | **REQUIRED** |
 | **Mandatory in practice?** | n/a — it is formally required |
-| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-SX-1002` — and no row is processed. |
+| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-BX-1002` — and no row is processed. |
 | **If a CELL is blank** | **Not permitted.** The row is rejected — this is a row-level fault, not a file-level one. |
 | **Must be your system's own value?** | **Yes** — source-native, never composed by you or by us |
 | **Format** | text, as your system holds it |
 | **Example** | `1` |
-| **What is lost without it** | Two charges on one invoice collapse into one, and a partial settlement reads as a full one. |
+| **What is lost without it** | Two charges on one invoice collapse into one, and a partial charge reads as a full one. |
 | **Capability affected** | all of them — this is a required fact |
 
-### `settled_at`
+### `invoice_raised_at`
 
 | | |
 |---|---|
 | **Export** | B · billing |
 | **What it means** | The date the billing system RAISED this line, as it holds it. Not a payment-clearing date and not the period the charge covers — the period is its own pair of fields. |
-| **⚠ The name is misleading** | The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`. This is **the date the billing system RAISED the line, as that system holds it**. |
+| **What this is NOT** | not a payment, a receipt, a collection or a clearing date. This is **the date the billing system RAISED the line, as that system holds it**. |
 | **Business fact it establishes** | WHEN THE CHARGE WAS RAISED — the invoice-line issue date. Not when money arrived. |
 | **Who sends it to us** | Billing / ERP |
 | **Who issues the value** | n/a |
 | **Formal tier** | **REQUIRED** |
 | **Mandatory in practice?** | n/a — it is formally required |
-| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-SX-1002` — and no row is processed. |
+| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-BX-1002` — and no row is processed. |
 | **If a CELL is blank** | **Not permitted.** The row is rejected — this is a row-level fault, not a file-level one. |
 | **Must be your system's own value?** | n/a |
 | **Format** | `YYYY-MM-DD` |
@@ -304,19 +305,19 @@ what was *owed*, and we are not tracking cash.
 | **What is lost without it** | Nothing can be placed inside or outside the period under analysis, so the population is undefined. |
 | **Capability affected** | all of them — this is a required fact |
 
-### `settled_amount`
+### `invoice_line_amount`
 
 | | |
 |---|---|
 | **Export** | B · billing |
 | **What it means** | The amount CHARGED on this line in its own currency, as a plain decimal — not an amount received, collected or cleared. REQUIRED as a value, not merely as a column — unlike `expected_amount` on the other side. |
-| **⚠ The name is misleading** | The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`. This is **the amount CHARGED on that line, not an amount received**. |
+| **What this is NOT** | not a payment, a receipt, a collection or a clearing date. This is **the amount CHARGED on that line, not an amount received**. |
 | **Business fact it establishes** | HOW MUCH WAS CHARGED on this line. Not how much was paid. |
 | **Who sends it to us** | Billing / ERP |
 | **Who issues the value** | n/a |
 | **Formal tier** | **REQUIRED** |
 | **Mandatory in practice?** | n/a — it is formally required |
-| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-SX-1002` — and no row is processed. |
+| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-BX-1002` — and no row is processed. |
 | **If a CELL is blank** | **Not permitted.** The row is rejected — this is a row-level fault, not a file-level one. |
 | **Must be your system's own value?** | n/a |
 | **Format** | plain decimal, max 2 dp, no symbols or separators |
@@ -335,7 +336,7 @@ what was *owed*, and we are not tracking cash.
 | **Who issues the value** | n/a |
 | **Formal tier** | **REQUIRED** |
 | **Mandatory in practice?** | n/a — it is formally required |
-| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-SX-1002` — and no row is processed. |
+| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-BX-1002` — and no row is processed. |
 | **If a CELL is blank** | **Not permitted.** The row is rejected — this is a row-level fault, not a file-level one. |
 | **Must be your system's own value?** | n/a |
 | **Format** | ISO 4217, three letters |
@@ -354,7 +355,7 @@ what was *owed*, and we are not tracking cash.
 | **Who issues the value** | Billing / ERP — its own identifier |
 | **Formal tier** | **REQUIRED** |
 | **Mandatory in practice?** | n/a — it is formally required |
-| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-SX-1002` — and no row is processed. |
+| **If the COLUMN is absent** | **The file cannot be read.** A missing required column is an extract-level fault — `NH-BX-1002` — and no row is processed. |
 | **If a CELL is blank** | **Not permitted.** The row is rejected — this is a row-level fault, not a file-level one. |
 | **Must be your system's own value?** | **Yes** — source-native, never composed by you or by us |
 | **Format** | text, as your system holds it |
@@ -368,7 +369,7 @@ what was *owed*, and we are not tracking cash.
 |---|---|
 | **Export** | B · billing |
 | **What it means** | The CONTRACT system's obligation identifier, as billing received it at provisioning and carries it onto the settling line. It is the counterpart of the expectation extract's `schedule_line_ref`. It is NOT billing's internal subscription key and NOT the invoice number. |
-| **Business fact it establishes** | WHICH OBLIGATION this settlement claims to settle — the cross-system join. |
+| **Business fact it establishes** | WHICH OBLIGATION this line settles — the cross-system join. |
 | **Who sends it to us** | Billing / ERP |
 | **Who issues the value** | **Contract / CRM / CLM** — billing only carries it |
 | **Formal tier** | conditional |
@@ -379,7 +380,7 @@ what was *owed*, and we are not tracking cash.
 | **Format** | text, as your system holds it |
 | **Example** | `SL-7781` |
 | **What is lost without it** | The join falls back to whatever key billing happens to share with the contract system, which a re-key or a whole-book migration destroys. A timing-displacement hypothesis then cannot be refuted, so real missing money is held out pending attribution rather than claimed — the measured effect, not a predicted one. |
-| **Capability affected** | `SETTLEMENT_OBLIGATION_LINK_AVAILABLE` |
+| **Capability affected** | `BILLING_OBLIGATION_LINK_AVAILABLE` |
 
 ### `is_credit`
 
@@ -397,7 +398,7 @@ what was *owed*, and we are not tracking cash.
 | **Must be your system's own value?** | n/a |
 | **Format** | `true` / `false` |
 | **Example** | `false` |
-| **What is lost without it** | Credits read as settlements, overstating billed money and understating exposure. |
+| **What is lost without it** | Credits read as charges, overstating billed money and understating exposure. |
 | **Capability affected** | `CREDIT_DISTINCTION_AVAILABLE` |
 
 ### `period_start`
@@ -416,8 +417,8 @@ what was *owed*, and we are not tracking cash.
 | **Must be your system's own value?** | n/a |
 | **Format** | `YYYY-MM-DD` |
 | **Example** | `2026-01-01` |
-| **What is lost without it** | No period-level reconciliation unit exists, and a late settlement is indistinguishable from a missing one. |
-| **Capability affected** | `SETTLEMENT_PERIOD_AVAILABLE` |
+| **What is lost without it** | No period-level reconciliation unit exists, and a late invoice is indistinguishable from a missing one. |
+| **Capability affected** | `BILLING_PERIOD_AVAILABLE` |
 
 ### `period_end`
 
@@ -436,7 +437,7 @@ what was *owed*, and we are not tracking cash.
 | **Format** | `YYYY-MM-DD` |
 | **Example** | `2026-01-31` |
 | **What is lost without it** | The unit's bounds are open, so two adjacent periods cannot be told apart. |
-| **Capability affected** | `SETTLEMENT_PERIOD_AVAILABLE` |
+| **Capability affected** | `BILLING_PERIOD_AVAILABLE` |
 
 ### `legacy_subscription_ref`
 

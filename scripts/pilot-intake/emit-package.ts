@@ -14,11 +14,11 @@ import {
   EXPECTATION_EXTRACT_FIELDS, EXPECTATION_EXTRACT_REF, STOPPED_FIELDS,
 } from "../../src/contract/expectationExtract";
 import {
-  SETTLEMENT_CAPABILITIES, SETTLEMENT_EXTRACT_FIELDS, SETTLEMENT_EXTRACT_REF,
-  SETTLEMENT_STOPPED_FIELDS,
-} from "../../src/contract/settlementExtract";
+  BILLING_CAPABILITIES, BILLING_EXTRACT_FIELDS, BILLING_EXTRACT_REF,
+  BILLING_STOPPED_FIELDS,
+} from "../../src/contract/billingExtract";
 import { PROVENANCE_CHANNELS } from "../../src/contract/sourceFactAuthority";
-import { SETTLEMENT_EVENT_DEFINITION } from "../../src/contract/settlementExtract";
+import { BILLING_EVENT_DEFINITION } from "../../src/contract/billingExtract";
 import { CORRECTED_CANDIDATES } from "../../src/contract/expectationExtractCorrections";
 import { BASELINE_LEVEL, dependencyFor, type Side } from "./dependency";
 
@@ -44,7 +44,7 @@ const eRows = (tier: string) => EXPECTATION_EXTRACT_FIELDS
   .filter((f) => f.tier === tier)
   .map((f) => row(f.name, tier, "Contract / CRM / CLM", f.establishes));
 
-const sRows = (tier: string) => SETTLEMENT_EXTRACT_FIELDS
+const sRows = (tier: string) => BILLING_EXTRACT_FIELDS
   .filter((f) => f.tier === tier)
   .map((f) => row(f.name, tier, owner(f.owningSourceSystem), f.establishes));
 
@@ -57,7 +57,7 @@ w("**Generated from the governed definitions** — `scripts/data-readiness/emit-
 w("edit by hand: a test asserts this document equals a fresh render, so an edit here fails the build");
 w("rather than quietly diverging from what the validators actually require.");
 w();
-w(`Contracts: \`${EXPECTATION_EXTRACT_REF}\` and \`${SETTLEMENT_EXTRACT_REF}\`.`);
+w(`Contracts: \`${EXPECTATION_EXTRACT_REF}\` and \`${BILLING_EXTRACT_REF}\`.`);
 w();
 w("---");
 w();
@@ -72,21 +72,21 @@ w("**B · BILLING** — what your billing system says was *charged*: **one row p
 w();
 w("### Export B is INVOICES, not payments — please read this before exporting");
 w();
-w(`**What we need:** ${SETTLEMENT_EVENT_DEFINITION.theEvent}`);
+w(`**What we need:** ${BILLING_EVENT_DEFINITION.theEvent}`);
 w();
 w("**What we do NOT need, and must not receive instead:**");
 w();
-SETTLEMENT_EVENT_DEFINITION.isNot.forEach((x) => w(`* ${x}`));
+BILLING_EVENT_DEFINITION.isNot.forEach((x) => w(`* ${x}`));
 w();
 w("If your finance team hears \"settlement\" and reaches for the payments or cash-application system,");
 w("that is the wrong file. We want the invoice lines your billing system raised — whether or not anyone");
 w("has paid them yet. **An unpaid invoice is exactly as useful to us as a paid one**, because we are");
 w("comparing what was *charged* against what was *owed*, not tracking cash.");
 w();
-w(`> **A note on two of our column names.** ${SETTLEMENT_EVENT_DEFINITION.nameCaveat}`);
-w(`> \`settled_at\` is ${SETTLEMENT_EVENT_DEFINITION.dateMeans}, and \`settled_amount\` is`);
-w(`> ${SETTLEMENT_EVENT_DEFINITION.amountMeans}. The names are ours and they are misleading; the`);
-w("> definitions above are what we validate against.");
+w(`> **So the two columns that carry it are named for it.** \`invoice_raised_at\` is`);
+w(`> ${BILLING_EVENT_DEFINITION.dateMeans}. \`invoice_line_amount\` is`);
+w(`> ${BILLING_EVENT_DEFINITION.amountMeans}. Neither is a payment field, and we have no payment field:`);
+w("> if your export has one, leave it out.");
 w();
 w("They must come from different systems, and that is the whole architecture rather than a preference.");
 w("Asking the billing system what billing *should* have done cannot detect billing's own omission,");
@@ -134,11 +134,11 @@ w("These two are *formally* optional or conditional — leaving them out refuses
 w("cross-system join is **unreachable without either of them**, and that is measured rather than");
 w("asserted: with both present our readiness check reaches");
 w(`**${levelLabel(BASELINE_LEVEL)}**, and dropping either one takes it down to`);
-w(`**${levelLabel(dependencyFor("obligation_ref", "settlement").levelWithoutColumn)}**.`);
+w(`**${levelLabel(dependencyFor("obligation_ref", "billing").levelWithoutColumn)}**.`);
 w();
 w("| Column | Export | Formal tier | Who supplies it | Without it |");
 w("|---|---|---|---|---|");
-w(`| \`obligation_ref\` | B · billing | conditional | Billing / ERP | ${levelLabel(dependencyFor("obligation_ref", "settlement").levelWithoutColumn)} — no join |`);
+w(`| \`obligation_ref\` | B · billing | conditional | Billing / ERP | ${levelLabel(dependencyFor("obligation_ref", "billing").levelWithoutColumn)} — no join |`);
 w(`| \`schedule_line_ref\` | A · expectation | optional | Contract / CRM / CLM | ${levelLabel(dependencyFor("schedule_line_ref", "expectation").levelWithoutColumn)} — nothing for the join to resolve against |`);
 w();
 w("They are a **pair**: `obligation_ref` on the billing line names an obligation, and");
@@ -187,7 +187,7 @@ w("### What each closed capability costs you");
 w();
 w("| Capability | If the fact is missing |");
 w("|---|---|");
-SETTLEMENT_CAPABILITIES.forEach((c) => w(`| ${c.capability} | ${c.lossWhenClosed} |`));
+BILLING_CAPABILITIES.forEach((c) => w(`| ${c.capability} | ${c.lossWhenClosed} |`));
 w();
 w("## NOT mandatory for money discovery, and we want to be explicit about why");
 w();
@@ -227,7 +227,7 @@ w("|---|---|---|");
 const superseded = new Set(CORRECTED_CANDIDATES);
 const current = [
   ...STOPPED_FIELDS.map((x) => ({ ...x, on: "A · expectation" })),
-  ...SETTLEMENT_STOPPED_FIELDS.map((x) => ({ ...x, on: "B · billing" })),
+  ...BILLING_STOPPED_FIELDS.map((x) => ({ ...x, on: "B · billing" })),
 ].filter((x) => !superseded.has(x.candidate));
 current.forEach((x) => w(`| ${x.candidate} | ${x.on} | ${x.why} |`));
 w();
@@ -272,8 +272,8 @@ process.stdout.write(`  ${OUT} · ${lines.length} lines\n`);
 // verifier re-derives all of it and refuses any difference.
 
 import { EXPECTATION_EXTRACT_COLUMNS } from "../../src/contract/expectationExtract";
-import { SETTLEMENT_EXTRACT_COLUMNS } from "../../src/contract/settlementExtract";
-import { EXPECTATION_EXAMPLE, SETTLEMENT_EXAMPLE } from "./examples";
+import { BILLING_EXTRACT_COLUMNS } from "../../src/contract/billingExtract";
+import { EXPECTATION_EXAMPLE, BILLING_EXAMPLE } from "./examples";
 
 const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 const csv = (cols: readonly string[], rows: readonly Readonly<Record<string, string>>[]) =>
@@ -287,11 +287,11 @@ const write = (name: string, body: string) => {
 
 // ── 2-3 · templates · headers only, exact governed order ────────────────────────────────────────
 write("expectation_template.csv", EXPECTATION_EXTRACT_COLUMNS.join(","));
-write("settlement_template.csv", SETTLEMENT_EXTRACT_COLUMNS.join(","));
+write("billing_template.csv", BILLING_EXTRACT_COLUMNS.join(","));
 
 // ── 4-5 · examples ──────────────────────────────────────────────────────────────────────────────
 write("expectation_example.csv", csv(EXPECTATION_EXTRACT_COLUMNS, EXPECTATION_EXAMPLE));
-write("settlement_example.csv", csv(SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_EXAMPLE));
+write("billing_example.csv", csv(BILLING_EXTRACT_COLUMNS, BILLING_EXAMPLE));
 
 // ── 6 · FIELD_DICTIONARY.md ─────────────────────────────────────────────────────────────────────
 const FORMAT: Readonly<Record<string, string>> = Object.freeze({
@@ -324,7 +324,7 @@ const columnAbsent = (name: string, side: Side): string => {
   if (d.levelWithoutColumn === "L0_NOT_READABLE") {
     // The real code, per side. A `?` placeholder in a customer-facing document is not a code, and the
     // first form of this line emitted one.
-    const code = side === "expectation" ? "NH-EX-1002" : "NH-SX-1002";
+    const code = side === "expectation" ? "NH-EX-1002" : "NH-BX-1002";
     return `**The file cannot be read.** A missing required column is an extract-level fault — \`${code}\` — and no row is processed.`;
   }
   if (d.costsALevel) return `**No row is rejected**, and readiness falls to *${levelLabel(d.levelWithoutColumn)}*.`;
@@ -373,15 +373,16 @@ d("system says was *owed*, **B** is what your billing system says was *charged*.
 d("different systems — asking the billing system what billing should have done cannot find billing's own");
 d("omission.");
 d();
-d(`**Export B records one event only: ${SETTLEMENT_EVENT_DEFINITION.theEvent}** It is not ${SETTLEMENT_EVENT_DEFINITION.isNot.join(", not ")}.`);
+d(`**Export B records one event only: ${BILLING_EVENT_DEFINITION.theEvent}** It is not ${BILLING_EVENT_DEFINITION.isNot.join(", not ")}.`);
 d("An unpaid invoice belongs in it exactly as much as a paid one — we compare what was *charged* against");
 d("what was *owed*, and we are not tracking cash.");
 d();
-d(`> ${SETTLEMENT_EVENT_DEFINITION.nameCaveat}`);
+d(`> \`invoice_raised_at\` is ${BILLING_EVENT_DEFINITION.dateMeans}, and \`invoice_line_amount\` is`);
+d(`> ${BILLING_EVENT_DEFINITION.amountMeans}. There is no payment column on either export.`);
 d();
 for (const [label, cols, fields, rows] of [
   ["A · Expectation / contract export", EXPECTATION_EXTRACT_COLUMNS, EXPECTATION_EXTRACT_FIELDS, EXPECTATION_EXAMPLE],
-  ["B · Billing export — invoice lines", SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_EXTRACT_FIELDS, SETTLEMENT_EXAMPLE],
+  ["B · Billing export — invoice lines", BILLING_EXTRACT_COLUMNS, BILLING_EXTRACT_FIELDS, BILLING_EXAMPLE],
 ] as const) {
   d(`## ${label}`);
   d();
@@ -399,13 +400,14 @@ for (const [label, cols, fields, rows] of [
     d(`|---|---|`);
     d(`| **Export** | ${label.startsWith("A") ? "A · expectation" : "B · billing"} |`);
     d(`| **What it means** | ${f.description} |`);
-    if (f.name === "settled_at" || f.name === "settled_amount") {
-      // The name leans towards payment timing and the meaning does not. Stated at the field rather than
-      // once in a preamble, because a data owner reads the row for the column they are filling in.
-      d(`| **⚠ The name is misleading** | ${SETTLEMENT_EVENT_DEFINITION.nameCaveat} This is **${f.name === "settled_at" ? SETTLEMENT_EVENT_DEFINITION.dateMeans : SETTLEMENT_EVENT_DEFINITION.amountMeans}**. |`);
+    if (f.name === "invoice_raised_at" || f.name === "invoice_line_amount") {
+      // These two used to carry a warning that the name said payment and the field meant charge. The
+      // names were renamed instead, so the row now states the meaning positively — at the field rather
+      // than once in a preamble, because a data owner reads the row for the column they are filling in.
+      d(`| **What this is NOT** | not a payment, a receipt, a collection or a clearing date. This is **${f.name === "invoice_raised_at" ? BILLING_EVENT_DEFINITION.dateMeans : BILLING_EVENT_DEFINITION.amountMeans}**. |`);
     }
     d(`| **Business fact it establishes** | ${f.establishes} |`);
-    const side: Side = label.startsWith("A") ? "expectation" : "settlement";
+    const side: Side = label.startsWith("A") ? "expectation" : "billing";
     d(`| **Who sends it to us** | ${ownerLabel} |`);
     d(`| **Who issues the value** | ${VALUE_ISSUED_BY[f.name] ?? (f.piiClass === "identifier_pseudonymous" ? `${ownerLabel} — its own identifier` : "n/a")} |`);
     d(`| **Formal tier** | ${f.tier === "required" ? "**REQUIRED**" : f.tier === "conditional" ? "conditional" : "optional"} |`);
@@ -416,7 +418,7 @@ for (const [label, cols, fields, rows] of [
     d(`| **Format** | ${FORMAT[f.kind] ?? "text"} |`);
     d(`| **Example** | ${firstExample(rows, f.name)} |`);
     d(`| **What is lost without it** | ${f.withoutIt} |`);
-    d(`| **Capability affected** | ${f.neededBy === "every_unit" || f.neededBy === "every_settlement" ? "all of them — this is a required fact" : `\`${f.neededBy}\``} |`);
+    d(`| **Capability affected** | ${f.neededBy === "every_unit" || f.neededBy === "every_billing_line" ? "all of them — this is a required fact" : `\`${f.neededBy}\``} |`);
     d();
   }
 }
@@ -436,7 +438,7 @@ write("FIELD_DICTIONARY.md", dict.join("\n"));
 write("PSEUDONYMIZATION_GUIDE.md", `# Pseudonymising identifiers without breaking the analysis
 
 We do not need to know who your customers are. We **do** need the relationships between rows to survive,
-because the whole analysis is a join: an obligation in export **A** matched to the settlement in export
+because the whole analysis is a join: an obligation in export **A** matched to the billing line in export
 **B** that claims to settle it. Pseudonymising carelessly destroys that join silently — the files still
 load, and every obligation reads as unbilled.
 
@@ -455,7 +457,7 @@ So: **replace the values, preserve the relationships.**
    report back to the real account.
 
 4. **Preserve referential relationships.** An amendment that supersedes another line must still point at
-   that line's pseudonym. A settlement that settles an obligation must still carry that obligation's
+   that line's pseudonym. A billing line that settles an obligation must still carry that obligation's
    pseudonym. If a reference points at something that no longer exists after pseudonymisation, the
    relationship was broken, not hidden.
 
@@ -494,7 +496,7 @@ files, which is what keeps the join intact.
 
 ## How to check you got it right
 
-Take any five obligations from export A. For each one, find the settlement in export B whose
+Take any five obligations from export A. For each one, find the billing line in export B whose
 \`obligation_ref\` equals that obligation's \`schedule_line_ref\`. If you cannot, the mapping diverged —
 and the \`PRE_SUBMISSION_CHECKLIST\` has this as its own line for that reason.
 `);
@@ -549,7 +551,7 @@ of you that we cannot stand behind.
 ## What we MAY then identify
 
 Where your facts support it, **observed monetary discrepancies** — an obligation your contract system says
-was owed with no settlement against it, or settled for less than it states. Observed, and attributable to
+was owed with nothing billed against it, or settled for less than it states. Observed, and attributable to
 a specific obligation.
 
 ## What we will NOT claim, initially or on this evidence alone
@@ -565,7 +567,7 @@ a specific obligation.
 - **Money where the amount is UNKNOWN.** An obligation your contract system cannot price is reported as
   unpriced and **counted**, never valued at zero and never estimated from past invoices or a plan price.
 - **Exact reconciliation where currency or identity is unresolved.** Rows in a currency we have no governed
-  rate for, and obligations we cannot match to a settlement, are reported as such rather than folded into a
+  rate for, and obligations we cannot match to a billing line, are reported as such rather than folded into a
   total.
 - **A priced answer where two obligation lines cover one period.** We refuse that unit rather than add
   them together.
@@ -594,7 +596,7 @@ This folder contains everything you need.
 | | Export | Normally comes from | Template |
 |---|---|---|---|
 | **A** | **What was owed** — one row per expected billing obligation | your contract, CRM or CLM system; sometimes a revenue or order-management module | \`expectation_template.csv\` |
-| **B** | **What was charged** — one row per **invoice line** (not payments) | your billing platform or ERP; sometimes the invoicing module of your finance system | \`settlement_template.csv\` |
+| **B** | **What was charged** — one row per **invoice line** (not payments) | your billing platform or ERP; sometimes the invoicing module of your finance system | \`billing_template.csv\` |
 
 They must come from **different** systems. Asking the billing system what billing should have done cannot
 find billing's own omission — if the failure erased an invoice, it may have erased the schedule with it.
@@ -620,7 +622,7 @@ it would produce confident findings that are wrong.
 1. Open the two templates. The headers are exactly what we validate — please do not rename, reorder or add.
 2. Export straight from the source system to CSV where you can. It avoids the spreadsheet problems in the
    checklist.
-3. Look at \`expectation_example.csv\` and \`settlement_example.csv\`. Between them they show a normal month,
+3. Look at \`expectation_example.csv\` and \`billing_example.csv\`. Between them they show a normal month,
    an amendment, a pause, an ended entitlement, an obligation nobody can price, a consolidated invoice, a
    credit, and a re-keyed subscription. Those are the cases that usually need a decision.
 4. Read \`PSEUDONYMIZATION_GUIDE.md\` **before** replacing identifiers. The join has to survive it.

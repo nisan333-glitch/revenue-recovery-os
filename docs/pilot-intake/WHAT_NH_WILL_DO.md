@@ -14,7 +14,7 @@ of you that we cannot stand behind.
 ## What we MAY then identify
 
 Where your facts support it, **observed monetary discrepancies** — an obligation your contract system says
-was owed with no settlement against it, or settled for less than it states. Observed, and attributable to
+was owed with nothing billed against it, or settled for less than it states. Observed, and attributable to
 a specific obligation.
 
 ## What we will NOT claim, initially or on this evidence alone
@@ -30,7 +30,7 @@ a specific obligation.
 - **Money where the amount is UNKNOWN.** An obligation your contract system cannot price is reported as
   unpriced and **counted**, never valued at zero and never estimated from past invoices or a plan price.
 - **Exact reconciliation where currency or identity is unresolved.** Rows in a currency we have no governed
-  rate for, and obligations we cannot match to a settlement, are reported as such rather than folded into a
+  rate for, and obligations we cannot match to a billing line, are reported as such rather than folded into a
   total.
 - **A priced answer where two obligation lines cover one period.** We refuse that unit rather than add
   them together.

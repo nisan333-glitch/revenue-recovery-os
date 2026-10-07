@@ -1,3 +1,30 @@
+// ╔══════════════════════════════════════════════════════════════════════════════════════════════════╗
+// ║  HISTORICAL · nh.settlement-extract@1.0.0 · SUPERSEDED BY nh.billing-extract@1.0.0              ║
+// ║  THIS IS NOT THE CURRENT CONTRACT. Nothing validates against it and nothing may import it.      ║
+// ╚══════════════════════════════════════════════════════════════════════════════════════════════════╝
+//
+// WHY IT IS STILL HERE. The owner's rename decision (2026-10-07) required that this declaration and its
+// decision history stay INSPECTABLE as historical evidence rather than disappearing into git. It is the
+// benchmark-revision discipline applied to a schema: **a superseded artefact is preserved, never deleted
+// and never silently replaced.** A reader can see exactly what was declared, what it meant, and what was
+// stopped — in the words it was written in.
+//
+// WHY THE SCHEMA IS EVIDENCE AND THE VALIDATOR IS NOT. The field table, the code catalogue, the stopped
+// candidates and the claim boundary are DATA: inert, inspectable, and incapable of accepting a file. The
+// validator is MACHINERY — a parser that could accept `settled_at` again — so it was renamed forward to
+// `billingExtractValidator.ts` and NOT preserved. No compatibility layer exists, because no consumer
+// requires one: `nh.settlement-extract@1.0.0` was never sent to a customer, holds no customer data, had
+// no production consumer, computed no hash, and appears in no stored record.
+//
+// WHAT WAS WRONG. Nothing here. The semantics were proved correct and internally consistent by the
+// archaeology in commit 06f314a — the event has always been A CHARGE WAS RAISED. Two column NAMES
+// (`settled_at`, `settled_amount`) and the artefact's own name leaned towards payment, and in contract
+// 2.0.0's adapter `settled_amount` is a synonym for `paid_amount`, so one token meant two opposite
+// events in one repository. The successor renames; it redefines nothing.
+//
+// THE ONLY EDITS to this file since it was the live contract are this header, the `SETTLEMENT_EXTRACT_STATUS`
+// export at the end, and the moved import path on the line below. The declaration itself is unchanged, and
+// `historical/settlementExtract_1_0_0.test.ts` pins that mechanically rather than promising it.
 // THE SETTLEMENT EXTRACT — the billing/settlement side of the two-sided reconciliation, declared as an
 // ADDITIVE, SEPARATELY GOVERNED SIBLING of the observation contract and of the expectation extract.
 //
@@ -25,7 +52,7 @@
 // READINESS path only: they answer whether a customer can supply the facts, and compute no money.
 import {
   SETTLEMENT_CAPABILITY_CODES, type SettlementCodeSpec,
-} from "./settlementExtractCodes";
+} from "./settlementExtractCodes_1_0_0";
 
 // ── 1 · IDENTITY ──────────────────────────────────────────────────────────────────────────────────
 
@@ -500,4 +527,34 @@ export const SETTLEMENT_EXTRACT_CLAIM_BOUNDARY = Object.freeze({
   constitutesRevenue: false as const,
   note:
     "A valid settlement extract states what billing did. It is not evidence that what billing did was correct, and no figure derived from it is Revenue Returned or Auditable Revenue.",
+});
+
+// ── 6 · STATUS ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The retirement, stated in the artefact itself so it cannot be read as current by accident.
+ *
+ * `supersededBy` carries a version of `1.0.0` rather than `2.0.0` deliberately: semver is scoped to an
+ * ID. A `2.0.0` under the new id would assert a `1.0.0` under THAT id which never existed and which no
+ * customer could have built against — a version signalling a change that did not happen. Succession is
+ * recorded as this link instead. It is NOT compatibility: a file declaring the old id is refused outright
+ * as an unknown artefact, which is a stronger protection than a major bump because there is no silent
+ * upgrade path at all.
+ */
+export const SETTLEMENT_EXTRACT_STATUS = Object.freeze({
+  state: "RETIRED" as const,
+  retiredOn: "2026-10-07",
+  supersededBy: "nh.billing-extract@1.0.0",
+  /** Old column name → new column name. The complete difference between the two declarations. */
+  renameMap: Object.freeze({
+    settled_at: "invoice_raised_at",
+    settled_amount: "invoice_line_amount",
+  }),
+  semanticsChanged: false as const,
+  whySemanticsDidNotChange:
+    "The event was always A CHARGE WAS RAISED — an invoice line issued by the billing system. The archaeology in commit 06f314a established it on evidence: ObservationRow carries no date but the service period, the only consumer was a format check, the frozen billing export feeds the field from `issued_at` and has no payment column, and payment lives elsewhere as `next_invoice_paid_at`. The names were wrong; the meaning was not.",
+  whyRenamed:
+    "`settled_at` and `settled_amount` lean towards payment timing, and in contract 2.0.0's adapter `settled_amount` is a declared synonym for `paid_amount` — so one token carried two opposite meanings in one repository. The predecessor was never sent to a customer, so the rename happened before anyone could build against it.",
+  reachedACustomer: false as const,
+  recordedIn: Object.freeze(["docs/BILLING_EXTRACT_RENAME_V1.md"]),
 });

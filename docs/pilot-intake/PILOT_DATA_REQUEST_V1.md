@@ -4,7 +4,7 @@
 edit by hand: a test asserts this document equals a fresh render, so an edit here fails the build
 rather than quietly diverging from what the validators actually require.
 
-Contracts: `nh.expectation-extract@1.1.0` and `nh.settlement-extract@1.0.0`.
+Contracts: `nh.expectation-extract@1.1.0` and `nh.billing-extract@1.0.0`.
 
 ---
 
@@ -33,10 +33,10 @@ that is the wrong file. We want the invoice lines your billing system raised —
 has paid them yet. **An unpaid invoice is exactly as useful to us as a paid one**, because we are
 comparing what was *charged* against what was *owed*, not tracking cash.
 
-> **A note on two of our column names.** The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`.
-> `settled_at` is the date the billing system RAISED the line, as that system holds it, and `settled_amount` is
-> the amount CHARGED on that line, not an amount received. The names are ours and they are misleading; the
-> definitions above are what we validate against.
+> **So the two columns that carry it are named for it.** `invoice_raised_at` is
+> the date the billing system RAISED the line, as that system holds it. `invoice_line_amount` is
+> the amount CHARGED on that line, not an amount received. Neither is a payment field, and we have no payment field:
+> if your export has one, leave it out.
 
 They must come from different systems, and that is the whole architecture rather than a preference.
 Asking the billing system what billing *should* have done cannot detect billing's own omission,
@@ -82,8 +82,8 @@ read.
 |---|---|---|---|
 | `invoice_ref` | required | Billing / ERP | Which document raised the charge. |
 | `invoice_line_ref` | required | Billing / ERP | Which charge on that document this row is. |
-| `settled_at` | required | Billing / ERP | WHEN THE CHARGE WAS RAISED — the invoice-line issue date. Not when money arrived. |
-| `settled_amount` | required | Billing / ERP | HOW MUCH WAS CHARGED on this line. Not how much was paid. |
+| `invoice_raised_at` | required | Billing / ERP | WHEN THE CHARGE WAS RAISED — the invoice-line issue date. Not when money arrived. |
+| `invoice_line_amount` | required | Billing / ERP | HOW MUCH WAS CHARGED on this line. Not how much was paid. |
 | `currency` | required | Billing / ERP | The unit the amount is denominated in. |
 | `payer_ref` | required | Billing / ERP | Who was charged. |
 
@@ -154,9 +154,9 @@ still measures money through every capability that remains.
 
 | Capability | If the fact is missing |
 |---|---|
-| SETTLEMENT_OBLIGATION_LINK_AVAILABLE | The cross-system join itself. Without it the two sides can only be matched on a key billing happens to share with the contract system, which a re-key or a migration destroys — and a timing-displacement hypothesis cannot be refuted, so real missing money stays held out pending attribution rather than claimed. |
-| CREDIT_DISTINCTION_AVAILABLE | Billed money is overstated, because a credit reads as a settlement — which UNDERSTATES exposure. The conservative direction, and still wrong. |
-| SETTLEMENT_PERIOD_AVAILABLE | The reconciliation unit. An issue date says when the invoice was raised, not what it covers, so a late settlement and a missing one become indistinguishable and no period-level residual exists to compute. |
+| BILLING_OBLIGATION_LINK_AVAILABLE | The cross-system join itself. Without it the two sides can only be matched on a key billing happens to share with the contract system, which a re-key or a migration destroys — and a timing-displacement hypothesis cannot be refuted, so real missing money stays held out pending attribution rather than claimed. |
+| CREDIT_DISTINCTION_AVAILABLE | Billed money is overstated, because a credit reads as a charge — which UNDERSTATES exposure. The conservative direction, and still wrong. |
+| BILLING_PERIOD_AVAILABLE | The reconciliation unit. An issue date says when the invoice was raised, not what it covers, so a late invoice and a missing one become indistinguishable and no period-level residual exists to compute. |
 | MIGRATION_LINEAGE_AVAILABLE | A re-keyed or migrated identity cannot be matched by the weaker fallback route. NOT a substitute for the obligation link: an authoritative obligation reference survives a re-key because it was never billing's internal key. |
 | EXPECTED_SETTLEMENT_COUNT_AVAILABLE | EVENT-level proof only. Two lines settling one obligation stay indistinguishable from two instalments of it, so NH reports MULTIPLE SETTLEMENTS OBSERVED and never a duplicate. On the synthetic evidence it unlocks NO additional money. |
 

@@ -1,7 +1,7 @@
 # Pseudonymising identifiers without breaking the analysis
 
 We do not need to know who your customers are. We **do** need the relationships between rows to survive,
-because the whole analysis is a join: an obligation in export **A** matched to the settlement in export
+because the whole analysis is a join: an obligation in export **A** matched to the billing line in export
 **B** that claims to settle it. Pseudonymising carelessly destroys that join silently — the files still
 load, and every obligation reads as unbilled.
 
@@ -20,7 +20,7 @@ So: **replace the values, preserve the relationships.**
    report back to the real account.
 
 4. **Preserve referential relationships.** An amendment that supersedes another line must still point at
-   that line's pseudonym. A settlement that settles an obligation must still carry that obligation's
+   that line's pseudonym. A billing line that settles an obligation must still carry that obligation's
    pseudonym. If a reference points at something that no longer exists after pseudonymisation, the
    relationship was broken, not hidden.
 
@@ -59,6 +59,6 @@ files, which is what keeps the join intact.
 
 ## How to check you got it right
 
-Take any five obligations from export A. For each one, find the settlement in export B whose
+Take any five obligations from export A. For each one, find the billing line in export B whose
 `obligation_ref` equals that obligation's `schedule_line_ref`. If you cannot, the mapping diverged —
 and the `PRE_SUBMISSION_CHECKLIST` has this as its own line for that reason.

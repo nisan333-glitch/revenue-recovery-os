@@ -20,8 +20,8 @@ import {
   EXPECTATION_EXTRACT_COLUMNS,
 } from "../../src/contract/expectationExtract";
 import { validateExpectationExtract, type RawExpectationRow } from "../../src/contract/expectationExtractValidator";
-import { SETTLEMENT_EXTRACT_COLUMNS } from "../../src/contract/settlementExtract";
-import { validateSettlementExtract, type RawSettlementRow } from "../../src/contract/settlementExtractValidator";
+import { BILLING_EXTRACT_COLUMNS } from "../../src/contract/billingExtract";
+import { validateBillingExtract, type RawBillingRow } from "../../src/contract/billingExtractValidator";
 import { evaluateDataReadiness, type ReadinessReport } from "../../src/contract/dataReadiness";
 
 const V3 = "e2e/fixtures/reconciliation-synthetic";
@@ -55,10 +55,10 @@ const E_MAP: Readonly<Record<string, string>> = Object.freeze({
   schedule_line_id: "schedule_line_ref",
 });
 
-/** Benchmark header → settlement-extract field. `obligation_ref` exists only in the variant. */
+/** Benchmark header → billing-extract field. `obligation_ref` exists only in the variant. */
 const S_MAP: Readonly<Record<string, string>> = Object.freeze({
-  invoice_id: "invoice_ref", invoice_line_id: "invoice_line_ref", issued_at: "settled_at",
-  billed_amount: "settled_amount", currency: "currency", payer_account_id: "payer_ref",
+  invoice_id: "invoice_ref", invoice_line_id: "invoice_line_ref", issued_at: "invoice_raised_at",
+  billed_amount: "invoice_line_amount", currency: "currency", payer_account_id: "payer_ref",
   is_credit: "is_credit", period_start: "period_start", period_end: "period_end",
   legacy_subscription_id: "legacy_subscription_ref", source_system: "source_system",
   obligation_ref: "obligation_ref",
@@ -86,10 +86,10 @@ function mapRows(
 
 function readinessFor(dir: string): ReadinessReport {
   const e = mapRows(readCsv(`${dir}/expectation.csv`), E_MAP, EXPECTATION_EXTRACT_COLUMNS);
-  const s = mapRows(readCsv(`${dir}/observation.csv`), S_MAP, SETTLEMENT_EXTRACT_COLUMNS);
+  const s = mapRows(readCsv(`${dir}/observation.csv`), S_MAP, BILLING_EXTRACT_COLUMNS);
   return evaluateDataReadiness(
     validateExpectationExtract(e.cols, e.rows as RawExpectationRow[], { currency: "USD", asOf: "2026-06-30" }),
-    validateSettlementExtract(s.cols, s.rows as RawSettlementRow[], { currency: "USD" }),
+    validateBillingExtract(s.cols, s.rows as RawBillingRow[], { currency: "USD" }),
   );
 }
 
@@ -103,27 +103,27 @@ const blockedCode = (r: ReadinessReport, capability: string): string | null =>
   r.blocked.find((b) => b.capability === capability)?.code ?? null;
 
 // ── 1 · V3 has no billing-side obligation identity ──────────────────────────────────────────────
-check(blockedCode(v3, "MONETARY_RECONCILIATION") === "NH-SX-3001",
+check(blockedCode(v3, "MONETARY_RECONCILIATION") === "NH-BX-3001",
   "V3 · the missing billing-side obligation link is recognised",
   `code=${blockedCode(v3, "MONETARY_RECONCILIATION")}`);
-check(v3.settlement.obligationRefPopulatedRows === 0,
-  "V3 · no settlement row carries an obligation reference",
-  `${v3.settlement.obligationRefPopulatedRows} populated`);
+check(v3.billing.obligationRefPopulatedRows === 0,
+  "V3 · no billing line carries an obligation reference",
+  `${v3.billing.obligationRefPopulatedRows} populated`);
 check(v3.level === "L1_STRUCTURALLY_VALID",
   "V3 · ceiling is L1 — structurally valid, reconciliation NOT possible", `level=${v3.level}`);
 
 // ── 2 · the variant reaches the higher level ────────────────────────────────────────────────────
 check(variant.level === "L2_MONETARY_RECONCILIATION_POSSIBLE",
   "variant · reaches L2, monetary reconciliation possible", `level=${variant.level}`);
-check(variant.settlement.obligationRefPopulatedRows === variant.settlement.acceptedRows,
-  "variant · every accepted settlement names the obligation it settles",
-  `${variant.settlement.obligationRefPopulatedRows}/${variant.settlement.acceptedRows}`);
+check(variant.billing.obligationRefPopulatedRows === variant.billing.acceptedRows,
+  "variant · every accepted billing line names the obligation it settles",
+  `${variant.billing.obligationRefPopulatedRows}/${variant.billing.acceptedRows}`);
 // The 11 dangling references are a CORRECT finding, not a defect: they name obligations whose
 // expectation rows were quarantined — 2 ambiguous live lines (NH-EX-2016) and 9 in a non-governed
 // currency (NH-EX-2008). What must hold is that they are REPORTED and INTERPRETED, and that they do
 // not block the 586 that resolve.
 check(variant.danglingObligationRefs === 11,
-  "variant · settlements naming a quarantined obligation are counted, not hidden",
+  "variant · billing lines naming a quarantined obligation are counted, not hidden",
   `dangling=${variant.danglingObligationRefs}`);
 check(variant.danglingObligationRefNote !== null && variant.danglingObligationRefNote.includes("cannot be joined"),
   "variant · the dangling count carries its interpretation", "");
@@ -148,9 +148,9 @@ check(blockedCode(variant, "ADDITIVE_OBLIGATION") === "NH-EX-2016",
   `code=${blockedCode(variant, "ADDITIVE_OBLIGATION")}`);
 
 // ── 5 · currency mismatch closes exact reconciliation ───────────────────────────────────────────
-check(variant.settlement.currencyMismatchRows === 0 && variant.expectation.rejectionCodes.length >= 0,
+check(variant.billing.currencyMismatchRows === 0 && variant.expectation.rejectionCodes.length >= 0,
   "M19 · a cross-currency obligation is handled without converting anything",
-  `mismatched settlement rows=${variant.settlement.currencyMismatchRows}`);
+  `mismatched billing lines=${variant.billing.currencyMismatchRows}`);
 check(!variant.currencyCompatible || variant.level !== "L3_EXACT_MONEY",
   "M19 · exact money is unavailable wherever currency is not comparable", `compatible=${variant.currencyCompatible}`);
 
@@ -165,7 +165,7 @@ for (const [label, r] of [["V3", v3], ["variant", variant]] as const) {
 // ── every blocked capability is actionable ───────────────────────────────────────────────────────
 for (const [label, r] of [["V3", v3], ["variant", variant]] as const) {
   const complete = r.blocked.every((b) =>
-    b.missingSourceFact.length > 20 && b.blockedMoneyDiscoveryCapability.length > 20 && /^NH-(EX|SX)-\d{4}$/.test(b.code));
+    b.missingSourceFact.length > 20 && b.blockedMoneyDiscoveryCapability.length > 20 && /^NH-(EX|BX)-\d{4}$/.test(b.code));
   check(complete, `${label} · every blocked capability names fact, owner and what is blocked`,
     `${r.blocked.length} blocked`);
 }
@@ -176,11 +176,11 @@ const line = (label: string, r: ReadinessReport) => {
   process.stdout.write(`  level ${r.level}${r.provisional ? " (PROVISIONAL)" : ""} · authority ${r.authority.reached}\n`);
   process.stdout.write(`  expectation: ${r.expectation.acceptedRows} accepted, ${r.expectation.rejectedRows} rejected, `
     + `${r.expectation.unknownAmountRows} UNKNOWN amount, quantification ${r.expectation.monetaryQuantification}\n`);
-  process.stdout.write(`  settlement : ${r.settlement.acceptedRows} accepted, ${r.settlement.rejectedRows} rejected, `
-    + `${r.settlement.obligationRefPopulatedRows} with obligation_ref, ${r.settlement.creditRows} credits, `
-    + `${r.settlement.currencyMismatchRows} currency mismatches\n`);
+  process.stdout.write(`  billing    : ${r.billing.acceptedRows} accepted, ${r.billing.rejectedRows} rejected, `
+    + `${r.billing.obligationRefPopulatedRows} with obligation_ref, ${r.billing.creditRows} credits, `
+    + `${r.billing.currencyMismatchRows} currency mismatches\n`);
   if (r.expectation.rejectionCodes.length > 0) process.stdout.write(`  expectation rejections: ${r.expectation.rejectionCodes.join(", ")}\n`);
-  if (r.settlement.rejectionCodes.length > 0) process.stdout.write(`  settlement rejections : ${r.settlement.rejectionCodes.join(", ")}\n`);
+  if (r.billing.rejectionCodes.length > 0) process.stdout.write(`  billing rejections : ${r.billing.rejectionCodes.join(", ")}\n`);
   process.stdout.write(`  BLOCKED:\n`);
   for (const b of r.blocked) {
     process.stdout.write(`    ${b.capability} [${b.code}] owner=${b.owningSourceSystem}\n`);

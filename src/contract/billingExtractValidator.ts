@@ -1,6 +1,6 @@
-// THE SETTLEMENT EXTRACT VALIDATOR — pure, clockless, and it computes no money.
+// THE BILLING EXTRACT VALIDATOR — pure, clockless, and it computes no money.
 //
-// It answers one question per row — can this settlement be trusted as stated? — and one question per
+// It answers one question per row — can this billing line be trusted as stated? — and one question per
 // capability — did the source supply the fact this capability needs? It never reconciles, never
 // compares against an expectation, never totals a residual and never derives an obligation reference.
 //
@@ -9,45 +9,45 @@
 // promise that historical proof stays reproducible.
 //
 // THE ASYMMETRY WITH THE EXPECTATION SIDE, stated once because it looks like an inconsistency and is
-// not: `expected_amount` may be a declared UNKNOWN that PRESERVES its row, while `settled_amount` may
+// not: `expected_amount` may be a declared UNKNOWN that PRESERVES its row, while `invoice_line_amount` may
 // not. What was OWED can genuinely be unknown — a usage line the contract system cannot price. What was
 // BILLED cannot be: a billing system that cannot value its own line cannot evidence it, and treating a
 // blank as UNKNOWN here would let an unvalued line sit in the accepted population contributing nothing
 // while implying it had been checked.
 import {
-  SETTLEMENT_CAPABILITIES, SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_EXTRACT_REF,
-  SETTLEMENT_EXTRACT_SCHEME, SETTLEMENT_REQUIRED_COLUMNS, SETTLEMENT_VALIDATION_METHOD_VERSION,
-  type SettlementCapability,
-} from "./settlementExtract";
+  BILLING_CAPABILITIES, BILLING_EXTRACT_COLUMNS, BILLING_EXTRACT_REF,
+  BILLING_EXTRACT_SCHEME, BILLING_REQUIRED_COLUMNS, BILLING_VALIDATION_METHOD_VERSION,
+  type BillingCapability,
+} from "./billingExtract";
 import {
-  SETTLEMENT_EXTRACT_CODES, SETTLEMENT_ROW_CODES,
-} from "./settlementExtractCodes";
+  BILLING_EXTRACT_CODES, BILLING_ROW_CODES,
+} from "./billingExtractCodes";
 
 /** The caller's declared reading. It states how to PARSE, never what to trust. */
-export interface SettlementExtractTerms {
+export interface BillingExtractTerms {
   /** Expected ISO currency for the analysis. A row in another currency is reported, never converted. */
   readonly currency: string;
 }
 
-export interface RawSettlementRow {
+export interface RawBillingRow {
   /** 1-based position in the file, for reporting only. It decides nothing. */
   readonly rowNumber: number;
   readonly cells: Readonly<Record<string, string>>;
 }
 
-export interface SettlementRowRejection {
+export interface BillingRowRejection {
   readonly rowNumber: number;
   readonly code: string;
   readonly field: string | null;
   readonly detail: string;
 }
 
-export interface AcceptedSettlement {
+export interface AcceptedBillingLine {
   readonly rowNumber: number;
   readonly invoiceRef: string;
   readonly invoiceLineRef: string;
-  readonly settledAt: string;
-  readonly settledAmountMinor: number;
+  readonly invoiceRaisedAt: string;
+  readonly invoiceLineAmountMinor: number;
   readonly currency: string;
   readonly payerRef: string;
   /** null means NOT STATED. Never a derived value, and never a placeholder. */
@@ -62,27 +62,27 @@ export interface AcceptedSettlement {
   readonly currencyMismatch: boolean;
 }
 
-export interface SettlementCapabilityDeclaration {
-  readonly capability: SettlementCapability;
+export interface BillingCapabilityDeclaration {
+  readonly capability: BillingCapability;
   readonly available: boolean;
-  /** The NH-SX-3xxx code when closed. An UNKNOWN, never a rejection. */
+  /** The NH-BX-3xxx code when closed. An UNKNOWN, never a rejection. */
   readonly unavailableCode: string | null;
   /** How many accepted rows carry the fact, where the basis is per-row. null when column-declared. */
   readonly populatedRows: number | null;
   readonly acceptedRows: number | null;
 }
 
-export interface SettlementExtractValidation {
-  readonly scheme: typeof SETTLEMENT_EXTRACT_SCHEME;
-  readonly contractRef: typeof SETTLEMENT_EXTRACT_REF;
-  readonly methodVersion: typeof SETTLEMENT_VALIDATION_METHOD_VERSION;
+export interface BillingExtractValidation {
+  readonly scheme: typeof BILLING_EXTRACT_SCHEME;
+  readonly contractRef: typeof BILLING_EXTRACT_REF;
+  readonly methodVersion: typeof BILLING_VALIDATION_METHOD_VERSION;
   readonly currency: string;
   /** False when an extract-level fault makes the file unreadable; accepted rows are then empty. */
   readonly usable: boolean;
   readonly extractFaults: readonly { readonly code: string; readonly detail: string }[];
-  readonly accepted: readonly AcceptedSettlement[];
-  readonly rejections: readonly SettlementRowRejection[];
-  readonly capabilities: readonly SettlementCapabilityDeclaration[];
+  readonly accepted: readonly AcceptedBillingLine[];
+  readonly rejections: readonly BillingRowRejection[];
+  readonly capabilities: readonly BillingCapabilityDeclaration[];
   /** Accepted rows in a currency other than the governed one. A COUNT, never a conversion. */
   readonly currencyMismatchCount: number;
   /** Accepted rows the source marked as credits. Counted apart, never netted into billed money. */
@@ -95,7 +95,7 @@ export interface SettlementExtractValidation {
 }
 
 const blank = (v: string | undefined): boolean => (v ?? "").trim() === "";
-const cell = (row: RawSettlementRow, name: string): string => (row.cells[name] ?? "").trim();
+const cell = (row: RawBillingRow, name: string): string => (row.cells[name] ?? "").trim();
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_CURRENCY = /^[A-Z]{3}$/;
@@ -111,18 +111,18 @@ function toMinor(text: string): number | null {
 }
 
 /**
- * Validate a settlement extract.
+ * Validate a billing extract.
  *
  * `declaredColumns` is the file's header as it actually arrived — passed in rather than inferred from
  * the rows, because a schema inferred from a sample of its own rows is how a column gets silently
  * dropped. That is the transport defect the V3 benchmark revision exists to correct, and the same rule
  * applies on the way in.
  */
-export function validateSettlementExtract(
+export function validateBillingExtract(
   declaredColumns: readonly string[],
-  rows: readonly RawSettlementRow[],
-  terms: SettlementExtractTerms,
-): SettlementExtractValidation {
+  rows: readonly RawBillingRow[],
+  terms: BillingExtractTerms,
+): BillingExtractValidation {
   const currency = terms.currency.trim().toUpperCase();
   const extractFaults: { code: string; detail: string }[] = [];
 
@@ -130,35 +130,35 @@ export function validateSettlementExtract(
   const seen = new Set<string>();
   for (const c of declaredColumns) {
     if (seen.has(c)) {
-      extractFaults.push({ code: SETTLEMENT_EXTRACT_CODES.DUPLICATE_COLUMN.code, detail: `column "${c}" appears more than once` });
+      extractFaults.push({ code: BILLING_EXTRACT_CODES.DUPLICATE_COLUMN.code, detail: `column "${c}" appears more than once` });
     }
     seen.add(c);
-    if (!SETTLEMENT_EXTRACT_COLUMNS.includes(c)) {
-      extractFaults.push({ code: SETTLEMENT_EXTRACT_CODES.UNDECLARED_COLUMN.code, detail: `column "${c}" is not declared by ${SETTLEMENT_EXTRACT_REF}` });
+    if (!BILLING_EXTRACT_COLUMNS.includes(c)) {
+      extractFaults.push({ code: BILLING_EXTRACT_CODES.UNDECLARED_COLUMN.code, detail: `column "${c}" is not declared by ${BILLING_EXTRACT_REF}` });
     }
   }
-  for (const need of SETTLEMENT_REQUIRED_COLUMNS) {
+  for (const need of BILLING_REQUIRED_COLUMNS) {
     if (!seen.has(need)) {
-      extractFaults.push({ code: SETTLEMENT_EXTRACT_CODES.MISSING_REQUIRED_COLUMN.code, detail: `required column "${need}" is absent` });
+      extractFaults.push({ code: BILLING_EXTRACT_CODES.MISSING_REQUIRED_COLUMN.code, detail: `required column "${need}" is absent` });
     }
   }
   if (rows.length === 0) {
-    extractFaults.push({ code: SETTLEMENT_EXTRACT_CODES.EMPTY_EXTRACT.code, detail: "the extract contains no rows" });
+    extractFaults.push({ code: BILLING_EXTRACT_CODES.EMPTY_EXTRACT.code, detail: "the extract contains no rows" });
   }
 
   if (extractFaults.length > 0) {
     // An unusable extract declares every capability CLOSED rather than silent. "We could not read the
     // file" must never arrive as "the capability is available", which is the capability-reporting rule.
     return Object.freeze({
-      scheme: SETTLEMENT_EXTRACT_SCHEME,
-      contractRef: SETTLEMENT_EXTRACT_REF,
-      methodVersion: SETTLEMENT_VALIDATION_METHOD_VERSION,
+      scheme: BILLING_EXTRACT_SCHEME,
+      contractRef: BILLING_EXTRACT_REF,
+      methodVersion: BILLING_VALIDATION_METHOD_VERSION,
       currency,
       usable: false,
       extractFaults: Object.freeze(extractFaults.map((f) => Object.freeze(f))),
       accepted: Object.freeze([]),
       rejections: Object.freeze([]),
-      capabilities: Object.freeze(SETTLEMENT_CAPABILITIES.map((c) => Object.freeze({
+      capabilities: Object.freeze(BILLING_CAPABILITIES.map((c) => Object.freeze({
         capability: c.capability, available: false, unavailableCode: c.unavailableCode.code,
         populatedRows: null, acceptedRows: null,
       }))),
@@ -169,7 +169,7 @@ export function validateSettlementExtract(
   }
 
   // ── row-level validation ────────────────────────────────────────────────────────────────────────
-  const rejections: SettlementRowRejection[] = [];
+  const rejections: BillingRowRejection[] = [];
   const reject = (rowNumber: number, code: string, field: string | null, detail: string) =>
     rejections.push(Object.freeze({ rowNumber, code, field, detail }));
 
@@ -177,7 +177,7 @@ export function validateSettlementExtract(
   const hasPeriod = seen.has("period_start") && seen.has("period_end");
 
   /**
-   * SETTLEMENT-LINE IDENTITY COLLISIONS, resolved the way the pilot-dataset collision rule requires:
+   * BILLING-LINE IDENTITY COLLISIONS, resolved the way the pilot-dataset collision rule requires:
    * ALL rows sharing an identity are excluded, regardless of order or identical content. Accepting the
    * first would let the file author choose which survives by reordering, and that choice can change the
    * measured amount. Computed BEFORE acceptance so no surviving row can be chosen by file position.
@@ -188,30 +188,30 @@ export function validateSettlementExtract(
     identityCount.set(key, (identityCount.get(key) ?? 0) + 1);
   }
 
-  const accepted: AcceptedSettlement[] = [];
+  const accepted: AcceptedBillingLine[] = [];
   for (const row of rows) {
     let bad = false;
     const fail = (code: string, field: string | null, detail: string) => { reject(row.rowNumber, code, field, detail); bad = true; };
 
-    for (const need of SETTLEMENT_REQUIRED_COLUMNS) {
-      if (blank(cell(row, need))) fail(SETTLEMENT_ROW_CODES.MISSING_REQUIRED_VALUE.code, need, `"${need}" is blank`);
+    for (const need of BILLING_REQUIRED_COLUMNS) {
+      if (blank(cell(row, need))) fail(BILLING_ROW_CODES.MISSING_REQUIRED_VALUE.code, need, `"${need}" is blank`);
     }
     if (bad) continue;
 
     const invoiceRef = cell(row, "invoice_ref");
     const invoiceLineRef = cell(row, "invoice_line_ref");
-    const settledAt = cell(row, "settled_at");
+    const invoiceRaisedAt = cell(row, "invoice_raised_at");
     const rowCurrency = cell(row, "currency").toUpperCase();
 
-    if (!ISO_DATE.test(settledAt)) fail(SETTLEMENT_ROW_CODES.MALFORMED_DATE.code, "settled_at", `"${settledAt}" is not YYYY-MM-DD`);
-    if (!ISO_CURRENCY.test(rowCurrency)) fail(SETTLEMENT_ROW_CODES.CURRENCY_NOT_ISO.code, "currency", `"${rowCurrency}" is not a three-letter ISO code`);
+    if (!ISO_DATE.test(invoiceRaisedAt)) fail(BILLING_ROW_CODES.MALFORMED_DATE.code, "invoice_raised_at", `"${invoiceRaisedAt}" is not YYYY-MM-DD`);
+    if (!ISO_CURRENCY.test(rowCurrency)) fail(BILLING_ROW_CODES.CURRENCY_NOT_ISO.code, "currency", `"${rowCurrency}" is not a three-letter ISO code`);
 
-    const minor = toMinor(cell(row, "settled_amount"));
-    if (minor === null) fail(SETTLEMENT_ROW_CODES.MALFORMED_AMOUNT.code, "settled_amount", `"${cell(row, "settled_amount")}" is not a decimal with at most two fractional digits`);
+    const minor = toMinor(cell(row, "invoice_line_amount"));
+    if (minor === null) fail(BILLING_ROW_CODES.MALFORMED_AMOUNT.code, "invoice_line_amount", `"${cell(row, "invoice_line_amount")}" is not a decimal with at most two fractional digits`);
 
     const isCredit = hasCredit && ["true", "yes", "1"].includes(cell(row, "is_credit").toLowerCase());
     if (minor !== null && minor < 0 && !isCredit) {
-      fail(SETTLEMENT_ROW_CODES.NEGATIVE_AMOUNT_NOT_MARKED_CREDIT.code, "settled_amount",
+      fail(BILLING_ROW_CODES.NEGATIVE_AMOUNT_NOT_MARKED_CREDIT.code, "invoice_line_amount",
         "a negative amount is a credit and must be marked as one, or it would be netted into billed money");
     }
 
@@ -220,10 +220,10 @@ export function validateSettlementExtract(
     if (hasPeriod) {
       const ps = cell(row, "period_start");
       const pe = cell(row, "period_end");
-      if (!blank(ps) && !ISO_DATE.test(ps)) fail(SETTLEMENT_ROW_CODES.MALFORMED_DATE.code, "period_start", `"${ps}" is not YYYY-MM-DD`);
-      if (!blank(pe) && !ISO_DATE.test(pe)) fail(SETTLEMENT_ROW_CODES.MALFORMED_DATE.code, "period_end", `"${pe}" is not YYYY-MM-DD`);
+      if (!blank(ps) && !ISO_DATE.test(ps)) fail(BILLING_ROW_CODES.MALFORMED_DATE.code, "period_start", `"${ps}" is not YYYY-MM-DD`);
+      if (!blank(pe) && !ISO_DATE.test(pe)) fail(BILLING_ROW_CODES.MALFORMED_DATE.code, "period_end", `"${pe}" is not YYYY-MM-DD`);
       if (!blank(ps) && !blank(pe) && ISO_DATE.test(ps) && ISO_DATE.test(pe) && pe < ps) {
-        fail(SETTLEMENT_ROW_CODES.PERIOD_END_BEFORE_START.code, "period_end", `${pe} precedes ${ps}`);
+        fail(BILLING_ROW_CODES.PERIOD_END_BEFORE_START.code, "period_end", `${pe} precedes ${ps}`);
       }
       periodStart = blank(ps) ? null : ps;
       periodEnd = blank(pe) ? null : pe;
@@ -231,7 +231,7 @@ export function validateSettlementExtract(
 
     const key = `${invoiceRef}\u0000${invoiceLineRef}`;
     if ((identityCount.get(key) ?? 0) > 1) {
-      fail(SETTLEMENT_ROW_CODES.DUPLICATE_SETTLEMENT_LINE_IDENTITY.code, "invoice_line_ref",
+      fail(BILLING_ROW_CODES.DUPLICATE_BILLING_LINE_IDENTITY.code, "invoice_line_ref",
         `(${invoiceRef}, ${invoiceLineRef}) appears on ${identityCount.get(key)} rows; ALL are excluded so no surviving row is chosen by file position`);
     }
 
@@ -242,8 +242,8 @@ export function validateSettlementExtract(
 
     accepted.push(Object.freeze({
       rowNumber: row.rowNumber,
-      invoiceRef, invoiceLineRef, settledAt,
-      settledAmountMinor: minor!,
+      invoiceRef, invoiceLineRef, invoiceRaisedAt,
+      invoiceLineAmountMinor: minor!,
       currency: rowCurrency,
       payerRef: cell(row, "payer_ref"),
       obligationRef,
@@ -256,7 +256,7 @@ export function validateSettlementExtract(
   }
 
   // ── capabilities · FAIL-CLOSED, and never from a subset of the facts they need ──────────────────
-  const capabilities = SETTLEMENT_CAPABILITIES.map((spec) => {
+  const capabilities = BILLING_CAPABILITIES.map((spec) => {
     const columnsPresent = spec.fields.length > 0 && spec.fields.every((f) => seen.has(f));
     if (spec.basis === "column_declared") {
       return Object.freeze({
@@ -290,9 +290,9 @@ export function validateSettlementExtract(
   });
 
   return Object.freeze({
-    scheme: SETTLEMENT_EXTRACT_SCHEME,
-    contractRef: SETTLEMENT_EXTRACT_REF,
-    methodVersion: SETTLEMENT_VALIDATION_METHOD_VERSION,
+    scheme: BILLING_EXTRACT_SCHEME,
+    contractRef: BILLING_EXTRACT_REF,
+    methodVersion: BILLING_VALIDATION_METHOD_VERSION,
     currency,
     usable: true,
     extractFaults: Object.freeze([]),

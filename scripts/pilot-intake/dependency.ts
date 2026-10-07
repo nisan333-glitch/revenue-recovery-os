@@ -14,8 +14,8 @@
 // drift from the behaviour of the code that will judge the customer's file.
 import { EXPECTATION_EXTRACT_COLUMNS } from "../../src/contract/expectationExtract";
 import { validateExpectationExtract, type RawExpectationRow } from "../../src/contract/expectationExtractValidator";
-import { SETTLEMENT_EXTRACT_COLUMNS } from "../../src/contract/settlementExtract";
-import { validateSettlementExtract, type RawSettlementRow } from "../../src/contract/settlementExtractValidator";
+import { BILLING_EXTRACT_COLUMNS } from "../../src/contract/billingExtract";
+import { validateBillingExtract, type RawBillingRow } from "../../src/contract/billingExtractValidator";
 import { evaluateDataReadiness, type ReadinessLevel } from "../../src/contract/dataReadiness";
 
 /** The smallest pair that reaches the highest level this package can demonstrate. */
@@ -26,15 +26,15 @@ const EXPECTATION_CELLS: Readonly<Record<string, string>> = Object.freeze({
   schedule_line_ref: "SL-PROBE",
 });
 
-const SETTLEMENT_CELLS: Readonly<Record<string, string>> = Object.freeze({
-  invoice_ref: "INV-PROBE", invoice_line_ref: "1", settled_at: "2026-03-05",
-  settled_amount: "100.00", currency: "USD", payer_ref: "PAYER-PROBE",
+const BILLING_CELLS: Readonly<Record<string, string>> = Object.freeze({
+  invoice_ref: "INV-PROBE", invoice_line_ref: "1", invoice_raised_at: "2026-03-05",
+  invoice_line_amount: "100.00", currency: "USD", payer_ref: "PAYER-PROBE",
   obligation_ref: "SL-PROBE", is_credit: "false",
   period_start: "2026-03-01", period_end: "2026-03-31",
   legacy_subscription_ref: "", source_system: "BILL-PROBE",
 });
 
-export type Side = "expectation" | "settlement";
+export type Side = "expectation" | "billing";
 
 export interface FieldDependency {
   readonly field: string;
@@ -60,26 +60,26 @@ function levelFor(
   const ev = validateExpectationExtract(
     eCols, [{ rowNumber: 1, cells: pick(eCols, eCells) }] as RawExpectationRow[], { currency: "USD" },
   );
-  const sv = validateSettlementExtract(
-    sCols, [{ rowNumber: 1, cells: pick(sCols, sCells) }] as RawSettlementRow[], { currency: "USD" },
+  const sv = validateBillingExtract(
+    sCols, [{ rowNumber: 1, cells: pick(sCols, sCells) }] as RawBillingRow[], { currency: "USD" },
   );
   return evaluateDataReadiness(ev, sv).level;
 }
 
 /** The baseline, so a probe result can be read against it. */
 export const BASELINE_LEVEL: ReadinessLevel = levelFor(
-  EXPECTATION_EXTRACT_COLUMNS, EXPECTATION_CELLS, SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_CELLS,
+  EXPECTATION_EXTRACT_COLUMNS, EXPECTATION_CELLS, BILLING_EXTRACT_COLUMNS, BILLING_CELLS,
 );
 
 export function probe(field: string, side: Side): FieldDependency {
   const eCols = side === "expectation" ? EXPECTATION_EXTRACT_COLUMNS.filter((c) => c !== field) : EXPECTATION_EXTRACT_COLUMNS;
-  const sCols = side === "settlement" ? SETTLEMENT_EXTRACT_COLUMNS.filter((c) => c !== field) : SETTLEMENT_EXTRACT_COLUMNS;
-  const levelWithoutColumn = levelFor(eCols, EXPECTATION_CELLS, sCols, SETTLEMENT_CELLS);
+  const sCols = side === "billing" ? BILLING_EXTRACT_COLUMNS.filter((c) => c !== field) : BILLING_EXTRACT_COLUMNS;
+  const levelWithoutColumn = levelFor(eCols, EXPECTATION_CELLS, sCols, BILLING_CELLS);
 
   const blanked = (cells: Readonly<Record<string, string>>) => Object.freeze({ ...cells, [field]: "" });
   const levelWithBlankCells = levelFor(
     EXPECTATION_EXTRACT_COLUMNS, side === "expectation" ? blanked(EXPECTATION_CELLS) : EXPECTATION_CELLS,
-    SETTLEMENT_EXTRACT_COLUMNS, side === "settlement" ? blanked(SETTLEMENT_CELLS) : SETTLEMENT_CELLS,
+    BILLING_EXTRACT_COLUMNS, side === "billing" ? blanked(BILLING_CELLS) : BILLING_CELLS,
   );
 
   return Object.freeze({
@@ -95,7 +95,7 @@ export function probe(field: string, side: Side): FieldDependency {
 /** Every field, probed. Order follows the governed column lists. */
 export const DEPENDENCIES: readonly FieldDependency[] = Object.freeze([
   ...EXPECTATION_EXTRACT_COLUMNS.map((f) => probe(f, "expectation")),
-  ...SETTLEMENT_EXTRACT_COLUMNS.map((f) => probe(f, "settlement")),
+  ...BILLING_EXTRACT_COLUMNS.map((f) => probe(f, "billing")),
 ]);
 
 export const dependencyFor = (field: string, side: Side): FieldDependency =>
