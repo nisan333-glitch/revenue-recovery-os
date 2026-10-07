@@ -281,3 +281,23 @@ about provenance have real corroboration and three have none, and the report dis
 
 Full treatment, including the proof that this is not `AUTHORITY_VERIFIED` and why it is not named
 `VERIFIED_FOR_PILOT`, in [`docs/PROVENANCE_ATTESTATION_V1.md`](PROVENANCE_ATTESTATION_V1.md).
+
+### 10a · ERRATUM · the row count is not a pre-commitment (2026-10-07, same day)
+
+An independent review found that §10's channel — and the governance doc behind it — described the
+declared row count as a **pre-commitment** making a later trim detectable. **It is not.** The declaration
+and the files reach NH together from the same party, so removing rows and adjusting the number produces a
+perfect agreement.
+
+`SOURCE_ATTESTED` **survives**, on a narrower and truthful basis: an accountable role is on record, the
+declaration is internally consistent with the files received, and the two files are mutually consistent
+in ways the declaration does not control — NH derives the payer overlap and the obligation join from both
+exports itself, so defeating those means repairing the join rather than editing a number.
+
+**Unchanged:** every level, gate, conjunct, count and refusal; `DATA_READINESS_METHOD_VERSION` stays
+`rdy-2026.2`; authority is still UNVERIFIED and every level still PROVISIONAL; `AUTHORITY_VERIFIED` is
+still unreachable; both frozen packages still report `SOURCE_NATIVE` at **L1** and **L2**.
+**Changed:** the claim is now `DECLARED_ROW_COUNT_AGREES`, export completeness is an explicit fourth
+uncheckable claim rather than something implied, and `ATTESTATION_METHOD_VERSION` is `pav-2026.2`.
+
+Full treatment in [`docs/PROVENANCE_ATTESTATION_V1.md`](PROVENANCE_ATTESTATION_V1.md) §9.

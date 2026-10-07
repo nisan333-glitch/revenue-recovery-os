@@ -1227,6 +1227,67 @@ export: a signed export, a fetch NH performs itself, a machine-issued system-of-
 third-party reconciliation — the last being the only one whose corroborating party is not party to the
 claim.
 
+**Attestation evidentiary-basis correction (2026-10-07, same day).** An independent review of the slice
+above found its central claim false. `ATTESTATION.md` told the customer *"send it with them"* while the
+governed reasoning called the declared row count a **pre-commitment** that makes *"a later trim visible"*.
+Those cannot both hold: the declaration and the files reach NH **together, from the same party**, so a
+submitter who removes rows can adjust the number to match and NH sees a perfect agreement. The review was
+right, and this was a defect in the reasoning rather than the wording. The rules:
+
+> **Pre-registration is meaningful only when the committed artefact passes beyond the committer's reach.**
+> A declaration the submitter still holds is a statement of intent, not a commitment — however early it was
+> written, and whatever it names. *"Before the result was known"* was **true and irrelevant** here, which is
+> worse than false: the submitter knows no NH result when they sign, but they know the file and hold both.
+> So the phrase was **removed rather than softened**, since softening keeps the implication.
+
+> **A predicate whose every input is controlled by one party can decide INTERNAL CONSISTENCY and can never
+> decide CORRESPONDENCE WITH AN EXTERNAL REFERENT.** `corroborateAttestation` takes the declaration and the
+> two validations — all three from the same party. *"The file we received has the rows the declaration
+> states"* is inside that closure and genuinely checkable; *"this is the complete, untrimmed export"*
+> relates the file to the source system's actual state, which appears in **no input**, so it is
+> **unreachable** rather than unchecked.
+
+**No mechanism could have made it a pre-commitment, and not weakly:** every immutability mechanism in this
+repository establishes immutability **from the moment NH receives the data and none reaches earlier** —
+`firstSeenAt`/`activatedAt > firstSeenAt` governs *definitions*, `PAD-`/`PAX-` and the append-only tables
+freeze *what was received*, `execution_input_tampered` detects a *retained* input changing after its hash
+was recorded, and the readiness path persists nothing at all.
+
+**`SOURCE_ATTESTED` survives, because one part of it survives the attack entirely.** The coordinated edit
+defeats the row count completely; it does **not** defeat the identifier and join checks, because the
+attestation never states them — NH derives the payer overlap and the obligation join from both exports
+independently, so defeating those means **repairing the join across both files**, which is producing the
+coherent two-sided book we are asking for. The rung therefore asserts exactly three things: an accountable
+role exists at all, the declaration is internally consistent with the files received, and the two files are
+mutually consistent in ways the declaration does not control. Still PROVISIONAL, `AUTHORITY_VERIFIED` still
+unreachable ([`docs/PROVENANCE_ATTESTATION_V1.md`](docs/PROVENANCE_ATTESTATION_V1.md) §9).
+
+`ROW_COUNT_PRECOMMITTED` → **`DECLARED_ROW_COUNT_AGREES`**; completeness is now **`EXPORT_IS_COMPLETE`**, an
+explicit **fourth** uncheckable claim with **no field to tick**, because a box would invite the reading that
+ticking it achieved something. `ATTESTATION_METHOD_VERSION` → **`pav-2026.2`**; `rdy-2026.2` unmoved, since
+no level, gate or rung-reaching behaviour changed.
+
+**The attribution is not where I assumed.** `git log -S` puts the pre-registration framing in `c36e278`, the
+readiness V1 slice, on **`SYSTEM_OF_RECORD_ATTESTATION`** — where it is **correct**, because that attestation
+is machine-issued and the submitter never holds it. The error was copying it onto `DATA_OWNER_ATTESTATION`.
+The sentence **stays where it was**, and now says explicitly that the attestation channel may not borrow it.
+
+**The most valuable new test documents the hole rather than closing it:** it performs the attack and asserts
+NH **still** reports `SOURCE_ATTESTED` with no contradiction, while `EXPORT_IS_COMPLETE` reads NOT
+ESTABLISHED. A test that pretended NH caught it would be worse than no test. The strongest *preventive* guard
+is structural, not lexical — **`submitterStillControls`**, required non-empty below the top rung and `[]` at
+it — because prose about a residual weakness can be rewritten into optimism and a required non-empty list
+cannot; promoting completeness into the rung-bearing set makes the rung unreachable, which is the right
+failure. The vocabulary tripwire is kept and **labelled a tripwire, not a proof**, and its own first form
+failed twice on negation sitting a line away, so it now judges **sentences rather than lines** — **tenth**
+instance of a guard having to read the construct it is actually asking about. One more of my own: *"puts a
+name against the submission"* slipped into the corrected customer text and contradicted the role-not-person
+rule; it is now guarded.
+
+**227/227** package checks with six mutations proved to fail, **25/25** control with both frozen packages
+unchanged, every frozen artefact byte-identical. The `ReadinessReport.level` authority-cap finding is left
+untouched by instruction.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

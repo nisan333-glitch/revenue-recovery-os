@@ -1,5 +1,14 @@
 # Minimal customer provenance attestation · the `SOURCE_ATTESTED` rung
 
+> ## ⚠ CORRECTED 2026-10-07 — read §9 before §3 or §6
+>
+> **An independent review found that this document's reasoning about the declared row count was wrong.**
+> §3 and §6 below describe it as a **pre-commitment** that makes a later trim detectable. It is not: the
+> declaration and the files reach NH together, from the same party, so a submitter who removes rows can
+> adjust the number to match. The original text is **preserved unedited** — a superseded conclusion is
+> corrected and preserved, never rewritten — and **§9 states what is actually established.** Where the
+> two disagree, §9 governs.
+
 **Decided and built 2026-10-07.** Owner decision: the absence of verified authority must not block
 requesting or inspecting the first real customer exports. Pilot-data trust rule; it computes no money,
 runs no reconciliation, and turns no observed amount into proven Revenue Returned.
@@ -182,3 +191,103 @@ Only a channel the submitting side cannot alter. In rough order of cost:
    settled amount. The only one of the four where the corroborating party is not party to the claim.
 
 Until one exists, **`SOURCE_ATTESTED` is the ceiling and every level stays PROVISIONAL.**
+
+---
+
+## 9 · CORRECTION · consistency is not completeness
+
+**Found by independent review of the shipped slice `811f549`; corrected the same day.** The review
+observed that `ATTESTATION.md` said *"Send it with them"* while this document called the row count a
+pre-commitment, and that the two cannot both be true.
+
+### The defect
+
+If the submitter holds both the export and the declaration until they are submitted together, they can
+export, delete rows, change the declared count, and send a matching pair. **NH sees a perfect
+agreement.** So the row count is evidence of *consistency between the received file and the received
+declaration*, not of completeness, and not a pre-commitment in any sense.
+
+### Is there any mechanism that would have made it one? No — and not weakly
+
+Every immutability mechanism in this repository establishes immutability **from the moment NH receives
+the data, and none reaches earlier**. `firstSeenAt` with `activatedAt > firstSeenAt` governs *governed
+definitions*, proving a definition predates the data. `PAD-`/`PAX-` and the append-only tables freeze
+**what was received**. `execution_input_tampered` detects a *retained* input changing after its hash was
+recorded. The readiness path persists nothing at all. There is no channel through which a declaration
+could be committed while the file could still change, so **pre-commitment is unreachable here**, not
+merely unsupported.
+
+### The rule the correction establishes
+
+> **Pre-registration is meaningful only when the committed artefact passes beyond the committer's reach.**
+> A declaration the submitter still holds is a statement of intent, not a commitment — however early it
+> was written, and whatever it names.
+
+And one level down, the property that decides what any of this can show:
+
+> **A predicate whose every input is controlled by one party can decide INTERNAL CONSISTENCY and can
+> never decide CORRESPONDENCE WITH AN EXTERNAL REFERENT.** `corroborateAttestation` takes the
+> declaration, the expectation validation and the billing validation — all three from the same party.
+> Row-count equality is inside that closure and genuinely checkable. Completeness relates the file to the
+> source system's actual state, which appears in no input, so it is **unreachable** rather than unchecked.
+
+### What `SOURCE_ATTESTED` now claims, and why it survives
+
+The coordinated edit defeats the row count entirely. It does **not** defeat the identifier and join
+checks, because the attestation never states them: NH derives payer overlap and obligation resolution
+from the two exports independently. Defeating those means repairing the join itself across both files —
+not editing a number — which is producing a coherent two-sided book, the thing we are asking for.
+
+So the rung asserts exactly three things, and no more:
+
+1. an **accountable role** is on record, which nothing at `SOURCE_NATIVE` has at all;
+2. the declaration is **internally consistent** with the files received;
+3. the two files are **mutually consistent in ways the declaration does not control**.
+
+Still strictly more than `SOURCE_NATIVE`, still strictly less than `AUTHORITY_VERIFIED`, still
+**PROVISIONAL**, and `AUTHORITY_VERIFIED` is still unreachable.
+
+### What changed in the model
+
+| | before | after |
+|---|---|---|
+| claim id | `ROW_COUNT_PRECOMMITTED` | **`DECLARED_ROW_COUNT_AGREES`** |
+| its requirement | *"the export was not trimmed after the fact"* | *"the declaration and the file we received agree with each other"* |
+| completeness | **implied** by the pre-commitment framing | **`EXPORT_IS_COMPLETE`**, an explicit `UNCORROBORATED_CLAIM` with no field to tick |
+| uncheckable claims | three | **four** |
+| channel spec | prose about residual weakness | **`submitterStillControls`**, structural and required non-empty below the top rung |
+| method version | `pav-2026.1` | **`pav-2026.2`** |
+
+`DATA_READINESS_METHOD_VERSION` stays **`rdy-2026.2`**: no level, gate, conjunct or rung-reaching
+behaviour changed, and the report gained one additional uncheckable claim, which is additive.
+
+### Attribution, since it is not where I first assumed
+
+`git log -S'the same pre-registration shape the admission bar uses'` puts the framing in **`c36e278`**,
+the readiness V1 slice, on **`SYSTEM_OF_RECORD_ATTESTATION`** — where it is **correct**, because that
+attestation is machine-issued and the submitter never holds it. The error was copying the reasoning onto
+`DATA_OWNER_ATTESTATION`. **The sentence stays where it was and is gone from where I put it**, and that
+channel's text now says explicitly that the attestation channel may not borrow it.
+
+### The falsifiers, and the one that documents rather than prevents
+
+The most valuable new test **performs the attack**: it removes a row, adjusts the declared count, and
+asserts that NH **still reports `SOURCE_ATTESTED` with no contradiction** — while `EXPORT_IS_COMPLETE`
+reads `NOT ESTABLISHED`. A test that pretended NH caught it would be worse than no test.
+
+The strongest *preventive* guard is structural rather than lexical: every channel reaching
+`SOURCE_ATTESTED` must declare a non-empty `submitterStillControls`, and every channel reaching
+`AUTHORITY_VERIFIED` must declare `[]`. Prose about a residual weakness can be rewritten into optimism; a
+required non-empty list cannot. The vocabulary tripwire is kept and **labelled as a tripwire, not a
+proof** — a paraphrase evades any word list.
+
+**Its own first form failed twice on negation.** It matched sentences whose negating clause sat on the
+following line — the rendered-`isNot`-bullets defect again — so it now judges **sentences rather than
+lines**, and the prose it polices was rewritten to be self-negating. Tenth instance of a structural guard
+having to read the construct it is actually asking about.
+
+### What this does not touch
+
+The `ReadinessReport.level` authority-cap finding (§7) is **left exactly as it was**, by instruction.
+Money, reconciliation, readiness capabilities, extract schemas, contract 2.0.0, the API and the UI are
+unchanged, and no frozen artefact moved.
