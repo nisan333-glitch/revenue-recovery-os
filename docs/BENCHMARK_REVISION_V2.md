@@ -117,3 +117,69 @@ Not "the core detects nothing". Two distinct findings, which must stay distinct:
    one.
 
 **No core change was made before this baseline was recorded.**
+
+---
+
+# Governed benchmark revision · V2 → V3 · the transport defect
+
+**V2 is superseded, not invalidated.** Its monetary truth was correct; its *transport* lost a field, and
+the loss corrupted one figure. V1 remains `INVALIDATED FOR DECISION USE` for a different reason, and
+both earlier records above stand unedited.
+
+## 1 · The defect
+
+`ground-truth.csv` derived its header from `Object.keys(rows[0])`. Any field present only on a **later**
+row was dropped, and one was: `sibling_entitlements` exists on the M20 truth row and in
+`planted-register.json`, but never reached the CSV the scorer reads. The scorer therefore could not see
+that `syn-ent-0001` belongs to M20, and charged **$89.70** of correctly-detected money — a real 30%
+under-bill, $299.00 → $209.30 — as fabricated.
+
+**The worst kind of measurement defect, because it was invisible:** nothing errored, nothing was
+malformed, and the corrupted figure looked exactly like a real result.
+
+## 2 · The fix is generic · no special case for M20
+
+`csv(rows)` → `csv(rows, declaredColumns)`:
+
+* the column schema is **required and explicit**; nothing is inferred from any row;
+* the writer **throws** on any key not in the schema, so a late field can no longer be lost *silently*
+  — it now fails loudly;
+* `GROUND_TRUTH_COLUMNS` declares the governed ground-truth schema, `sibling_entitlements` included,
+  as a stated artefact rather than a side effect of row order.
+
+## 3 · Proof obligations · all eight discharged
+
+| # | Claim | Evidence |
+|---|---|---|
+| 1 | expectation export byte-identical | SHA-256 `31992d23…` ✅ |
+| 2 | billing export byte-identical | SHA-256 `0ef21e40…` ✅ |
+| 3 | ground-truth **semantics** identical | cell-by-cell: **19 rows × 15 pre-existing columns, zero differences**; one column added, none removed ✅ |
+| 4 | planted amounts identical | **$85,942.00**, 16 priced, 3 UNKNOWN ✅ |
+| 5 | mechanisms identical | 19 names identical, 19 cohort sizes identical ✅ |
+| 6 | only the transport changed | `planted-register.json` **unchanged** at `111db9d1…` — the authoritative register never lost the field, which is precisely what makes this a transport defect and not a truth defect ✅ |
+| 7 | field survives serialisation **and reload** | re-parsed CSV returns `syn-ent-0001 syn-ent-0002`, **matching the register** ✅ |
+| 8 | no other late field can be lost | a field injected on the final row only now raises `field "…" is not in the declared schema — it would have been silently dropped` ✅ |
+
+`ground-truth.csv`: `024f69237bc0521c8d8420eb52a51d3b78389952841a7164588eae1b9ad3c264` →
+`0f5558e402912047783d06d171e2cbfa674ab262de660f9832907f99eb71f074`. **The only artefact permitted to
+move, and the only one that moved.**
+
+## 4 · The official V3 baseline · post-taint, pre-ambiguity core
+
+Core `831b2dab3767b01aeb7d33e79034712fa5403efe7a5506955d784762be3b6430` — **unmodified in this phase.**
+
+| `A_SUBSCRIPTION` | V2 post-fix | **V3 baseline** | Δ |
+|---|---|---|---|
+| detected positive | $90,925.40 | $90,925.40 | — |
+| **true positive** | $62,356.30 | **$62,446.00** | **+$89.70** |
+| **false positive** | $8,969.10 | **$8,879.40** | **−$89.70** |
+| …on zero/unknown-truth cases | $8,879.40 | $8,879.40 | — |
+| false negative | $3,985.70 | $3,896.00 | −$89.70 |
+| monetary recall | 72.56% | **72.66%** | +0.10pp |
+| monetary precision | 68.58% | **68.68%** | +0.10pp |
+| refusals (unwarranted) | 77 (1) | 77 (1) | — |
+
+**Exactly $89.70 moved, in exactly one direction, and nothing else changed** — which is what a pure
+measurement correction should look like. The practical consequence is that **100% of the remaining
+false-positive money is now M17**, with no residue to explain away, so the next correction has a clean
+target.

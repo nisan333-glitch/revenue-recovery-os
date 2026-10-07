@@ -600,21 +600,69 @@ T("M20-multiple-mechanisms", {
 });
 
 // ── Write ─────────────────────────────────────────────────────────────────────────────────────────
-const csv = (rows) => {
+//
+// THE SCHEMA IS DECLARED, NOT INFERRED FROM THE FIRST ROW.
+//
+// The first form of this writer took its columns from `Object.keys(rows[0])`. Any field present only on
+// a LATER row was therefore dropped silently, and one was: `sibling_entitlements` exists on the M20
+// truth row and in `planted-register.json`, but never reached `ground-truth.csv`. The scorer could not
+// see that `syn-ent-0001` belongs to M20 and charged $89.70 of correctly-detected money as fabricated.
+//
+// A measurement defect, not a product defect — the authoritative register never lost the field. But it
+// is the worst kind, because it was invisible: nothing errored, nothing was malformed, and the figure
+// it corrupted looked exactly like a real result.
+//
+// So the column list is now REQUIRED and EXPLICIT, and the writer asserts that every key on every row
+// appears in it. A late field can no longer be lost silently, because it now fails loudly instead.
+const EXPECTATION_COLUMNS = [
+  "contract_id", "schedule_line_id", "entitlement_id", "account_id", "payer_account_id",
+  "parent_account_id", "legacy_schedule_id", "period_start", "period_end", "expected_amount",
+  "currency", "terminated_at", "pause_start", "pause_end", "amended_at",
+  "supersedes_schedule_line_id", "product_code", "source_system",
+];
+const OBSERVATION_COLUMNS = [
+  "invoice_id", "invoice_line_id", "invoice_number", "billing_account_id", "subscription_id",
+  "legacy_subscription_id", "payer_account_id", "period_start", "period_end", "billed_amount",
+  "currency", "is_credit", "issued_at", "source_system",
+];
+/** The governed ground-truth schema. `sibling_entitlements` is here because it is part of the truth. */
+const GROUND_TRUTH_COLUMNS = [
+  "mechanism", "first_entitlement_id", "payer_account_id", "cohort_size", "cohort_entitlements",
+  "sibling_entitlements", "should_have_happened", "what_actually_happened",
+  "authoritative_exposure_minor", "expected_nh_classification", "business_expectation",
+  "nh_should_detect", "nh_must_refuse", "money_unknown", "attribution_possible",
+  "source_facts_required",
+];
+
+const csv = (rows, declaredColumns) => {
+  if (!Array.isArray(declaredColumns) || declaredColumns.length === 0) {
+    throw new Error("csv() requires an explicit column schema — inferring it from a row is the defect");
+  }
+  // THE GUARANTEE. Any key on any row that the schema does not declare stops the generator dead.
+  const declared = new Set(declaredColumns);
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (!declared.has(key)) {
+        throw new Error(`field "${key}" is not in the declared schema — it would have been silently dropped`);
+      }
+    }
+  }
   if (rows.length === 0) return "";
-  const cols = Object.keys(rows[0]);
   const cell = (v) => {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  return [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n");
+  return [declaredColumns.join(","), ...rows.map((r) => declaredColumns.map((c) => cell(r[c])).join(","))].join("\n");
 };
 
 mkdirSync(OUT, { recursive: true });
 const files = {
-  "expectation.csv": csv(E),
-  "observation.csv": csv(O),
-  "ground-truth.csv": csv(truth.map((t) => ({ ...t, authoritative_exposure_minor: t.authoritative_exposure_minor ?? "UNKNOWN" }))),
+  "expectation.csv": csv(E, EXPECTATION_COLUMNS),
+  "observation.csv": csv(O, OBSERVATION_COLUMNS),
+  "ground-truth.csv": csv(
+    truth.map((t) => ({ ...t, authoritative_exposure_minor: t.authoritative_exposure_minor ?? "UNKNOWN" })),
+    GROUND_TRUTH_COLUMNS,
+  ),
   "planted-register.json": `${JSON.stringify({
     seed: SEED, currency: CURRENCY, periods: PERIODS, migrationPeriod: MIGRATION_PERIOD,
     payerCount: payers.length, entitlementCount: entitlements.length,

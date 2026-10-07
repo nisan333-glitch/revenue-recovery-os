@@ -121,14 +121,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // one. V1 is preserved under history/ and is INVALIDATED FOR DECISION USE: it double-counted
     // monetary attribution across co-located mechanisms at payer grain. The business data is
     // byte-identical between the two revisions — only the ruler changed.
-    revision: "V2",
+    revision: "V3",
     supersedes: {
+      revision: "V2",
+      status: "HISTORICAL MEASUREMENT · SUPERSEDED (transport defect)",
+      reason:
+        "ground-truth.csv derived its header from Object.keys(rows[0]), so sibling_entitlements — present on the last truth row and in the authoritative register — was silently dropped; the scorer could not see that syn-ent-0001 belongs to M20 and charged $89.70 of correctly-detected money as fabricated",
+      businessDataUnchanged: true,
+      groundTruthCsvBefore: "024f69237bc0521c8d8420eb52a51d3b78389952841a7164588eae1b9ad3c264",
+      groundTruthCsvAfter: "0f5558e402912047783d06d171e2cbfa674ab262de660f9832907f99eb71f074",
+    },
+    alsoSupersedes: {
       revision: "V1",
       status: "HISTORICAL MEASUREMENT · INVALIDATED FOR DECISION USE",
       reason: "the scorer double-counted monetary attribution across co-located mechanisms at payer grain",
       artefact: "scripts/reconciliation-synthetic/history/score.v1.invalidated.mjs",
       diff: "scripts/reconciliation-synthetic/history/score.v1-to-v2.diff",
-      businessDataUnchanged: true,
     },
     order: "generate -> validate -> FREEZE -> record hashes -> run NH -> score",
     data, scripts,
