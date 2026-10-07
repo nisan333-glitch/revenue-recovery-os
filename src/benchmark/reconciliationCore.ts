@@ -78,7 +78,86 @@ export type UnitState =
 export type PairingMechanism =
   | "ADJACENT_PERIOD_SAME_ENTITLEMENT"
   | "SIBLING_ENTITLEMENT_SAME_PAYER"
-  | "SIBLING_PAYER_UNDER_HIERARCHY";
+  | "SIBLING_PAYER_UNDER_HIERARCHY"
+  /**
+   * More than one counterpart survives the evidence, so NH declines to choose. The money stays HELD
+   * OUT of the headline exactly as any other pairing holds it — the hold is the same, the honesty is
+   * that no single mechanism is claimed.
+   */
+  | "AMBIGUOUS_MULTIPLE_COUNTERPARTS";
+
+/**
+ * The CLAIMS a pairing makes. A mechanism is admissible only while every part it needs survives, and
+ * the parts are refuted independently — which is what stops a compound claim from borrowing support
+ * from the half that happens to hold.
+ */
+export type SettlementHypothesis =
+  /** The obligation was settled, in the wrong PERIOD. */
+  | "TIMING_DISPLACEMENT"
+  /** The money reached the company, under the wrong IDENTITY. */
+  | "MISALLOCATION";
+
+/** One counterpart that could explain a shortfall, with what it would have to claim to do so. */
+export interface PairingCandidate {
+  readonly counterpartUnit: string;
+  readonly mechanism: Exclude<PairingMechanism, "AMBIGUOUS_MULTIPLE_COUNTERPARTS">;
+  /** CONJUNCTIVE. A cross-period sibling needs BOTH, which is why it cannot outlive its timing half. */
+  readonly requires: readonly SettlementHypothesis[];
+}
+
+export type PairingVerdict = {
+  readonly mechanism: PairingMechanism;
+  readonly counterpartUnit: string;
+  /** Every surviving counterpart, sorted, when the verdict is ambiguous. Reporting, never selection. */
+  readonly ambiguousWith?: readonly string[];
+} | null;
+
+/**
+ * SELECT A PAIRING FROM EVIDENCE, NEVER FROM ORDER.
+ *
+ * The defect this replaces: the pairing pass scanned the negative units and took the FIRST whose
+ * amount matched, so when two counterparts were reachable the mechanism assigned — and therefore
+ * whether the money could ever be claimed — followed array position. Measured on the frozen package:
+ * two sibling entitlements of one payer at one price, and the deficit of one of them was attributed to
+ * the OTHER's surplus because that unit came first, under a mechanism that was factually wrong.
+ *
+ * The rule now, and the order of it matters:
+ *
+ *   1. enumerate EVERY plausible counterpart — no early exit;
+ *   2. classify what each one would have to claim;
+ *   3. drop the candidates whose claims the evidence refutes;
+ *   4. pair ONLY when exactly one survives;
+ *   5. otherwise HOLD, and say that more than one survived.
+ *
+ * Nothing here consults array order, file order, lexical order, amount similarity on its own, date
+ * proximity on its own, or a stable sort. **Determinism is necessary and is not evidence** — a stable
+ * tie-break would make the answer reproducible and still make it a guess, which is the same error as
+ * breaking an append-only log's ties with a random id and calling the order total.
+ *
+ * `refutedParts` is where source evidence enters. The core itself refutes nothing: it has no fact that
+ * speaks to either hypothesis, so it holds wherever more than one counterpart is reachable. A caller
+ * with such a fact — the obligation-reference reading — passes it in, and both paths then share THIS
+ * function, so neither can drift into a different notion of what counts as settled.
+ */
+export function selectPairing(
+  candidates: readonly PairingCandidate[],
+  refutedParts: (candidate: PairingCandidate) => readonly SettlementHypothesis[] = () => [],
+): PairingVerdict {
+  const surviving = candidates.filter((c) => {
+    const dead = new Set(refutedParts(c));
+    return !c.requires.some((part) => dead.has(part));
+  });
+  if (surviving.length === 0) return null;
+  if (surviving.length === 1) {
+    const only = surviving[0]!;
+    return Object.freeze({ mechanism: only.mechanism, counterpartUnit: only.counterpartUnit });
+  }
+  return Object.freeze({
+    mechanism: "AMBIGUOUS_MULTIPLE_COUNTERPARTS" as const,
+    counterpartUnit: "(more than one counterpart survives the evidence)",
+    ambiguousWith: Object.freeze([...new Set(surviving.map((c) => c.counterpartUnit))].sort()),
+  });
+}
 
 export interface UnitResult {
   readonly entitlementRef: string;
@@ -91,7 +170,13 @@ export interface UnitResult {
   readonly observedMinor: number;
   readonly unpricedExpectationCount: number;
   /** Set only on an UNDER_BILLED unit whose counterpart is reachable through a named mechanism. */
-  readonly pairedWith: { readonly mechanism: PairingMechanism; readonly counterpartUnit: string } | null;
+  readonly pairedWith: PairingVerdict;
+  /**
+   * EVERY plausible counterpart, classified and unranked, whatever the verdict. Exposed so a caller
+   * holding evidence the core does not have can re-run `selectPairing` over the same enumeration
+   * instead of re-deriving it — a second enumeration is a second chance to disagree.
+   */
+  readonly pairingCandidates: readonly PairingCandidate[];
   readonly note: string;
 }
 
@@ -123,6 +208,8 @@ export interface ReconciliationResult {
     readonly constitutesRevenue: false;
   };
 }
+
+const EMPTY_CANDIDATES: readonly PairingCandidate[] = Object.freeze([]);
 
 const unitKey = (entitlementRef: string, periodStart: string, periodEnd: string) =>
   `${entitlementRef}|${periodStart}|${periodEnd}`;
@@ -261,6 +348,7 @@ export function reconcile(
       periodEnd: first.periodEnd,
       unpricedExpectationCount: es.filter((e) => e.expectedAmountMinor === null).length,
       pairedWith: null,
+      pairingCandidates: EMPTY_CANDIDATES,
     };
     const observedMinor = os.filter((o) => !o.isCredit).reduce((n, o) => n + o.billedAmountMinor, 0);
 
@@ -391,28 +479,54 @@ export function reconcile(
   const payerOf = (ref: string) => liveExpectations.find((e) => e.entitlementRef === ref)?.customerRef ?? "";
   const rootOf = (payer: string) => terms.payerHierarchy[payer] ?? payer;
 
+  /**
+   * Classify ONE counterpart. This decides what a pairing would have to CLAIM; it never decides which
+   * counterpart wins. The branches are ordered because a candidate satisfying two relations is one
+   * relation described two ways — a sibling of the same payer is also under that payer's root — and
+   * naming the nearer one is classification, not preference between competing candidates.
+   */
+  const classify = (n: UnitResult, u: UnitResult): PairingCandidate | null => {
+    const samePeriod = n.periodStart === u.periodStart && n.periodEnd === u.periodEnd;
+    const withinWindow = Math.abs(monthIndex(n.periodStart) - monthIndex(u.periodStart)) <= terms.invoicingGracePeriods;
+    const counterpartUnit = unitKey(n.entitlementRef, n.periodStart, n.periodEnd);
+
+    if (n.entitlementRef === u.entitlementRef) {
+      // One obligation, two periods. The whole claim is that the settlement landed in the wrong one.
+      if (!withinWindow) return null;
+      return Object.freeze({
+        counterpartUnit, mechanism: "ADJACENT_PERIOD_SAME_ENTITLEMENT" as const,
+        requires: Object.freeze(["TIMING_DISPLACEMENT" as const]),
+      });
+    }
+
+    // A different identity. In the SAME period that is a pure misallocation. ACROSS periods it is a
+    // COMPOUND claim — wrong identity AND wrong period — and it must carry both parts, because a
+    // hypothesis that needs two independent errors may not be supported by whichever one survives.
+    const requires = Object.freeze(
+      samePeriod ? ["MISALLOCATION" as const] : ["MISALLOCATION" as const, "TIMING_DISPLACEMENT" as const],
+    );
+    if (!samePeriod && !withinWindow) return null;
+
+    if (payerOf(n.entitlementRef) === payerOf(u.entitlementRef)) {
+      return Object.freeze({ counterpartUnit, mechanism: "SIBLING_ENTITLEMENT_SAME_PAYER" as const, requires });
+    }
+    if (rootOf(payerOf(n.entitlementRef)) === rootOf(payerOf(u.entitlementRef))
+      && terms.payerHierarchy[payerOf(u.entitlementRef)] !== undefined) {
+      // ONLY under a SUPPLIED hierarchy. Two unrelated payers are never paired: doing so would let any
+      // surplus anywhere excuse any shortfall, which is the netting defect under another name.
+      return Object.freeze({ counterpartUnit, mechanism: "SIBLING_PAYER_UNDER_HIERARCHY" as const, requires });
+    }
+    return null;
+  };
+
   const units = draft.map((u): UnitResult => {
     if (u.state !== "UNDER_BILLED") return u;
-    for (const n of negatives) {
-      if (Math.abs(n.residualMinor!) !== u.residualMinor) continue; // only an exact counterpart
-      let mechanism: PairingMechanism | null = null;
-      if (n.entitlementRef === u.entitlementRef
-        && Math.abs(monthIndex(n.periodStart) - monthIndex(u.periodStart)) <= terms.invoicingGracePeriods) {
-        mechanism = "ADJACENT_PERIOD_SAME_ENTITLEMENT";
-      } else if (n.entitlementRef !== u.entitlementRef && payerOf(n.entitlementRef) === payerOf(u.entitlementRef)) {
-        mechanism = "SIBLING_ENTITLEMENT_SAME_PAYER";
-      } else if (rootOf(payerOf(n.entitlementRef)) === rootOf(payerOf(u.entitlementRef))
-        && terms.payerHierarchy[payerOf(u.entitlementRef)] !== undefined) {
-        // ONLY under a SUPPLIED hierarchy. Two unrelated payers are never paired: doing so would let any
-        // surplus anywhere excuse any shortfall, which is the netting defect under another name.
-        mechanism = "SIBLING_PAYER_UNDER_HIERARCHY";
-      }
-      if (mechanism) {
-        return Object.freeze({ ...u, pairedWith: Object.freeze({ mechanism,
-          counterpartUnit: unitKey(n.entitlementRef, n.periodStart, n.periodEnd) }) });
-      }
-    }
-    return u;
+    // EVERY exact counterpart, enumerated with no early exit — the fix for the order defect starts here.
+    const candidates = negatives
+      .filter((n) => Math.abs(n.residualMinor!) === u.residualMinor)
+      .map((n) => classify(n, u))
+      .filter((c): c is PairingCandidate => c !== null);
+    return Object.freeze({ ...u, pairingCandidates: Object.freeze(candidates), pairedWith: selectPairing(candidates) });
   });
 
   const under = units.filter((u) => u.state === "UNDER_BILLED");

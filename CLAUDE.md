@@ -813,6 +813,57 @@ while in a real book a re-key conceals whatever sits behind it; **capability is 
 for data to fix a defect in our own code would be the wrong request.** Synthetic throughout: it turns no
 observed amount into proven Revenue Returned.
 
+**Pairing-order decision (2026-10-07).** The counterfactual predicted M07 would release $19,600.00 and
+released $9,800.00. The cause was not a missing source fact: the pairing pass scanned the negative units and
+took the **first** whose amount matched, so with two counterparts reachable the mechanism assigned — and
+therefore whether the money could ever be claimed — followed array position. M07's two entitlements share a
+payer and a price, so one matched its own February (refutable, released) and the other matched the sibling's
+February first (not refutable, held) under a mechanism that was factually wrong. **The defect cut both ways,
+which the first analysis missed:** the released half was equally order-luck, since the other sibling's
+February was just as reachable. The governing rule is now:
+
+> **Pairing must be determined by authoritative business relationships, never by iteration order.**
+> Enumerate every plausible counterpart with no early exit; classify what each would have to *claim*; drop
+> the candidates whose claims the evidence refutes; pair **only when exactly one survives**; otherwise
+> **hold** and say that more than one did. Never array, CSV, database or lexical order, never amount
+> similarity or date proximity alone, never first match, and never an arbitrary stable sort.
+> **Determinism is necessary and is not evidence** — a stable tie-break makes a guess reproducible, the
+> same error as breaking an append-only log's ties with a random id and calling the order total.
+
+The mechanism ranking is not invented from "looks more specific"; what ranks a candidate is what it must
+**claim**. `TIMING_DISPLACEMENT` says the obligation was settled in the wrong *period*; `MISALLOCATION` says
+the money reached the company under the wrong *identity*. A same-period sibling claims only the second. A
+**cross-period** sibling claims both, and the load-bearing rule is that
+
+> **a compound hypothesis needs support for each of its parts and dies with either one.**
+
+That single property is what corrects M07 without weakening the M08 protection, and **nothing in the code
+names M08**: obligation references refute timing claims and are silent on allocation claims, because under
+the declared semantics the reference is produced by the very allocation step that failed. So M08's pure
+same-period misallocation survives and its $2,798.00 stays held, while a cross-period sibling dies with its
+timing half. The core itself **refutes nothing** — it holds no fact that speaks to either claim — and the
+obligation reading injects the predicate into the **same** `selectPairing`, because a second selection rule
+is a second chance to disagree.
+
+**Built 2026-10-07** ([`docs/PAIRING_ORDER_V1.md`](docs/PAIRING_ORDER_V1.md)), core `ec1efe95…` →
+`fdc6c785…`. On the same frozen variant with the ruler and the data untouched: **headline money
+$70,046.00 → $79,846.00**, **false positive $0.00 before and after**, **gross positive unchanged** — so the
+money *moved* and none was created, and every newly claimable dollar is attributable solely to removing the
+order dependence. TP, FN, recall, precision, UNKNOWN, unpriced, refusals and attribution coverage all
+unchanged; **exactly one mechanism moved** (M07, paired $9,800.00 → $0.00); M08, M05 and M18 unchanged. The
+variant's two controls now carry witnesses **byte-identical to V3's own**, which is the strongest form that
+proof can take.
+
+**V3's money is unchanged and its witness is not, and both facts matter.** Every monetary and count field on
+all three constructible candidates is **identical**; the witnesses for the two entitlement-grain candidates
+moved because the *mechanism* is in their preimage and the mechanism genuinely changed — M07's two units now
+read `AMBIGUOUS_MULTIPLE_COUNTERPARTS` rather than one adjacent-period and one sibling label chosen by
+position. `D_PAYER_PERIOD` is unchanged outright, because that grain merges the two entitlements so no
+competing candidate arises. **The earlier claim "V3 reproduces byte-identically" must not be repeated:** it
+held across a *measurement* correction and cannot hold across a *product* correction. The recorded baseline
+is preserved as the historical record of the pre-correction product, and what reproduces byte-identically now
+is every monetary and count field — which is the claim worth making.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

@@ -27,7 +27,9 @@
 // reference carries: how many settlement events the obligation expects. So this module reports
 // `MULTIPLE_SETTLEMENTS_OBSERVED` and never the word duplicate.
 import {
-  reconcile, type GovernedReconciliationTerms, type ReconciliationResult, type UnitResult,
+  reconcile, selectPairing,
+  type GovernedReconciliationTerms, type PairingCandidate, type ReconciliationResult,
+  type SettlementHypothesis, type UnitResult,
 } from "./reconciliationCore";
 import type { ExpectationRow, ObservationRow } from "./reconciliationScenarios";
 
@@ -130,49 +132,43 @@ function resolveIdentity(
 /**
  * THE REFUTATION, and the reason it is scoped the way it is.
  *
- * A pairing is a HYPOTHESIS about why a surplus and a shortfall of the same size sit near each other.
- * Obligation identity can refute exactly one of the three the core forms:
+ * A pairing CLAIMS something. Obligation identity can refute exactly one of the two claims the core's
+ * mechanisms are built from:
  *
- *   ADJACENT_PERIOD_SAME_ENTITLEMENT asserts a TIMING DISPLACEMENT — the obligation was settled in the
- *   wrong period. A reference speaks to that claim directly, because it says which period's obligation
- *   each line settles. REFUTABLE.
+ *   TIMING_DISPLACEMENT says the obligation was settled in the wrong period. A reference speaks to that
+ *   claim directly, because it states which period's obligation each line settles. REFUTABLE.
  *
- *   SIBLING_ENTITLEMENT_SAME_PAYER and SIBLING_PAYER_UNDER_HIERARCHY assert a MISALLOCATION — the money
- *   reached the company under another identity. A reference cannot speak to that claim, because under
- *   the declared semantics the reference is produced by the very allocation step that failed: it says
- *   where billing PUT the money, which is the thing in question. NOT REFUTABLE.
+ *   MISALLOCATION says the money reached the company under another identity. A reference cannot speak
+ *   to that claim, because under the declared semantics it is produced by the very allocation step that
+ *   failed: it says where billing PUT the money, which is the thing in question. NOT REFUTABLE.
  *
  * That asymmetry is not a convenience. It is "doubt is scoped to the evidence that creates it" applied
  * to the evidence rather than to the doubt — a fact may only settle the questions it can testify
  * about. Were it ignored, M08-wrong-entitlement would release $2,798 of money the company was ALREADY
  * PAID, which is fabricated money under a confident name.
+ *
+ * And it is why a CROSS-PERIOD sibling candidate dies here while a same-period one survives: the
+ * cross-period one is a compound claim that needs the timing half too, and the references kill the
+ * timing half. A compound hypothesis may not be propped up by whichever of its parts happens to hold.
  */
-function refutes(
-  deficit: UnitResult,
-  surplus: UnitResult,
+function timingRefuted(
+  deficitObligations: readonly string[],
+  counterpartUnit: string,
   settlementsByUnit: ReadonlyMap<string, readonly ObligationObservationRow[]>,
   obligationOfUnit: ReadonlyMap<string, readonly string[]>,
-): string | null {
-  if (deficit.pairedWith?.mechanism !== "ADJACENT_PERIOD_SAME_ENTITLEMENT") return null;
-
-  const deficitObligations = obligationOfUnit.get(unitKey(deficit)) ?? [];
-  if (deficitObligations.length === 0) return null; // nothing to reason about
+  citedAnywhere: ReadonlySet<string>,
+): boolean {
+  if (deficitObligations.length === 0) return false; // nothing to reason about
 
   // (a) NOBODY settled the deficit's obligation. Positively provable, and the stronger half.
-  const allSettlements = [...settlementsByUnit.values()].flat();
-  const cited = new Set(allSettlements.filter((o) => !o.isCredit).map((o) => (o.obligationRef ?? "").trim()));
-  const deficitUnsettled = deficitObligations.every((ref) => !cited.has(ref));
-  if (!deficitUnsettled) return null;
+  if (!deficitObligations.every((ref) => !citedAnywhere.has(ref))) return false;
 
   // (b) ...and every line in the surplus names the SURPLUS's own obligation, so the surplus is an
   //     over-settlement of its own period and not an early or late settlement of the deficit's.
-  const surplusLines = (settlementsByUnit.get(unitKey(surplus)) ?? []).filter((o) => !o.isCredit);
-  if (surplusLines.length === 0) return null;
-  const surplusObligations = new Set(obligationOfUnit.get(unitKey(surplus)) ?? []);
-  const allOnOwnObligation = surplusLines.every((o) => surplusObligations.has((o.obligationRef ?? "").trim()));
-  if (!allOnOwnObligation) return null;
-
-  return `every settlement in ${unitKey(surplus)} names that period's own obligation, and no settlement anywhere names ${deficitObligations.join(", ")} — so the surplus cannot be a displaced settlement of this period`;
+  const surplusLines = (settlementsByUnit.get(counterpartUnit) ?? []).filter((o) => !o.isCredit);
+  if (surplusLines.length === 0) return false;
+  const own = new Set(obligationOfUnit.get(counterpartUnit) ?? []);
+  return surplusLines.every((o) => own.has((o.obligationRef ?? "").trim()));
 }
 
 /**
@@ -207,19 +203,31 @@ export function reconcileWithObligationIdentity(
     obligationOfUnit.set(key, list);
   }
 
-  const byKey = new Map(base.units.map((u) => [unitKey(u), u]));
+  const citedAnywhere = new Set(
+    [...byUnit.values()].flat().filter((o) => !o.isCredit).map((o) => (o.obligationRef ?? "").trim()),
+  );
   const refutedPairings: Array<ObligationAwareResult["refutedPairings"][number]> = [];
+
+  // RE-SELECT OVER THE CORE'S OWN ENUMERATION, through the core's own `selectPairing`. Not a second
+  // enumeration and not a second selection rule: a second one is a second chance to disagree, and the
+  // property under test — that the verdict follows evidence rather than order — has to hold on ONE
+  // implementation or it holds on neither.
   const units = base.units.map((u): UnitResult => {
-    if (u.state !== "UNDER_BILLED" || u.pairedWith === null) return u;
-    const counterpart = byKey.get(u.pairedWith.counterpartUnit);
-    if (counterpart === undefined) return u;
-    const because = refutes(u, counterpart, byUnit, obligationOfUnit);
-    if (because === null) return u;
-    refutedPairings.push(Object.freeze({
-      unit: unitKey(u), counterpartUnit: u.pairedWith.counterpartUnit,
-      releasedMinor: u.residualMinor!, because,
-    }));
-    return Object.freeze({ ...u, pairedWith: null });
+    if (u.state !== "UNDER_BILLED") return u;
+    const deficitObligations = obligationOfUnit.get(unitKey(u)) ?? [];
+    const refutedParts = (c: PairingCandidate): readonly SettlementHypothesis[] =>
+      timingRefuted(deficitObligations, c.counterpartUnit, byUnit, obligationOfUnit, citedAnywhere)
+        ? ["TIMING_DISPLACEMENT"] : [];
+    const verdict = selectPairing(u.pairingCandidates, refutedParts);
+    if (verdict === u.pairedWith) return u;
+    if (verdict === null && u.pairedWith !== null) {
+      refutedPairings.push(Object.freeze({
+        unit: unitKey(u), counterpartUnit: u.pairedWith.counterpartUnit,
+        releasedMinor: u.residualMinor!,
+        because: `every counterpart the core could reach needs a timing displacement, and the references refute it: no settlement anywhere names ${deficitObligations.join(", ") || "this obligation"}, and each surplus names its own period's obligation`,
+      }));
+    }
+    return Object.freeze({ ...u, pairedWith: verdict });
   });
 
   // ── The event readings · what obligation identity alone can say ────────────────────────────────
