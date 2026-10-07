@@ -43,6 +43,23 @@ export interface GovernedReconciliationTerms {
   readonly payerHierarchy: Readonly<Record<string, string>>;
   /** AUTHORITATIVE re-key map, old identity → new. Supplied; a guess here would manufacture a match. */
   readonly identityAliases: Readonly<Record<string, string>>;
+  /**
+   * AUTHORITATIVE component identity per schedule line — `BASE`, `OVERAGE`, `SEAT-TIER-2`.
+   *
+   * It answers the one question that decides whether two live lines in a unit may be ADDED: does the
+   * source state that they are distinct additive obligations? Two lines with DIFFERENT non-null
+   * components are two obligations; anything less is one obligation described twice, or two
+   * alternatives of which one applies, and summing it invents money.
+   *
+   * Optional, and absence means "not stated" — which refuses rather than permits. Supplied, never
+   * inferred: deriving components from amounts, row ids, order or naming would be NH authoring the
+   * distinctness it is supposed to be reading.
+   *
+   * OPEN GOVERNANCE QUESTION, recorded rather than assumed settled: claiming distinctness INFLATES the
+   * expectation and therefore the exposure, so this fact points the same way the admission bar does and
+   * would need the same governance before any production use.
+   */
+  readonly additiveLineComponents?: Readonly<Record<string, string>>;
 }
 
 export type UnitState =
@@ -55,7 +72,8 @@ export type UnitState =
   | "REFUSED_OVERLAPPING_PERIODS"
   | "REFUSED_CURRENCY_MISMATCH"
   | "REFUSED_PERIOD_BOUNDARY_DISAGREEMENT"
-  | "REFUSED_UNMATCHED_IDENTITY";
+  | "REFUSED_UNMATCHED_IDENTITY"
+  | "REFUSED_AMBIGUOUS_LIVE_LINES";
 
 export type PairingMechanism =
   | "ADJACENT_PERIOD_SAME_ENTITLEMENT"
@@ -298,6 +316,36 @@ export function reconcile(
         expectedMinor: null, observedMinor,
         note: "an expectation here carries no authoritative amount; the comparison is impossible and this unit reduces coverage" }));
       continue;
+    }
+
+    // AMBIGUOUS LIVE LINES · more than one live expectation claims this unit.
+    //
+    // Summing them states an amount NEITHER LINE ASSERTS, and choosing one would be NH picking the
+    // customer's number for them. Eight shapes can produce this and only two are additive — split
+    // schedule lines and additive components — while the rest are a duplicated export row, two
+    // mutually exclusive alternatives, a migration duplicate, or an unlinked amendment. Those six are
+    // indistinguishable from the additive two unless the source says which it is.
+    //
+    // So addition requires EVERY line to carry a DISTINCT stated component. Distinct schedule-line ids
+    // do not qualify: a duplicated export row has two ids for one obligation, which is exactly why row
+    // identity cannot settle this. Neither do equal or unequal amounts, nor row order.
+    //
+    // This is the same semantic the expectation validator expresses as NH-EX-2016, with a DIFFERENT
+    // REMEDY, and the difference matters. There, the rows are quarantined — correct at validation
+    // time, where the row never joins a population. Here, quarantining would make the obligation
+    // INVISIBLE, hiding a real obligation rather than declining to price it. The unit therefore stays
+    // visible and carries a null residual.
+    if (es.length > 1) {
+      const components = es.map((e) =>
+        e.scheduleLineRef === null ? null : (terms.additiveLineComponents ?? {})[e.scheduleLineRef] ?? null);
+      const everyLineStated = components.every((c) => c !== null);
+      const allDistinct = new Set(components).size === components.length;
+      if (!everyLineStated || !allDistinct) {
+        draft.push(Object.freeze({ ...base, state: "REFUSED_AMBIGUOUS_LIVE_LINES", residualMinor: null,
+          expectedMinor: null, observedMinor,
+          note: `${es.length} live expectation lines claim this unit and the source does not state them as distinct additive obligations; summing them would assert an amount none of them makes` }));
+        continue;
+      }
     }
 
     const expectedMinor = es.reduce((n, e) => n + (e.expectedAmountMinor ?? 0), 0);

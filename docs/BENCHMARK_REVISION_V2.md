@@ -183,3 +183,114 @@ Core `831b2dab3767b01aeb7d33e79034712fa5403efe7a5506955d784762be3b6430` — **un
 measurement correction should look like. The practical consequence is that **100% of the remaining
 false-positive money is now M17**, with no residue to explain away, so the next correction has a clean
 target.
+
+---
+
+# V3 POST-FIX · the ambiguous-live-lines correction
+
+Recorded 2026-10-05. **Same frozen V3 package, same ruler, changed product.** This section is the
+measurement; the semantic is in [`AMBIGUOUS_LINES_V1.md`](AMBIGUOUS_LINES_V1.md).
+
+## 5 · What changed, and what provably did not
+
+| | PRE-FIX | POST-FIX |
+|---|---|---|
+| `reconciliationCore.ts` | `831b2dab3767b01aeb7d33e79034712fa5403efe7a5506955d784762be3b6430` | `ec1efe951b1de9d2483ebca7a2a9ef5042178438d20432860c24eaf6824e12ca` |
+| `score.mjs` (the ruler) | `060359f5…` | **`060359f5…` — byte-identical** |
+| `ground-truth.csv` | `0f5558e4…` | **`0f5558e4…` — byte-identical** |
+| `expectation.csv` | `31992d23…` | **`31992d23…`** |
+| `observation.csv` | `0ef21e40…` | **`0ef21e40…`** |
+| `planted-register.json` | `111db9d1…` | **`111db9d1…`** |
+| `reconciliationScenarios.ts` | `7dd786ba…` | **`7dd786ba…`** |
+
+`recon:verify` passed **before** the run, so the freeze was intact at measurement time.
+
+**This is the acceptance proof the user asked for.** The $8,879.40 disappeared with the ruler and the
+truth byte-identical and only the product changed — so it disappeared **because NH refuses the
+aggregation**, not because the scorer stopped counting it. The corroborating movement is in the
+refusal ledger, which only the product can move: `refusalsWarranted` **2 → 3**.
+
+## 6 · The intended grain · `E_SUBSCRIPTION_WITH_LEGACY_ALIAS`
+
+| Figure | V3 PRE-FIX | **V3 POST-FIX** | Δ |
+|---|---|---|---|
+| authoritative planted money | $85,942.00 | $85,942.00 | — |
+| detected positive (gross, incl. paired) | $90,925.40 | **$82,046.00** | **−$8,879.40** |
+| **true positive** | $62,446.00 | **$62,446.00** | **—** |
+| **false positive** | **$8,879.40** | **$0.00** | **−$8,879.40** |
+| …on zero/unknown-truth cases | $8,879.40 | **$0.00** | −$8,879.40 |
+| false negative | $3,896.00 | **$3,896.00** | — |
+| **monetary recall** | 72.66% | **72.66%** | **—** |
+| monetary precision | 68.68% | **76.11%** | +7.43pp |
+| event coverage / correlation | AVAILABLE / AVAILABLE | unchanged | — |
+| UNKNOWN-money cases | 3 | 3 | — |
+| unpriced units | 4 | 4 | — |
+| refused units | 21 | **23** | **+2** |
+| · warranted | 2 | **3** | **+1** |
+| · **unwarranted** | **0** | **0** | **—** |
+| attribution clusters | 19 of 19 | 19 of 19 | — |
+| structurally invisible money | $19,600.00 | $19,600.00 | — |
+| unexplained misses | $0.00 | $0.00 | — |
+| double-counted union money | $0.00 | $0.00 | — |
+| gross negative | $23,398.00 | $23,398.00 | — |
+| paired held out | $21,800.00 | $21,800.00 | — |
+
+`A_SUBSCRIPTION` (no alias map) moves identically: FP $8,879.40 → $0.00, TP/FN/recall unchanged,
+refusals 77 → 79, warranted 2 → 3, unwarranted 1 → 1. The two non-constructible candidates are
+**byte-identical**.
+
+### Exactly one mechanism moved, on exactly two units
+
+```
+M17-ambiguous-identity   positiveMinor  $8,879.40 -> $0.00
+                         refusedUnits   0 -> 2
+                         states  [MONETARILY_BALANCED, UNDER_BILLED]
+                              -> [MONETARILY_BALANCED, REFUSED_AMBIGUOUS_LIVE_LINES]
+```
+
+`syn-ent-0072` and `syn-ent-0073`, both period `2026-03-01` — **2 of 600 units.** Every other
+mechanism, including `M14`'s re-key (12 `REFUSED_UNMATCHED_IDENTITY`) and `M15`'s 28-entitlement
+migration, is **unchanged in every figure**: the taint semantics accepted on 2026-10-06 are untouched,
+and no ambiguity refusal displaced a taint refusal (12 + 9 = 21 → + 2 = 23).
+
+M17's authored truth is `authoritative_exposure_minor: UNKNOWN`, `nh_should_detect: no`,
+`nh_must_refuse: YES`. **NH now does what the truth says it must**, and the money moved to UNKNOWN
+rather than to the detected column — which is the honest place for it.
+
+## 7 · The aggregate candidate · `D_PAYER_PERIOD`
+
+| Figure | V3 PRE-FIX | V3 POST-FIX |
+|---|---|---|
+| detected positive | $86,258.30 | $3,064.45 |
+| true positive | $56,858.30 | $3,064.45 |
+| **false positive** | **$9,800.00** | **$0.00** |
+| false negative | $9,483.70 | $63,277.55 |
+| monetary recall | 66.16% | **3.57%** |
+| monetary precision | 65.92% | 100.00% |
+| refused units | 9 | **207** (ambiguous **198**) |
+| · unwarranted | 2 | **16** |
+| mechanisms with any detection | 6 of 9 | 2 of 9 |
+
+Reported in full rather than omitted. **This is a diagnosis, not a regression.** A payer×period unit
+merges sibling entitlements by construction, so at that grain nearly every unit *is* an unsupported
+aggregation — the rule names the grain's arithmetic as the defect. It also eliminates that candidate's
+$9,800.00 of fabrication. The 2 → 16 rise in unwarranted refusals is the honest cost of applying a
+correct rule to a grain that cannot satisfy it.
+
+**`D_PAYER_PERIOD` still must not ship as the reconciliation grain.** This slice strengthens that
+conclusion: the earlier finding was that it cannot *attribute* a residual; this one is that it cannot
+*justify* one.
+
+## 8 · Metrics affected and unaffected
+
+**Affected:** false-positive money and monetary precision on `A_SUBSCRIPTION` and
+`E_SUBSCRIPTION_WITH_LEGACY_ALIAS`; the refusal ledger; every monetary figure on `D_PAYER_PERIOD`.
+
+**Unaffected:** the planted total, true-positive money, false-negative money, monetary recall, event
+and correlation coverage, UNKNOWN counts, unpriced units, attribution clusters, structurally invisible
+money, double-counted union money, gross negative, paired held out, and both non-constructible
+verdicts.
+
+**This is not a benchmark revision.** The ground truth, the data and the ruler are byte-identical; V3
+remains the governing revision and the frozen package is unmoved. Only the product's reading of it
+changed.

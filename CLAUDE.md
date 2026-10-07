@@ -655,9 +655,88 @@ so a column present only on the last row was silently dropped, and correctly-det
 fabricated. The second was **deliberately left unfixed**, because correcting it would *improve* the result
 and may only happen as a governed revision with its own evidence and freeze.
 
-**So the honest answer is: not yet.** The approach is sound and the pipeline still reports $8,879.40 nobody
-owes. The next minimum slice is the ambiguity refusal in the core — not a grain decision, not production
-wiring.
+**So the honest answer was: not yet.** The approach is sound and the pipeline still reported $8,879.40
+nobody owes. The named next slice — the ambiguity refusal in the core, not a grain decision and not
+production wiring — **was taken, and it closed.** See the two decisions below.
+
+**Transport-defect revision, V3 (2026-10-05).** The $89.70 was a *measurement* defect and was corrected
+first, because the product correction's success is judged in the units the measurement defines. The fix is
+**generic, with no special case**: `csv(rows)` became `csv(rows, declaredColumns)`, the ground-truth schema
+is a declared governed list rather than `Object.keys(rows[0])`, and an undeclared key now **throws** instead
+of vanishing. The rule it establishes:
+
+> **A serialised artefact's schema is declared, never inferred from a sample of its own rows.** A field that
+> appears late must fail loudly, because a transport that can silently drop a column is a ruler that can
+> silently shorten.
+
+All eight proof obligations were discharged on evidence: expectation, billing and `planted-register.json`
+**byte-identical**; ground-truth semantics identical cell-by-cell across **19 rows × 15 pre-existing
+columns**; planted total still **$85,942.00**; 19 mechanisms and cohort sizes identical;
+`sibling_entitlements` verified through serialise **and reload**; and a falsifier proving a late field now
+raises. `ground-truth.csv` was the only artefact permitted to move, and the only one that moved. **Exactly
+$89.70 moved, in one direction, and nothing else changed** — which is what a pure measurement correction
+looks like ([`docs/BENCHMARK_REVISION_V2.md`](docs/BENCHMARK_REVISION_V2.md) §V3).
+
+**Ambiguous-live-lines decision (2026-10-05).** The remaining $8,879.40 was a *product* defect in one line
+of arithmetic: `es.reduce(...)` summed two unsuperseded expectation lines claiming one unit, producing an
+expected amount **neither line asserts** — so the residual measured nothing, it was authored. The governing
+rule is now:
+
+> **Addition is permitted only where the source establishes that the lines are DISTINCT ADDITIVE
+> OBLIGATIONS. Nothing about their co-location establishes it.** Absent that fact the unit is REFUSED with
+> a null residual — never summed, never arbitrated, and never silently dropped.
+
+Same payer, same period, same amount, **different row ids**, row count and source order are all excluded.
+The fourth is decisive and kills the obvious answer: *distinct `schedule_line_id`s mean distinct
+obligations* is false, because **a duplicated export row has two distinct ids for one obligation**. Eight
+source shapes can put two live lines in one unit; **only two are additive** (split schedule lines, additive
+components) and they are indistinguishable from the other six — duplicate row, mutually exclusive
+alternatives, migration duplicate, unlinked amendment, identical-bound overlap — without an authoritative
+fact. A corollary one level down: **a count is not a cardinality.** "Two rows exist" is a fact about the
+file; "two obligations exist" is a fact about the business, and the contract carries only the first.
+
+**`NH-EX-2016` has the correct semantic and the wrong remedy for this layer**, which was the question asked
+rather than assumed. Its severity is `row_quarantined` — right at validation, where the row never joins a
+population; **wrong in the core**, where the obligation has already joined it, so deleting the rows makes a
+**real obligation invisible** and the unit reads clean. That is worse than the bug. So the core got a new
+state, `REFUSED_AMBIGUOUS_LIVE_LINES`, with null `expectedMinor`/`residualMinor` and `observedMinor`
+**retained** — what was billed is a fact; only what was owed is in doubt. The general lesson: **two layers
+can share a proposition and need opposite mechanics.**
+
+The minimum permitting fact is a **source-stated component identity** per schedule line, supplied through
+governed terms exactly as the payer hierarchy and alias map are — optional, absence refuses, and both
+halves required (every line stated **and** pairwise distinct, so two lines labelled `BASE` still refuse).
+It is recorded as an **OPEN GOVERNANCE QUESTION, not settled**, because claiming distinctness *inflates*
+the expectation and therefore the exposure: it is beneficiary-adverse in the same direction the admission
+bar is and needs the same governance before any production use. The frozen package emits no such fact, so
+nothing exercises the permissive branch outside its unit tests.
+
+**Measured on the same frozen V3 package, ruler and truth byte-identical, core `831b2dab…` → `ec1efe95…`**
+([`docs/AMBIGUOUS_LINES_V1.md`](docs/AMBIGUOUS_LINES_V1.md)): at the intended entitlement/subscription
+grain **false-positive money $8,879.40 → $0.00** with **true positive $62,446.00, false negative $3,896.00
+and recall 72.66% all unchanged**; precision 68.68% → 76.11%; refusals 21 → 23 with **warranted 2 → 3 and
+unwarranted still 0**. The refusal fires on **2 of 600 units** — exactly the two the truth marks
+`nh_must_refuse: YES` — and displaced no taint refusal. **That the ruler is byte-identical at `060359f5…`
+is the acceptance proof**: the money disappeared because NH refuses the aggregation, not because the scorer
+stopped counting it, and the corroboration is in the refusal ledger, which only the product can move.
+
+Two findings fall out and are binding. **The payer-period aggregate is refused on 198 of 309 units**, recall
+66.16% → 3.57% — *a diagnosis, not a regression*: that grain merges sibling entitlements by construction, so
+nearly every unit **is** an unsupported aggregation. The earlier finding was that it cannot *attribute* a
+residual; this one is that it cannot *justify* one, and it must still never ship as the reconciliation
+grain. And `R15x` in the frozen abstract examiner is itself an ambiguous-lines case whose authored truth says
+$0 while NH produced $100, so the fix moves NH **toward** the frozen truth — `reconciliationScenarios.ts`
+stays byte-identical at `7dd786ba…`, all 85 benchmark tests pass, and **no golden was edited.**
+
+**So: yes — on the same frozen synthetic data NH now identifies $62,446.00 of real missing money with
+$0.00 fabricated money**, and $0 fabrication cost **no legitimate money at all** at the intended grain. What
+remains invisible is stated rather than implied: **$19,600.00 structurally invisible** (M07, a duplicate
+invoice masking an omission inside one reconciliation unit — grain-independent and permanent), **$3,896.00**
+of money the company *was* paid but against the wrong entitlement or the wrong payer (M08/M09 — an
+attribution failure, not missing money), and **three UNKNOWN-money cases** that are counted and never
+zeroed. The next exact source fact is **an obligation reference on the billing side** — `invoice_line_id` is
+a position within an invoice, not a reference to the obligation it settles — and this is **synthetic**: it
+turns no observed amount into proven Revenue Returned.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
