@@ -57,6 +57,53 @@ export const SETTLEMENT_EXTRACT_SCHEME = "nh-settlement-extract-v1";
  */
 export const SETTLEMENT_VALIDATION_METHOD_VERSION = "sxv-2026.1";
 
+/**
+ * THE CANONICAL EVENT THIS EXTRACT RECORDS, stated once so nothing has to restate it.
+ *
+ * A semantic audit found `settled_at` described as "the date the billing system RAISED this line" and, on
+ * the next line, as establishing "when the settlement event occurred". Those are two different business
+ * events, and the field name leans towards the wrong one.
+ *
+ * THE ARCHAEOLOGY, because the answer had to be evidenced rather than chosen:
+ *
+ *  • `ObservationRow` — the reconciliation core's input — carries NO date but the service period. No
+ *    monetary, pairing or refusal logic has ever read a settlement date, so none could have depended on
+ *    which event it meant.
+ *  • The only consumer of `settled_at` anywhere is this extract's validator, and it only checks the
+ *    FORMAT. `AcceptedSettlement.settledAt` is carried and read by nothing — not the readiness evaluator,
+ *    not the core, not the probe.
+ *  • In the one governed experiment this extract has met, the readiness control maps the frozen billing
+ *    export's `issued_at` onto it — the invoice ISSUE date. That export has no payment column at all.
+ *  • The core's own amount field is `billedAmountMinor`, and `settled_amount` already establishes "how
+ *    much was BILLED".
+ *  • Payment is a separate, differently-named concept elsewhere: `next_invoice_paid_at` in contract
+ *    2.0.0's observation extract. It has never lived here.
+ *
+ * So the usage has been CONSISTENT and it has always been the invoice/charge event. The defect is in the
+ * NAME and in one line of prose — not in the semantics, and not a contract drift.
+ *
+ * NOT A LEGACY NAME. `settled_at` and `settled_amount` were introduced in commit 398f658 on 2026-10-07,
+ * by this project, three commits before the audit found them. Calling them legacy would be false. A
+ * rename is the better long-term fix and is cheap right now — the extract has never been sent to anyone,
+ * holds no customer data and has no production consumer — but it is a schema decision with an owner, so
+ * it is RAISED rather than taken here.
+ */
+export const SETTLEMENT_EVENT_DEFINITION = Object.freeze({
+  theEvent: "A CHARGE WAS RAISED — an invoice line issued by the billing system.",
+  isNot: Object.freeze([
+    "a payment",
+    "a cash receipt or collection",
+    "a bank or processor clearing event",
+    "a settlement in the payments sense of the word",
+  ]),
+  dateMeans: "the date the billing system RAISED the line, as that system holds it",
+  amountMeans: "the amount CHARGED on that line, not an amount received",
+  nameCaveat:
+    "The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`.",
+  whyNotRenamed:
+    "A rename is a schema decision with an owner. The semantics are unchanged and evidenced, so the names are kept and the meaning is stated wherever they appear.",
+});
+
 export const SETTLEMENT_ROW_GRAIN = Object.freeze({
   oneRowIs: "ONE SETTLEMENT LINE — one line of one invoice, as the billing system raised it.",
   nhNever: Object.freeze([
@@ -241,7 +288,7 @@ export const SETTLEMENT_EXTRACT_FIELDS: readonly SettlementFieldSpec[] = Object.
     kind: "date",
     piiClass: "operational",
     description: "The date the billing system RAISED this line, as it holds it. Not a payment-clearing date and not the period the charge covers — the period is its own pair of fields.",
-    establishes: "When the settlement event occurred.",
+    establishes: "WHEN THE CHARGE WAS RAISED — the invoice-line issue date. Not when money arrived.",
     neededBy: "every_settlement",
     withoutIt: "Nothing can be placed inside or outside the period under analysis, so the population is undefined.",
     sourceObservable: true,
@@ -256,8 +303,8 @@ export const SETTLEMENT_EXTRACT_FIELDS: readonly SettlementFieldSpec[] = Object.
     kind: "money_decimal",
     piiClass: "operational",
     description:
-      "The amount of this line in its own currency, as a plain decimal. REQUIRED as a value, not merely as a column — unlike `expected_amount` on the other side.",
-    establishes: "How much was billed.",
+      "The amount CHARGED on this line in its own currency, as a plain decimal — not an amount received, collected or cleared. REQUIRED as a value, not merely as a column — unlike `expected_amount` on the other side.",
+    establishes: "HOW MUCH WAS CHARGED on this line. Not how much was paid.",
     neededBy: "every_settlement",
     withoutIt: "No residual can be computed at all.",
     sourceObservable: true,

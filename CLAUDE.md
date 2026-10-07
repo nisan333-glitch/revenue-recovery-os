@@ -1062,6 +1062,45 @@ contradictions, and the self-contradiction sweep matched `/reject/i` inside *"No
 **sixth** instance of a guard matching a term rather than a claim. **88/88** package checks, 25/25 control,
 every frozen artefact byte-identical.
 
+**Settlement-event semantics decision (2026-10-07).** The last customer-facing contradiction was one
+field describing two different business events: `settled_at` said *"the date the billing system RAISED
+this line"* and, on the next line, that it establishes *"when the settlement event occurred"*. Raised is
+not settled. It was answered by **archaeology rather than by choosing wording**, because choosing would
+have silently decided a contract semantic. The evidence, all of it recorded verbatim above
+`SETTLEMENT_EVENT_DEFINITION` in `src/contract/settlementExtract.ts`: `ObservationRow` — the reconciliation
+core's input — carries **no date but the service period**, so no monetary, pairing or refusal logic has
+ever read a settlement date; the **only** consumer of the field anywhere is the validator's format check,
+and `AcceptedSettlement.settledAt` is read by nothing; the one governed experiment maps the frozen billing
+export's **`issued_at`** onto it, and that export has **no payment column at all**; the core's amount field
+is `billedAmountMinor` and `settled_amount` already established *how much was BILLED*; and payment lives
+elsewhere under its own name, `next_invoice_paid_at`, in contract 2.0.0. **Case A: usage has been
+consistent and has always been the invoice/charge event.** So there was no drift to repair and no version
+decision to make — the defect was in the NAME and one line of prose. The rule:
+
+> **The event an extract records is stated ONCE, canonically, in the contract, and every customer-facing
+> description is rendered from it.** Where a column name leans towards a different event than the one it
+> records, the correct remedy is to say so wherever the name appears — not to let the name teach the
+> semantics, and not to quietly redefine the field so the name becomes true.
+
+`SETTLEMENT_EVENT_DEFINITION` now carries `theEvent`, four `isNot` exclusions, `dateMeans`, `amountMeans`,
+a `nameCaveat` and `whyNotRenamed`; the package renders all of it, including a *"Export B is INVOICES, not
+payments"* block and a ⚠ **"The name is misleading"** row on both fields, so a finance team that hears
+"settlement" and reaches for the cash-application system is stopped before exporting the wrong file —
+*an unpaid invoice is exactly as useful to us as a paid one*. "Settlement export" is gone as a label; it is
+**B · billing export — invoice lines**, and a falsifier bans *settlement export*, *payments export* and
+*cash application* in every document. **No field, tier, validator behaviour or version moved:** expectation
+extract stays **1.1.0**, settlement extract **1.0.0**, contract **2.0.0**.
+
+**It is NOT a legacy name, and that is raised rather than hidden.** `git log -S` proves both names were
+introduced by this project in `398f658`, **three commits** before the audit found them. A rename to
+`invoice_raised_at` / `invoice_line_amount` is the better long-term fix and is cheapest now — the extract
+has never been sent to anyone, holds no customer data and has no production consumer — but it is a **schema
+decision with an owner**, so it is **proposed, not taken**. **102/102** package checks, 25/25 control,
+every frozen artefact byte-identical. Four falsifiers were added and **all four caught my own instruments
+first** — including rendered `isNot` bullets that carry no negating word on their own line, the **seventh**
+instance of a guard matching a term rather than a claim, and a stale document proving that **editing the
+emitter is not regenerating the package**.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

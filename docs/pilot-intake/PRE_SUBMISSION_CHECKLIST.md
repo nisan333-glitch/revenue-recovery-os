@@ -4,7 +4,7 @@ Ten minutes with this list will save a round trip. Each line is something that h
 export somewhere.
 
 - [ ] **Window** — the exports cover the same **6–12 months**, and the same months in both files.
-- [ ] **Both files present** — the expectation/contract export **and** the billing/settlement export. One
+- [ ] **Both files present** — the expectation/contract export **and** the billing export (invoice lines). One
       file alone cannot be reconciled against anything.
 - [ ] **Headers unchanged** — exactly the column names from the templates, spelled and ordered as given.
       Extra columns are refused rather than ignored, so we never claim to have read something we did not.

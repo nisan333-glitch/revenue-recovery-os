@@ -16,7 +16,7 @@ import { EXPECTATION_EXTRACT_COLUMNS, STOPPED_FIELDS } from "../../src/contract/
 import { CORRECTED_CANDIDATES } from "../../src/contract/expectationExtractCorrections";
 import { dependencyFor } from "./dependency";
 import { validateExpectationExtract, type RawExpectationRow } from "../../src/contract/expectationExtractValidator";
-import { SETTLEMENT_EXTRACT_COLUMNS } from "../../src/contract/settlementExtract";
+import { SETTLEMENT_EVENT_DEFINITION, SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_EXTRACT_FIELDS } from "../../src/contract/settlementExtract";
 import { validateSettlementExtract, type RawSettlementRow } from "../../src/contract/settlementExtractValidator";
 import { evaluateDataReadiness } from "../../src/contract/dataReadiness";
 import { EXPECTATION_EXAMPLE, SETTLEMENT_EXAMPLE, UNKNOWN_AMOUNT_OBLIGATION } from "./examples";
@@ -272,7 +272,7 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
       if (!requested) return false;
       const rows = stoppedSection.split("\n").filter((l) => new RegExp(`(^|[^\\w])${col}([^\\w]|$)`).test(l));
       // Every row naming it must say which export it is refused on, or be about a DERIVED form of it.
-      return rows.some((l) => !/A · expectation|B · settlement/.test(l) && !/derived|composite|estimated/i.test(l));
+      return rows.some((l) => !/A · expectation|B · (settlement|billing)/.test(l) && !/derived|composite|estimated/i.test(l));
     });
     check(contradictions.length === 0,
       `${f} · no field is both REQUESTED and listed as NOT requested`, contradictions.join(", "));
@@ -362,12 +362,65 @@ check(readiness.settlement.creditRows === 1, "the credit is recognised as a cred
     const oblig = entries.find(([, n]) => n === "obligation_ref")![2];
     check(/Who sends it to us\*\* \| Billing/.test(oblig) && /Who issues the value\*\* \| \*\*Contract/.test(oblig),
       "obligation_ref · billing SENDS it, the contract system ISSUES it — stated separately");
-    // "settled" must not be presented as a payment-clearing date anywhere.
+    // ── THE SETTLED-AT SEMANTIC GUARD ───────────────────────────────────────────────────────────
+    //
+    // Archaeology established the event: a CHARGE WAS RAISED. The core's `ObservationRow` carries no date
+    // but the service period, nothing reads `AcceptedSettlement.settledAt`, the frozen billing export
+    // feeds it from `issued_at` and has no payment column, and payment lives elsewhere entirely as
+    // `next_invoice_paid_at`. Usage has never been inconsistent — the NAME is, and it is three commits
+    // old and ours.
+    //
+    // So the guard is on the CLAIM, in both directions: the documents must state the charge event and
+    // must never describe either `settled_at` or Export B as a payment, a receipt, a clearing or a
+    // settlement in the payments sense.
+    const PAYMENT_SENSE = /\b(payment date|paid on|paid at|cash receipt|receipt date|collected|collection date|cleared|clearing|remittance|settlement (?:occurred|event|date)|when (?:money|cash|payment) (?:arrived|was received))\b/i;
     for (const f of customerFacing) {
-      check(!/settled_at[^\n]*(cleared|payment date|paid)/i.test(read(f)),
-        `${f} · does not describe settled_at as a payment-clearing date`);
+      const body = read(f);
+      // Sentences that NEGATE the payment reading are the point of this slice, so they are exempt —
+      // "not a payment-clearing date" must be allowed to say the words it is ruling out.
+      // Exempt a line when it NEGATES the payment reading, or when it IS one of the contract's own
+      // "this is not what we mean" bullets. The first form missed both: `\bnot\b` was case-sensitive so
+      // "Not when money arrived" slipped past it, and the rendered `isNot` list has no negating word on
+      // the bullet line at all — the negation lives in the heading above it. A guard that cannot tell an
+      // assertion from its own disclaimer flags the disclaimer, which is the seventh time a check here
+      // has matched a term instead of a claim.
+      const disclaimers = new Set(SETTLEMENT_EVENT_DEFINITION.isNot.map((x) => `* ${x}`));
+      const claims = body.split(/\n/).filter((l) => {
+        if (disclaimers.has(l.trim())) return false;
+        return !/\bnot\b|\bnever\b|rather than|instead of|⚠|do NOT|wrong file/i.test(l);
+      });
+      const offending = claims.filter((l) => PAYMENT_SENSE.test(l)).map((l) => l.trim().slice(0, 70));
+      check(offending.length === 0,
+        `${f} · never describes the billing export or settled_at in the PAYMENT sense`, offending.join(" | "));
     }
-    check(/RAISED this line/.test(dictBody), "FIELD_DICTIONARY.md · settled_at says it is the date the line was RAISED");
+    // ...and the positive half: the charge event is stated, or the guard above is satisfied by silence.
+    check(dictBody.includes(SETTLEMENT_EVENT_DEFINITION.theEvent),
+      "FIELD_DICTIONARY.md · states the canonical charge event verbatim from the contract");
+    check(requestBody.includes(SETTLEMENT_EVENT_DEFINITION.theEvent),
+      "PILOT_DATA_REQUEST_V1.md · states the canonical charge event verbatim from the contract");
+    for (const body of [dictBody, requestBody]) {
+      check(body.includes(SETTLEMENT_EVENT_DEFINITION.nameCaveat),
+        "the misleading column names are flagged where they are read");
+    }
+    check(/Export B is INVOICES, not payments/.test(requestBody),
+      "PILOT_DATA_REQUEST_V1.md · tells the customer explicitly that Export B is invoices and not payments");
+    check(/An unpaid invoice/.test(requestBody) && /exactly as/.test(requestBody),
+      "...and that an unpaid invoice belongs in it just as much as a paid one");
+    // The contract's own two statements must agree with each other.
+    const settledAtSpec = SETTLEMENT_EXTRACT_FIELDS.find((f) => f.name === "settled_at")!;
+    check(/RAISED/.test(settledAtSpec.description) && /RAISED/.test(settledAtSpec.establishes),
+      "settlementExtract.ts · settled_at's meaning and the fact it establishes BOTH say raised",
+      settledAtSpec.establishes);
+    check(!/settlement event occurred/i.test(settledAtSpec.establishes),
+      "...and it no longer claims a settlement event occurred");
+    const amountSpec = SETTLEMENT_EXTRACT_FIELDS.find((f) => f.name === "settled_amount")!;
+    check(/CHARGED/.test(amountSpec.establishes) && /[Nn]ot how much was paid/.test(amountSpec.establishes),
+      "settlementExtract.ts · settled_amount establishes what was CHARGED, not paid", amountSpec.establishes);
+    // No customer-facing document may call Export B a settlement/payments export.
+    for (const f of customerFacing) {
+      check(!/settlement export|payments export|cash application/i.test(read(f)),
+        `${f} · does not call Export B a settlement or payments export`);
+    }
   }
 }
 

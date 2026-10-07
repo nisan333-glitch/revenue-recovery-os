@@ -10,7 +10,7 @@ This folder contains everything you need.
 | | Export | Normally comes from | Template |
 |---|---|---|---|
 | **A** | **What was owed** — one row per expected billing obligation | your contract, CRM or CLM system; sometimes a revenue or order-management module | `expectation_template.csv` |
-| **B** | **What was billed** — one row per invoice line | your billing platform or ERP; sometimes the invoicing module of your finance system | `settlement_template.csv` |
+| **B** | **What was charged** — one row per **invoice line** (not payments) | your billing platform or ERP; sometimes the invoicing module of your finance system | `settlement_template.csv` |
 
 They must come from **different** systems. Asking the billing system what billing should have done cannot
 find billing's own omission — if the failure erased an invoice, it may have erased the schedule with it.

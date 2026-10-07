@@ -15,7 +15,28 @@ Two exports, from **two different systems**:
 **A · EXPECTATION / CONTRACT** — what your contract system says was *owed*: one row per expected
 billing obligation.
 
-**B · BILLING / SETTLEMENT** — what your billing system says was *billed*: one row per invoice line.
+**B · BILLING** — what your billing system says was *charged*: **one row per invoice line**.
+
+### Export B is INVOICES, not payments — please read this before exporting
+
+**What we need:** A CHARGE WAS RAISED — an invoice line issued by the billing system.
+
+**What we do NOT need, and must not receive instead:**
+
+* a payment
+* a cash receipt or collection
+* a bank or processor clearing event
+* a settlement in the payments sense of the word
+
+If your finance team hears "settlement" and reaches for the payments or cash-application system,
+that is the wrong file. We want the invoice lines your billing system raised — whether or not anyone
+has paid them yet. **An unpaid invoice is exactly as useful to us as a paid one**, because we are
+comparing what was *charged* against what was *owed*, not tracking cash.
+
+> **A note on two of our column names.** The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`.
+> `settled_at` is the date the billing system RAISED the line, as that system holds it, and `settled_amount` is
+> the amount CHARGED on that line, not an amount received. The names are ours and they are misleading; the
+> definitions above are what we validate against.
 
 They must come from different systems, and that is the whole architecture rather than a preference.
 Asking the billing system what billing *should* have done cannot detect billing's own omission,
@@ -55,14 +76,14 @@ read.
 | `expected_amount` | required | Contract / CRM / CLM | HOW MUCH is owed, where the source can state it authoritatively. |
 | `currency` | required | Contract / CRM / CLM | The UNIT of the amount. |
 
-### B · Billing / settlement export
+### B · Billing export — invoice lines
 
 | Column | Tier | Owned by | What it establishes |
 |---|---|---|---|
 | `invoice_ref` | required | Billing / ERP | Which document raised the charge. |
 | `invoice_line_ref` | required | Billing / ERP | Which charge on that document this row is. |
-| `settled_at` | required | Billing / ERP | When the settlement event occurred. |
-| `settled_amount` | required | Billing / ERP | How much was billed. |
+| `settled_at` | required | Billing / ERP | WHEN THE CHARGE WAS RAISED — the invoice-line issue date. Not when money arrived. |
+| `settled_amount` | required | Billing / ERP | HOW MUCH WAS CHARGED on this line. Not how much was paid. |
 | `currency` | required | Billing / ERP | The unit the amount is denominated in. |
 | `payer_ref` | required | Billing / ERP | Who was charged. |
 
@@ -76,7 +97,7 @@ asserted: with both present our readiness check reaches
 
 | Column | Export | Formal tier | Who supplies it | Without it |
 |---|---|---|---|---|
-| `obligation_ref` | B · settlement | conditional | Billing / ERP | a valid file we cannot reconcile — no join |
+| `obligation_ref` | B · billing | conditional | Billing / ERP | a valid file we cannot reconcile — no join |
 | `schedule_line_ref` | A · expectation | optional | Contract / CRM / CLM | a valid file we cannot reconcile — nothing for the join to resolve against |
 
 They are a **pair**: `obligation_ref` on the billing line names an obligation, and
@@ -119,7 +140,7 @@ still measures money through every capability that remains.
 | `amended_at` | conditional | Contract / CRM / CLM | WHEN the replacement took effect, which orders the lineage. |
 | `schedule_line_ref` | optional | Contract / CRM / CLM | WHICH obligation this row is, distinctly from its siblings. |
 
-### B · Billing / settlement export
+### B · Billing export — invoice lines
 
 | Column | Tier | Owned by | What it establishes |
 |---|---|---|---|
@@ -164,12 +185,12 @@ would let the number be influenced by whoever benefits from it being larger.
 | invoice_ref / allocation | A · expectation | Observation-side facts. Carrying them here would let the expectation side assert what billing did, and the whole point of a second extract is that the expectation originates in a system other than the one that was supposed to act. |
 | any composite or NH-derived identity | A · expectation | Explicitly not authorised, and the reason is not merely procedural: every derived key breaks on re-keying and migration, which are the two events most likely to produce a six-figure false finding. |
 | a row-grain flag | A · expectation | It would hand grain authority to the beneficiary. An aggregate row stays structurally invisible, stated as a limitation rather than solved by a field the customer controls. |
-| expected_amount / amount_due | B · settlement | The exact mirror of the expectation extract's stopped `invoice_ref`. It would let the BILLING system assert what was OWED, and the whole architecture rests on the expectation originating in a system other than the one that was supposed to act. Billing stating the expectation is billing auditing itself. |
-| is_duplicate / is_erroneous / write_off | B · settlement | A beneficiary-controlled flag over which lines count. Whoever wants a larger recovery number marks the inconvenient lines erroneous. Duplication is a CONCLUSION NH must reach from evidence, never a field the customer supplies. |
-| settlement_count / expected_attempts | B · settlement | Billing cannot state how many settlements an obligation EXPECTED — that is a fact about the contract, not about what billing did. It belongs to the expectation side if anywhere, and is declared here only as the unavailable capability EXPECTED_SETTLEMENT_COUNT_AVAILABLE so the gap has a name and an owner. It upgrades event-level proof and unlocks no additional money on the synthetic evidence. |
-| any NH-derived or composite obligation_ref | B · settlement | Explicitly not authorised. Never from payer, amount, date, invoice number, subscription id, row position or any composite of them. Every derived key breaks on re-keying and migration — the two events most likely to produce a six-figure false finding — and a reference NH authored is not a fact the source stated. |
-| a row-grain flag (line / invoice / aggregate) | B · settlement | It would hand grain authority to the beneficiary. An aggregate line stays structurally invisible at obligation grain, stated as a limitation rather than solved by a field the customer controls. |
-| payment_status / dunning_state | B · settlement | Not stopped on principle — it is the Detector #3 family, approved and deprioritised because it EXPLAINS dollars an existing detector already counts rather than finding new ones. Declaring it here would collect it before any consumer reads it, which is the defect the obligation_ref revert established. |
+| expected_amount / amount_due | B · billing | The exact mirror of the expectation extract's stopped `invoice_ref`. It would let the BILLING system assert what was OWED, and the whole architecture rests on the expectation originating in a system other than the one that was supposed to act. Billing stating the expectation is billing auditing itself. |
+| is_duplicate / is_erroneous / write_off | B · billing | A beneficiary-controlled flag over which lines count. Whoever wants a larger recovery number marks the inconvenient lines erroneous. Duplication is a CONCLUSION NH must reach from evidence, never a field the customer supplies. |
+| settlement_count / expected_attempts | B · billing | Billing cannot state how many settlements an obligation EXPECTED — that is a fact about the contract, not about what billing did. It belongs to the expectation side if anywhere, and is declared here only as the unavailable capability EXPECTED_SETTLEMENT_COUNT_AVAILABLE so the gap has a name and an owner. It upgrades event-level proof and unlocks no additional money on the synthetic evidence. |
+| any NH-derived or composite obligation_ref | B · billing | Explicitly not authorised. Never from payer, amount, date, invoice number, subscription id, row position or any composite of them. Every derived key breaks on re-keying and migration — the two events most likely to produce a six-figure false finding — and a reference NH authored is not a fact the source stated. |
+| a row-grain flag (line / invoice / aggregate) | B · billing | It would hand grain authority to the beneficiary. An aggregate line stays structurally invisible at obligation grain, stated as a limitation rather than solved by a field the customer controls. |
+| payment_status / dunning_state | B · billing | Not stopped on principle — it is the Detector #3 family, approved and deprioritised because it EXPLAINS dollars an existing detector already counts rather than finding new ones. Declaring it here would collect it before any consumer reads it, which is the defect the obligation_ref revert established. |
 
 *(Our own design record also carries conclusions we have since revised on evidence. Those are kept and
 marked as superseded rather than rewritten, and they are deliberately not repeated here — a conclusion

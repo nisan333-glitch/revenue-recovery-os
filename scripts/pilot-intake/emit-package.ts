@@ -18,6 +18,7 @@ import {
   SETTLEMENT_STOPPED_FIELDS,
 } from "../../src/contract/settlementExtract";
 import { PROVENANCE_CHANNELS } from "../../src/contract/sourceFactAuthority";
+import { SETTLEMENT_EVENT_DEFINITION } from "../../src/contract/settlementExtract";
 import { CORRECTED_CANDIDATES } from "../../src/contract/expectationExtractCorrections";
 import { BASELINE_LEVEL, dependencyFor, type Side } from "./dependency";
 
@@ -67,7 +68,25 @@ w();
 w("**A · EXPECTATION / CONTRACT** — what your contract system says was *owed*: one row per expected");
 w("billing obligation.");
 w();
-w("**B · BILLING / SETTLEMENT** — what your billing system says was *billed*: one row per invoice line.");
+w("**B · BILLING** — what your billing system says was *charged*: **one row per invoice line**.");
+w();
+w("### Export B is INVOICES, not payments — please read this before exporting");
+w();
+w(`**What we need:** ${SETTLEMENT_EVENT_DEFINITION.theEvent}`);
+w();
+w("**What we do NOT need, and must not receive instead:**");
+w();
+SETTLEMENT_EVENT_DEFINITION.isNot.forEach((x) => w(`* ${x}`));
+w();
+w("If your finance team hears \"settlement\" and reaches for the payments or cash-application system,");
+w("that is the wrong file. We want the invoice lines your billing system raised — whether or not anyone");
+w("has paid them yet. **An unpaid invoice is exactly as useful to us as a paid one**, because we are");
+w("comparing what was *charged* against what was *owed*, not tracking cash.");
+w();
+w(`> **A note on two of our column names.** ${SETTLEMENT_EVENT_DEFINITION.nameCaveat}`);
+w(`> \`settled_at\` is ${SETTLEMENT_EVENT_DEFINITION.dateMeans}, and \`settled_amount\` is`);
+w(`> ${SETTLEMENT_EVENT_DEFINITION.amountMeans}. The names are ours and they are misleading; the`);
+w("> definitions above are what we validate against.");
 w();
 w("They must come from different systems, and that is the whole architecture rather than a preference.");
 w("Asking the billing system what billing *should* have done cannot detect billing's own omission,");
@@ -103,7 +122,7 @@ w("| Column | Tier | Owned by | What it establishes |");
 w("|---|---|---|---|");
 eRows("required").forEach(w);
 w();
-w("### B · Billing / settlement export");
+w("### B · Billing export — invoice lines");
 w();
 w("| Column | Tier | Owned by | What it establishes |");
 w("|---|---|---|---|");
@@ -119,7 +138,7 @@ w(`**${levelLabel(dependencyFor("obligation_ref", "settlement").levelWithoutColu
 w();
 w("| Column | Export | Formal tier | Who supplies it | Without it |");
 w("|---|---|---|---|---|");
-w(`| \`obligation_ref\` | B · settlement | conditional | Billing / ERP | ${levelLabel(dependencyFor("obligation_ref", "settlement").levelWithoutColumn)} — no join |`);
+w(`| \`obligation_ref\` | B · billing | conditional | Billing / ERP | ${levelLabel(dependencyFor("obligation_ref", "settlement").levelWithoutColumn)} — no join |`);
 w(`| \`schedule_line_ref\` | A · expectation | optional | Contract / CRM / CLM | ${levelLabel(dependencyFor("schedule_line_ref", "expectation").levelWithoutColumn)} — nothing for the join to resolve against |`);
 w();
 w("They are a **pair**: `obligation_ref` on the billing line names an obligation, and");
@@ -157,7 +176,7 @@ w("|---|---|---|---|");
 eRows("conditional").forEach(w);
 eRows("optional").forEach(w);
 w();
-w("### B · Billing / settlement export");
+w("### B · Billing export — invoice lines");
 w();
 w("| Column | Tier | Owned by | What it establishes |");
 w("|---|---|---|---|");
@@ -208,7 +227,7 @@ w("|---|---|---|");
 const superseded = new Set(CORRECTED_CANDIDATES);
 const current = [
   ...STOPPED_FIELDS.map((x) => ({ ...x, on: "A · expectation" })),
-  ...SETTLEMENT_STOPPED_FIELDS.map((x) => ({ ...x, on: "B · settlement" })),
+  ...SETTLEMENT_STOPPED_FIELDS.map((x) => ({ ...x, on: "B · billing" })),
 ].filter((x) => !superseded.has(x.candidate));
 current.forEach((x) => w(`| ${x.candidate} | ${x.on} | ${x.why} |`));
 w();
@@ -350,13 +369,19 @@ d("**Generated from the governed field specifications.** Every column NH validat
 d("nothing else does.");
 d();
 d("Two exports, and the distinction matters more than any single field: **A** is what your contract");
-d("system says was *owed*, **B** is what your billing system says was *billed*. They must come from");
+d("system says was *owed*, **B** is what your billing system says was *charged*. They must come from");
 d("different systems — asking the billing system what billing should have done cannot find billing's own");
 d("omission.");
 d();
+d(`**Export B records one event only: ${SETTLEMENT_EVENT_DEFINITION.theEvent}** It is not ${SETTLEMENT_EVENT_DEFINITION.isNot.join(", not ")}.`);
+d("An unpaid invoice belongs in it exactly as much as a paid one — we compare what was *charged* against");
+d("what was *owed*, and we are not tracking cash.");
+d();
+d(`> ${SETTLEMENT_EVENT_DEFINITION.nameCaveat}`);
+d();
 for (const [label, cols, fields, rows] of [
   ["A · Expectation / contract export", EXPECTATION_EXTRACT_COLUMNS, EXPECTATION_EXTRACT_FIELDS, EXPECTATION_EXAMPLE],
-  ["B · Billing / settlement export", SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_EXTRACT_FIELDS, SETTLEMENT_EXAMPLE],
+  ["B · Billing export — invoice lines", SETTLEMENT_EXTRACT_COLUMNS, SETTLEMENT_EXTRACT_FIELDS, SETTLEMENT_EXAMPLE],
 ] as const) {
   d(`## ${label}`);
   d();
@@ -372,8 +397,13 @@ for (const [label, cols, fields, rows] of [
     d();
     d(`| | |`);
     d(`|---|---|`);
-    d(`| **Export** | ${label.startsWith("A") ? "A · expectation" : "B · settlement"} |`);
+    d(`| **Export** | ${label.startsWith("A") ? "A · expectation" : "B · billing"} |`);
     d(`| **What it means** | ${f.description} |`);
+    if (f.name === "settled_at" || f.name === "settled_amount") {
+      // The name leans towards payment timing and the meaning does not. Stated at the field rather than
+      // once in a preamble, because a data owner reads the row for the column they are filling in.
+      d(`| **⚠ The name is misleading** | ${SETTLEMENT_EVENT_DEFINITION.nameCaveat} This is **${f.name === "settled_at" ? SETTLEMENT_EVENT_DEFINITION.dateMeans : SETTLEMENT_EVENT_DEFINITION.amountMeans}**. |`);
+    }
     d(`| **Business fact it establishes** | ${f.establishes} |`);
     const side: Side = label.startsWith("A") ? "expectation" : "settlement";
     d(`| **Who sends it to us** | ${ownerLabel} |`);
@@ -476,7 +506,7 @@ Ten minutes with this list will save a round trip. Each line is something that h
 export somewhere.
 
 - [ ] **Window** — the exports cover the same **6–12 months**, and the same months in both files.
-- [ ] **Both files present** — the expectation/contract export **and** the billing/settlement export. One
+- [ ] **Both files present** — the expectation/contract export **and** the billing export (invoice lines). One
       file alone cannot be reconciled against anything.
 - [ ] **Headers unchanged** — exactly the column names from the templates, spelled and ordered as given.
       Extra columns are refused rather than ignored, so we never claim to have read something we did not.
@@ -564,7 +594,7 @@ This folder contains everything you need.
 | | Export | Normally comes from | Template |
 |---|---|---|---|
 | **A** | **What was owed** — one row per expected billing obligation | your contract, CRM or CLM system; sometimes a revenue or order-management module | \`expectation_template.csv\` |
-| **B** | **What was billed** — one row per invoice line | your billing platform or ERP; sometimes the invoicing module of your finance system | \`settlement_template.csv\` |
+| **B** | **What was charged** — one row per **invoice line** (not payments) | your billing platform or ERP; sometimes the invoicing module of your finance system | \`settlement_template.csv\` |
 
 They must come from **different** systems. Asking the billing system what billing should have done cannot
 find billing's own omission — if the failure erased an invoice, it may have erased the schedule with it.

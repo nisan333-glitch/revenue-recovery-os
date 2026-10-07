@@ -4,9 +4,15 @@
 nothing else does.
 
 Two exports, and the distinction matters more than any single field: **A** is what your contract
-system says was *owed*, **B** is what your billing system says was *billed*. They must come from
+system says was *owed*, **B** is what your billing system says was *charged*. They must come from
 different systems — asking the billing system what billing should have done cannot find billing's own
 omission.
+
+**Export B records one event only: A CHARGE WAS RAISED — an invoice line issued by the billing system.** It is not a payment, not a cash receipt or collection, not a bank or processor clearing event, not a settlement in the payments sense of the word.
+An unpaid invoice belongs in it exactly as much as a paid one — we compare what was *charged* against
+what was *owed*, and we are not tracking cash.
+
+> The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`.
 
 ## A · Expectation / contract export
 
@@ -238,13 +244,13 @@ omission.
 | **What is lost without it** | Event reconciliation and correlation cannot run, so the leak class that nets to zero money — a duplicate invoice masking an omission — stays invisible at every monetary grain. |
 | **Capability affected** | `EXPECTATION_EVENT_IDENTITY_AVAILABLE` |
 
-## B · Billing / settlement export
+## B · Billing export — invoice lines
 
 ### `invoice_ref`
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | The billing system's own identifier for the invoice this line belongs to. |
 | **Business fact it establishes** | Which document raised the charge. |
 | **Who sends it to us** | Billing / ERP |
@@ -263,7 +269,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | The line's identifier WITHIN its invoice. A position is acceptable here precisely because it is scoped to the invoice and is never used as a cross-system key. |
 | **Business fact it establishes** | Which charge on that document this row is. |
 | **Who sends it to us** | Billing / ERP |
@@ -282,9 +288,10 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | The date the billing system RAISED this line, as it holds it. Not a payment-clearing date and not the period the charge covers — the period is its own pair of fields. |
-| **Business fact it establishes** | When the settlement event occurred. |
+| **⚠ The name is misleading** | The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`. This is **the date the billing system RAISED the line, as that system holds it**. |
+| **Business fact it establishes** | WHEN THE CHARGE WAS RAISED — the invoice-line issue date. Not when money arrived. |
 | **Who sends it to us** | Billing / ERP |
 | **Who issues the value** | n/a |
 | **Formal tier** | **REQUIRED** |
@@ -301,9 +308,10 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
-| **What it means** | The amount of this line in its own currency, as a plain decimal. REQUIRED as a value, not merely as a column — unlike `expected_amount` on the other side. |
-| **Business fact it establishes** | How much was billed. |
+| **Export** | B · billing |
+| **What it means** | The amount CHARGED on this line in its own currency, as a plain decimal — not an amount received, collected or cleared. REQUIRED as a value, not merely as a column — unlike `expected_amount` on the other side. |
+| **⚠ The name is misleading** | The column names say `settled_at` and `settled_amount`, which lean towards payment timing. They do not mean that. Read them as `invoice_raised_at` and `invoice_line_amount`. This is **the amount CHARGED on that line, not an amount received**. |
+| **Business fact it establishes** | HOW MUCH WAS CHARGED on this line. Not how much was paid. |
 | **Who sends it to us** | Billing / ERP |
 | **Who issues the value** | n/a |
 | **Formal tier** | **REQUIRED** |
@@ -320,7 +328,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | ISO 4217 alphabetic code, as the billing system holds it. |
 | **Business fact it establishes** | The unit the amount is denominated in. |
 | **Who sends it to us** | Billing / ERP |
@@ -339,7 +347,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | The account the line was billed to, pseudonymised. |
 | **Business fact it establishes** | Who was charged. |
 | **Who sends it to us** | Billing / ERP |
@@ -358,7 +366,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | The CONTRACT system's obligation identifier, as billing received it at provisioning and carries it onto the settling line. It is the counterpart of the expectation extract's `schedule_line_ref`. It is NOT billing's internal subscription key and NOT the invoice number. |
 | **Business fact it establishes** | WHICH OBLIGATION this settlement claims to settle — the cross-system join. |
 | **Who sends it to us** | Billing / ERP |
@@ -377,7 +385,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | Whether the line is a credit rather than a charge. Declaring the column is itself the capability: a blank then means 'not a credit', which is a fact. |
 | **Business fact it establishes** | That this line reverses money rather than billing it. |
 | **Who sends it to us** | Billing / ERP |
@@ -396,7 +404,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | First day of the service period this line covers — not the date it was issued. |
 | **Business fact it establishes** | What the charge is for, in time. |
 | **Who sends it to us** | Billing / ERP |
@@ -415,7 +423,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | Last day of the service period this line covers, inclusive. |
 | **Business fact it establishes** | The closing bound of what the charge is for. |
 | **Who sends it to us** | Billing / ERP |
@@ -434,7 +442,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | The identity this line's subscription carried BEFORE a billing migration, where billing retained one. |
 | **Business fact it establishes** | That two billing identities are the same thing across a migration — stated by billing, not inferred. |
 | **Who sends it to us** | Billing / ERP |
@@ -453,7 +461,7 @@ omission.
 
 | | |
 |---|---|
-| **Export** | B · settlement |
+| **Export** | B · billing |
 | **What it means** | Which billing instance or platform emitted the row, where more than one did. |
 | **Business fact it establishes** | Provenance within the billing estate. |
 | **Who sends it to us** | Billing / ERP |
