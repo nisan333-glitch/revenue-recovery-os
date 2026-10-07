@@ -738,6 +738,81 @@ zeroed. The next exact source fact is **an obligation reference on the billing s
 a position within an invoice, not a reference to the obligation it settles — and this is **synthetic**: it
 turns no observed amount into proven Revenue Returned.
 
+**Obligation-reference counterfactual (2026-10-07).** The V3 closing report named a billing-side obligation
+reference as the next source fact. That was an argument, so it was measured: one controlled variant of the
+frozen package carrying **exactly one new column** — `obligation_ref`, stating which contract obligation each
+invoice line settles, stated by the source at emission and never inferred. It is not an invented field;
+`C_SCHEDULE_LINE` has been declared NOT CONSTRUCTIBLE since the grain study for precisely this reason, and the
+frozen truth **pre-registered the hypothesis itself** in a `source_facts_required` column written before any of
+this work. The governing rules it establishes:
+
+> **A fact may only settle the questions it can testify about.** Obligation identity refutes a *timing
+> displacement* hypothesis, because the reference says which period's obligation a line settles. It cannot
+> refute a *misallocation* hypothesis, because under the declared semantics the reference is produced by the
+> very allocation step that failed. This is "doubt is scoped to the evidence that creates it" applied to the
+> evidence rather than to the doubt.
+
+> **Obligation identity unlocks the MONEY behind duplicate-masking and does NOT establish the DUPLICATE as an
+> event.** M05 is one obligation legitimately settled by two lines that sum correctly; under obligation
+> identity it is *structurally identical* to M07's double-billed February and to M08's misallocation. A rule
+> of "two settlements ⇒ duplicate" fabricates money on two of the three. So NH reports
+> `MULTIPLE_SETTLEMENTS_OBSERVED` and **never the word duplicate**; establishing a duplicate needs an
+> authoritative **expected settlement count**, which is a second, independent source fact.
+
+**Built 2026-10-07** ([`docs/OBLIGATION_REF_COUNTERFACTUAL_V1.md`](docs/OBLIGATION_REF_COUNTERFACTUAL_V1.md)) as
+an **additive sibling** — its own scheme, `oblig-2026.1`, its own witness, its own frozen package, its own
+verifier — never a widening of a hashed core, the same pattern Detector #2 and the Expectation Extract set.
+`reconciliationCore.ts`, `reconciliationScenarios.ts`, `grainCandidates.ts`, the V3 ruler, the V3 data and the
+V3 results are **all byte-identical afterwards**, and the variant's verifier checks that on every run rather
+than promising it. Two **controls** — the same variant data through the unmodified core at V3's two grains,
+ignoring the new column — reproduce V3 **identically on all 18 scored fields including the witness**, which is
+what licenses attributing any movement to the new *fact* rather than to new *code*. The ruler is a byte copy
+with `DIR` redirected, the diff is committed, and the verifier refuses any other hunk.
+
+**Result: headline claimable money $60,246.00 → $70,046.00 (+$9,800.00) with false positive $0.00 before and
+after**, gross positive unchanged (so the money *moved* between columns and none was created), TP, FN and recall
+flat, 12 refusals resolved, and the 28-entry alias map **no longer needed at all** — a bare re-key resolves from
+the source's own reference. TP and recall are flat *correctly*: the ruler scores TP over `nh_should_detect: yes`
+and M07 is `no`, the frozen truth recording what the **baseline** capability should have found. Reporting the
+unlock as a rise in TP would mean re-authoring the truth to match the result, which is the tuning the freeze
+control exists to prevent — so the two figures sit side by side and are never blended.
+
+**The experiment found a PRODUCT defect, which is worth more than the money.** The prediction was $19,600.00
+released; $9,800.00 was. M07's two entitlements share a payer and a price, and the core's pairing pass takes the
+**first exact-amount counterpart in scan order** — so one entitlement's March deficit matched its own February
+(`ADJACENT_PERIOD_SAME_ENTITLEMENT`, refuted, released) while the other matched the *sibling's* February first
+(`SIBLING_ENTITLEMENT_SAME_PAYER`, not refutable, still held). The rule:
+
+> **The pairing mechanism assigned must be decided by evidence, not by row order.** Where several
+> counterparts are reachable, the **most specific** hypothesis wins; a conclusion that depends on an order
+> nothing authoritative established is the event-ordering defect in another costume.
+
+The refutation rule is not too strict — loosening it would release M08's $2,798.00, money the company was
+already paid. **The next $9,800.00 therefore needs no customer field at all**, only that fix, which is left
+undone here because the core was out of scope.
+
+**Two of my own earlier claims are corrected on evidence.** M07's $19,600.00 was called *"structurally
+invisible… inside one reconciliation unit — grain-independent and permanent."* **Wrong on both counts**: at
+entitlement×period grain February and March are *different* units, and the money was held by the pairing rule —
+a deliberate hold pending attribution, not a structural blindness — and it is not permanent, being half a source
+fact and half a product fix away. The constitution's general duplicate-masking claim still holds *where both
+errors live inside one unit*; that was not this case. Separately, `coverage.event` reads **AVAILABLE** whenever
+the *expectation* side is keyed, while an event check needs **both** sides — so it claims availability exactly
+where V3 cannot do it. Reported and pinned by a test, **not patched**, the core being out of scope.
+
+**The business answer — the minimum customer data request.** One field. The billing-side obligation reference
+unlocks **$9,800.00 of $85,942.00 planted (11.4% of planted money, +16.3% on headline claimable money)** with
+zero fabricated money, and is the **only** field in the experiment that unlocks any money at all. Ranked after
+it, each unlocking **$0.00** here and buying capability instead: expected settlement count (the duplicate
+*event*), the contract-side distinct-additive-obligation declaration (M17 — and it *inflates* exposure, so it
+needs governance first), a governed FX rate, an authoritative usage amount (which does not exist to be
+supplied), and the payer hierarchy (already supplied). Three caveats bind any use of that table: **a field
+unlocking $0.00 here is not a field unlocking $0.00 in general** — M14 and M15 hide $0.00 *by construction*,
+while in a real book a re-key conceals whatever sits behind it; **capability is not revenue**, which is why
+29 never-settled obligations and 12 resolved refusals are reported apart from money; and **asking a customer
+for data to fix a defect in our own code would be the wrong request.** Synthetic throughout: it turns no
+observed amount into proven Revenue Returned.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
