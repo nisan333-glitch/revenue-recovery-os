@@ -1288,6 +1288,65 @@ rule; it is now guarded.
 unchanged, every frozen artefact byte-identical. The `ReadinessReport.level` authority-cap finding is left
 untouched by instruction.
 
+**Local pair readiness decision (2026-10-10).** The customer package asks a finance owner for two CSV
+exports, and nothing in the repository could read two files: readiness V1 judged two *validations*, so the
+first real export would have been inspected by hand — the one method whose result nobody can reproduce.
+Built as a local, read-only path — strict RFC-4180 transport, a pure core, a thin CLI edge — that answers
+*can a real, independently sourced pair be read and validated at all*
+([`docs/LOCAL_PAIR_READINESS_V1.md`](docs/LOCAL_PAIR_READINESS_V1.md)). On the committed synthetic examples:
+**L2**, `SOURCE_NATIVE`, PROVISIONAL, three blocked capabilities, no money, nothing persisted. The rules:
+
+> **A mis-encoded export is REFUSED, never transliterated.** `readFileSync(path, "utf8")` does not throw on
+> invalid UTF-8 — Node substitutes `U+FFFD` — so a cp1252 export from a European ERP arrives with its
+> identifiers quietly rewritten. An identifier is a **join key**, so a silently altered one is NH authoring
+> the identity it is supposed to be reading. The test proves Node did *not* throw before asserting NH does.
+
+> **A command whose claims cannot be imported cannot be falsified.** As supplied the path was top-level
+> statements — argv, filesystem and stdout on import — so its interesting claims, that it prints no row, no
+> identifier, no amount and no path, were unreachable by any test. The logic moved behind an exported
+> function and the entry point kept the I/O, which is what makes the redaction property *checked*.
+
+> **Fail closed, and say whose fault it is.** A transport or argument refusal is about the INPUT and carries
+> its own code; anything else prints `NH_INTERNAL_ERROR`. Reporting our own bug as unreadable input is the
+> `NH-AX-1009` mistake — blaming the data for a claim we made.
+
+> **A test CI never runs is not a guard, and neither is a type nobody checks.** Nothing under `scripts/` was
+> in any tsconfig — the root project includes only `src`, the server one only `server`, and esbuild does not
+> typecheck — and these tests were collected by neither suite. Both are closed for this directory, and **the
+> closing is itself asserted** (project include, npm script, CI step, vitest include), because configuration
+> is silently outgrown by a new file.
+
+**The new coverage found a defect on its first run.** `control.ts` passed `asOf` into
+`ExpectationExtractTerms`, which declares only `currency`, `dateLocale` and `amountFormat`. Inert — nothing
+reads it and the control still passes 25/25 without it — but it read as a governed **cut-off** handed to a
+validator whose stated property is that it *consults no clock*. **An excess property that looks like a
+governed term is worse than a missing one, because a reviewer believes it.**
+
+**And the eleventh instance, in a guard's own comment.** The expectation-extract importer guard said
+*"COMMENTS AND STRING LITERALS STRIPPED"* and stripped only comments, then matched the bare token in what
+remained — so the new test file, which names the validator inside a `resolve(...)` path to read its source
+and imports nothing from it, read as a dependency. *A term is not a claim, a prose mention is not an import,
+and **a string literal is not a dependency**.* Corrected to the import-specifier form the historical-record
+guard had already settled on; the list is **unchanged at nine** under the stricter reading, which evidences
+every entry is a real importer, and the falsifier pins **both directions** on a committed pair.
+
+**Four findings are reported rather than patched**, and the first is the sharpest: at `SOURCE_NATIVE` —
+the rung a real local run reaches — `wouldBeLiftedBy` names the four channels that do **not** exist and omits
+`DATA_OWNER_ATTESTATION`, the one that does and the only next step available to an operator reading the
+report today. `lifted = PROVENANCE_CHANNELS.filter((c) => !c.implemented)` was right when nothing was
+implemented and wrong the moment something was — the `coverage.event` shape again. Also: the report drops
+extract-level fault codes, so a wrong-column file is `L0_NOT_READABLE` with **no code saying why**; nine type
+errors remain in the package verifier; and `--currency` being the only reading term is a **design, not a
+blocker** — the package asks for `YYYY-MM-DD` and raw amounts and names local date order and thousands
+separators as spreadsheet damage, while `BillingExtractTerms` carries no locale term at all, so such a flag
+would read one half of a pair and be refused on the other.
+
+**1138 (1 skipped) with and without a database, 599/599 ep2, 242/242 package checks, 25/25 control, 120/120
+journey, 36/36 on the new path with eleven mutations proved to fail.** Contract **2.0.0**, expectation extract
+**1.1.0**, billing extract **1.0.0**, `rdy-2026.2`, `pav-2026.2`, `OBLIGATION_IDENTITY_FIELDS = []` and every
+frozen artefact unmoved; the only `src/` changes are two test files. Validation only: no production
+reconciliation, no API, no UI, no customer data, and **no observed amount became Revenue Returned.**
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.
