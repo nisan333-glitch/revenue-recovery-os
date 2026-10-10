@@ -64,8 +64,8 @@ transformation layer sits between the source system and the file, which changes 
 
 ## What you are asserting, and we cannot check
 
-These three matter and we have no way to test them. We record them against the role above and they
-**do not raise how far we say your data can be relied on**. Saying so is the point: a form that
+These four matter and we have no way to test them. We record them against the role above
+and they **do not raise how far we say your data can be relied on**. Saying so is the point: a form that
 implied we had checked these would be collecting a signature against work we never do.
 
 - [ ] No amount, currency or date in these files was estimated, rounded for presentation, back-filled or reconstructed by hand.

@@ -249,10 +249,11 @@ w("forecast presented as a finding, and we keep those apart by construction.");
 w();
 w("## One limit, stated plainly");
 w();
-w("A readiness result is **PROVISIONAL**. We can check that your files have the right shape and that");
-w("their identifiers are your systems' own; we cannot yet verify that the bytes left those systems");
-w("unaltered. Until one of the following exists, readiness is a statement about **shape**, never about");
-w("**trustworthiness**:");
+w("A readiness result is **PROVISIONAL**. We can check that your files have the right shape, and that the");
+w("two of them are consistent with each other and with what you declared. We cannot verify that any");
+w("identifier is your system's own value — a file that was re-keyed passes every check we have — and we");
+w("cannot verify that the bytes left those systems unaltered. Until one of the following exists,");
+w("readiness is a statement about **shape**, never about **trustworthiness**:");
 w();
 PROVENANCE_CHANNELS.forEach((c) => w(`* **${c.channel}** — ${c.whatItWouldEstablish} *(${c.whyTheBeneficiaryCannotAlterIt})*`));
 w();
@@ -552,7 +553,7 @@ of you that we cannot stand behind.
 ## What we MAY then identify
 
 Where your facts support it, **observed monetary discrepancies** — an obligation your contract system says
-was owed with nothing billed against it, or settled for less than it states. Observed, and attributable to
+was owed with nothing billed against it, or billed for less than it states. Observed, and attributable to
 a specific obligation.
 
 ## What we will NOT claim, initially or on this evidence alone
@@ -562,7 +563,7 @@ a specific obligation.
   evidence.
 - **Causal attribution.** That a discrepancy exists is one claim; *why* it happened is another, and we
   will not assert the second from these two files.
-- **Duplicate billing.** Where two settlements name one obligation, we report **multiple settlements
+- **Duplicate billing.** Where two billing lines name one obligation, we report **multiple settlements
   observed** and stop there. Two instalments of one obligation look identical to one obligation billed
   twice, and distinguishing them needs a fact neither export carries today.
 - **Money where the amount is UNKNOWN.** An obligation your contract system cannot price is reported as
@@ -575,8 +576,10 @@ a specific obligation.
 
 ## And one limit about trust itself
 
-A readiness result is **provisional**. We can confirm your files have the right shape and that their
-identifiers are your systems' own. We cannot yet confirm that the data left those systems unaltered —
+A readiness result is **provisional**. We can confirm your files have the right shape, and that the two of
+them are consistent with each other and with what you declared. We cannot confirm that any identifier is
+your system's own value — a file that was re-keyed passes every check we have — and we cannot yet confirm
+that the data left those systems unaltered —
 that needs something like a signed export or a system-of-record attestation, which does not exist between
 us today.
 
@@ -731,11 +734,18 @@ Questions on any single field are welcome and usually faster than guessing.
   a();
   a("## What you are asserting, and we cannot check");
   a();
-  a("These three matter and we have no way to test them. We record them against the role above and they");
-  a("**do not raise how far we say your data can be relied on**. Saying so is the point: a form that");
+  // DERIVED, NOT WRITTEN. This said "three" while four tick-boxes followed, because EXPORT_IS_COMPLETE
+  // joined the set and the sentence beside it did not move. Changing it to "four" would drift again on
+  // the next claim, so the word comes from the catalogue — and `pilot:verify` now compares the rendered
+  // word with the catalogue's length, which is the check the old one was missing.
+  const UNCHECKABLE = ATTESTATION_CLAIMS.filter((x) => x.kind === "UNCORROBORATED_CLAIM");
+  const COUNT_WORD = ["none", "one", "two", "three", "four", "five", "six", "seven", "eight"][UNCHECKABLE.length]
+    ?? String(UNCHECKABLE.length);
+  a(`These ${COUNT_WORD} matter and we have no way to test them. We record them against the role above`);
+  a("and they **do not raise how far we say your data can be relied on**. Saying so is the point: a form that");
   a("implied we had checked these would be collecting a signature against work we never do.");
   a();
-  for (const c of ATTESTATION_CLAIMS.filter((x) => x.kind === "UNCORROBORATED_CLAIM")) {
+  for (const c of UNCHECKABLE) {
     a(`- [ ] ${c.statement}`);
     a(`      *What we do with it:* ${c.howNhChecksIt}`);
   }

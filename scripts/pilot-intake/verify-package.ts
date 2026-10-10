@@ -491,6 +491,25 @@ check(readiness.billing.creditRows === 1, "the credit is recognised as a credit,
   // FOUR, not three. Completeness joined them when a review showed the row count had been described as a
   // pre-commitment, which it is not — the declaration and the files arrive together from the same party.
   check(uncheckable.length === 4, "exactly four claims are declared uncheckable", String(uncheckable.length));
+  // THE CHECK THE OLD ONE WAS MISSING. `uncheckable.length === 4` pins the CATALOGUE and says nothing
+  // about the sentence rendered beside the list — which is how "These three matter" survived above four
+  // tick-boxes. A guard on a governed fact is not a guard on the prose derived from it.
+  {
+    const WORDS: Readonly<Record<string, number>> = Object.freeze({
+      none: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+    });
+    const m = /These (\w+) matter and we have no way to test them/.exec(att);
+    check(m !== null, "ATTESTATION.md · states how many claims it cannot test");
+    const stated = m === null ? -1 : (WORDS[m[1]!] ?? Number(m[1]));
+    check(stated === uncheckable.length,
+      "...and that number equals the catalogue, so adding a claim fails the build and not the reader",
+      `rendered=${m?.[1] ?? "none"} catalogue=${uncheckable.length}`);
+    // The tick-boxes must also be that many, since the number and the list are rendered separately.
+    const section = att.slice(att.indexOf("and we cannot check"));
+    check((section.match(/^- \[ \] /gm) ?? []).length === uncheckable.length,
+      "...and the tick-boxes in that section number the same",
+      String((section.match(/^- \[ \] /gm) ?? []).length));
+  }
   check(uncheckable.some((c) => c.id === "EXPORT_IS_COMPLETE"),
     "...and export completeness is one of them, stated rather than implied");
   check(/## What you are asserting, and we cannot check/.test(att),
@@ -525,6 +544,46 @@ check(readiness.billing.creditRows === 1, "the credit is recognised as a credit,
     check(!new RegExp(personal, "i").test(att), `ATTESTATION.md · does not ask for "${personal}"`);
   }
   check(read("README.md").includes("ATTESTATION.md"), "README.md · the index lists the attestation form");
+  // ── NH DOES NOT VERIFY THAT AN IDENTIFIER IS THE SOURCE SYSTEM'S OWN ───────────────────────────
+  //
+  // The request claimed it could, which the contract itself contradicts: IDENTIFIERS_SOURCE_NATIVE says
+  // its checks are "necessary evidence and never a proof: a file can pass them and still have been
+  // re-keyed", and the SOURCE_NATIVE rung is reached because the CONTRACT declares the field
+  // source-native, not because any value was verified. Sentences, not lines, and negations exempt.
+  {
+    const CLAIMS_VERIFICATION = /(?:can check|we check|verify|confirm)[^.;]{0,60}identifiers?[^.;]{0,40}(?:are|is)\s+(?:your|the)\s+(?:system|source)/i;
+    const OWN = /identifiers? (?:are|is) your systems?' own/i;
+    const NEG = /\bcannot\b|\bnot\b|\bnever\b|NOTHING|does not/i;
+    // Recomputed here: the earlier `customerFacing` is block-scoped to the section that built it.
+    for (const f of readdirSync(DIR).filter((x) => x.endsWith(".md"))) {
+      const sentences = read(f).replace(/\n/g, " ").split(/(?<=[.;:])\s+/);
+      const offending = sentences
+        .filter((x) => (CLAIMS_VERIFICATION.test(x) || OWN.test(x)) && !NEG.test(x))
+        .map((x) => x.trim().slice(0, 90));
+      check(offending.length === 0,
+        `${f} · never claims NH verifies that an identifier is the source system's own`, offending.join(" | "));
+    }
+  }
+  // ── A BILLING ROW IS NOT A SETTLEMENT, AND THE GOVERNED LABEL IS ───────────────────────────────
+  //
+  // Export B records a charge being raised, so calling its rows "settlements" tells a finance reader
+  // money moved. But `multiple settlements observed` is the governed state name from the
+  // obligation-aware reading, where "settlement" means an act of settling an obligation — the same
+  // ground on which EXPECTED_SETTLEMENT_COUNT_AVAILABLE was preserved through the billing rename. So the
+  // label is REQUIRED present, and an over-correction that scrubs it fails here too.
+  {
+    const w = read("WHAT_NH_WILL_DO.md");
+    const flat = w.replace(/\s+/g, " ");
+    check(flat.includes("multiple settlements observed"),
+      "WHAT_NH_WILL_DO.md · keeps the governed label `multiple settlements observed`");
+    for (const wrong of [/two settlements name one obligation/i, /\bsettled for less\b/i]) {
+      check(!wrong.test(w), `WHAT_NH_WILL_DO.md · does not name a billing row a settlement (${wrong.source})`);
+    }
+    check(/two billing lines name one obligation/i.test(w),
+      "...and names them billing lines instead");
+    check(/billed for less than it states/i.test(w),
+      "...and says BILLED for less, since Export B records a charge and not a payment");
+  }
   // ── CONSISTENCY IS NOT COMPLETENESS ────────────────────────────────────────────────────────────
   //
   // The form must not sell the row count as proof the export is whole. A review found exactly that claim

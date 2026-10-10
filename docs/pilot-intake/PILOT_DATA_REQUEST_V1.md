@@ -210,10 +210,11 @@ forecast presented as a finding, and we keep those apart by construction.
 
 ## One limit, stated plainly
 
-A readiness result is **PROVISIONAL**. We can check that your files have the right shape and that
-their identifiers are your systems' own; we cannot yet verify that the bytes left those systems
-unaltered. Until one of the following exists, readiness is a statement about **shape**, never about
-**trustworthiness**:
+A readiness result is **PROVISIONAL**. We can check that your files have the right shape, and that the
+two of them are consistent with each other and with what you declared. We cannot verify that any
+identifier is your system's own value — a file that was re-keyed passes every check we have — and we
+cannot verify that the bytes left those systems unaltered. Until one of the following exists,
+readiness is a statement about **shape**, never about **trustworthiness**:
 
 * **DATA_OWNER_ATTESTATION** — That the customer's data-owning role is on record as declaring each export's origin, extraction method, coverage window and row count, and that every claim NH can check agrees with the files received. *(THEY LARGELY CAN, which is why this channel reaches SOURCE_ATTESTED and never AUTHORITY_VERIFIED. The declaration and the files arrive together from the same party, so a matching row count shows the two are consistent and establishes NOTHING about completeness — an export with rows removed and a number adjusted to match reads as a perfect agreement. What survives is narrower: an accountable role exists at all, and the two files are mutually consistent in ways the declaration does not control, because the attestation never states the payer overlap or the obligation join and NH derives both independently.)*
 * **SIGNED_EXPORT** — That these bytes left the named source system unaltered. *(The signature is made by the source system's key, which the party assembling the submission does not hold. Editing a row invalidates it.)*

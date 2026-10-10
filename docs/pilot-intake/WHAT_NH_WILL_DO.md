@@ -14,7 +14,7 @@ of you that we cannot stand behind.
 ## What we MAY then identify
 
 Where your facts support it, **observed monetary discrepancies** — an obligation your contract system says
-was owed with nothing billed against it, or settled for less than it states. Observed, and attributable to
+was owed with nothing billed against it, or billed for less than it states. Observed, and attributable to
 a specific obligation.
 
 ## What we will NOT claim, initially or on this evidence alone
@@ -24,7 +24,7 @@ a specific obligation.
   evidence.
 - **Causal attribution.** That a discrepancy exists is one claim; *why* it happened is another, and we
   will not assert the second from these two files.
-- **Duplicate billing.** Where two settlements name one obligation, we report **multiple settlements
+- **Duplicate billing.** Where two billing lines name one obligation, we report **multiple settlements
   observed** and stop there. Two instalments of one obligation look identical to one obligation billed
   twice, and distinguishing them needs a fact neither export carries today.
 - **Money where the amount is UNKNOWN.** An obligation your contract system cannot price is reported as
@@ -37,8 +37,10 @@ a specific obligation.
 
 ## And one limit about trust itself
 
-A readiness result is **provisional**. We can confirm your files have the right shape and that their
-identifiers are your systems' own. We cannot yet confirm that the data left those systems unaltered —
+A readiness result is **provisional**. We can confirm your files have the right shape, and that the two of
+them are consistent with each other and with what you declared. We cannot confirm that any identifier is
+your system's own value — a file that was re-keyed passes every check we have — and we cannot yet confirm
+that the data left those systems unaltered —
 that needs something like a signed export or a system-of-record attestation, which does not exist between
 us today.
 
