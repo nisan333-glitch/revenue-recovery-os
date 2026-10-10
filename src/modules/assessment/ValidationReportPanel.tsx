@@ -46,7 +46,9 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
           <Pill tone="proof">server-verified</Pill>
         )}
         {usable ? <Pill tone="proof">technically usable</Pill> : <Pill tone="detect">not usable</Pill>}
-        {admissible ? (
+        {preliminary ? (
+          <Pill tone="neutral">pilot admission not evaluated</Pill>
+        ) : admissible ? (
           <Pill tone="proof">pilot-admissible</Pill>
         ) : (
           <Pill tone="detect">not pilot-admissible</Pill>
@@ -55,7 +57,8 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
 
       {preliminary && (
         <p className="mb-3 text-[11px] text-slate-500">
-          This is a local preview to save you a round trip. The server’s verdict is the one that counts.
+          This is a local preview to save you a round trip. No admission policy was read here and
+          no policy fitness verdict was made. The server’s verdict is the one that counts.
         </p>
       )}
 
@@ -106,7 +109,7 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
         </div>
       )}
 
-      {result.admission && (
+      {!preliminary && result.admission && (
         <AdmissionSection
           admission={result.admission}
           policyState={result.admissionPolicyState ?? null}
@@ -118,7 +121,9 @@ export function ValidationReportPanel({ result, preliminary = false }: Validatio
       {blocked && (
         <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-[12px] text-red-300">
           This dataset cannot continue into pilot assessment.{" "}
-          {usable
+          {preliminary
+            ? "The local contract preflight found no usable cycles. Correct the items above and upload again."
+            : usable
             ? "It parses and produced valid rows, but it does not meet the pilot's configured fitness policy."
             : "Correct the items above and upload again."}{" "}
           Nothing was stored, and no value was altered or filled in for you.

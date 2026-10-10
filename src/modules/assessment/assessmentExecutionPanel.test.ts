@@ -46,6 +46,7 @@ function view(over: Partial<AssessmentExecutionView> = {}): AssessmentExecutionV
     scheduledByActorId: "operator@company",
     scheduledByRole: "operator",
     scheduledAt: "2026-04-16T09:00:00.000Z",
+    revises: null,
     events: [
       { transition: "SCHEDULED", code: null, byId: "operator@company", at: "2026-04-16T09:00:00.000Z" },
       { transition: "CLAIMED", code: null, byId: "TASK-x#1", at: "2026-04-16T09:00:01.000Z" },
@@ -53,6 +54,8 @@ function view(over: Partial<AssessmentExecutionView> = {}): AssessmentExecutionV
     ],
     finding: {
       findingHash: "sha256:" + "9".repeat(64),
+      exposure: null,
+      exposureHash: null,
       producedBy: "pilot-assessment-v1",
       recordedAt: "2026-04-16T09:00:02.000Z",
       finding: {
@@ -194,5 +197,58 @@ describe("EP-16 · client helpers", () => {
   it("truncates a reference without pretending the short form is the identity", () => {
     expect(truncateRef(`sha256:${"a".repeat(64)}`)).toBe(`${"a".repeat(12)}…`);
     expect(truncateRef("short")).toBe("short");
+  });
+});
+
+describe("DETECTOR #2 · the execution panel shows the second surface, or says it was not computed", () => {
+  const EXPOSURE: NonNullable<NonNullable<AssessmentExecutionView["finding"]>["exposure"]> = {
+    methodVersion: "nse-2026.1",
+    currency: "EUR",
+    population: 28,
+    overdueUnpaidMinor: 930_000,
+    overduePartialOutstandingMinor: 76_545,
+    excludedValueMinor: 1_000,
+    unknownValueMinor: 2_500,
+    stateCounts: { Unpaid: 1, PartiallyPaid: 2, PaidOnTime: 25 },
+    claimBoundary: {
+      observationOnly: true,
+      constitutesProof: false,
+      constitutesRevenue: false,
+      createsRecoveryCase: false,
+    },
+  };
+
+  function withExposure(): AssessmentExecutionView {
+    const base = view();
+    return {
+      ...base,
+      finding: { ...base.finding!, exposure: EXPOSURE, exposureHash: "sha256:" + "f".repeat(64) },
+    };
+  }
+
+  it("renders both new figures in their own named region, exact and labelled OBSERVED", () => {
+    const html = render(withExposure());
+    expect(html).toContain('aria-label="Non-stalled exposure"');
+    expect(html).toContain("Overdue unpaid (no stall)");
+    expect(html).toContain("Overdue partial outstanding");
+    expect(html).toContain("€9,300.00");
+    expect(html).toContain("€765.45");
+    expect(html).toContain("28");
+  });
+
+  it("keeps the activation-stall headline untouched beside it — the surfaces never merge", () => {
+    const html = render(withExposure());
+    // The headline is still the stalled-cohort figure, not the sum of the two surfaces.
+    expect(html).toContain("€12,345.67");
+    // 1,234,567 (headline unpaid) + 0 (headline partial) + 930,000 + 76,545 = 2,241,112.
+    expect(html).toContain("€22,411.12"); // combined, derived for display only
+    expect(html).toMatch(/derived for display from two disjoint surfaces/);
+  });
+
+  it("says NOT COMPUTED, never zero, for an execution recorded before this detector existed", () => {
+    const html = render(view()); // the default fixture carries exposure: null
+    expect(html).toMatch(/Not computed for this execution/);
+    expect(html).toMatch(/not the same as a figure of zero/);
+    expect(html).not.toContain("Overdue unpaid (no stall)");
   });
 });

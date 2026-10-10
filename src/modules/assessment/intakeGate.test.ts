@@ -8,7 +8,8 @@ import { validatePilotDataset } from "../../contract/validateDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../contract/pilotDataContract";
 import { makePolicy } from "../../assessment/policy";
 import { evaluateAdmission, type AdmissionDecision } from "../../contract/admissionGate";
-import { makeAdmissionPolicy, ADMISSION_CALC_VERSION } from "../../contract/pilotAdmissionPolicy";
+import { makeAdmissionPolicy } from "../../contract/pilotAdmissionPolicy";
+import { ADMISSION_EVALUATOR_VERSION } from "../../contract/admissionGate";
 
 const ACTOR = { actorId: "op@company", role: "operator" as const };
 
@@ -25,7 +26,7 @@ const params = (csvText: string): PilotIntakeParams => ({
 const admissionPolicy = makeAdmissionPolicy({
   policyId: "pol-test",
   policyVersion: "1.0.0",
-  calculationMethodVersion: ADMISSION_CALC_VERSION,
+  calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
   minAcceptedRows: 1,
   minDistinctEntities: 1,
   maxRejectionRate: 1,
@@ -70,6 +71,7 @@ function serverResult(over: Partial<PilotIntakeResult> = {}): PilotIntakeResult 
     admissionPolicyState: "ACTIVE" as const,
     admissionPolicyHash: "sha256:" + "a".repeat(64),
     admissionGovernanceRefusal: null,
+    admissionDecisionId: null,
     ...over,
   };
 }

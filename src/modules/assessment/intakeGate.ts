@@ -66,6 +66,10 @@ export function preflightAsResult(report: ContractValidationReport): PilotIntake
     admissionPolicyState: null,
     admissionPolicyHash: null,
     admissionGovernanceRefusal: null,
+    // S4 · A preflight records nothing, so there is no decision to cite. Null rather than a placeholder:
+    // a schedule that cited an invented identifier would be refused, which is correct, but it would be
+    // refused for the wrong reason and send someone looking for a record that was never written.
+    admissionDecisionId: null,
   };
 }
 

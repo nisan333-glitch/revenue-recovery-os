@@ -1,0 +1,32 @@
+{
+  "frozenAt": "2026-10-07",
+  "variant": "OBLIGATION_REF",
+  "question": "What additional money becomes trustworthily detectable if the billing side provides an authoritative obligation reference?",
+  "derivedFrom": {
+    "revision": "V3",
+    "lock": "scripts/reconciliation-synthetic/FREEZE.lock.json",
+    "hashes": {
+      "expectation.csv": "31992d23dc8cd86d25aca9cb993d760d396f78e15294e88be5f17ce912959939",
+      "observation.csv": "0ef21e4097f488877a09f35ab9fa8f1c7ac61e167bc4163dce1b5199a6dfb186",
+      "ground-truth.csv": "0f5558e402912047783d06d171e2cbfa674ab262de660f9832907f99eb71f074",
+      "planted-register.json": "111db9d180c43fe46939d2889538cd9f5cb2e4c6d7676317f2f34ea6129aab9f"
+    }
+  },
+  "theOneNewFact": "obligation_ref on the billing export: the contract obligation (schedule_line_id) that each invoice line settles, STATED BY THE SOURCE at emission. Never inferred from amount, date, payer, row order or any NH identifier.",
+  "semantics": "BILLING'S OWN ALLOCATION, not settlement intent. Where billing's allocation step is itself the defect (M08) the reference carries billing's own belief and therefore testifies to nothing new — the conservative reading, declared before the run.",
+  "order": "generate -> prove integrity -> FREEZE -> record hashes -> run NH -> score with V3's ruler",
+  "data": {
+    "expectation.csv": "31992d23dc8cd86d25aca9cb993d760d396f78e15294e88be5f17ce912959939",
+    "observation.csv": "76465e962e33969644c1f3c42ec497a88a8dbad48e2d4047ac4b9553a092c478",
+    "ground-truth.csv": "0f5558e402912047783d06d171e2cbfa674ab262de660f9832907f99eb71f074",
+    "planted-register.json": "111db9d180c43fe46939d2889538cd9f5cb2e4c6d7676317f2f34ea6129aab9f"
+  },
+  "scripts": {
+    "generate.mjs": "412982a14fa6a803ca5340f3fa086f2f358c96287f00578431216c23e94a1001",
+    "freeze.mjs": "2ecd0aa54fc09d0fa0ef33fd804c211683cb1b377bb282022c4a063cbdf581bb",
+    "run.ts": "8b2522d4846edada71b366d244eac1c5f2088e3e7fe2f1a030aaf0ba919ead63",
+    "score.mjs": "cd82f3937bc2ed963ef9ca7c96704e7d6c92e5e2b7cb9a55ee0488d01bac56c6",
+    "verify.mjs": "b977ef16e85f326a84151ada966dc632b13cfd30125bd8e5e3a91161e2a9555c"
+  },
+  "compositeSha256": "ec588b24009d88d99d32859419db15c00c0598a0c7ce2deed6b43c2c32eefb6f"
+}

@@ -17,6 +17,9 @@ import {
   contractField,
   isProhibitedFieldName,
   isSupportedContractVersion,
+  acceptsPreviousMajor,
+  MAJOR_ROW_SEMANTICS,
+  PILOT_DATA_CONTRACT_ID,
   looksLikePii,
   parseContractVersion,
 } from "./pilotDataContract";
@@ -132,12 +135,132 @@ describe("contract declaration", () => {
     }
   });
 
-  it("10 · version support is same-major, not-newer, and fails closed on nonsense", () => {
+  it("9c · EP-28 · GOLDEN VECTOR — the derivation is pinned absolutely, not relative to itself", async () => {
+    // WHY THIS EXISTS. Every other identity assertion compares one derived key with another derived the same
+    // way, so any change that moves all of them together is invisible: NC-47 (the full contract version in
+    // place of the major) and NC-48 (the scheme string left at v1) both passed the entire suite. A derivation
+    // with no absolute anchor is not pinned at all.
+    //
+    // So: fixed inputs, one expected digest. Changing this value means the identity of every dataset changes,
+    // which by §10 is a MAJOR contract bump — updating the constant to make a red test green would be exactly
+    // the silent re-identification the two-ledger rules forbid. If this fails, either the derivation changed
+    // deliberately (bump the major, and say so in the contract) or it changed by accident.
+    //
+    // The label below is deliberately junk: it is fed in and must make no difference, which is this slice's
+    // whole point.
+    expect(
+      await deriveIdempotencyKey({
+        boundary: { boundaryId: "golden-boundary", datasetId: "any-label-at-all" },
+        datasetFingerprint: "0".repeat(64),
+        dateLocale: "MDY",
+        amountFormat: "US",
+        asOf: "2026-04-15",
+        stallThresholdDays: 30,
+        currency: "USD",
+      }),
+    ).toBe("pds_1bc639b3f5892d03381bfee75a37830fbe063b7132b31758e823000fcb849ffa");
+  });
+
+  it("10 · version support is not-newer, fails closed on nonsense, and honours §10's window", () => {
     expect(isSupportedContractVersion(PILOT_DATA_CONTRACT_VERSION)).toBe(true);
+    expect(isSupportedContractVersion("2.0.0")).toBe(true);
+    // EP-28 · §10's two-major window, now OPEN for real: major 2 declares major 1 row-semantics-identical,
+    // so a customer's 1.x export is still accepted. That is the promise being kept, not a relaxation —
+    // 2.0.0 changes the identity and the request envelope, neither of which a 1.x CSV can be wrong about.
+    expect(COMPATIBILITY_POLICY.acceptedPreviousMajors).toEqual([1]);
+    expect(isSupportedContractVersion("1.1.0")).toBe(true);
     expect(isSupportedContractVersion("1.0.0")).toBe(true);
-    expect(isSupportedContractVersion("2.0.0")).toBe(false); // different major
-    expect(isSupportedContractVersion("1.99.0")).toBe(false); // newer than implemented
+    // Fail-closed everywhere else: a newer major, a newer minor or patch, an undeclared older major.
+    expect(isSupportedContractVersion("3.0.0")).toBe(false);
+    expect(isSupportedContractVersion("2.99.0")).toBe(false);
+    //
+    // S1b · NEWER-THAN-IMPLEMENTED IS DERIVED, NOT A LITERAL. This probe used to read
+    // `isSupportedContractVersion("2.0.1")`, asserted false. That is only true while the implemented
+    // version is 2.0.0: at an implemented 2.1.0, `2.0.1` is an OLDER MINOR of the same major, which
+    // `acceptsOlderMinorOfSameMajor` PROMISES to accept — so the literal would have failed on the next
+    // minor bump, and for the wrong reason. The intent was always "implemented, plus one", so that is what
+    // it now computes. The previous staging of 2.1.0 discovered this mid-bump; deriving it here means the
+    // next bump's diff is a bump, not a bump plus two test corrections.
+    //
+    // It still bites a real regression: if `isSupportedContractVersion` stopped refusing a newer version,
+    // both probes below flip at any implemented version.
+    const impl = parseContractVersion(PILOT_DATA_CONTRACT_VERSION);
+    expect(impl, PILOT_DATA_CONTRACT_VERSION).not.toBeNull();
+    expect(isSupportedContractVersion(`${impl!.major}.${impl!.minor}.${impl!.patch + 1}`)).toBe(false);
+    expect(isSupportedContractVersion(`${impl!.major}.${impl!.minor + 1}.0`)).toBe(false);
+    expect(isSupportedContractVersion("0.9.0")).toBe(false);
     expect(isSupportedContractVersion("not-a-version")).toBe(false);
+  });
+
+  it("10c · the PREVIOUS-MAJOR CEILING · the complete control matrix at implemented 2.0.0", () => {
+    // THE DEFECT THIS CLOSES, AND THE ASYMMETRY THAT MADE IT ABSURD. This predicate used to return at
+    // the previous-major branch BEFORE any minor or patch comparison, so a major declared
+    // row-semantics-identical was supported to INFINITY: `1.999.999` — a version no build ever
+    // implemented — was accepted, while `2.0.1` was refused as too new. The published contract says a
+    // newer version than the build implements is refused, "never interpreted optimistically"
+    // (docs/CUSTOMER_PILOT_DATA_CONTRACT_V1.md), so this was a divergence from a promise, not just a gap.
+    //
+    // THE CEILING IS NOT TAKEN FROM `MAJOR_ROW_SEMANTICS`, which names majors and carries no version at
+    // all. It is a separate governed fact in `previousMajorSupport.ts`, where `1.1.0` — the last 1.x this
+    // product published — is written exactly once.
+    const at2 = (v: string) => isSupportedContractVersion(v, "2.0.0");
+
+    // POSITIVE: the previous major, up to and INCLUDING its ceiling. Support that existed is not lost.
+    for (const v of ["1.0.0", "1.0.1", "1.1.0"]) expect(at2(v), v).toBe(true);
+    // POSITIVE: the implemented version itself.
+    expect(at2("2.0.0")).toBe(true);
+
+    // NEGATIVE: above the previous major's ceiling. `1.1.0` / `1.1.1` is the boundary pair.
+    for (const v of ["1.1.1", "1.2.0", "1.99.0", "1.999.999"]) expect(at2(v), v).toBe(false);
+    // NEGATIVE: newer than implemented, within the current major.
+    for (const v of ["2.0.1", "2.1.0", "2.999.999"]) expect(at2(v), v).toBe(false);
+    // NEGATIVE: a newer major, an undeclared older major, and nonsense.
+    for (const v of ["3.0.0", "0.9.0", "0.0.1", "not-a-version", "", "1.1", "v1.1.0"]) {
+      expect(at2(v), JSON.stringify(v)).toBe(false);
+    }
+  });
+
+  it("10d · the ceiling does not come from MAJOR_ROW_SEMANTICS — two facts, both required", () => {
+    // `acceptsPreviousMajor` still means exactly what it meant: row semantics are declared identical.
+    // It is necessary and NO LONGER SUFFICIENT — the ceiling is the second, independent condition.
+    expect(acceptsPreviousMajor(2, 1)).toBe(true);
+    expect(isSupportedContractVersion("1.999.999", "2.0.0")).toBe(false);
+    // So a major can be row-semantics-identical AND a version within it still be unsupported. That pair
+    // of facts is the whole content of this slice.
+    expect(MAJOR_ROW_SEMANTICS[2]).toEqual([1]);
+    expect(JSON.stringify(MAJOR_ROW_SEMANTICS)).not.toContain("1.1.0");
+  });
+
+  it("10b · EP-27 · §10's two-major window is a CHECKED declaration, exercised at a future major", () => {
+    // The rule is a pure function of both versions, so the promise is proved WITHOUT bumping the
+    // published constant — evidence before the change rather than after it. `implemented: "2.0.0"` here
+    // is a hypothetical build, and `MAJOR_ROW_SEMANTICS` is what such a build would have to declare.
+    expect(acceptsPreviousMajor(1, 0)).toBe(false); // nothing is compatible by default
+
+    // A build that HAS declared the previous major row-semantics-identical accepts it...
+    const declaring = { 2: [1] } as Readonly<Record<number, readonly number[]>>;
+    const accepts = (declared: string, implemented: string) => {
+      const d = parseContractVersion(declared);
+      const impl = parseContractVersion(implemented);
+      if (!d || !impl) return false;
+      if (d.major > impl.major) return false;
+      if (d.major < impl.major) return (declaring[impl.major] ?? []).includes(d.major);
+      return true;
+    };
+    expect(accepts("1.1.0", "2.0.0")).toBe(true);
+    // ...and still refuses a NEWER major, and a major it has not named.
+    expect(accepts("3.0.0", "2.0.0")).toBe(false);
+    expect(accepts("0.9.0", "2.0.0")).toBe(false);
+
+    // The real gate, at the real constant, now agrees with BOTH halves — major 2 declares major 1.
+    expect(acceptsPreviousMajor(2, 1)).toBe(true);
+    expect(isSupportedContractVersion("1.1.0", "2.0.0")).toBe(true);
+    expect(isSupportedContractVersion("2.0.0", "2.0.0")).toBe(true);
+    expect(isSupportedContractVersion("2.0.1", "2.0.0")).toBe(false); // newer patch, still refused
+    expect(isSupportedContractVersion("3.0.0", "2.0.0")).toBe(false);
+    // A hypothetical major 3 declaring nothing refuses major 2, so opening the window once is not a
+    // precedent that opens it again by itself — the fail-closed default survives.
+    expect(isSupportedContractVersion("2.0.0", "3.0.0")).toBe(false);
     expect(parseContractVersion("1.2.3")).toEqual({ major: 1, minor: 2, patch: 3 });
     expect(COMPATIBILITY_POLICY.acceptsNewerThanImplemented).toBe(false);
     // Changing a field's MEANING is breaking even when the name is untouched.
@@ -351,41 +474,150 @@ describe("tenant boundaries and identifiers", () => {
 });
 
 describe("duplicates and idempotency", () => {
-  it("9 · an identical repeat row is rejected — the same exposure is never counted twice", async () => {
+  it("9 · identical rows are both excluded from accepted cycles", async () => {
     const row = syntheticPilotRows(1)[0]!;
     const report = await validatePilotDataset(submission(toCsv([row, row])));
     const dup = report.rowFindings.filter((f) => f.code === "NH-DC-4001");
     expect(dup).toHaveLength(1);
     expect(dup[0]!.rowNumber).toBe(2);
     expect(dup[0]!.detail).toContain("data row 1");
-    expect(report.acceptedCycles).toHaveLength(1);
+    expect(report.rowFindings.filter((f) => f.code === "NH-DC-2016")).toHaveLength(2);
+    expect(report.acceptedCycles).toHaveLength(0);
   });
 
   it("9 · two rows claiming the same cycle identity are rejected", async () => {
     const [first, second] = [syntheticPilotRows(2)[0]!, syntheticPilotRows(2)[1]!];
     const collided = { ...second, subscription_id: first.subscription_id };
     const report = await validatePilotDataset(submission(toCsv([first, collided])));
-    expect(codesFor(report.rowFindings)).toContain("NH-DC-2016");
+    expect(report.rowFindings.filter((f) => f.code === "NH-DC-2016")).toHaveLength(2);
+    expect(report.acceptedCycles).toHaveLength(0);
   });
 
-  it("9 · the idempotency key is stable for identical bytes and tenant-scoped", async () => {
+  it("9 · corrupting a rival row cannot select a surviving cycle", async () => {
+    // THE SECOND LEVER. Rejecting every colliding row removes file ORDER as a way to choose which row
+    // counts. It does not, on its own, remove the ability to choose by making the unwanted row invalid
+    // — unless a defective row still participates in the collision it caused. It does.
+    //
+    // `cycleId` comes from `subscription_id` when one is present (saasActivation.ts), so corrupting
+    // `entity_id` leaves the cycle identity untouched: the collision is real and both rows go.
+    const first = syntheticPilotRows(1)[0]!;
+    const corrupted = { ...first, entity_id: "person@example.com" };
+    for (const rows of [[first, corrupted], [corrupted, first]]) {
+      const report = await validatePilotDataset(submission(toCsv(rows)));
+      expect(report.rowFindings.map(f => f.code)).toContain("NH-DC-3002");
+      expect(report.rowFindings.filter(f => f.code === "NH-DC-2016")).toHaveLength(2);
+      expect(report.acceptedCycles).toHaveLength(0);
+      expect(report.counts.rejectedRows).toBe(2);
+    }
+  });
+
+  it("9 · EP-28 · the identity is the DATA plus what changes its meaning — never the operator's label", async () => {
+    // REWRITTEN for the v2 derivation. The previous version of this test asserted the properties of the v1
+    // identity, in which the free-text dataset label varied the key — that is the defect this closes, so the
+    // test that encoded it could not survive the change. What it asserted about bytes and tenants still
+    // holds and is kept.
     const csv = syntheticPilotCsv(3);
     const a = await validatePilotDataset(submission(csv));
     const b = await validatePilotDataset(submission(csv));
     expect(a.idempotencyKey).toBe(b.idempotencyKey);
 
-    const otherTenant = await deriveIdempotencyKey(
-      { boundaryId: "synthetic-boundary-9999", datasetId: SYNTHETIC_BOUNDARY.datasetId },
-      a.datasetFingerprint,
-    );
-    expect(otherTenant).not.toBe(a.idempotencyKey); // byte-identical files never collide across tenants
+    const base = {
+      boundary: SYNTHETIC_BOUNDARY,
+      datasetFingerprint: a.datasetFingerprint,
+      dateLocale: "auto",
+      amountFormat: "auto",
+      asOf: policy.asOf,
+      stallThresholdDays: policy.stallThresholdDays,
+      currency: policy.currency,
+    };
+    // The validator and the exported derivation agree — so everything below is about the real key.
+    expect(await deriveIdempotencyKey(base)).toBe(a.idempotencyKey);
 
+    // THE DEFECT, CLOSED. The label is operator-supplied, so it must not move the identity.
+    expect(
+      await deriveIdempotencyKey({
+        ...base,
+        boundary: { boundaryId: SYNTHETIC_BOUNDARY.boundaryId, datasetId: "renamed-to-get-a-second-look" },
+      }),
+    ).toBe(a.idempotencyKey);
+
+    // Another tenant is a different exposure — byte-identical files never collide across boundaries.
+    expect(
+      await deriveIdempotencyKey({
+        ...base,
+        boundary: { boundaryId: "synthetic-boundary-9999", datasetId: SYNTHETIC_BOUNDARY.datasetId },
+      }),
+    ).not.toBe(a.idempotencyKey);
+
+    // A different file is a different dataset and deserves its own decision.
     const changed = await validatePilotDataset(submission(syntheticPilotCsv(4)));
-    expect(changed.idempotencyKey).not.toBe(a.idempotencyKey); // a different file is a new decision
+    expect(changed.idempotencyKey).not.toBe(a.idempotencyKey);
+
+    // Everything that changes what the data MEANS moves the identity, one field at a time.
+    for (const [label, over] of [
+      ["date locale", { dateLocale: "MDY" }],
+      ["amount format", { amountFormat: "EU" }],
+      ["currency", { currency: "EUR" }],
+      ["as-of cut-off", { asOf: "2026-12-31" }],
+      ["stall threshold", { stallThresholdDays: 31 }],
+    ] as const) {
+      expect(await deriveIdempotencyKey({ ...base, ...over }), label).not.toBe(a.idempotencyKey);
+    }
+
+    // "auto" is itself a choice: pinning a locale is a different reading from letting it be detected.
+    expect(await deriveIdempotencyKey({ ...base, dateLocale: "DMY" })).not.toBe(
+      await deriveIdempotencyKey({ ...base, dateLocale: "auto" }),
+    );
 
     expect(isDuplicateSubmission(a.idempotencyKey, new Set([b.idempotencyKey]))).toBe(true);
     expect(isDuplicateSubmission(changed.idempotencyKey, new Set([a.idempotencyKey]))).toBe(false);
   });
+
+  it("9b · EP-28 · the version component is the MAJOR, so a patch or minor bump preserves identities", async () => {
+    // v1 embedded `id@1.1.0`, so a PATCH bump reset every identity — which contradicts §10's own minor
+    // promise ("a dataset valid under X.Y is still valid under X.(Y+1)") and was never intentional: the
+    // commit that bumped 1.0.0 → 1.1.0 reasoned "no previously valid dataset newly rejected" while
+    // introducing duplicate detection in the same act. A MAJOR may redefine what a field means, so majors
+    // must not share an identity space; a patch may not, so patches must.
+    //
+    // Canonicalised here under three version strings, because the derivation reads the module constant and a
+    // test cannot bump it.
+    //
+    // THIS TEST CANNOT CATCH A CHANGE OF FORM, and an earlier revision of this comment wrongly claimed test 9
+    // would. It does not: every other assertion in this file compares one derived key to another derived the
+    // same way, so swapping the major for the full version, or the scheme string for its predecessor, moves
+    // them all together and nothing fails. Negative controls NC-47 and NC-48 demonstrated exactly that — they
+    // failed to fail. Test 9c is the absolute anchor that closes it; this test covers only the granularity
+    // relationship between versions.
+    const { createHash } = await import("node:crypto");
+    const keyUnder = (version: string) =>
+      createHash("sha256")
+        .update(
+          [
+            "nh-pilot-dataset-v2",
+            `${PILOT_DATA_CONTRACT_ID}@major-${version.split(".")[0]}`,
+            SYNTHETIC_BOUNDARY.boundaryId,
+            "fingerprint",
+            "auto",
+            "auto",
+            "USD",
+            "2026-04-15",
+            "30",
+          ].join("\u0000"),
+        )
+        .digest("hex");
+
+    expect(keyUnder("2.0.0")).toBe(keyUnder("2.0.1")); // patch: identity preserved
+    expect(keyUnder("2.0.0")).toBe(keyUnder("2.7.3")); // minor: identity preserved
+    expect(keyUnder("2.0.0")).not.toBe(keyUnder("3.0.0")); // major: a new identity space
+
+    // MIGRATION, asserted rather than assumed: a pre-cutover (major 1) key is NOT recognised afterwards.
+    // That is one free re-assessment per historical dataset at the cutover — permitted, because a second
+    // reading is measured under a governed AssessmentPolicy the beneficiary cannot author, and nothing
+    // historical is rewritten. Recorded here so the consequence is a tested claim and not a footnote.
+    expect(keyUnder("1.1.0")).not.toBe(keyUnder("2.0.0"));
+  });
+
 });
 
 describe("acceptance semantics", () => {

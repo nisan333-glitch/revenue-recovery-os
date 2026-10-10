@@ -15,7 +15,7 @@ import {
   toCsv,
 } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -31,7 +31,6 @@ function policyBody(over: Record<string, unknown> = {}) {
   return {
     policyId: `pol-${uid()}`,
     policyVersion: "1.0.0",
-    calculationMethodVersion: ADMISSION_CALC_VERSION,
     minAcceptedRows: 10,
     minDistinctEntities: 5,
     maxRejectionRate: 0.2,
@@ -52,7 +51,9 @@ function datasetBody(over: Record<string, unknown> = {}) {
     datasetId: `dataset-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(40),
-    policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+    // EP-26b · No `policy` object: the cut-off, the stall threshold and the currency are the registered
+    // definition, activated for this boundary through the two-identity lifecycle before submitting.
+    ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };
@@ -68,8 +69,13 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     await prisma.$disconnect();
   });
 
-  const submit = (payload: unknown, headers = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  // EP-26 · Activate governed analysis terms for the payload's boundary before submitting: the
+  // cut-off and the stall threshold are no longer request fields.
+  const submit = async (payload: unknown, headers = OPERATOR) => {
+      const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+      if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  };
 
   /** Propose a policy. It is a DRAFT and judges nothing until governance activates it. */
   const register = (boundaryId: string, policy: Record<string, unknown>, headers = OPERATOR) =>
@@ -196,12 +202,17 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     const boundaryId = `pilot-boundary-${uid()}`;
     const strict = await registerActive(boundaryId, policyBody({ minAcceptedRows: 500, minCoverageDays: 3650, maxDuplicateRate: 0 }));
 
-    const base = syntheticPilotRows(10);
+    // FIVE pairs collide; fifteen cycles survive. The fixture used to duplicate EVERY row, which no
+    // longer reaches the thresholds this test is about: since all colliding rows are excluded, a
+    // wholly-duplicated file leaves zero accepted cycles, so the dataset is not usable and the gate
+    // correctly answers NOT_ASSESSABLE (NH-AG-3001) instead of measuring anything. Threshold codes
+    // can only be asserted on a dataset that survives far enough to be measured.
+    const base = syntheticPilotRows(20);
     const out = (
       await submit(
         datasetBody({
           boundaryId,
-          csvText: toCsv([...base, ...base]), // every row duplicated
+          csvText: toCsv([...base, ...base.slice(0, 5)]),
           admissionPolicyId: strict.policyId,
         }),
       )
@@ -220,10 +231,17 @@ describe.skipIf(!HAS_DB)("EP-14 · pilot admission gate (server)", () => {
     await register(boundaryId, policy);
     const csvText = syntheticPilotCsv(30);
 
-    // Two DIFFERENT dataset ids so the idempotency guard does not intercept the second submission —
-    // what is being tested is the evaluator's determinism, not the duplicate rule.
-    const a = (await submit(datasetBody({ boundaryId, csvText, datasetId: `d-${uid()}`, admissionPolicyId: policy.policyId }))).json();
-    const b = (await submit(datasetBody({ boundaryId, csvText, datasetId: `d-${uid()}`, admissionPolicyId: policy.policyId }))).json();
+    // EP-28 · This used to use two DIFFERENT dataset ids so the idempotency guard would not intercept the
+    // second submission. That trick is exactly what the v2 identity removes — the label no longer varies the
+    // key — so identical bytes in one boundary are now a duplicate and the second call would return 409.
+    //
+    // What is under test is the EVALUATOR'S DETERMINISM, not the duplicate rule, so the second evaluation
+    // moves to a second boundary carrying the identical bar. Same bytes, same thresholds, two tenants: the
+    // claim is unchanged and it no longer depends on a route the identity now forbids.
+    const otherBoundaryId = `pilot-boundary-${uid()}`;
+    await register(otherBoundaryId, policy);
+    const a = (await submit(datasetBody({ boundaryId, csvText, admissionPolicyId: policy.policyId }))).json();
+    const b = (await submit(datasetBody({ boundaryId: otherBoundaryId, csvText, admissionPolicyId: policy.policyId }))).json();
 
     expect(JSON.stringify(a.admission.checks)).toBe(JSON.stringify(b.admission.checks));
     expect(a.admission.rates).toEqual(b.admission.rates);

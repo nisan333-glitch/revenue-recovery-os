@@ -17,15 +17,48 @@
 // Revenue, or a financial claim, and nothing here creates a Recovery Case. The agent that runs an
 // execution deliberately emits zero CandidateSignals, so the automatic path into case creation is
 // structurally absent rather than merely unused.
+//
+// EP-31 · THAT REMAINS TRUE, AND IS NO LONGER THE WHOLE PICTURE. A separate governed emitter can now
+// turn a COMPLETED execution's staged per-account attribution into `pending_review` candidates — see
+// `docs/GOVERNED_DETECTION_V1.md`. The sentence above still holds literally: this agent emits none, and
+// its boundaries test still proves it. What changed is that the pilot lane is no longer a dead end, and
+// the route out of it is off by default, enrolled per boundary, gated on `completed`, unable to write to
+// anything here, and still incapable of creating a Case without an accepted review by a second identity
+// or a Proof without a locked baseline, case-scoped evidence and an approver who is not the owner.
 import { assess } from "../assessment/assess";
 import { SAAS_ADAPTER_ID, SAAS_ADAPTER_VERSION } from "../assessment/adapters/saasActivation";
 import { sha256Hex } from "../assessment/fingerprint";
 import type { AssessmentPolicy } from "../assessment/policy";
-import type { ExpectationCycle } from "../assessment/types";
+import type { AssessmentResult, ExclusionReason, ExpectationCycle } from "../assessment/types";
 import { EXCLUSION_REASON_CODES } from "./rejectionCodes";
 
-/** Version of the identity/binding scheme itself. A change here is a new scheme, not a re-grade. */
+/**
+ * Version of the EXECUTION BINDING canonicalization (`PAX`). A change here is a new scheme, not a
+ * re-grade.
+ *
+ * SCOPED TO STAGE 3 — THE EXECUTION — AND NOTHING ELSE. It used to version two different
+ * canonicalizations at two different lifecycle stages: `canonicalDecision` (the ADMISSION decision,
+ * `PAD`) read this same constant. That overloading was harmless only because neither had ever been
+ * versioned, and it was blocking by construction the moment either needed to be: changing this value
+ * to version `PAD` would have changed every historical `PAX`, and the worker re-derives `PAX` from the
+ * stored binding columns and refuses on mismatch, so every historical and queued execution would have
+ * stopped replaying. Two stages that can move for different reasons need two constants.
+ */
 export const EXECUTION_BINDING_SCHEME = "nh-pilot-assessment-execution-v1";
+
+/**
+ * Version of the ADMISSION DECISION canonicalization (`PAD`).
+ *
+ * ITS VALUE IS DELIBERATELY IDENTICAL TO `EXECUTION_BINDING_SCHEME`, and that is the whole point of
+ * this change: splitting the constant must move no hash. Every historical `PAD` re-derives bit for
+ * bit, which is what the absolute vectors assert. The two values are equal TODAY and are not required
+ * to stay equal — that independence is the capability being created, and nothing here uses it yet.
+ *
+ * NOT A DISCRIMINATOR. This names the scheme the CURRENT build computes; it says nothing about which
+ * scheme a stored row was written under. A stored row that needs to declare its own scheme requires a
+ * persisted field, which does not exist and is not added here.
+ */
+export const ADMISSION_DECISION_SCHEME = "nh-pilot-assessment-execution-v1";
 
 /** Version of the input-projection rules. Stamped into the input hash. */
 export const EXECUTION_PROJECTION_SCHEME = "nh-pilot-assessment-projection-v1";
@@ -53,7 +86,7 @@ export interface AdmissionDecisionRef {
 function canonicalDecision(ref: AdmissionDecisionRef): string {
   // NUL-separated so no value can impersonate a separator and shift the fields after it.
   return [
-    EXECUTION_BINDING_SCHEME,
+    ADMISSION_DECISION_SCHEME,
     ref.boundaryId,
     ref.idempotencyKey,
     ref.datasetFingerprint,
@@ -490,14 +523,23 @@ export async function hashFinding(finding: AssessmentFinding): Promise<string> {
  * function has no clock and is fully deterministic: the same input, policy and binding always give
  * the same finding, which is what makes a duplicate write provably a no-op.
  */
-export function runProjectedAssessment(input: {
+export interface ProjectedAssessmentInput {
   readonly executionId: string;
   readonly binding: ExecutionBinding;
   readonly input: ExecutionInput;
   readonly policy: AssessmentPolicy;
   readonly createdAt: string;
-}): AssessmentFinding {
-  const result = assess(
+}
+
+/**
+ * The full `AssessmentResult` for a projected execution.
+ *
+ * Extracted so a caller that needs BOTH the finding and Detector #2's exposure reading can get them from
+ * ONE assessment rather than running the arithmetic twice — two runs would be two chances to disagree.
+ * `runProjectedAssessment` delegates here, so its behaviour and its finding are unchanged.
+ */
+export function projectedAssessmentResult(input: ProjectedAssessmentInput): AssessmentResult {
+  return assess(
     input.input.cycles.map((cycle) => ({ kind: "cycle" as const, cycle })),
     input.policy,
     {
@@ -515,21 +557,43 @@ export function runProjectedAssessment(input: {
       dateLocale: input.binding.interpretation.dateLocale,
     },
   );
+}
 
+export function runProjectedAssessment(input: ProjectedAssessmentInput): AssessmentFinding {
+  return findingFromProjectedResult(
+    input.executionId,
+    input.binding.boundaryId,
+    projectedAssessmentResult(input),
+  );
+}
+
+/**
+ * Flatten one `AssessmentResult` into the persisted scalar finding.
+ *
+ * NOTE WHAT IS ABSENT, deliberately: nothing from `result.nonStalledExposure`. Detector #2's figures are
+ * a SEPARATE artifact with their own canonical form, witness and method version. Folding them in here
+ * would change `canonicalFinding`, and with it every historical finding hash — a silent semantic re-grade
+ * of proof that is supposed to stay reproducible from (input, governed terms, calculation method).
+ */
+export function findingFromProjectedResult(
+  executionId: string,
+  boundaryId: string,
+  result: AssessmentResult,
+): AssessmentFinding {
   // Exclusions the assessment itself produced (cycle-identity collisions) are reported in the SAME
   // vocabulary the intake used, via the contract's total reason→code map. One exclusion vocabulary,
   // so a customer never has to learn that the same problem has two names depending on who found it.
   const counts = new Map<string, number>();
   for (const exclusion of result.exclusions) {
-    const spec = EXCLUSION_REASON_CODES[exclusion.reason];
+    const spec = EXCLUSION_REASON_CODES[exclusion.reason as ExclusionReason];
     counts.set(spec.code, (counts.get(spec.code) ?? 0) + 1);
   }
 
   return Object.freeze({
-    executionId: input.executionId,
-    boundaryId: input.binding.boundaryId,
+    executionId,
+    boundaryId,
     assessmentId: result.assessmentId,
-    calculationMethodVersion: input.policy.calculationMethodVersion,
+    calculationMethodVersion: result.policy.calculationMethodVersion,
     acceptedCycleCount: result.acceptedCycleCount,
     excludedCycleCount: result.excludedRowCount,
     exclusionCodes: Object.freeze(

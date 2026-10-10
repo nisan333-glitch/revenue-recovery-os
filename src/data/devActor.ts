@@ -29,3 +29,11 @@ export function operatorActorFor(ownerDisplayName: string | null): DevActor {
  * `operatorActorFor` always derives a different actorId from the assigned case owner.
  */
 export const APPROVER: DevActor = { actorId: APPROVER_ACTOR.id, role: "approver" };
+
+/**
+ * EP-19 · Pilot governance. A DISTINCT identity from every operator and from the approver, because the
+ * server refuses an activation by the actor who proposed the policy — by actorId as well as by role.
+ * Using one identity for both halves would make the governance screen demonstrate the very thing the
+ * trust invariant forbids, and the server would (correctly) reject it.
+ */
+export const STEWARD: DevActor = { actorId: "gov@company", role: "steward" };

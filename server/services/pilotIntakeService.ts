@@ -23,11 +23,16 @@ import {
   type DatasetProvenance,
 } from "../../src/contract/pilotDataContract";
 import { IDENTITY_CODES } from "../../src/contract/rejectionCodes";
-import { evaluateAdmission, type AdmissionDecision } from "../../src/contract/admissionGate";
+import {
+  ADMISSION_EVALUATOR_VERSION,
+  evaluateAdmission,
+  type AdmissionDecision,
+} from "../../src/contract/admissionGate";
 import { POLICY_CODES } from "../../src/contract/admissionCodes";
-import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
+import { admissionPolicyRef, makeAdmissionPolicy, type PilotAdmissionPolicy } from "../../src/contract/pilotAdmissionPolicy";
 import { findAdmissionPolicy, registerAdmissionPolicy } from "../persistence/pilotAdmissionPolicyStore";
-import { hashAdmissionPolicy } from "../../src/contract/policyHash";
+import { hashAdmissionPolicy, policyHashMatches } from "../../src/contract/policyHash";
+import { compareIntegrity } from "../../src/contract/registerIntegrity";
 import { deriveAdmissionDecisionId } from "../../src/contract/assessmentExecution";
 import {
   canTransition,
@@ -44,9 +49,20 @@ import {
 import { makePolicy } from "../../src/assessment/policy";
 import type { DateLocale } from "../../src/assessment/dateNormalize";
 import type { AmountFormat } from "../../src/assessment/amountNormalize";
+import { Prisma } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../http/errors";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
+import { resolveGovernedAnalysisTerms } from "./pilotAnalysisTermsService";
+
+/**
+ * EP-26 · The stable phrase a refused submission carries when the analysis terms are not governed.
+ *
+ * Not an NH-DC-#### code: those are the DATA contract, and this refusal says nothing about the data.
+ * Not an NH-AX-#### code either — nothing is being executed yet. It is an authorization refusal, and
+ * the UI may show it verbatim because `forbidden` is in the client's safe-to-display set.
+ */
+export const ANALYSIS_TERMS_REFUSAL = "analysis terms are not governed";
 import { findSubmission, recordSubmission } from "../persistence/pilotDatasetStore";
 
 export interface PilotDatasetRequest {
@@ -60,11 +76,16 @@ export interface PilotDatasetRequest {
   readonly datasetId: string;
   readonly declaredVersion: string;
   readonly csvText: string;
-  readonly policy: {
-    readonly stallThresholdDays: number;
-    readonly asOf: string;
-    readonly currency: string;
-  };
+  /**
+   * EP-26b · WHICH GOVERNED ASSESSMENT POLICY defines this reading — the cut-off, the stall threshold
+   * and the currency, as one registered version. None of the three is a request parameter any more:
+   * `asOf` decides what information exists, `stallThresholdDays` decides what "stalled" MEANS, and the
+   * currency decides which rows count at all, so a requester who could state any of them would be
+   * defining the measurement they benefit from. Omitting the reference is not "use a default"; there is
+   * no default, and the submission is refused.
+   */
+  readonly analysisTermsId?: string;
+  readonly analysisTermsVersion?: string;
   readonly provenance: DatasetProvenance;
   readonly locale?: DateLocale;
   readonly amountFormat?: AmountFormat;
@@ -113,6 +134,17 @@ export interface PilotIntakeResponse {
    * dataset satisfies an explicit, versioned pilot policy.
    */
   readonly admission: AdmissionDecision;
+  /**
+   * S4 · The identifier of the admission decision this submission recorded, or null when nothing was
+   * recorded (a refused dataset, or a local preflight).
+   *
+   * Returned so a later schedule can CITE the decision instead of making the server re-discover it
+   * from re-supplied claims. That is the whole of reference-first scheduling: the caller hands over a
+   * reference to an immutable record, and every authoritative fact is then read from that record
+   * rather than from the request. It is not a capability — it is boundary-scoped on lookup and
+   * carries no authority of its own.
+   */
+  readonly admissionDecisionId: string | null;
 }
 
 /** The contract version this build serves. Advertised so a client can pin and compare. */
@@ -127,6 +159,7 @@ function toResponse(
     readonly hash: string | null;
     readonly refusal: string | null;
   } = { state: null, hash: null, refusal: null },
+  admissionDecisionId: string | null = null,
 ): PilotIntakeResponse {
   return Object.freeze({
     contractRef: report.contractRef,
@@ -149,6 +182,7 @@ function toResponse(
     admissionPolicyHash: governance.hash,
     admissionGovernanceRefusal: governance.refusal,
     admission,
+    admissionDecisionId,
   });
 }
 
@@ -173,6 +207,30 @@ function distinctCodes(report: ContractValidationReport): string[] {
  * Nothing is written before step 3 passes, so an invalid dataset and a rejected row never reach the
  * database at all.
  */
+/**
+ * Record a submission, translating the primary key's refusal into the contract's own duplicate code.
+ *
+ * The sequential repeat and the concurrent loser therefore receive the IDENTICAL classification, from
+ * the identical code path — there is no second path that could drift from this one. `submittedAt` is
+ * re-read from the winning row so the message carries the same detail either way; if that read comes
+ * back empty (the row was removed between the conflict and the read, which the append-only triggers
+ * forbid) the code is still returned, without inventing a timestamp.
+ */
+async function recordDuplicateAware(
+  input: Parameters<typeof recordSubmission>[0],
+): Promise<Awaited<ReturnType<typeof recordSubmission>>> {
+  try {
+    return await recordSubmission(input);
+  } catch (e) {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") throw e;
+    const prior = await findSubmission(input.idempotencyKey, input.boundaryId);
+    const when = prior ? ` on ${prior.submittedAt}` : "";
+    throw new ConflictError(
+      `${IDENTITY_CODES.DUPLICATE_SUBMISSION.code}: this exact dataset was already submitted for this tenant${when}. ${IDENTITY_CODES.DUPLICATE_SUBMISSION.remediation}`,
+    );
+  }
+}
+
 export async function submitPilotDataset(
   actor: ActorContext,
   request: PilotDatasetRequest,
@@ -183,16 +241,36 @@ export async function submitPilotDataset(
   requireBoundaryAccess(actor, request.boundaryId);
   const boundaryId = request.boundaryId.trim();
 
-  // A malformed policy is the caller's error, and its message must not echo customer data.
+  // EP-26b · THE WHOLE ASSESSMENT POLICY COMES FROM THE REGISTER, NEVER FROM THE REQUEST. A 403 rather
+  // than a dataset verdict on purpose: an ungoverned cut-off is not a property of the file, and
+  // answering NOT_ASSESSABLE would tell the customer their data is unfit when what is unauthorized is
+  // their choice of definition. Refused before the bytes are parsed — nothing is measured under terms
+  // nobody approved, not even to produce a rejection count.
+  const resolvedTerms = await resolveGovernedAnalysisTerms(
+    boundaryId,
+    request.analysisTermsId,
+    request.analysisTermsVersion,
+  );
+  if (!resolvedTerms.ok) {
+    throw new ForbiddenError(`${ANALYSIS_TERMS_REFUSAL}: ${resolvedTerms.reason}`);
+  }
+  const governedTerms = resolvedTerms.stored.terms;
+
+  // Built entirely from the registered row. There is no caller-supplied field left in it.
   let policy;
   try {
     policy = makePolicy({
-      stallThresholdDays: request.policy.stallThresholdDays,
-      asOf: request.policy.asOf,
-      currency: request.policy.currency,
+      policyId: governedTerms.termsId,
+      policyVersion: governedTerms.termsVersion,
+      stallThresholdDays: governedTerms.stallThresholdDays,
+      asOf: governedTerms.asOf,
+      currency: governedTerms.currency,
     });
-  } catch {
-    throw new ForbiddenError("assessment policy is invalid (stall threshold, as-of date or currency)");
+  } catch (e) {
+    // UNREACHABLE BY CONSTRUCTION: every value came from a registered row that the store already
+    // rebuilt through `makeAnalysisTerms`. Checked rather than asserted away, and rethrown rather than
+    // reported as a caller error — there is no longer any caller input here to blame.
+    throw e;
   }
 
   const submission: DatasetSubmission = {
@@ -230,6 +308,24 @@ export async function submitPilotDataset(
       request.admissionPolicyVersion?.trim() || undefined,
     );
     if (stored) {
+      // TAMPER EVIDENCE, FIRST — checked here rather than trusted, and before anything else is asked
+      // about this row. The hash was computed from the definition when it was proposed, so a stored hash
+      // that no longer matches the stored values means the row changed after it was blessed: by a
+      // migration, a restore or a bug. Judging a dataset against it would launder that change into an
+      // admission decision, and the decision freezes the hash — so the altered bar would be cited
+      // forever by a `PAD-` that looks sound.
+      //
+      // The register carries an append-only trigger, which is exactly the protection the analysis-terms
+      // register also has and still does not treat as sufficient for itself. This closes the asymmetry
+      // between the two: one was tamper-evident at read time and the other was trusted as stored.
+      //
+      // `policyState` is deliberately left null on a mismatch. The lifecycle of a row that fails its own
+      // witness is not a fact worth reporting, and reporting it would dress the row as ordinarily
+      // governed. Same shape as `resolveGovernedAnalysisTerms`, which returns `state: null` here.
+      if (!(await policyHashMatches(stored.policy, stored.policyHash))) {
+        governanceRefusal =
+          `admission policy ${admissionPolicyRef(stored.policy)} no longer hashes to the definition it was registered with`;
+      } else {
       const governance = await policyGovernanceState(boundaryId, stored.policy.policyId, stored.policy.policyVersion);
       policyState = governance.state;
       if (!mayEvaluate(governance.state)) {
@@ -246,20 +342,13 @@ export async function submitPilotDataset(
         admissionPolicy = stored.policy;
         policyHash = stored.policyHash;
       }
+      }
     }
   }
 
   const admission = evaluateAdmission(report, policy, admissionPolicy);
 
-  // Duplicate detection runs against the AUTHORIZED boundary, so a key minted for another tenant
-  // reads as absent rather than as that tenant's record.
-  const prior = await findSubmission(report.idempotencyKey, boundaryId);
   void POLICY_CODES; // the codes the evaluator emits; referenced so the dependency is explicit
-  if (prior !== null) {
-    throw new ConflictError(
-      `${IDENTITY_CODES.DUPLICATE_SUBMISSION.code}: this exact dataset was already submitted for this tenant on ${prior.submittedAt}. ${IDENTITY_CODES.DUPLICATE_SUBMISSION.remediation}`,
-    );
-  }
 
   // Persist ONLY a usable dataset. An invalid dataset, or one whose every row was rejected, leaves
   // no row behind: the uploader gets the findings and the database gets nothing. That also keeps a
@@ -284,11 +373,37 @@ export async function submitPilotDataset(
     admissionPolicyHash: policyHash,
   });
 
-  const recorded = await recordSubmission({
+  // DUPLICATE DETECTION IS THE INSERT ITSELF.
+  //
+  // This used to be a `findSubmission` check before the write — a check-then-act with no transaction
+  // and no lock, so two concurrent identical submissions could both read "no prior" and both attempt
+  // the insert. The primary key meant exactly one row survived, so the OUTCOME was never at risk; what
+  // the loser got was a bare `P2002` that the error handler mapped to a generic uniqueness conflict
+  // instead of the contract's own NH-DC-4003. A client routing on that code saw nothing it could use.
+  // Test 5d reproduces it deterministically, by holding a real uncommitted INSERT open as the
+  // concurrent winner and waiting for PostgreSQL to report a backend blocked on the lock.
+  //
+  // WHY NOT A LOCK OR A TRANSACTION. `caseGuard.ts` takes a per-case advisory lock because Halt versus
+  // mutation is a genuine write skew across two tables — there is no single row for the two writers to
+  // collide on, so the conflict has to be manufactured. Here the primary key IS the invariant: the
+  // writers already collide on one row, and the database already serialises them. Adding a lock or a
+  // transaction around a check that the insert performs anyway would buy no guarantee and would
+  // serialise every submission for the same boundary behind one another.
+  //
+  // WHY NOT AN UPSERT. `upsert`/`ON CONFLICT DO NOTHING` would swallow the conflict, and a swallowed
+  // conflict is exactly what must not happen: the caller has to learn that this dataset was already
+  // submitted, and when. So the conflict is caught and CLASSIFIED, never absorbed.
+  //
+  // Matching on `P2002` alone is precise rather than broad: this call writes to one table, and that
+  // table has exactly one uniqueness arbiter — its primary key — which test 5c asserts by exercising
+  // it. Any other error, including a P2002 from anywhere else, is re-thrown untouched.
+  const recorded = await recordDuplicateAware({
     idempotencyKey: report.idempotencyKey,
     boundaryId,
     datasetId: report.datasetId,
     contractVersion: report.contractVersion,
+    // EP-27 · The declaration, recorded as the customer made it — not as the build reinterpreted it.
+    declaredVersion: report.declaredVersion,
     datasetFingerprint: report.datasetFingerprint,
     accepted: report.accepted,
     usable: report.usableForAssessment,
@@ -304,16 +419,35 @@ export async function submitPilotDataset(
     admissionPolicyVersion: admission.policyVersion,
     admissionPolicyHash: policyHash,
     admissionDecisionId,
+    // S4a · THE ADMISSION SNAPSHOT. The interpretation facts this verdict was reached under, written so
+    // a later reader can READ them instead of enumerating candidates against the `pds` digest. The two
+    // locale values are `pds` components, recorded exactly as declared — "auto" is itself a declaration.
+    // The terms reference is lineage: the governed register already holds the cut-off, the threshold and
+    // the currency forever, so an id+version recovers them authoritatively.
+    //
+    // NOT AN IDENTITY CHANGE. No derivation reads these columns; `pds`, PAD and PAX are untouched.
+    snapshotDateLocale: request.locale ?? "auto",
+    snapshotAmountFormat: request.amountFormat ?? "auto",
+    snapshotTermsId: governedTerms.termsId,
+    snapshotTermsVersion: governedTerms.termsVersion,
     submittedByActorId: actor.actorId,
     submittedByRole: actor.role,
   });
 
-  return toResponse(report, recorded.submittedAt, admission, governance);
+  return toResponse(report, recorded.submittedAt, admission, governance, admissionDecisionId);
 }
 
 export interface RegisterAdmissionPolicyRequest {
   readonly boundaryId: string;
-  readonly policy: PilotAdmissionPolicy;
+  /**
+   * FINDING 3 · The thresholds, WITHOUT `calculationMethodVersion`.
+   *
+   * That field's documented meaning is "which evaluator computed the rates" — a fact about the server's
+   * implementation, not a commercial judgement the customer side makes. It is stamped below from
+   * `ADMISSION_EVALUATOR_VERSION`, the constant that actually judges the dataset, so the policy hash
+   * commits the evaluator that will really run.
+   */
+  readonly policy: Omit<PilotAdmissionPolicy, "calculationMethodVersion">;
   /** Why this bar. Required — a threshold with no stated reasoning cannot be reviewed. */
   readonly rationale: string;
 }
@@ -345,7 +479,15 @@ export async function registerPilotAdmissionPolicy(
 
   let policy: PilotAdmissionPolicy;
   try {
-    policy = makeAdmissionPolicy(request.policy);
+    // FINDING 3 · THE PROVENANCE IS STAMPED, NEVER ACCEPTED. The spread order is the guarantee: even if
+    // a caller got a `calculationMethodVersion` past the transport, the server's value is written last
+    // and wins. The transport refuses it anyway (`additionalProperties: false` under
+    // `removeAdditional: false`), so this is the second of two fail-closed layers rather than the only
+    // one — and it is the layer that holds for an in-process caller the transport never sees.
+    policy = makeAdmissionPolicy({
+      ...(request.policy as PilotAdmissionPolicy),
+      calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
+    });
   } catch {
     // The message is deliberately generic; the caller gets the per-field defects from the gate's
     // own codes rather than an exception string that could echo their input.
@@ -416,6 +558,18 @@ export async function transitionPilotAdmissionPolicy(
     throw new NotFoundError("no such admission policy version exists for this boundary");
   }
 
+  // A row that fails its own witness may not be PUT IN FORCE. Deliberately only for the transitions
+  // that grant evaluation authority: refusing a FREEZE or a RETIRE on a suspect bar would be perverse —
+  // stopping it is the correct response, and governance must not be unable to stop it.
+  if (
+    (transition === "ACTIVATED" || transition === "UNFROZEN") &&
+    !(await policyHashMatches(stored.policy, stored.policyHash))
+  ) {
+    throw new ConflictError(
+      `admission policy ${request.policyId}@${request.policyVersion} no longer hashes to the definition it was registered with; it cannot be put in force. Investigate the row rather than re-registering over it.`,
+    );
+  }
+
   const governance = await policyGovernanceState(boundaryId, request.policyId, request.policyVersion);
   if (governance.proposedBy !== null && governance.proposedBy === actor.actorId) {
     throw new ForbiddenError(
@@ -458,11 +612,25 @@ export async function readPilotAdmissionPolicyGovernance(
   requireBoundaryAccess(actor, boundaryId);
   const stored = await findAdmissionPolicy(boundaryId.trim(), policyId, policyVersion);
   if (!stored) throw new NotFoundError("no such admission policy version exists for this boundary");
+  // AUDIT VISIBILITY, not a refusal. This surface makes no decision — it is what an auditor and the
+  // governance screen read — and it previously refused a suspect row outright. That was the wrong shape
+  // for the one surface whose job is to let someone LOOK at a suspect record: refusing to show it means
+  // the only way to inspect the anomaly is direct database access.
+  //
+  // So the row is returned WITH ITS INTEGRITY STATED, and with both hashes, so an auditor can see
+  // whether the mismatch is a one-field edit or a wholesale replacement and can check the comparison
+  // themselves. What must never happen is the row reading as sound, and an explicit `integrity` block is
+  // a stronger guard against that than an absent one.
+  //
+  // THE REFUSALS THAT MATTER ARE UNCHANGED: a suspect row still judges nothing, and still cannot be put
+  // in force. It simply remains inspectable, and freezing or retiring it remains available.
+  const integrity = compareIntegrity(stored.policyHash, await hashAdmissionPolicy(stored.policy));
   const governance = await policyGovernanceState(boundaryId.trim(), policyId, policyVersion);
   return Object.freeze({
     boundaryId: stored.boundaryId,
     policyRef: `${policyId}@${policyVersion}`,
     policyHash: stored.policyHash,
+    integrity,
     state: governance.state,
     proposedBy: governance.proposedBy,
     proposedAt: governance.proposedAt,

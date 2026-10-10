@@ -8,9 +8,23 @@ column mapping + amount normalization + tamper-evident record foundation) create
 **understanding**, and **customer commitment** — before building any further customer-facing
 functionality. Collect evidence · record observations · identify friction · validate assumptions.
 
-**Baseline under validation:** ingest one CSV entirely in the browser → **Observed Unpaid** in a
-stalled cohort. Four money states separated (Observed only; Estimated/Forecast "Not calculated";
-Proven $0). Client-side, privacy-gated.
+> ### ⚠️ Correction (EP-19) — the data-handling claims in this kit were wrong
+>
+> This kit described the baseline as **client-side, privacy-gated**, and asked design partners who
+> would approve a tool where *"the file never leaves your machine."* **That has not been true since
+> EP-13**: server-side contract validation is authoritative, a governed execution runs on the server
+> (EP-16), and a **pseudonymised projection of the accepted rows** is retained server-side under a
+> stated retention period (EP-16/EP-17). Exact dates and amounts **can permit linkage**.
+>
+> These are questions asked out loud in discovery calls, so a wrong one does not just mislead — it
+> collects an answer to a question the partner was never actually being asked, and records it as
+> evidence. Corrected below. The **run-path model** section further down is affected too; see the
+> note there.
+
+**Baseline under validation:** upload one CSV → server-side contract validation → governed assessment
+→ **Observed Unpaid** in a stalled cohort. A local in-browser **preview** is available first and is
+labelled as a preview. Four money states separated (Observed only; Estimated/Forecast "Not
+calculated"; Proven $0).
 
 **Golden rule:** interest ≠ validation · compliments ≠ validation · a meeting ≠ validation.
 **Validation = a costly commitment** (real CSV, additional data, second meeting requested, pilot
@@ -36,7 +50,8 @@ evidence · argue with their BI · count compliments as progress.
 - "If you had to name the dollar figure stalling between signing and the second invoice — what is it, and how confident are you?"
 - "Who owns that number today? What do they do when it goes wrong?"
 - "What would it take, internally, to export a CSV with signed date, next-invoice due date, amount, and activation status?"
-- "Who approves using a browser-based tool where the file never leaves your machine?"
+- "Who approves sending a CSV of contract and billing rows to a vendor? What do they need to see about
+  retention and deletion?"
 
 **After the readout:**
 - "Is this number new to you, or something you already track? Do you **trust** it? Why / why not?"
@@ -131,9 +146,17 @@ ahead of a qualified, committed customer. **Default until V0 is satisfied: run s
 synthetic demo on our own screen — no build.** Living procedure: it may evolve **only** through real DP
 evidence.
 
+> **EP-19 note — this model set predates server-side execution and is partly obsolete.** A governed
+> result now requires a server, so C (single offline HTML) and a static-only B can produce **only the
+> local preview**, never a governed execution, a binding or a finding. And E ("DP sends us the file")
+> was rejected here for breaking privacy — but uploading the file is now how the product works, so
+> what distinguishes the acceptable path from E is *governance and retention*, not whether we receive
+> the data. Reworking this framework needs DP evidence, per the rule above; it is flagged, not
+> silently rewritten.
+
 **Run-path models under evaluation:** A = our-machine synthetic demo (discovery) · B = hosted static
 URL · C = single self-contained offline HTML · D = local dist bundle/local server · E = DP sends us the
-file (rejected — breaks privacy).
+file.
 
 ### V0 — Business Justification (mandatory first gate; internal)
 | Check | Question | Fail → |
@@ -162,8 +185,9 @@ V1–V6 for a **durable** model.
 **Questions to ask (discovery / champion + IT):**
 1. "To decide on a pilot, do you need to see the number on **your own** data, or is seeing how it works enough now?" → V1
 2. "When we run it on your data, would you run it yourself, or do it together on your screen?" → V2
-3. "Who approves a browser tool where the file never leaves your machine? What would they need to see?" → V5
-4. "Does IT allow opening an external web app with a file-upload screen — even if nothing is uploaded?" → V3
+3. "Who approves uploading a CSV of contract and billing rows to a vendor? What would they need to see
+   about retention and deletion?" → V5
+4. "Does IT allow uploading an export of this kind to an external web app?" → V3
 5. "Easier to open a **link**, or a **single self-contained file** you run **offline**?" → V4 + V6
 6. "Anything (DPA, security review, running on your own infra) required before any of this?" → V5 (surfaces eliminate-both)
 

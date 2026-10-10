@@ -49,6 +49,16 @@ export type ExecutionRefusal =
   | "decision_binding_mismatch"
   | "contract_version_mismatch"
   | "policy_not_active"
+  | "analysis_terms_not_governed"
+  | "admission_snapshot_unavailable"
+  | "submission_identity_mismatch"
+  | "request_contradicts_admission"
+  | "calculation_method_unsupported"
+  | "calculation_method_drift"
+  | "reassessment_input_unavailable"
+  | "reassessment_terms_not_method_only"
+  | "reassessment_no_method_change"
+  | "reassessment_already_exists"
   | "boundary_mismatch"
   | "no_assessable_cycles"
   | "case_halted"
@@ -124,6 +134,124 @@ export const EXECUTION_REFUSAL_CODES: Readonly<Record<ExecutionRefusal, Executio
       remediation:
         "None. Tenancy comes from the authenticated session and never from a request body; a mismatch is refused rather than reconciled.",
       since: "1.0.0",
+    }),
+    // EP-26 · The cut-off and the stall threshold are not request parameters. This refusal is what
+    // makes that true rather than merely intended: an execution cannot name an unapproved, frozen or
+    // retired definition, and it cannot name none at all.
+    analysis_terms_not_governed: code({
+      code: "NH-AX-1010",
+      severity: "refused",
+      title: "The analysis terms this execution would run under are not an ACTIVE governed version.",
+      remediation:
+        "Propose an analysis-terms version and have governance activate it, then cite it by id and version. The as-of date and the stall threshold define what the assessment measures, so they are decided by a proposer and an approver — never chosen in the request that benefits from the result.",
+      since: "1.1.0",
+    }),
+    // S4 · The three refusals reference-first scheduling needs, and deliberately three rather than one.
+    //
+    // They answer three different questions, and collapsing them would send someone after the wrong
+    // thing. 1011: the stored admission does not carry enough of its own interpretation to be
+    // reproduced — a schema-epoch fact about the record, nobody's fault, fixed by re-submitting. 1012:
+    // it does carry enough, and what it carries does not reproduce its own identity — a tamper or
+    // drift signal that must never be laundered by recomputing and carrying on. 1013: the record is
+    // sound and the REQUEST is asking to run under something else.
+    //
+    // None of them is `decision_binding_mismatch` (NH-AX-1005). That code says "the record changed
+    // after it was written", and saying it when the build changed, or when the caller asked for
+    // something new, would accuse immutable data of mutating.
+    admission_snapshot_unavailable: code({
+      code: "NH-AX-1011",
+      severity: "refused",
+      title: "The admission's interpretation snapshot is absent or unusable, so its submission identity cannot be reproduced.",
+      remediation:
+        "Re-submit the dataset. Submissions recorded before the interpretation snapshot existed carry no date-locale, amount-format or analysis-terms reference, and those are exactly the facts the submission identity is derived over. They are deliberately not backfilled: a snapshot written now from today's request would assert that this is what the verdict was reached under, which is the one thing it cannot evidence.",
+      since: "1.2.0",
+    }),
+    submission_identity_mismatch: code({
+      code: "NH-AX-1012",
+      severity: "refused",
+      title: "The stored submission identity is not reproducible from the admission's own recorded facts.",
+      remediation:
+        "Do not re-run. Re-deriving the submission key from the fingerprint, the boundary, the admitted contract major, the recorded interpretation and the governed analysis terms did not return the key the record is stored under. Investigate the record and the register rather than accepting the stored key on its own word — an identity that cannot be recomputed cannot be audited later either.",
+      since: "1.2.0",
+    }),
+    request_contradicts_admission: code({
+      code: "NH-AX-1013",
+      severity: "refused",
+      title: "The request names analysis terms or interpretation options other than the ones the dataset was admitted under.",
+      remediation:
+        "Cite the admitted analysis-terms version and the admitted date-locale and amount-format, or re-submit the extract under the new ones. A verdict computed under one definition does not authorise an execution under another, and silently running under the admitted terms instead would report a result nobody asked for.",
+      since: "1.2.0",
+    }),
+    // Findings 1 & 2 · THE CALCULATION METHOD, in two bands because they are two different events.
+    //
+    // A governed AnalysisTerms version records the calculation method it was BLESSED for. Nothing used
+    // to check that the build about to measure under it still implements that method — not at schedule
+    // time, and not at run time, where `makePolicy` rebuilds the policy from the binding but takes no
+    // `calculationMethodVersion` input and so always stamps the CURRENT build constant. A comment in the
+    // agent claimed the rebuild "cannot drift"; that was true of the as-of date, the threshold and the
+    // currency, and false of exactly this field.
+    //
+    // 1014 is REFUSED: nothing was queued, and re-registering the definition is the remedy. 2006 is
+    // BLOCKED and terminal: the execution's identity was frozen under one method and the build now
+    // implements another, so a retry on this build cannot change the answer. Keeping them in separate
+    // bands matters because they call for different actions — and neither is an authorization or an
+    // identity failure, which is why neither reuses NH-AX-1006 (contract support) or NH-AX-1005/2003
+    // (the record changed).
+    calculation_method_unsupported: code({
+      code: "NH-AX-1014",
+      severity: "refused",
+      title: "The governed analysis terms were blessed for a calculation method this build does not implement.",
+      remediation:
+        "Propose and activate an analysis-terms version for the method this build implements, then re-submit the extract under it. The definition is not wrong and the data is not wrong — they were approved against an implementation that is no longer the one that would run, and measuring under a method nobody blessed for these terms is how a number acquires an authority it was never given.",
+      since: "1.2.0",
+    }),
+    calculation_method_drift: code({
+      code: "NH-AX-2006",
+      severity: "blocked",
+      title: "The build's calculation method changed between scheduling and execution.",
+      remediation:
+        "Do not retry on this build. The binding froze the method the execution's identity was derived under, and this build implements a different one, so producing a finding here would record a result computed by an implementation the binding does not name. Schedule a new execution, which will be refused at NH-AX-1014 until the governed terms name this build's method.",
+      since: "1.2.0",
+    }),
+    // RE-ASSESSMENT · the three ways an explicit re-assessment of a retained input is refused.
+    //
+    // All three send the caller somewhere different, which is why they are three codes. 1015: the input
+    // is gone or cannot be trusted, so there is nothing to re-assess and the extract must be
+    // re-submitted. 1016: the new definition changes WHAT IS MEASURED, not merely how — a different
+    // cut-off, threshold or currency is a different reading of the data, and the admission was for the
+    // old one. 1017: the new definition names the method already used, so there is no second answer to
+    // produce and the existing execution is already it.
+    reassessment_input_unavailable: code({
+      code: "NH-AX-1015",
+      severity: "refused",
+      title: "The original execution's input is unavailable or cannot be verified.",
+      remediation:
+        "Re-submit the dataset and schedule a new assessment. Re-assessment reuses the retained, hash-verified input precisely so the customer is not asked to produce the file again; with no trustworthy input there is nothing to re-assess, and reconstructing one would mean assessing data the earlier finding never saw.",
+      since: "1.3.0",
+    }),
+    reassessment_terms_not_method_only: code({
+      code: "NH-AX-1016",
+      severity: "refused",
+      title: "The cited analysis terms change what is measured, not only the calculation method.",
+      remediation:
+        "Re-submit the extract under the new terms. A different cut-off, stall threshold or currency is a different reading of the same data — it changes which rows count and what 'stalled' means — and the admission decision was reached for the old reading. Only a change of calculation method can be applied to an already-admitted input, because the admission verdict does not depend on the method.",
+      since: "1.3.0",
+    }),
+    reassessment_no_method_change: code({
+      code: "NH-AX-1017",
+      severity: "refused",
+      title: "The cited analysis terms name the calculation method the execution already used.",
+      remediation:
+        "Nothing to do: the existing execution is already the answer under that method, and its finding stands. Re-running it would produce a byte-identical result under a new identifier, which would look like a second opinion and be nothing of the kind.",
+      since: "1.3.0",
+    }),
+    reassessment_already_exists: code({
+      code: "NH-AX-1018",
+      severity: "refused",
+      title: "An execution for that exact binding already exists, and it is not a revision of this one.",
+      remediation:
+        "Read the existing execution: it is already the answer for these bytes under those terms, because an execution's identity IS its binding. Recording a revision link onto it would claim it was produced by re-assessing this one, which it was not — and producing a second row would need a second identity for identical content.",
+      since: "1.3.0",
     }),
     no_assessable_cycles: code({
       code: "NH-AX-1009",

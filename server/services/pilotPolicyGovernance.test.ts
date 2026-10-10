@@ -9,7 +9,7 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const OPERATOR = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
@@ -21,7 +21,6 @@ function policyBody(over: Record<string, unknown> = {}) {
   return {
     policyId: `pol-${uid()}`,
     policyVersion: "1.0.0",
-    calculationMethodVersion: ADMISSION_CALC_VERSION,
     minAcceptedRows: 10,
     minDistinctEntities: 5,
     maxRejectionRate: 0.2,
@@ -42,7 +41,9 @@ function datasetBody(over: Record<string, unknown> = {}) {
     datasetId: `ds-${uid()}`,
     declaredVersion: PILOT_DATA_CONTRACT_VERSION,
     csvText: syntheticPilotCsv(40),
-    policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+    // EP-26b · No `policy` object: the cut-off, the stall threshold and the currency are the registered
+    // definition, activated for this boundary through the two-identity lifecycle before submitting.
+    ...GOVERNED_TERMS_FIELDS,
     provenance: SYNTHETIC_PROVENANCE,
     ...over,
   };
@@ -70,8 +71,11 @@ describe.skipIf(!HAS_DB)("EP-15 · admission policy governance", () => {
       payload: { boundaryId, policyId, policyVersion, rationale: "reviewed" } as object,
     });
 
-  const submit = (payload: unknown, headers = OPERATOR) =>
-    app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  const submit = async (payload: unknown, headers = OPERATOR) => {
+      const boundaryId = (payload as { boundaryId?: string }).boundaryId;
+      if (boundaryId) await ensureGovernedTerms(boundaryId);
+    return app.inject({ method: "POST", url: "/pilot/datasets", headers, payload: payload as object });
+  };
 
   /** Propose + activate, the normal two-actor path. */
   async function activated(boundaryId: string, over: Record<string, unknown> = {}) {
@@ -156,8 +160,12 @@ describe.skipIf(!HAS_DB)("EP-15 · admission policy governance", () => {
     const boundaryId = `pb-${uid()}`;
     const policy = await activated(boundaryId);
 
+    // EP-28 · Each of the three submissions below differs by its BYTES. They used to differ only by the
+    // dataset label, which no longer varies the identity — so identical bytes would now be refused as a
+    // duplicate and the second and third states would never be reached. The claim under test is about the
+    // policy's state, not about the file, so varying the row count preserves it exactly.
     expect((await move("freeze", boundaryId, policy.policyId as string)).statusCode).toBe(200);
-    let out = (await submit(datasetBody({ boundaryId, admissionPolicyId: policy.policyId }))).json();
+    let out = (await submit(datasetBody({ boundaryId, csvText: syntheticPilotCsv(40), admissionPolicyId: policy.policyId }))).json();
     expect(out.admissionPolicyState).toBe("FROZEN");
     expect(out.admission.outcome).toBe("NOT_ASSESSABLE");
     expect(out.admissionGovernanceRefusal).toMatch(/frozen/i);
@@ -166,7 +174,7 @@ describe.skipIf(!HAS_DB)("EP-15 · admission policy governance", () => {
     expect((await move("unfreeze", boundaryId, policy.policyId as string)).statusCode).toBe(200);
 
     expect((await move("retire", boundaryId, policy.policyId as string)).statusCode).toBe(200);
-    out = (await submit(datasetBody({ boundaryId, admissionPolicyId: policy.policyId }))).json();
+    out = (await submit(datasetBody({ boundaryId, csvText: syntheticPilotCsv(41), admissionPolicyId: policy.policyId }))).json();
     expect(out.admissionPolicyState).toBe("RETIRED");
     expect(out.admission.outcome).toBe("NOT_ASSESSABLE");
     // Retirement is terminal: it cannot be resurrected.
@@ -231,8 +239,28 @@ describe.skipIf(!HAS_DB)("EP-15 · admission policy governance", () => {
     expect((await propose(boundaryId, lax)).statusCode).toBe(201);
     expect((await move("activate", boundaryId, lax.policyId as string)).statusCode).toBe(200);
 
+    // EP-28 · The retry used to get a fresh identity by renaming the dataset. That route is gone — identical
+    // bytes under the same terms are now a duplicate, so the attack is stopped one gate EARLIER and this test
+    // could no longer reach the anti-tuning rule at all. It therefore re-enters through the ONE legitimate
+    // re-submission route that remains: the same bytes under a DIFFERENT governed AssessmentPolicy. That is a
+    // new identity, so the submission is accepted as new — and anti-tuning must still refuse it, because the
+    // dataset's FIRST SIGHTING is keyed on the fingerprint and predates the laxer bar's activation.
+    //
+    // So the guarantee is now proved on the harder case rather than the easy one.
+    const newTerms = await ensureGovernedTerms(boundaryId, {
+      termsId: "terms-after-the-verdict",
+      asOf: "2026-05-31",
+    });
     const retry = (
-      await submit(datasetBody({ boundaryId, datasetId: `ds-${uid()}`, csvText: dataset.csvText, admissionPolicyId: lax.policyId }))
+      await submit(
+        datasetBody({
+          boundaryId,
+          csvText: dataset.csvText,
+          admissionPolicyId: lax.policyId,
+          analysisTermsId: newTerms.analysisTermsId,
+          analysisTermsVersion: newTerms.analysisTermsVersion,
+        }),
+      )
     ).json();
     expect(retry.admission.outcome).toBe("NOT_ASSESSABLE");
     expect(retry.admissionGovernanceRefusal).toMatch(/activated after this dataset was first submitted/i);
