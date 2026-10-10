@@ -225,6 +225,31 @@ describe("3 · NO MONEY may appear in a readiness report", () => {
     expect(r.claimBoundary.computesMoney).toBe(false);
   });
 
+  it("...and over the UNKNOWN-amount path, which the capable fixture never reaches", () => {
+    // A COVERAGE HOLE IN THE CHECK ABOVE, found by the local pilot-pair falsifiers. `capable()` prices
+    // every row, so `NH-EX-3006` is never blocked and the governed sentence that explains the no-zero
+    // rule is never emitted — and that sentence quotes `$0.00`. So the guard above passed only because of
+    // its fixture, and on a real export carrying one unpriced obligation a figure does appear.
+    //
+    // It is not a money leak: the figure is the constitution's own rule being stated — "never as zero,
+    // because $0.00 would assert the obligation was checked and found clean" — and saying it with the
+    // figure is clearer than saying it without. So the exemption is narrow and explicit, and ONE
+    // permitted string is allowed in ONE governed sentence. Any other figure, anywhere, still fails.
+    const e = validateExpectationExtract(E_FULL, [owe({ expected_amount: "" })], E_TERMS);
+    const ob = "ob-unknown";
+    const eKeyed = validateExpectationExtract(E_FULL, [owe({ expected_amount: "", schedule_line_ref: ob })], E_TERMS);
+    const b = validateBillingExtract(S_FULL, [paid(ob)], S_TERMS);
+    for (const r2 of [evaluateDataReadiness(e, b), evaluateDataReadiness(eKeyed, b)]) {
+      const emitted = JSON.stringify(r2);
+      const figures = [...emitted.matchAll(/\$\s?[\d,.]+/g)].map((m) => m[0]);
+      const permitted = figures.filter((f) => f === "$0.00"
+        && emitted.includes(`never as zero, because ${f} would assert`));
+      expect(figures.filter((f) => !permitted.includes(f)),
+        `unexpected monetary figures: ${figures.join(", ")}`).toEqual([]);
+      expect(r2.claimBoundary.computesMoney).toBe(false);
+    }
+  });
+
   it("the evaluator imports no reconciliation core and no money module", () => {
     const src = readFileSync(resolve(__dirname, "dataReadiness.ts"), "utf8");
     for (const forbidden of ["reconciliationCore", "obligationAwareReconciliation", "domain/money", "provenLedger"]) {

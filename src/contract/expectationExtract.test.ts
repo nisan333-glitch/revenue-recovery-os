@@ -68,13 +68,22 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
         if (entry.isDirectory()) { walk(full); continue; }
         if (!/\.(ts|tsx|mjs|js)$/.test(entry.name)) continue;
         if (/^expectationExtract(Codes|Validator|Corrections)?(\.test)?\.ts$/.test(entry.name)) continue;
-        // COMMENTS AND STRING LITERALS STRIPPED. The guard's question is "does this module IMPORT the
-        // extract", and a prose mention is not an import: `billingExtract.ts` names the erratum file
-        // in a comment, which the first form of this scan counted as a dependency. Fourth instance of
-        // that lesson in this repository — a structural guard must read code, not documentation.
-        const code = readFileSync(full, "utf8")
-          .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-        if (/expectationExtract/.test(code)) hits.push(full.replace(/.*\/(src|server|e2e|scripts)\//, "$1/"));
+        // IMPORT SPECIFIERS ONLY. The guard's question is "does this module IMPORT the extract", and the
+        // first two forms answered a different one. It began by matching the bare token in raw text, so a
+        // prose mention counted — `billingExtract.ts` names the erratum file in a comment. Stripping
+        // comments fixed that and the replacement comment then CLAIMED string literals were stripped
+        // while the code stripped only comments, so a file naming the module in a `resolve(...)` path
+        // still read as a dependency: that is exactly how `assessPairCore.test.ts` — which reads the
+        // validator's SOURCE to check its declared terms and imports nothing from it — appeared here.
+        // Eleventh instance of the one lesson: a structural guard must read code, and specifically the
+        // construct it is actually asking about. A string literal is not a dependency. The import-
+        // specifier form below is the one the historical-record guard already settled on.
+        const code = readFileSync(full, "utf8");
+        const specifiers = [...code.matchAll(/(?:from|import|require)\s*\(?\s*["']([^"']+)["']/g)]
+          .map((m) => m[1]!);
+        if (specifiers.some((x) => /expectationExtract/.test(x))) {
+          hits.push(full.replace(/.*\/(src|server|e2e|scripts)\//, "$1/"));
+        }
       }
     };
     for (const r of roots) walk(resolve(__dirname, "..", "..", r));
@@ -83,6 +92,10 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
 
   it("is imported ONLY by the readiness path — named, so a new importer must be justified here", () => {
     expect(importers()).toEqual([
+      // The LOCAL PILOT-PAIR CLI and its core: they read two independently sourced CSV exports through
+      // the real validators and the real readiness evaluator so a real pair can be checked before any
+      // pilot customer exists. Read-only, persist nothing, compute no money.
+      "scripts/data-readiness/assessPairCore.ts",
       "scripts/data-readiness/control.ts",
       // The customer-facing intake package: its emitter renders the request and the dictionary FROM these
       // specs, and its verifier re-derives them to prove the committed documents have not drifted. Both
@@ -101,6 +114,19 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
       "src/contract/provenanceAttestation.test.ts",
       "src/contract/provenanceAttestation.ts",
     ]);
+  });
+
+  it("counts an IMPORT and not a mention — both directions, on a committed pair", () => {
+    // THE FALSIFIER FOR THE GUARD ITSELF, and it needs no synthetic fixture because the repository holds
+    // one of each. `assessPairCore.ts` imports the validator; `assessPairCore.test.ts` names it only
+    // inside a `resolve(...)` path, to read its source and check which reading terms it declares. The
+    // negative half is the one that was broken, so it is the one worth pinning.
+    const read = (f: string): string =>
+      readFileSync(resolve(__dirname, "..", "..", "scripts", "data-readiness", f), "utf8");
+    expect(read("assessPairCore.test.ts")).toContain('"expectationExtractValidator.ts"'); // the premise
+    expect(read("assessPairCore.ts")).toMatch(/from "\.\.\/\.\.\/src\/contract\/expectationExtractValidator"/);
+    expect(importers()).toContain("scripts/data-readiness/assessPairCore.ts");
+    expect(importers()).not.toContain("scripts/data-readiness/assessPairCore.test.ts");
   });
 
   it("NO monetary, reconciliation or assessment module reaches it — the money path is undisturbed", () => {

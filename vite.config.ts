@@ -20,6 +20,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // `scripts/data-readiness` is included because the local pilot-pair readiness path lives there and
+    // its falsifiers must run in CI. They were previously collected by NEITHER suite — `npm run test` is
+    // src-only and `test:ep2` is server-only — so a test file under `scripts/` could pass review, be
+    // committed, and never execute. A test CI never runs is not a guard.
+    //
+    // Deliberately narrow: `server/**` has its own Postgres-backed suite and `research/**` is .mjs with a
+    // different harness, so neither is swept in here by a broader glob.
+    include: ["src/**/*.test.ts", "scripts/data-readiness/**/*.test.ts"],
   },
 });
