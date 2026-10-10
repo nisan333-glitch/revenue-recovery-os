@@ -40,6 +40,13 @@ jobs:
       - name: Strict build (type-checked)
         run: npm run build
 
+      # NOTHING UNDER `scripts/` WAS TYPECHECKED BY ANY PROJECT: the root tsconfig includes only `src`
+      # and the server one only `server`, while vite-node and vitest transpile with esbuild, which does
+      # not check types. The local readiness path is covered here so its code is held to the same bar as
+      # `src/`. The first run of it found a real defect — see tsconfig.scripts.json.
+      - name: Strict types for the local readiness scripts
+        run: npm run typecheck:scripts
+
   postgres-integration:
     name: EP-9 Postgres-backed verification
     # EP-9.1 · Runs the real governed-backend suites against an ephemeral, pinned

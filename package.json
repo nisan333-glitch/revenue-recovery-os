@@ -41,7 +41,8 @@
     "recon:ref:score": "node scripts/reconciliation-obligation-ref/score.mjs",
     "readiness:control": "vite-node scripts/data-readiness/control.ts",
     "pilot:emit": "vite-node scripts/pilot-intake/emit-package.ts",
-    "pilot:verify": "vite-node scripts/pilot-intake/verify-package.ts"
+    "pilot:verify": "vite-node scripts/pilot-intake/verify-package.ts",
+    "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json"
   },
   "dependencies": {
     "@fastify/static": "^8.3.0",

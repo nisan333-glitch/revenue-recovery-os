@@ -1,0 +1,20 @@
+{
+  // STRICT TYPES FOR THE LOCAL READINESS PATH.
+  //
+  // Nothing under `scripts/` was covered by any tsconfig: the root project includes only `src`, and the
+  // server project only `server`. vite-node and vitest transpile with esbuild, which does not typecheck,
+  // so every script in this repository has been running unchecked. That is the same shape as a test CI
+  // never runs — and it had already cost something: `control.ts` passed an `asOf` term to a validator
+  // whose terms type has no such field, inert at runtime and a false claim to any reader, found the first
+  // time these files were typechecked.
+  //
+  // Scoped to `scripts/data-readiness` deliberately. `scripts/pilot-intake/verify-package.ts` carries
+  // nine further errors of its own (unused bindings and unchecked regex-group indexing); widening this
+  // project would mean editing the package verifier inside a slice that does not own it, so that gap is
+  // reported rather than swept in here.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["scripts/data-readiness/**/*.ts", "src"]
+}

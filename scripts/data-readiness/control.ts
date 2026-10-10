@@ -88,7 +88,7 @@ function readinessFor(dir: string): ReadinessReport {
   const e = mapRows(readCsv(`${dir}/expectation.csv`), E_MAP, EXPECTATION_EXTRACT_COLUMNS);
   const s = mapRows(readCsv(`${dir}/observation.csv`), S_MAP, BILLING_EXTRACT_COLUMNS);
   return evaluateDataReadiness(
-    validateExpectationExtract(e.cols, e.rows as RawExpectationRow[], { currency: "USD", asOf: "2026-06-30" }),
+    validateExpectationExtract(e.cols, e.rows as RawExpectationRow[], { currency: "USD" }),
     validateBillingExtract(s.cols, s.rows as RawBillingRow[], { currency: "USD" }),
   );
 }
