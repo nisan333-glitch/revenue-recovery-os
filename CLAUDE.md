@@ -1330,7 +1330,8 @@ and **a string literal is not a dependency**.* Corrected to the import-specifier
 guard had already settled on; the list is **unchanged at nine** under the stricter reading, which evidences
 every entry is a real importer, and the falsifier pins **both directions** on a committed pair.
 
-**Four findings are reported rather than patched**, and the first is the sharpest: at `SOURCE_NATIVE` —
+**Four findings are reported rather than patched** — **the first was since FIXED, see the next decision**,
+and it was the sharpest: at `SOURCE_NATIVE` —
 the rung a real local run reaches — `wouldBeLiftedBy` names the four channels that do **not** exist and omits
 `DATA_OWNER_ATTESTATION`, the one that does and the only next step available to an operator reading the
 report today. `lifted = PROVENANCE_CHANNELS.filter((c) => !c.implemented)` was right when nothing was
@@ -1346,6 +1347,56 @@ journey, 36/36 on the new path with eleven mutations proved to fail.** Contract 
 **1.1.0**, billing extract **1.0.0**, `rdy-2026.2`, `pav-2026.2`, `OBLIGATION_IDENTITY_FIELDS = []` and every
 frozen artefact unmoved; the only `src/` changes are two test files. Validation only: no production
 reconciliation, no API, no UI, no customer data, and **no observed amount became Revenue Returned.**
+
+**Authority next-action decision (2026-10-14).** The sharpest of the four findings above was taken on its
+own. `wouldBeLiftedBy` exists so *"the customer conversation has somewhere to go"*, and at `SOURCE_NATIVE` —
+the rung every real local run reaches — it named the four channels that do **not** exist and omitted
+`DATA_OWNER_ATTESTATION`, the one that is implemented, reaches a strictly higher rung, and whose one-page
+form already ships in the pilot package. One line answered a different question than the field asks, and the
+two answers coincided only while nothing was implemented
+([`docs/AUTHORITY_NEXT_ACTION_V1.md`](docs/AUTHORITY_NEXT_ACTION_V1.md)). The rules:
+
+> **Guidance names the channels that would RAISE THE RUNG THIS ASSESSMENT REACHED, derived from the ladder
+> — never the channels that happen to be unbuilt.** `implemented` is an **annotation on the answer, never
+> the question**; that inversion was the bug.
+
+> **Available today and does not exist stay DISTINGUISHABLE.** Five bare channel names, four of them
+> unbuildable, hide the only half of the answer that says what to go and get — so `wouldBeLiftedBy` is
+> complete and `availableNow` is the actionable subset, the same reason `leakInstanceIdentityStatus` and
+> `SOURCE_NAMESPACE_RESOLUTION_AVAILABLE` are named apart.
+
+> **A channel already exercised by this submission and failed is not a next action.** When an attestation
+> contradicts the files, `DATA_OWNER_ATTESTATION` is **withheld**: offering it reads as *send a corrected
+> attestation* — adjust the declaration until it agrees — which is the coordinated edit the 2026-10-07
+> correction proved NH cannot detect, and which the channel's own prose admits (*"THEY LARGELY CAN"*). **A
+> gate that points the incentive at the failure is worse than no gate.** The cost is stated rather than
+> hidden: an honestly mistyped row count gets no route named in the report.
+
+**`liftsAbove` reproduces the retired `toVerified`'s answer at `SOURCE_ATTESTED` with no special case** —
+the previously-correct branch is now correct for a stated reason instead of by coincidence — and **exactly
+one branch's output moved**, which is the acceptance proof. Below `SOURCE_NATIVE` the derivation is
+deliberately **not** applied: every channel reaches `SOURCE_ATTESTED` or above, so it would offer all five
+to a file that does not parse, and `AUTHORITY_UNVERIFIED` sits outside the ladder where `indexOf` is `-1`
+and every channel looks like an improvement.
+
+**The versions were determined before the change and none moves.** `calculationMethodVersion` is the wrong
+constant for this layer and is **proved unreachable** from it — ten `server/` modules, inside
+`canonicalBinding` and `canonicalFinding`, so moving it would fire `NH-AX-1014` and `NH-AX-2006` across every
+governed definition for a guidance string. `evaluateDataReadiness` has **five non-test consumers, all under
+`scripts/`**: no API, no UI, no Prisma model, no hash — so **nothing on this path is persisted and no
+historical readiness report exists whose reproduction could break**. `rdy-2026.2` holds on the file's own
+test (*no level, gate, conjunct, count or refusal changed; no new state became reachable*), the scheme holds
+because the field is additive, and `pav-2026.2` holds because corroboration is untouched. All three are now
+**pinned by a test**, because a version decision nothing asserts is free to drift.
+
+**Five mutations, all proved to fail**, the most informative being that marking `SIGNED_EXPORT` implemented
+still trips the **pre-existing** top-rung invariant — so the guard was not loosened. **1146 (1 skipped) with
+and without a database, 599/599 ep2, 242/242 package checks, 25/25 control, 120/120 journey.** Contract
+**2.0.0**, both extracts, `OBLIGATION_IDENTITY_FIELDS = []` and every frozen artefact unmoved; `server/`,
+`prisma/` and `docs/pilot-intake/` untouched. The rung still cannot exceed `SOURCE_ATTESTED`, every level
+stays **PROVISIONAL**, and **no observed amount became Revenue Returned.** One residual risk stated rather
+than papered over: `availableNow` is a **claim about NH's own build**, true only while the catalogue's
+`implemented` flag is accurate, which nothing outside that catalogue verifies.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

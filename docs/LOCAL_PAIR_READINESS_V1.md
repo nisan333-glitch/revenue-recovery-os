@@ -86,7 +86,7 @@ importer list is **unchanged at nine** under the stricter reading, which evidenc
 entry is a real importer. The falsifier pins **both directions** on a committed pair: the core imports
 and is listed, its test only mentions and is not. The negative half is the one that was broken.
 
-## 6 · Reported, not patched
+## 6 · Reported, not patched · **one of the four is since RESOLVED, see 6a**
 
 **a · `wouldBeLiftedBy` names only channels that do not exist.** At `SOURCE_NATIVE` — the rung a real
 local run reaches — the field lists the four unimplemented channels and omits `DATA_OWNER_ATTESTATION`,
@@ -95,6 +95,14 @@ The cause is `lifted = PROVENANCE_CHANNELS.filter((c) => !c.implemented)`, right
 implemented and wrong the moment something was. It is the `coverage.event` shape again: a field answering
 from a subset of the facts the answer needs. Not patched because `wouldBeLiftedBy` is a reported field of
 the readiness contract and the authority ladder is explicitly preserved in this slice.
+
+> **RESOLVED 2026-10-14 — the paragraph above is preserved as the finding, not as current behaviour.**
+> Corrected in `src/contract/sourceFactAuthority.ts` by deriving guidance from `AUTHORITY_LADDER`
+> instead of from `implemented`, and the two readings are now kept apart rather than collapsed:
+> `wouldBeLiftedBy` is every channel above the rung reached, `availableNow` is the implemented subset a
+> customer can act on today. Exactly one branch's output moved. Full treatment, including the version
+> determination, in [`AUTHORITY_NEXT_ACTION_V1.md`](AUTHORITY_NEXT_ACTION_V1.md). The pin in
+> `assessPairCore.test.ts` block 6 was turned over into the regression test.
 
 **b · the report drops extract-level fault codes.** A readable CSV with the wrong columns comes back
 `usable: false` and `L0_NOT_READABLE` carrying **no code saying why**, although the validator computed
