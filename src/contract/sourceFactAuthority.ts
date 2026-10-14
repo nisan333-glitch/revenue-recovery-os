@@ -180,8 +180,30 @@ export interface AuthorityAssessment {
   readonly reached: SourceFactAuthority;
   /** Why the next rung was not reached. Never blank when `reached` is not AUTHORITY_VERIFIED. */
   readonly ceilingReason: string;
-  /** The channels that would lift it, named so the customer conversation has somewhere to go. */
+  /**
+   * EVERY channel that would raise the rung actually reached, in catalogue order — named so the customer
+   * conversation has somewhere to go. Derived from the LADDER: a channel qualifies when the rung it
+   * `reaches` is strictly above the rung reached here. It is **not a ranking**, and the order carries no
+   * recommendation.
+   *
+   * The first form of this field asked a different question — `filter((c) => !c.implemented)`, *which
+   * channels are unbuilt* — and the two answers coincided only while nothing was implemented. They
+   * diverged the moment `DATA_OWNER_ATTESTATION` shipped, after which a real submission at
+   * SOURCE_NATIVE was told about four channels that do not exist and not about the one that does.
+   */
   readonly wouldBeLiftedBy: readonly ProvenanceChannel[];
+  /**
+   * The subset of `wouldBeLiftedBy` that NH has actually IMPLEMENTED — what a customer can act on today.
+   *
+   * It exists because *available now* and *does not exist* must stay DISTINGUISHABLE: five bare channel
+   * names, four of them unbuildable this quarter, hide the only half of the answer that says what to go
+   * and get. That is the same reason `leakInstanceIdentityStatus` and
+   * `SOURCE_NAMESPACE_RESOLUTION_AVAILABLE` are named separately.
+   *
+   * `availableNow ⊆ wouldBeLiftedBy` always, and it is EMPTY at SOURCE_ATTESTED and above, because the
+   * only implemented channel reaches SOURCE_ATTESTED and nothing can be acted on to pass it.
+   */
+  readonly availableNow: readonly ProvenanceChannel[];
 }
 
 /**
@@ -205,37 +227,66 @@ export function assessSourceFactAuthority(input: {
    */
   readonly attestation?: AttestationCorroboration;
 }): AuthorityAssessment {
-  /** Channels that could raise whatever rung we end up reporting. */
-  const toVerified = Object.freeze(
-    PROVENANCE_CHANNELS.filter((c) => c.reaches === "AUTHORITY_VERIFIED").map((c) => c.channel),
+  // ── WHAT WOULD LIFT THIS RUNG · one rule, derived from the ladder ─────────────────────────────
+  //
+  // This replaced two ad-hoc locals, `toVerified` (channels reaching the top rung) and `lifted`
+  // (channels not yet built). The first was correct by coincidence — from SOURCE_ATTESTED the only
+  // higher rung IS AUTHORITY_VERIFIED — and the second was the defect. The general rule below
+  // reproduces `toVerified`'s answer exactly, with no special case, which is the strongest form this
+  // kind of correction can take: the previously-right branch is right for a stated reason now.
+  //
+  // `exhausted` names channels this submission ALREADY EXERCISED. It is deliberately not an inline
+  // filter: the reason has to be legible where the decision is made.
+  const liftsAbove = (
+    reached: SourceFactAuthority,
+    exhausted: readonly ProvenanceChannel[] = [],
+  ): readonly ProvenanceChannel[] => Object.freeze(
+    PROVENANCE_CHANNELS
+      .filter((c) => AUTHORITY_LADDER.indexOf(c.reaches) > AUTHORITY_LADDER.indexOf(reached))
+      .filter((c) => !exhausted.includes(c.channel))
+      .map((c) => c.channel),
   );
-  const lifted = Object.freeze(PROVENANCE_CHANNELS.filter((c) => !c.implemented).map((c) => c.channel));
+  /** Implemented is an ANNOTATION on the answer, never the question — that inversion was the bug. */
+  const availableOf = (cs: readonly ProvenanceChannel[]): readonly ProvenanceChannel[] => Object.freeze(
+    cs.filter((c) => PROVENANCE_CHANNELS.find((p) => p.channel === c)?.implemented === true),
+  );
+  // BELOW SOURCE_NATIVE THE DERIVATION MUST NOT BE APPLIED, and the three branches that follow carry an
+  // explicit empty list instead. Every channel `reaches` SOURCE_ATTESTED or AUTHORITY_VERIFIED, so the
+  // predicate would offer all five to a file that does not even parse. Those rungs are reached by
+  // fixing the FILE, not by a provenance channel, and AUTHORITY_UNVERIFIED is outside the ladder
+  // altogether (`indexOf` → -1), which would make every channel look like an improvement on it.
+  const NONE = Object.freeze([]) as readonly ProvenanceChannel[];
   if (!input.present) {
     return Object.freeze({
       reached: "AUTHORITY_UNVERIFIED",
       ceilingReason: "the fact is absent, so no rung applies",
-      wouldBeLiftedBy: Object.freeze([]),
+      wouldBeLiftedBy: NONE,
+      availableNow: NONE,
     });
   }
   if (!input.validFormat) {
     return Object.freeze({
       reached: "PRESENT",
       ceilingReason: "the value does not parse as the kind this contract declares",
-      wouldBeLiftedBy: Object.freeze([]),
+      wouldBeLiftedBy: NONE,
+      availableNow: NONE,
     });
   }
   if (!input.declaredSourceNative) {
     return Object.freeze({
       reached: "VALID_FORMAT",
       ceilingReason: "the contract does not declare this field as the source system's own value",
-      wouldBeLiftedBy: Object.freeze([]),
+      wouldBeLiftedBy: NONE,
+      availableNow: NONE,
     });
   }
   if (input.provenanceEstablished === true) {
     return Object.freeze({
       reached: "AUTHORITY_VERIFIED",
       ceilingReason: "",
-      wouldBeLiftedBy: Object.freeze([]),
+      // Derived rather than hardcoded: nothing is above the top rung, so the rule returns [] itself.
+      wouldBeLiftedBy: liftsAbove("AUTHORITY_VERIFIED"),
+      availableNow: NONE,
     });
   }
   // AN ATTESTATION THAT CONTRADICTS THE FILES IS WORSE THAN NO ATTESTATION, so it does not merely fail to
@@ -247,7 +298,11 @@ export function assessSourceFactAuthority(input: {
         reached: "SOURCE_ATTESTED",
         ceilingReason:
           `the data-owning role ${input.attestation.dataOwnerRole} is on record declaring each export's origin, method, window and row count, and every claim NH can check agrees with the files received. Authority is still UNVERIFIED and every level resting on it is PROVISIONAL. The declaration and the files came together from the same party, so this establishes an accountable declarant and internal consistency — NOT that either export is the complete, untrimmed output of the system named.`,
-        wouldBeLiftedBy: toVerified,
+        // Exactly the four channels that reach AUTHORITY_VERIFIED — the same answer the retired
+        // `toVerified` gave, now a consequence of the ladder instead of a separate list. `availableNow`
+        // is empty because the only implemented channel is the one already used to get here.
+        wouldBeLiftedBy: liftsAbove("SOURCE_ATTESTED"),
+        availableNow: availableOf(liftsAbove("SOURCE_ATTESTED")),
       });
     }
     return Object.freeze({
@@ -255,14 +310,25 @@ export function assessSourceFactAuthority(input: {
       ceilingReason: input.attestation.contradictions.length > 0
         ? `an attestation accompanied the submission and CONTRADICTS the files on: ${input.attestation.contradictions.join(", ")}. That is worse than no attestation, and no implemented provenance channel evidences these bytes — authority is UNVERIFIED and every level resting on it is PROVISIONAL.`
         : `an attestation accompanied the submission but a claim NH must check could not be checked, so it fails closed. No implemented provenance channel evidences these bytes — authority is UNVERIFIED and every level resting on it is PROVISIONAL.`,
-      wouldBeLiftedBy: lifted,
+      // DATA_OWNER_ATTESTATION IS WITHHELD HERE, and the omission is the point. The channel was
+      // exercised and it failed, so offering it reads as "send a corrected attestation" — adjust the
+      // declaration until it agrees with the file — which is precisely the coordinated edit this
+      // channel's own `whyTheBeneficiaryCannotAlterIt` admits it cannot detect. A gate that points the
+      // incentive at the failure is worse than no gate. The contradiction is already named in the
+      // ceiling reason, and an empty `availableNow` says honestly that nothing available today lifts
+      // this: resolve the contradiction first.
+      wouldBeLiftedBy: liftsAbove("SOURCE_NATIVE", ["DATA_OWNER_ATTESTATION"]),
+      availableNow: availableOf(liftsAbove("SOURCE_NATIVE", ["DATA_OWNER_ATTESTATION"])),
     });
   }
   return Object.freeze({
     reached: "SOURCE_NATIVE",
     ceilingReason:
       "no attestation accompanied the submission and no implemented provenance channel evidences these bytes. The file is the source system's own shape and values as far as NH can check, and NOTHING establishes that it left that system unaltered — so authority is UNVERIFIED and every level resting on it is PROVISIONAL.",
-    wouldBeLiftedBy: lifted,
+    // THE ONE BRANCH WHOSE ANSWER MOVES. No channel has been exercised, so all five that reach above
+    // SOURCE_NATIVE qualify — and `DATA_OWNER_ATTESTATION` is the only one a customer can act on today.
+    wouldBeLiftedBy: liftsAbove("SOURCE_NATIVE"),
+    availableNow: availableOf(liftsAbove("SOURCE_NATIVE")),
   });
 }
 

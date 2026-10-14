@@ -170,6 +170,11 @@ describe("3 · a corroborating attestation reaches SOURCE_ATTESTED and stays PRO
     expect(r.authority.ceilingReason).toContain("Authority is still UNVERIFIED");
     expect(r.authority.ceilingReason).toContain("Revenue Operations");
     expect(r.authority.wouldBeLiftedBy).not.toContain("DATA_OWNER_ATTESTATION");
+    // ...and nothing is offered as ACTIONABLE here, which is a different statement from nothing being
+    // offered at all: four channels would still lift this rung and none of them is built. Collapsing
+    // those two readings is the defect this field pair exists to prevent.
+    expect(r.authority.availableNow).toEqual([]);
+    expect(r.authority.wouldBeLiftedBy.length).toBeGreaterThan(0);
   });
 
   it("the report names the accountable role and lists the claims it did NOT check", () => {
@@ -214,6 +219,12 @@ describe("4 · a contradicted attestation fails CLOSED and names the contradicti
     expect(r.authority.reached).toBe("SOURCE_NATIVE");
     expect(r.authority.ceilingReason).toContain("CONTRADICTS");
     expect(r.attestation!.contradictions).toContain("DECLARED_ROW_COUNT_AGREES");
+    // AND IT IS NOT OFFERED AS ITS OWN REMEDY. Listing DATA_OWNER_ATTESTATION here would read as "send
+    // a corrected attestation" — adjust the declared number until it agrees with the file — which is
+    // exactly the coordinated edit this channel's own `whyTheBeneficiaryCannotAlterIt` admits it cannot
+    // detect. The contradiction is named instead, and nothing available today is offered.
+    expect(r.authority.wouldBeLiftedBy).not.toContain("DATA_OWNER_ATTESTATION");
+    expect(r.authority.availableNow).toEqual([]);
   });
 
   it("a coverage window that excludes a date present in the file", () => {

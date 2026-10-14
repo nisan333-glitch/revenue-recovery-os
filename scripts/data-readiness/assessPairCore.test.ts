@@ -218,33 +218,40 @@ describe("5 · an NH defect is never reported as unreadable customer data", () =
   });
 });
 
-describe("6 · gaps this path EXPOSES, pinned rather than patched", () => {
-  it("at SOURCE_NATIVE the operator is told only about channels that DO NOT EXIST", () => {
-    // FOUND BY RUNNING THE COMMAND, which is why the local path was worth building. `wouldBeLiftedBy`
-    // exists so "the customer conversation has somewhere to go" — and at the rung a real local run
-    // actually reaches, it names the four channels that are NOT implemented and omits the one that IS:
-    // DATA_OWNER_ATTESTATION, the attestation form shipped in `docs/pilot-intake/ATTESTATION.md`, which
-    // is precisely the next step available to an operator looking at this report today.
+// GAPS THIS PATH EXPOSED. The first was PATCHED and this block is its regression test; the second and
+// third are still pinned, which is why the title names both states rather than one.
+describe("6 · gaps this path EXPOSED · one fixed, the rest pinned", () => {
+  it("at SOURCE_NATIVE the operator is told the one thing they can actually do", () => {
+    // FOUND BY RUNNING THE COMMAND, which is why the local path was worth building — and this test is
+    // the earlier pin TURNED OVER rather than deleted.
     //
-    // The cause is one predicate: `lifted = PROVENANCE_CHANNELS.filter((c) => !c.implemented)`. That was
-    // right when nothing was implemented and became wrong the moment something was. It is the
-    // `coverage.event` shape again — a field answering from a subset of the facts the answer needs.
+    // It originally asserted the defect: `wouldBeLiftedBy` was computed as
+    // `PROVENANCE_CHANNELS.filter((c) => !c.implemented)`, so at the rung a real local run actually
+    // reaches it named the four channels that do NOT exist and omitted DATA_OWNER_ATTESTATION — the one
+    // that is implemented, that reaches a strictly higher rung, and whose one-page form already ships in
+    // `docs/pilot-intake/ATTESTATION.md`. The field answered *which channels are unbuilt* where the
+    // question was *which would raise this rung*; the two coincided only while nothing was implemented.
     //
-    // NOT PATCHED HERE, and the reason is scope rather than doubt: `wouldBeLiftedBy` is a reported field
-    // of the readiness contract, so changing what it contains is a readiness-output change with a
-    // method-version question attached, and the authority ladder is explicitly preserved in this slice.
-    // Pinned so the defect is recorded with a test to turn over, not rediscovered by the next reader.
+    // Corrected by deriving from the LADDER, and the two readings are now kept apart rather than
+    // collapsed: `wouldBeLiftedBy` is everything above this rung, `availableNow` is what a customer can
+    // act on today. See `docs/AUTHORITY_NEXT_ACTION_V1.md`.
     const { report } = assessPairFromCsv(EXPECTATION, BILLING, { currency: "USD" });
     expect(report.authority.reached).toBe("SOURCE_NATIVE");
-    const offered = report.authority.wouldBeLiftedBy;
-    expect(offered).not.toContain("DATA_OWNER_ATTESTATION");          // the defect
-    const implemented = PROVENANCE_CHANNELS.filter((c) => c.implemented).map((c) => c.channel);
-    expect(implemented).toEqual(["DATA_OWNER_ATTESTATION"]);           // ...and it IS available
-    // The premise that makes this a defect rather than a preference: the omitted channel is the only one
-    // whose rung is reachable from here, and every channel that IS offered is unreachable.
+    expect(report.authority.availableNow).toEqual(["DATA_OWNER_ATTESTATION"]);
+    expect(report.authority.wouldBeLiftedBy).toContain("DATA_OWNER_ATTESTATION");
+    // The premise that made it a defect, kept as the premise that makes the fix meaningful: the offered
+    // channel is the only one whose rung is reachable from here at all.
     const spec = (c: string) => PROVENANCE_CHANNELS.find((p) => p.channel === c)!;
+    expect(PROVENANCE_CHANNELS.filter((c) => c.implemented).map((c) => c.channel))
+      .toEqual(["DATA_OWNER_ATTESTATION"]);
     expect(spec("DATA_OWNER_ATTESTATION").reaches).toBe("SOURCE_ATTESTED");
-    for (const c of offered) expect(spec(c).implemented, c).toBe(false);
+    // ...and the four that are still only a direction remain listed, so the gap keeps its shape.
+    const unbuilt = report.authority.wouldBeLiftedBy.filter((c) => !spec(c).implemented);
+    expect(unbuilt).toHaveLength(4);
+    for (const c of unbuilt) expect(spec(c).reaches, c).toBe("AUTHORITY_VERIFIED");
+    // The rung itself is UNMOVED by better advice — this slice changed guidance, not authority.
+    expect(report.provisional).toBe(true);
+    expect(report.attestation).toBeNull();
   });
 
   it("CURRENCY is the only reading term, and the asymmetry behind that is deliberate", () => {

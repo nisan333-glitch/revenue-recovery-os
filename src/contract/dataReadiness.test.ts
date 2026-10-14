@@ -19,7 +19,10 @@ import {
 import { validateExpectationExtract, type RawExpectationRow } from "./expectationExtractValidator";
 import { BILLING_EXTRACT_COLUMNS, BILLING_REQUIRED_COLUMNS } from "./billingExtract";
 import { validateBillingExtract, type RawBillingRow } from "./billingExtractValidator";
-import { evaluateDataReadiness, READINESS_LEVELS } from "./dataReadiness";
+import {
+  DATA_READINESS_METHOD_VERSION, DATA_READINESS_SCHEME, READINESS_LEVELS, evaluateDataReadiness,
+} from "./dataReadiness";
+import { ATTESTATION_METHOD_VERSION } from "./provenanceAttestation";
 import {
   AUTHORITY_LADDER, PROVENANCE_CHANNELS, SELF_ASSERTED_AUTHORITY_PARAMETERS,
   assessSourceFactAuthority, declaresOwnAuthority,
@@ -474,5 +477,159 @@ describe("7 · the customer-facing pilot request is GENERATED, not written", () 
     const committed = readFileSync(resolve(__dirname, "../../docs/pilot-intake/PILOT_DATA_REQUEST_V1.md"), "utf8");
     expect(committed).toContain("readiness report contains no money");
     expect(committed).toContain("PROVISIONAL");
+  });
+});
+
+describe("7 · what would lift the rung · guidance names what is REACHABLE, not what is unbuilt", () => {
+  // THE DEFECT THIS BLOCK CLOSES. `wouldBeLiftedBy` exists so "the customer conversation has somewhere
+  // to go", and it was computed as `PROVENANCE_CHANNELS.filter((c) => !c.implemented)` — *which channels
+  // are unbuilt*, not *which would raise this rung*. Those coincided while nothing was implemented and
+  // diverged the moment DATA_OWNER_ATTESTATION shipped, after which every real submission at
+  // SOURCE_NATIVE was told about four channels that do not exist and not about the one that does.
+  //
+  // It is the `coverage.event` shape: a field answering from a subset of the facts the answer needs.
+  const rank = (a: string): number => AUTHORITY_LADDER.indexOf(a as never);
+  const spec = (c: string) => PROVENANCE_CHANNELS.find((p) => p.channel === c)!;
+  const base = Object.freeze({ present: true, validFormat: true, declaredSourceNative: true });
+
+  it("POSITIVE · at SOURCE_NATIVE the attestation is offered, and offered as ACTIONABLE", () => {
+    const { expectation, settlement } = capable();
+    const r = evaluateDataReadiness(expectation, settlement);
+    expect(r.authority.reached).toBe("SOURCE_NATIVE");
+    expect(r.authority.wouldBeLiftedBy).toContain("DATA_OWNER_ATTESTATION");
+    // The half that was missing entirely: an operator can tell which one they can act on TODAY.
+    expect(r.authority.availableNow).toEqual(["DATA_OWNER_ATTESTATION"]);
+    // ...and the complete set is every channel above this rung — all five, not the four unbuilt ones.
+    expect(r.authority.wouldBeLiftedBy).toHaveLength(PROVENANCE_CHANNELS.length);
+  });
+
+  it("NEGATIVE · at SOURCE_ATTESTED it is neither offered nor actionable — it was already used", () => {
+    // The previously-correct branch, and the strongest evidence the general rule is right: it reproduces
+    // the answer the retired `toVerified` local gave, with no special case.
+    const a = assessSourceFactAuthority({
+      ...base,
+      attestation: {
+        dataOwnerRole: "Revenue Operations", checks: [], contradictions: [],
+        uncorroboratedClaims: [], allRungBearingClaimsPassed: true,
+      } as never,
+    });
+    expect(a.reached).toBe("SOURCE_ATTESTED");
+    expect(a.wouldBeLiftedBy).not.toContain("DATA_OWNER_ATTESTATION");
+    expect([...a.wouldBeLiftedBy]).toEqual(
+      PROVENANCE_CHANNELS.filter((c) => c.reaches === "AUTHORITY_VERIFIED").map((c) => c.channel),
+    );
+    // Empty, and not because nothing would help — because nothing IMPLEMENTED would.
+    expect(a.availableNow).toEqual([]);
+  });
+
+  it("NEGATIVE · a CONTRADICTED attestation is not offered as its own remedy", () => {
+    // Withheld on purpose. The channel was exercised and failed, so offering it reads as "send a
+    // corrected attestation" — adjust the declaration until it agrees with the file — which is exactly
+    // the coordinated edit this channel admits it cannot detect. A gate that points the incentive at
+    // the failure is worse than no gate, so the contradiction is NAMED and nothing is offered.
+    const a = assessSourceFactAuthority({
+      ...base,
+      attestation: {
+        dataOwnerRole: "Revenue Operations", checks: [],
+        contradictions: ["DECLARED_ROW_COUNT_AGREES"], uncorroboratedClaims: [],
+        allRungBearingClaimsPassed: false,
+      } as never,
+    });
+    expect(a.reached).toBe("SOURCE_NATIVE");
+    expect(a.wouldBeLiftedBy).not.toContain("DATA_OWNER_ATTESTATION");
+    expect(a.availableNow).toEqual([]);
+    expect(a.ceilingReason).toContain("CONTRADICTS the files on: DECLARED_ROW_COUNT_AGREES");
+  });
+
+  it("NEGATIVE · below SOURCE_NATIVE no channel is offered — those rungs are reached by fixing the FILE", () => {
+    // Every channel `reaches` SOURCE_ATTESTED or AUTHORITY_VERIFIED, so a naive application of the
+    // ladder rule would offer all five to a file that does not parse. And AUTHORITY_UNVERIFIED sits
+    // OUTSIDE the ladder, so `indexOf` is -1 there and every channel would look like an improvement.
+    for (const input of [
+      { present: false, validFormat: false, declaredSourceNative: false },
+      { present: true, validFormat: false, declaredSourceNative: true },
+      { present: true, validFormat: true, declaredSourceNative: false },
+    ]) {
+      const a = assessSourceFactAuthority(input);
+      expect(a.wouldBeLiftedBy, a.reached).toEqual([]);
+      expect(a.availableNow, a.reached).toEqual([]);
+    }
+  });
+
+  it("INVARIANT · derived from the catalogue, so a new channel needs no edit here", () => {
+    const cases = [
+      assessSourceFactAuthority(base),
+      assessSourceFactAuthority({ ...base, provenanceEstablished: true }),
+      assessSourceFactAuthority({
+        ...base,
+        attestation: { dataOwnerRole: "X", checks: [], contradictions: [], uncorroboratedClaims: [], allRungBearingClaimsPassed: true } as never,
+      }),
+    ];
+    for (const a of cases) {
+      // `availableNow` is a SUBSET, never a separate answer that could disagree.
+      for (const c of a.availableNow) expect(a.wouldBeLiftedBy, a.reached).toContain(c);
+      // Nothing is offered as actionable unless it is actually built.
+      for (const c of a.availableNow) expect(spec(c).implemented, c).toBe(true);
+      // Everything offered would STRICTLY raise the rung reached. This is the property the old
+      // `!implemented` filter did not have at all.
+      for (const c of a.wouldBeLiftedBy) {
+        expect(rank(spec(c).reaches), `${c} must reach above ${a.reached}`).toBeGreaterThan(rank(a.reached));
+      }
+    }
+    // Catalogue order, not a ranking: the list carries no recommendation beyond `availableNow`.
+    expect([...assessSourceFactAuthority(base).wouldBeLiftedBy])
+      .toEqual(PROVENANCE_CHANNELS.map((c) => c.channel));
+  });
+
+  it("CONTROL · the correction moved guidance and nothing else", () => {
+    // Everything a customer could mistake for a finding must be untouched by a change to advice. If any
+    // of this moves, the slice was not operator guidance and the version decision below is wrong.
+    const { expectation, settlement } = capable();
+    const r = evaluateDataReadiness(expectation, settlement);
+    expect(r.level).toBe("L3_EXACT_MONEY");
+    expect(r.provisional).toBe(true);
+    expect(r.authority.reached).toBe("SOURCE_NATIVE");
+    expect(r.attestation).toBeNull();
+    // Pinned by CODE rather than as an empty list: even a fully capable L3 pair blocks the two
+    // capabilities no source fact in this contract can supply, and that must be exactly as it was.
+    expect(r.blocked.map((b) => b.code)).toEqual(["NH-BX-3005", "NH-EX-2016"]);
+    expect(r.claimBoundary).toEqual({
+      observationOnly: true, computesMoney: false, constitutesProof: false, constitutesRevenue: false,
+    });
+  });
+
+  it("VERSION · neither version moves, and the reason is the file's own test", () => {
+    // DETERMINED BEFORE THE CHANGE, and pinned here because a version decision nothing asserts drifts.
+    //
+    // `rdy-2026.2` moved to `.2` because "a new authority state is genuinely REACHABLE", and stayed put
+    // through the billing rename because "no level, gate, conjunct, count or refusal changed". Here no
+    // level, gate, conjunct, count or refusal changes and no new state becomes reachable — `reached`,
+    // `provisional`, `level`, `capabilities` and `blocked` are identical in every branch, which the
+    // CONTROL above asserts. The counter-argument, that reported output changed, loses on the same
+    // precedent: the rename changed reported NAMES and deliberately did not move it, because "a version
+    // signalling a change that did not happen is its own defect".
+    expect(DATA_READINESS_METHOD_VERSION).toBe("rdy-2026.2");
+    // The SCHEME holds because `availableNow` is ADDITIVE, and a scheme id moves on a BREAKING shape
+    // change — `settlement` → `billing` was one; a new optional field is not.
+    expect(DATA_READINESS_SCHEME).toBe("nh-customer-data-readiness-v2");
+    // And corroboration is untouched, so the attestation method version has nothing to say about this.
+    expect(ATTESTATION_METHOD_VERSION).toBe("pav-2026.2");
+  });
+
+  it("VERSION · this layer does not touch calculationMethodVersion, and could not", () => {
+    // The constant the question invites and the WRONG one for this layer. It governs admission and
+    // execution, is server-stamped from ADMISSION_EVALUATOR_VERSION, and sits inside `canonicalBinding`
+    // (`PAX-`) and `canonicalFinding` — so moving it would fire NH-AX-1014 and NH-AX-2006 across every
+    // governed definition and force terms re-blessing, for a change to a guidance string.
+    //
+    // Asserted structurally rather than argued: the readiness path cannot reach it.
+    for (const f of ["dataReadiness.ts", "sourceFactAuthority.ts", "provenanceAttestation.ts"]) {
+      expect(readFileSync(resolve(__dirname, f), "utf8"), f).not.toContain("calculationMethodVersion");
+    }
+    // And nothing here is persisted, so there is no historical readiness report to reproduce.
+    const src = readFileSync(resolve(__dirname, "dataReadiness.ts"), "utf8");
+    for (const persistence of ["prisma", "PrismaClient", "INSERT", "writeFileSync"]) {
+      expect(src, persistence).not.toContain(persistence);
+    }
   });
 });
