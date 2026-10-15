@@ -73,15 +73,41 @@ const sVal = validateBillingExtract(
   sCsv.rows.map((cells, i) => ({ rowNumber: i + 1, cells })) as RawBillingRow[],
   { currency: "USD" },
 );
-check(eVal.usable && eVal.extractFaults.length === 0, "expectation_example.csv · no extract fault", JSON.stringify(eVal.extractFaults));
-check(sVal.usable && sVal.extractFaults.length === 0, "billing_example.csv · no extract fault", JSON.stringify(sVal.extractFaults));
+// The readiness evaluation is computed HERE, before the fault checks, because it carries the sanitized
+// form of what they need to report. Nothing between here and its first use depends on ordering: it reads
+// only `eVal` and `sVal`, both built immediately above.
+const readiness = evaluateDataReadiness(eVal, sVal);
+
+/**
+ * FAULT CODES ONLY — never a fault's `detail`, and this line is printed on every run.
+ *
+ * `check` details are emitted unconditionally by the report loop at the foot of this file, pass or fail,
+ * so whatever is passed here reaches stdout. Two of the four extract faults put a header string taken
+ * FROM THE FILE into their detail, and `parseStrictCsv` treats `records[0]` as the header
+ * unconditionally — so a headerless export makes the first DATA row the header and the detail then
+ * quotes a real identifier, date or amount. The first form of these two checks passed
+ * `JSON.stringify(val.extractFaults)`, which would have printed exactly that.
+ *
+ * The codes come from `ReadinessReport.*.extractFaultCodes` rather than from a second sanitizer written
+ * here: that field is already deduped, sorted and asserted detail-free against the headerless case, so
+ * this renderer cannot drift from it. The COUNT stays because it is ours and it is the useful half of
+ * the diagnostic. See `docs/EXTRACT_FAULT_REPORTING_V1.md`.
+ */
+const faultDetail = (codes: readonly string[]): string =>
+  codes.length === 0 ? "" : `${codes.length} fault code(s): ${codes.join(" ")}`;
+
+check(eVal.usable && eVal.extractFaults.length === 0, "expectation_example.csv · no extract fault",
+  faultDetail(readiness.expectation.extractFaultCodes));
+check(sVal.usable && sVal.extractFaults.length === 0, "billing_example.csv · no extract fault",
+  faultDetail(readiness.billing.extractFaultCodes));
+// Already correct, and the precedent the two above now follow: a row rejection's `detail` quotes CELL
+// values, so only the row number and the code are rendered.
 check(eVal.rejections.length === 0, "expectation_example.csv · every row ACCEPTED by the real validator",
   eVal.rejections.map((r) => `${r.rowNumber}:${r.code}`).join(" "));
 check(sVal.rejections.length === 0, "billing_example.csv · every row ACCEPTED by the real validator",
   sVal.rejections.map((r) => `${r.rowNumber}:${r.code}`).join(" "));
 
 // ── 3 · the example pair reaches L2 through the real readiness evaluator ────────────────────────
-const readiness = evaluateDataReadiness(eVal, sVal);
 check(readiness.level === "L2_MONETARY_RECONCILIATION_POSSIBLE",
   "the example pair reaches L2 — a joinable, reconcilable package", `level=${readiness.level}`);
 check(readiness.danglingObligationRefs === 0,

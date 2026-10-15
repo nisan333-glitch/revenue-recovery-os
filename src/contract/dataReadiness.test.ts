@@ -11,6 +11,7 @@
 //      may raise authority, and in this slice nothing reaches AUTHORITY_VERIFIED at all.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { EXPECTATION_EXTRACT_VERSION, EXPECTATION_EXTRACT_VERSION_HISTORY, STOPPED_FIELDS } from "./expectationExtract";
 import {
@@ -758,5 +759,125 @@ describe("8 · extract-level faults are REPORTED, and their details never are", 
     expect(BILLING_VALIDATION_METHOD_VERSION).toBe("bxv-2026.1");
     expect(DATA_READINESS_METHOD_VERSION).toBe("rdy-2026.2");
     expect(DATA_READINESS_SCHEME).toBe("nh-customer-data-readiness-v2");
+  });
+});
+
+describe("9 · GATE 2 · a validator detail never reaches the verifier's log", () => {
+  // THE DEFECT THIS BLOCK CLOSES. `scripts/pilot-intake/verify-package.ts` passed
+  // `JSON.stringify(val.extractFaults)` as a check DETAIL, and the report loop at the foot of that file
+  // prints every detail unconditionally — pass or fail. Two of the four extract faults quote a header
+  // string taken FROM THE FILE, which a headerless export turns into a real identifier, date or amount.
+  //
+  // Fixed by rendering `extractFaultCodes` instead. These tests carry the gate in three parts, and each
+  // part states what it proves rather than implying more.
+  const PI = resolve(__dirname, "..", "..", "scripts", "pilot-intake");
+  const stripped = (f: string): string => readFileSync(resolve(PI, f), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+  // THE HEADERLESS SHAPE, which is the hazard rather than a generic wrong-column file: `parseStrictCsv`
+  // takes `records[0]` as the header unconditionally, so an export with no header row makes the first
+  // DATA row the header — and the fault details then quote these very strings.
+  const E_CELLS = ["ENT-00041", "2026-03-01", "1499.00"];
+  const S_CELLS = ["INV-900", "2750.00"];
+  const asHeaderless = (vals: readonly string[]) =>
+    [{ rowNumber: 2, cells: Object.fromEntries(vals.map((v) => [v, v])) }];
+  const wrongPair = () => ({
+    expectation: validateExpectationExtract(E_CELLS, asHeaderless(E_CELLS) as never, E_TERMS),
+    billing: validateBillingExtract(S_CELLS, asHeaderless(S_CELLS) as never, S_TERMS),
+  });
+
+  it("FAILING VERIFICATION · the values the verifier renders carry codes and no detail", () => {
+    // THE CASE THAT MATTERS: both checks FAIL here, which is the only state in which anything is
+    // rendered at all — a passing run renders an empty string. So this is the failing-verification case,
+    // exercised on exactly the two values the verifier passes to its renderer.
+    const { expectation, billing } = wrongPair();
+    const r = evaluateDataReadiness(expectation, billing);
+    expect(r.expectation.extractFaultCodes).toEqual(["NH-EX-1002", "NH-EX-1003"]);
+    expect(r.billing.extractFaultCodes).toEqual(["NH-BX-1002", "NH-BX-1003"]);
+    // The premise — the validator really does quote the file — then the property.
+    const details = [...expectation.extractFaults, ...billing.extractFaults].map((f) => f.detail);
+    expect(details.some((d) => d.includes("ENT-00041") || d.includes("1499.00"))).toBe(true);
+    const rendered = [...r.expectation.extractFaultCodes, ...r.billing.extractFaultCodes].join(" ");
+    for (const d of details) expect(rendered, `rendered a detail: ${d}`).not.toContain(d);
+    for (const cell of [...E_CELLS, ...S_CELLS]) {
+      expect(rendered, `rendered a cell value: ${cell}`).not.toContain(cell);
+    }
+    // ...and every rendered token is a contract code and nothing else.
+    for (const token of rendered.split(" ")) expect(token).toMatch(/^NH-(EX|BX)-\d{4}$/);
+  });
+
+  it("STRUCTURAL · the verifier renders THAT field, and stringifies no validation", () => {
+    // What this half adds to the one above: it ties the verifier to the field whose detail-freeness the
+    // other half proves. Together they are the gate; neither alone is. It reads CALL SITES rather than
+    // prose — the eleventh instance of a guard that matched a term instead of a claim is recorded in
+    // CLAUDE.md, and this one is written to not be the twelfth.
+    const src = stripped("verify-package.ts");
+    expect(src).toContain("faultDetail(readiness.expectation.extractFaultCodes)");
+    expect(src).toContain("faultDetail(readiness.billing.extractFaultCodes)");
+    // No validation, fault list or accepted row may be serialised anywhere in the file.
+    for (const forbidden of [
+      /JSON\.stringify\(\s*\w*[eEsSvV]al\b/, /JSON\.stringify\([^)]*extractFaults/,
+      /JSON\.stringify\([^)]*\.rejections/, /JSON\.stringify\([^)]*\.accepted/,
+    ]) {
+      expect(src, `must not serialise a validation: ${forbidden.source}`).not.toMatch(forbidden);
+    }
+    // `.detail` may be read only as a CHECK's own detail in the report loop, never off a fault.
+    expect(src).not.toMatch(/extractFaults[\s\S]{0,40}\.detail/);
+    expect(src).not.toMatch(/\bf\.detail\b/);
+    // The already-correct row-rejection precedent the two fault checks now follow stays correct.
+    expect(src).toContain("rejections.map((r) => `${r.rowNumber}:${r.code}`)");
+  });
+
+  it("STRUCTURAL · the rest of the directory stays clean, and writes to stdout only", () => {
+    for (const f of ["dependency.ts", "emit-package.ts", "examples.ts"]) {
+      const src = stripped(f);
+      expect(src, `${f} must not serialise a validation`).not.toMatch(/JSON\.stringify\(\s*\w*[eEsSvV]al\b/);
+      expect(src, `${f} must not read a fault detail`).not.toMatch(/extractFaults[\s\S]{0,40}\.detail/);
+    }
+    // There is no stderr site in this directory at all, which is why "stdout or stderr" reduces to one
+    // stream. Asserted so a future write to the other one is a decision rather than an accident.
+    for (const f of ["verify-package.ts", "dependency.ts", "emit-package.ts", "examples.ts"]) {
+      expect(stripped(f), `${f} writes to stderr`).not.toMatch(/stderr|console\.(error|warn)/);
+    }
+  });
+
+  it("END TO END · the verifier's real stdout+stderr contains no validator detail", { timeout: 120_000 }, () => {
+    // The gate's literal wording, on the real streams. Its limit, stated rather than hidden: `DIR` is
+    // hardcoded to the committed examples, so this cannot induce a FAILING run — that is what the first
+    // test is for. What it does prove is that the two streams of an actual invocation carry none of the
+    // detail strings the real validators produce for those files.
+    //
+    // MEASURED, not assumed: all four mutations tried against this slice — restoring either
+    // `JSON.stringify(val.extractFaults)`, rendering `f.detail`, and adding a third stringify — are
+    // caught by the STRUCTURAL test above and by none of them by this one, because on clean examples
+    // the fault list is empty and nothing is rendered either way. So the structural half is the
+    // load-bearing guard and this half is corroboration. A test that cannot fail is not a control, and
+    // this one can only fail if the verifier starts printing something new about a clean file.
+    const out = spawnSync("npx", ["vite-node", "scripts/pilot-intake/verify-package.ts"], {
+      cwd: resolve(__dirname, "..", ".."), encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
+    });
+    const combined = `${out.stdout ?? ""}${out.stderr ?? ""}`;
+    expect(out.status, combined.slice(-800)).toBe(0);
+    expect(combined).toContain("242/242 package checks passed");
+    // Recomputed from the committed CSVs through the real validators, so the forbidden set is whatever
+    // the validators would actually say about these files rather than a list written beside the test.
+    const pkg = resolve(__dirname, "..", "..", "docs", "pilot-intake");
+    const cells = (name: string) => {
+      const lines = readFileSync(resolve(pkg, name), "utf8").split("\n").filter((l) => l !== "");
+      const cols = lines[0]!.split(",");
+      return { cols, rows: lines.slice(1).map((l, i) => ({ rowNumber: i + 1, cells: Object.fromEntries(cols.map((c, j) => [c, l.split(",")[j] ?? ""])) })) };
+    };
+    const e = cells("expectation_example.csv");
+    const s = cells("billing_example.csv");
+    const faults = [
+      ...validateExpectationExtract(e.cols, e.rows as never, E_TERMS).extractFaults,
+      ...validateBillingExtract(s.cols, s.rows as never, S_TERMS).extractFaults,
+      ...validateExpectationExtract(e.cols, e.rows as never, E_TERMS).rejections,
+      ...validateBillingExtract(s.cols, s.rows as never, S_TERMS).rejections,
+    ].map((x) => x.detail).filter((d) => d.length >= 8);
+    for (const d of faults) expect(combined, `leaked a detail: ${d}`).not.toContain(d);
+    // ...and the sanitized render is what appears instead: no bare JSON array of fault objects.
+    expect(combined).not.toMatch(/no extract fault · \[\{/);
+    expect(combined).not.toMatch(/"detail":/);
   });
 });
