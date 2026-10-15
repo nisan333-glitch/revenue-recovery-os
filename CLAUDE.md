@@ -1481,7 +1481,8 @@ own instrument for the sixth time. The failing-verification case is carried beha
 `1499.00`, that the rendered values contain neither, and that every rendered token matches
 `/^NH-(EX|BX)-\d{4}$/`.
 
-**The gap it uncovered is larger than the slice, and is reported rather than fixed: CI does not run
+**The gap it uncovered is larger than the slice, and was reported rather than fixed — and is since
+CLOSED for all four, see the CI-coverage decision below: CI does not run
 `pilot:verify` at all.** The four jobs run `check:purity`, `test`, `build`, `typecheck:scripts`,
 `test:ep2`, `test:journey` and `verify:registers` — so `pilot:verify` (242 checks), `readiness:control`
 (25), `recon:verify` and `recon:ref:verify` execute **only when invoked by hand**. That is why the
@@ -1498,6 +1499,52 @@ any stderr site at all. It is **not** categorical about verifier output: `check(
 at 240-odd call sites, and the guard narrows the ban to validations, fault lists, rejection lists and
 accepted rows — the constructs that carry customer text. Breadth beyond that is a convention, not a
 mechanism.
+
+**CI verifier-coverage decision (2026-10-15).** The gap the slice above reported was closed for all four
+named verifiers — `pilot:verify` (242 checks), `readiness:control` (25), `recon:verify` and
+`recon:ref:verify` now run in a fifth, read-only CI job
+([`docs/CI_VERIFIER_COVERAGE_V1.md`](docs/CI_VERIFIER_COVERAGE_V1.md)). Clearing one blocker came first,
+and it is the rule worth keeping:
+
+> **An uncommitted freeze is not a freeze.** The archived bytes are the evidence; a lock naming hashes of
+> files nobody kept is a receipt for a lost artefact. `.gitignore` excluded `e2e/fixtures/` wholesale, so
+> both frozen packages had **zero tracked files** — and `freeze.mjs` reads them with no existence guard,
+> so three of the four verifiers would have thrown `ENOENT` on every clean checkout.
+
+This is the loss already on record — the V1 scorer's bytes *"had never been committed"* and the artefact
+had to be **reconstructed** from recorded patches. **Nothing was regenerated:** all eight lock-covered
+artefacts hash to their tracked locks (`31992d23`, `0ef21e40`, `76465e96`, `0f5558e4`, `111db9d1`) and both
+locks hash to their own `compositeSha256`, verified before staging and again after.
+
+> **Inputs are evidence; outputs are not.** Ten files and 416 KB are tracked; `results.json` at ~500 KB
+> per package, every `scoreboard`, `report` and `baseline.*` stays ignored, because they are rewritten by
+> each run and would dirty the tree. A figure quoted while deciding this was wrong and is corrected in the
+> record: the directories total ~1.8 MB, but ~1.5 MB of that is output.
+
+> **A gate that rebuilds its own subject cannot detect the one thing it exists to detect**, so the job
+> verifies the **archived** bytes and deliberately does not regenerate first — even though both generators
+> are seeded and byte-reproducible, which would have been the tempting shortcut.
+
+**Fail-closed was proved by induction, not inferred from exit codes**: a renamed template column fails
+`pilot:verify`; a dropped `entitlement_id` column fails `readiness:control`; a single appended byte fails
+`recon:verify` and `recon:ref:verify` with *"changed since the freeze"*. Each reverted, all four passing
+again, no `continue-on-error` and no `|| true` in the workflow — asserted structurally alongside the
+presence of all four commands, because a workflow is configuration and configuration is silently outgrown.
+
+**Two insensitivities were found while proving it and are reported rather than left quiet**, because they
+bound what the green job means: `pilot:verify` does not fail on a trailing newline in `README.md`, and
+`readiness:control` does not fail when every currency in the V3 expectation is flipped to EUR. Neither is
+a wiring defect — `recon:verify` is the byte-level guard and catches both — and **the division of labour
+is the point: the control checks meaning, the freeze checks bytes.** Separately, the PII check's own first
+form reported 1260 "phone numbers" that were **ISO dates**, the same instrument defect already recorded
+against the package verifier; it was corrected before its output was believed.
+
+**1160 (1 skipped) with and without a database, 599/599 ep2, 242/242 package, 25/25 control, 120/120
+journey.** No version constant moved, no contract moved, no customer-facing artefact moved, every frozen
+artefact byte-identical, and **no observed amount became Revenue Returned.** `verify:evidence` is a fifth
+verifier **still outside the gate** and is the recommended next action; it raises a governed question this
+slice did not answer — whether a recorded historical **measurement** (`baseline.*`) is evidence to preserve
+or output to regenerate.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,

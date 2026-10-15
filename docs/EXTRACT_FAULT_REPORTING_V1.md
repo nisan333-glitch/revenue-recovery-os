@@ -179,6 +179,15 @@ The failing-verification case is therefore carried behaviourally: a **headerless
 validators, asserting the validator does quote `ENT-00041` and `1499.00`, that the rendered values contain
 neither, and that every rendered token matches `/^NH-(EX|BX)-\d{4}$/`.
 
+### The gap it uncovered — CLOSED IN PART on 2026-10-15
+
+> **RESOLVED for the four named verifiers.** `pilot:verify`, `readiness:control`, `recon:verify` and
+> `recon:ref:verify` now run in a fifth CI job, fail-closed and proved by induction, after the blocker
+> below was cleared: the frozen benchmark inputs were untracked, so three of the four would have thrown
+> `ENOENT` on a clean checkout. See [`CI_VERIFIER_COVERAGE_V1.md`](CI_VERIFIER_COVERAGE_V1.md).
+> **`verify:evidence` remains outside CI** and is the recommended next action. The paragraph below is
+> preserved as the finding.
+
 ### The gap it uncovered, reported not fixed
 
 **CI does not run `pilot:verify` at all.** The four jobs run `check:purity`, `test`, `build`,
