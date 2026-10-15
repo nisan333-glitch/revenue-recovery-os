@@ -118,6 +118,21 @@ export interface ReadinessReport {
     readonly acceptedRows: number;
     readonly rejectedRows: number;
     readonly rejectionCodes: readonly string[];
+    /**
+     * EXTRACT-level fault codes — deduped and sorted, and deliberately a SEPARATE field from
+     * `rejectionCodes`, which is row level. An unusable extract has no rejected rows at all, so a reader
+     * looking only at `rejectionCodes` is told nothing about why the file could not be read.
+     *
+     * CODES ONLY, and the reason is a leak this very field would otherwise open. The validator pairs each
+     * code with a `detail`, and two of the four quote a header string taken FROM THE FILE
+     * (`UNDECLARED_COLUMN`, `DUPLICATE_COLUMN`). `parseStrictCsv` takes `records[0]` as the header
+     * unconditionally, so a customer export with no header row makes the first DATA row the header — and
+     * the detail then reads `column "ENT-00041" is not declared by …`, quoting a real entitlement ref, a
+     * date or an amount. A headerless export is an ordinary mistake, so that leak would fire precisely in
+     * the case this field exists to diagnose. A code is a constant of ours; a detail is not, so the detail
+     * never leaves the validator.
+     */
+    readonly extractFaultCodes: readonly string[];
     readonly unknownAmountRows: number;
     readonly monetaryQuantification: ExpectationExtractValidation["monetaryQuantification"];
   };
@@ -126,6 +141,8 @@ export interface ReadinessReport {
     readonly acceptedRows: number;
     readonly rejectedRows: number;
     readonly rejectionCodes: readonly string[];
+    /** EXTRACT-level fault codes. Codes only, for the reason given on the expectation side above. */
+    readonly extractFaultCodes: readonly string[];
     readonly creditRows: number;
     readonly currencyMismatchRows: number;
     readonly obligationRefPopulatedRows: number;
@@ -373,6 +390,9 @@ export function evaluateDataReadiness(
       acceptedRows: expectation.accepted.length,
       rejectedRows: expectation.rejections.length,
       rejectionCodes: Object.freeze([...new Set(expectation.rejections.map((r) => r.code))].sort()),
+      // `.code` and never `.detail`: see the field's own note. The dedupe and sort match the row-level
+      // sibling exactly, so neither list's order can depend on where in the header a fault was found.
+      extractFaultCodes: Object.freeze([...new Set(expectation.extractFaults.map((f) => f.code))].sort()),
       unknownAmountRows: expectation.unknownAmountCount,
       monetaryQuantification: expectation.monetaryQuantification,
     }),
@@ -381,6 +401,7 @@ export function evaluateDataReadiness(
       acceptedRows: billing.accepted.length,
       rejectedRows: billing.rejections.length,
       rejectionCodes: Object.freeze([...new Set(billing.rejections.map((r) => r.code))].sort()),
+      extractFaultCodes: Object.freeze([...new Set(billing.extractFaults.map((f) => f.code))].sort()),
       creditRows: billing.creditRowCount,
       currencyMismatchRows: billing.currencyMismatchCount,
       obligationRefPopulatedRows: obligationRefPopulated,

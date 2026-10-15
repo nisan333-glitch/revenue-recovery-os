@@ -17,7 +17,10 @@ import {
   CORRECTED_CANDIDATES, ORPHANED_CORRECTIONS, STOPPED_FIELD_CORRECTIONS, correctionsFor,
 } from "./expectationExtractCorrections";
 import { validateExpectationExtract, type RawExpectationRow } from "./expectationExtractValidator";
-import { BILLING_EXTRACT_COLUMNS, BILLING_REQUIRED_COLUMNS } from "./billingExtract";
+import {
+  BILLING_EXTRACT_COLUMNS, BILLING_EXTRACT_VERSION, BILLING_REQUIRED_COLUMNS,
+  BILLING_VALIDATION_METHOD_VERSION,
+} from "./billingExtract";
 import { validateBillingExtract, type RawBillingRow } from "./billingExtractValidator";
 import {
   DATA_READINESS_METHOD_VERSION, DATA_READINESS_SCHEME, READINESS_LEVELS, evaluateDataReadiness,
@@ -631,5 +634,129 @@ describe("7 · what would lift the rung · guidance names what is REACHABLE, not
     for (const persistence of ["prisma", "PrismaClient", "INSERT", "writeFileSync"]) {
       expect(src, persistence).not.toContain(persistence);
     }
+  });
+});
+
+describe("8 · extract-level faults are REPORTED, and their details never are", () => {
+  // THE GAP THIS BLOCK CLOSES. An unusable extract came back `usable: false` and `L0_NOT_READABLE`
+  // carrying no code at all, although the validator had computed `NH-EX-1001..1004` into `extractFaults`
+  // — the report surfaced `rejectionCodes` (ROW level) and dropped them. So the one case where NH says
+  // "I cannot read this at all" was the case where it explained least.
+  //
+  // It is codes-only, and that is a privacy decision rather than a shortcut. See the PRIVACY tests.
+  const wrongShape = () => validateExpectationExtract(["a", "b", "c"], [
+    { rowNumber: 2, cells: { a: "1", b: "2", c: "3" } },
+  ], E_TERMS);
+
+  it("POSITIVE · a wrong-column extract names the contract codes that refused it", () => {
+    const { settlement } = capable();
+    const r = evaluateDataReadiness(wrongShape(), settlement);
+    expect(r.level).toBe("L0_NOT_READABLE");
+    expect(r.expectation.usable).toBe(false);
+    // NH-EX-1002 = a required column is absent · NH-EX-1003 = an undeclared column is present.
+    expect(r.expectation.extractFaultCodes).toEqual(["NH-EX-1002", "NH-EX-1003"]);
+  });
+
+  it("POSITIVE · the billing half answers in its own code family", () => {
+    const { expectation } = capable();
+    const r = evaluateDataReadiness(expectation, validateBillingExtract(["x", "y"], [
+      { rowNumber: 2, cells: { x: "1", y: "2" } },
+    ], S_TERMS));
+    expect(r.level).toBe("L0_NOT_READABLE");
+    expect(r.billing.extractFaultCodes).toEqual(["NH-BX-1002", "NH-BX-1003"]);
+    // ...and the side that is fine says so, rather than inheriting the other side's faults.
+    expect(r.expectation.extractFaultCodes).toEqual([]);
+  });
+
+  it("NEGATIVE · a clean pair reports an EMPTY list, not a missing one", () => {
+    const { expectation, settlement } = capable();
+    const r = evaluateDataReadiness(expectation, settlement);
+    expect(r.expectation.extractFaultCodes).toEqual([]);
+    expect(r.billing.extractFaultCodes).toEqual([]);
+  });
+
+  it("NEGATIVE · 'no rows' and 'wrong shape' stay DISTINGUISHABLE", () => {
+    // Both are `usable: false` and both are L0, so without the codes they are one undifferentiated
+    // "unreadable" — and the remedies are opposite. An empty extract means "send us the obligations";
+    // a wrong header means "fix the columns". NH-EX-1001 is the one that must not collapse into the rest,
+    // because an empty extract is never read as "nothing was owed".
+    const { settlement } = capable();
+    const empty = evaluateDataReadiness(validateExpectationExtract(E_FULL, [], E_TERMS), settlement);
+    expect(empty.expectation.extractFaultCodes).toEqual(["NH-EX-1001"]);
+    const wrong = evaluateDataReadiness(wrongShape(), settlement);
+    expect(wrong.expectation.extractFaultCodes).not.toContain("NH-EX-1001");
+  });
+
+  it("NEGATIVE · extract level is not row level — an unusable extract rejects no ROW", () => {
+    // The distinction the original §6b pin was really protecting, and it survives the fix: no row was
+    // ever examined, so reporting a rejected row would assert work that never happened.
+    const { settlement } = capable();
+    const r = evaluateDataReadiness(wrongShape(), settlement);
+    expect(r.expectation.rejectionCodes).toEqual([]);
+    expect(r.expectation.rejectedRows).toBe(0);
+    expect(r.expectation.acceptedRows).toBe(0);
+    expect(r.expectation.extractFaultCodes.length).toBeGreaterThan(0);
+  });
+
+  it("PRIVACY · a HEADERLESS export leaks nothing, which is the case the codes exist for", () => {
+    // THE HAZARD, PROVED RATHER THAN ASSUMED. `parseStrictCsv` takes `records[0]` as the header
+    // unconditionally, so an export with no header row makes the first DATA row the header. The
+    // validator's `UNDECLARED_COLUMN` detail then reads, verbatim:
+    //
+    //     column "ENT-00041" is not declared by nh.expectation-extract@1.1.0
+    //     column "1499.00"   is not declared by nh.expectation-extract@1.1.0
+    //
+    // A headerless export is an ordinary customer mistake, so rendering details would leak real
+    // identifiers, dates and AMOUNTS exactly when this field is most needed. The guard is computed from
+    // the validation rather than hardcoded, so it cannot drift away from what the validator produces.
+    const DATA = ["ENT-00041", "2026-03-01", "2026-03-31", "1499.00", "USD"];
+    const v = validateExpectationExtract(DATA, [
+      { rowNumber: 2, cells: Object.fromEntries(DATA.map((d) => [d, d])) },
+    ], E_TERMS);
+    expect(v.extractFaults.some((f) => f.detail.includes("1499.00"))).toBe(true); // the premise
+    const { settlement } = capable();
+    const emitted = JSON.stringify(evaluateDataReadiness(v, settlement));
+    for (const value of DATA) {
+      if (value === "USD") continue; // the governed currency is the operator's own term, not file data
+      expect(emitted, `leaked source value ${value}`).not.toContain(value);
+    }
+    // ...and no detail string reaches the report, whatever it happens to contain.
+    for (const f of v.extractFaults) expect(emitted).not.toContain(f.detail);
+  });
+
+  it("PRIVACY · structural · the evaluator never reads `.detail` and never emits the key", () => {
+    // Lexical guards have failed in this repository eleven times by matching a term rather than a claim,
+    // so this one reads the construct it is actually asking about: a property access on a fault.
+    const src = readFileSync(resolve(__dirname, "dataReadiness.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    expect(src).not.toMatch(/extractFaults\.map\(\(f\) => f\.detail\)/);
+    expect(src).not.toMatch(/\bf\.detail\b/);
+    expect(src).toContain("extractFaults.map((f) => f.code)");
+    const { settlement } = capable();
+    expect(JSON.stringify(evaluateDataReadiness(wrongShape(), settlement))).not.toContain("detail");
+  });
+
+  it("CANONICAL · the fault record still has exactly two keys", () => {
+    // `expectationValidationWitness` hashes `extractFaults.map((f) => [f.code, f.detail])` alongside the
+    // header and every raw cell. It has no production caller today, which is NOT why this is safe — the
+    // Detector #2 rule is that "nothing fails today" was never the right test. It is safe because the
+    // validators were not touched, and this pin is what makes a later third field fail loudly instead of
+    // silently entering the preimage and re-identifying every validation.
+    expect(Object.keys(wrongShape().extractFaults[0]!)).toEqual(["code", "detail"]);
+  });
+
+  it("VERSION · a report-only addition moves no version, and no customer contract", () => {
+    // Determined before editing. Neither validator was touched, so the two extract contracts did not
+    // move at all — no column, tier, code, severity, capability or acceptance behaviour changed, and a
+    // customer's file is judged identically, which is why every docs/pilot-intake artefact stays
+    // byte-identical. The readiness scheme holds because the field is ADDITIVE, and the method version
+    // holds because no level, gate, conjunct, count or refusal changed and no new state became
+    // reachable: `usable: false` and `L0_NOT_READABLE` already existed. The report stops DROPPING codes
+    // it already held.
+    expect(EXPECTATION_EXTRACT_VERSION).toBe("1.1.0");
+    expect(BILLING_EXTRACT_VERSION).toBe("1.0.0");
+    expect(BILLING_VALIDATION_METHOD_VERSION).toBe("bxv-2026.1");
+    expect(DATA_READINESS_METHOD_VERSION).toBe("rdy-2026.2");
+    expect(DATA_READINESS_SCHEME).toBe("nh-customer-data-readiness-v2");
   });
 });

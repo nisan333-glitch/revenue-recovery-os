@@ -112,7 +112,7 @@ describe("3 · it fails closed on input it cannot trust", () => {
     }
   });
 
-  it("a readable file with the WRONG shape is refused by the contract, not by the parser", () => {
+  it("a readable file with the WRONG shape is refused by the contract, and SAYS WHICH CODE", () => {
     // The layering that matters: transport decides whether the bytes are a CSV, and the governed contract
     // decides whether the CSV is an extract. A well-formed CSV of the wrong columns must reach the
     // contract and be refused there, with the contract's own code.
@@ -122,14 +122,21 @@ describe("3 · it fails closed on input it cannot trust", () => {
     expect(report.expectation.usable).toBe(false);
     expect(report.level).toBe("L0_NOT_READABLE");
     //
-    // A GAP REPORTED, NOT PATCHED. The readiness report exposes ROW-level rejection codes and not
-    // EXTRACT-level fault codes, so a file with the wrong columns comes back `usable: false` and
-    // `L0_NOT_READABLE` carrying NO code that says why — although the validator computed them
-    // (`NH-EX-1002` and friends live in `extractFaults`, which the report drops). For a tool whose point
-    // is to tell a customer which fact is missing and who owns it, that is a real hole; closing it means
-    // adding a field to `ReadinessReport`, which is a readiness-contract change with a method-version
-    // question attached and is outside this slice. Pinned here so the behaviour is recorded rather than
-    // rediscovered, and so a future fix has a test to turn over.
+    // THE §6b PIN, TURNED OVER. It originally asserted the gap: the report exposed ROW-level rejection
+    // codes and dropped the EXTRACT-level ones, so a wrong-column file came back `usable: false` and
+    // `L0_NOT_READABLE` carrying NO code saying why — although the validator had computed them. For a
+    // tool whose whole point is to name the missing fact, the one case where NH says "I cannot read this
+    // at all" was the case where it explained least.
+    //
+    // Closed by surfacing the CODES ONLY. Two of the four fault details quote a header string taken from
+    // the file, and `parseStrictCsv` takes `records[0]` as the header unconditionally — so a headerless
+    // export makes the first DATA row the header and the detail would quote a real identifier or amount.
+    // See `docs/EXTRACT_FAULT_REPORTING_V1.md`.
+    expect(report.expectation.extractFaultCodes).toEqual(["NH-EX-1002", "NH-EX-1003"]);
+    //
+    // ...and the row-level answer is STILL empty, which is correct and is the distinction the original
+    // pin was really protecting: no row was ever examined, so reporting a rejected row would assert work
+    // that never happened. The two lists answer different questions and neither substitutes for the other.
     expect(report.expectation.rejectionCodes).toEqual([]);
     expect(report.expectation.rejectedRows).toBe(0);
   });
