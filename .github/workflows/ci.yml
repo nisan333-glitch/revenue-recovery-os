@@ -47,6 +47,59 @@ jobs:
       - name: Strict types for the local readiness scripts
         run: npm run typecheck:scripts
 
+  frozen-verifiers:
+    name: Frozen packages + intake verifiers (read-only)
+    # THE GAP THIS JOB CLOSES. Four verifiers guarding the customer-facing pilot package and the two
+    # frozen benchmark packages ran ONLY when invoked by hand: nothing in this workflow called
+    # `pilot:verify`, `readiness:control`, `recon:verify` or `recon:ref:verify`. A test CI never runs is
+    # not a guard, which this repository has now paid for twice.
+    #
+    # They are their own job rather than steps on `verify` so a failure is a distinct job-level signal
+    # instead of being ambiguous with a build or a unit-test failure — the same one-concern-per-job
+    # pattern the EP-9, EP-19 and EP-10 jobs follow.
+    #
+    # NO SERVICES ARE DECLARED, and that is a property rather than an omission. All four commands were
+    # inspected before being wired: none touches a database, the network or HTTP, and none reads a clock
+    # or an RNG, so there is nothing to isolate and nothing to make a run non-deterministic. Each exits
+    # non-zero on a real verification failure, which is what fails this job — there is no `continue-on-
+    # error` and no `|| true` anywhere below, so the behaviour is fail-closed by construction.
+    #
+    # They verify the ARCHIVED bytes. The frozen inputs are tracked (see .gitignore), and this job
+    # deliberately does NOT regenerate them first: a gate that rebuilds its own subject cannot detect the
+    # one thing it exists to detect.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      # 242 checks. The customer-facing package is GENERATED from the governed field specs, so this is
+      # what catches a committed document drifting from the contract that validates a customer's file.
+      - name: Pilot intake package has not drifted from the governed specs
+        run: npm run pilot:verify
+
+      # 25 checks, read-only over both frozen packages: the ceiling each one reaches, that no authority
+      # is fabricated, and that the readiness report still computes no money.
+      - name: Customer data readiness control
+        run: npm run readiness:control
+
+      # The freeze itself, plus two properties that would make a good-looking result meaningless if they
+      # failed silently: the generator imports nothing from the product, and no product module reads the
+      # ground truth.
+      - name: V3 synthetic reconciliation package — freeze and independence
+        run: npm run recon:verify
+
+      - name: Obligation-ref variant — freeze, and that V3's own package is unmoved
+        run: npm run recon:ref:verify
+
   postgres-integration:
     name: EP-9 Postgres-backed verification
     # EP-9.1 · Runs the real governed-backend suites against an ephemeral, pinned

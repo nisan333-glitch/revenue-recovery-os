@@ -10,7 +10,7 @@
 //   4. it fails CLOSED on malformed, mis-encoded and mis-keyed input, with the input's own code;
 //   5. an NH defect is reported as an NH defect and never as unreadable customer data.
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PAIR_RUN_PREAMBLE, assessPairFromCsv, parseArguments } from "./assessPairCore";
 import { CsvTransportError, parseStrictCsv } from "./csvPairTransport";
@@ -304,6 +304,32 @@ describe("7 · the verification covering this path cannot be escaped", () => {
     // ...and the test files are collected by the suite CI actually invokes.
     expect(readFileSync(resolve(root, "vite.config.ts"), "utf8"))
       .toContain('"scripts/data-readiness/**/*.test.ts"');
+  });
+
+  it("CI runs all four read-only verifiers, fail-closed", () => {
+    // THE SECOND GAP THIS DIRECTORY'S WORK UNCOVERED. Nothing in the workflow called `pilot:verify`
+    // (242 checks), `readiness:control` (25), `recon:verify` or `recon:ref:verify`, so four verifiers
+    // guarding the customer-facing package and both frozen benchmark packages ran only by hand. *A test
+    // CI never runs is not a guard* — asserted here because a workflow is configuration and
+    // configuration is silently outgrown.
+    const root = resolve(__dirname, "..", "..");
+    const ci = readFileSync(resolve(root, ".github", "workflows", "ci.yml"), "utf8");
+    const scripts = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).scripts;
+    for (const cmd of ["pilot:verify", "readiness:control", "recon:verify", "recon:ref:verify"]) {
+      expect(scripts[cmd], `${cmd} must exist as an npm script`).toBeTruthy();
+      expect(ci, `CI must run ${cmd}`).toContain(`npm run ${cmd}`);
+    }
+    // FAIL-CLOSED, structurally. A step that swallowed a non-zero exit would leave the job green while
+    // the verifier refused, which is worse than not running it: it would look like coverage.
+    expect(ci).not.toContain("continue-on-error");
+    expect(ci).not.toMatch(/npm run (pilot:verify|readiness:control|recon:(ref:)?verify)[^\n]*\|\|/);
+    // ...and the frozen inputs the last three READ are tracked, or they throw ENOENT on a clean
+    // checkout and the job is red for a reason that has nothing to do with the freeze.
+    for (const pkg of ["reconciliation-synthetic", "reconciliation-obligation-ref"]) {
+      for (const f of ["expectation.csv", "observation.csv", "ground-truth.csv", "planted-register.json"]) {
+        expect(existsSync(resolve(root, "e2e", "fixtures", pkg, f)), `${pkg}/${f} must be present`).toBe(true);
+      }
+    }
   });
 
   it("no governed reading term is passed that the validator does not declare", () => {
