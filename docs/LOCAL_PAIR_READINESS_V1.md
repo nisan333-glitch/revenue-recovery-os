@@ -86,7 +86,7 @@ importer list is **unchanged at nine** under the stricter reading, which evidenc
 entry is a real importer. The falsifier pins **both directions** on a committed pair: the core imports
 and is listed, its test only mentions and is not. The negative half is the one that was broken.
 
-## 6 · Reported, not patched · **one of the four is since RESOLVED, see 6a**
+## 6 · Reported, not patched · **two of the four are since RESOLVED, see 6a and 6b**
 
 **a · `wouldBeLiftedBy` names only channels that do not exist.** At `SOURCE_NATIVE` — the rung a real
 local run reaches — the field lists the four unimplemented channels and omits `DATA_OWNER_ATTESTATION`,
@@ -109,6 +109,17 @@ the readiness contract and the authority ladder is explicitly preserved in this 
 them — `extractFaults` is not surfaced. For a tool whose point is to name the missing fact and its owner,
 that is a real hole; closing it is a `ReadinessReport` shape change with a method-version question.
 
+> **RESOLVED 2026-10-15 — the paragraph above is preserved as the finding, not as current behaviour.**
+> `ReadinessReport.expectation` and `.billing` now carry `extractFaultCodes`, so a wrong-column file
+> answers `["NH-EX-1002", "NH-EX-1003"]` where it previously answered nothing. **Codes only**, because two
+> of the four fault details quote a header string taken from the file and a headerless export makes that a
+> data row — the detail quotes real identifiers, dates and amounts. The method-version question the
+> paragraph anticipated was answered rather than dodged: **nothing moves**, because no level, gate,
+> conjunct, count or refusal changed and neither validator was touched. Full treatment in
+> [`EXTRACT_FAULT_REPORTING_V1.md`](EXTRACT_FAULT_REPORTING_V1.md). The consequence it does NOT close:
+> `emit-package.ts` still hardcodes `NH-EX-1002`/`NH-BX-1002` into a generated customer document, which
+> is now derivable — the named next slice.
+
 **c · nine type errors remain in `scripts/pilot-intake/verify-package.ts`** (unused bindings, unchecked
 regex-group indexing). Widening the typecheck project to all of `scripts/` would mean editing the package
 verifier from inside a slice that does not own it.
@@ -129,3 +140,15 @@ Authority is `SOURCE_NATIVE` with no attestation and `SOURCE_ATTESTED` at best w
 reaches `AUTHORITY_VERIFIED`**, every level stays PROVISIONAL, and that is unchanged by this slice. It
 finds no leakage and reports no money — asserted on the emitted JSON string, not on the object, because
 serialisation is the form an operator actually pastes into a ticket.
+
+## 8 · Standing findings from later slices
+
+**The dead `asOf` test fixture (recorded 2026-10-15, not edited).**
+`src/contract/dataReadiness.test.ts` declares `const E_TERMS = Object.freeze({ currency: "USD", asOf:
+"2026-06-30" })` while `ExpectationExtractTerms` declares only `currency`, `dateLocale` and
+`amountFormat`. It is the same defect §4 above removed from `control.ts`, and it survives for a reason
+worth recording: a **named `const` escapes TypeScript's excess-property check**, which fires only on a
+fresh object literal at the call site — so `typecheck:scripts` caught the one in `control.ts` and no
+project catches this one. Inert, and still wrong in the way §4 names: it reads as a governed **cut-off**
+handed to a validator whose stated property is that it *consults no clock*. Recorded rather than fixed so
+the slice that found it did not silently widen.

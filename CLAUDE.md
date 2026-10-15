@@ -1336,7 +1336,8 @@ the rung a real local run reaches — `wouldBeLiftedBy` names the four channels 
 `DATA_OWNER_ATTESTATION`, the one that does and the only next step available to an operator reading the
 report today. `lifted = PROVENANCE_CHANNELS.filter((c) => !c.implemented)` was right when nothing was
 implemented and wrong the moment something was — the `coverage.event` shape again. Also: the report drops
-extract-level fault codes, so a wrong-column file is `L0_NOT_READABLE` with **no code saying why**; nine type
+extract-level fault codes, so a wrong-column file is `L0_NOT_READABLE` with **no code saying why** — **also
+since FIXED, see the extract-fault decision below**; nine type
 errors remain in the package verifier; and `--currency` being the only reading term is a **design, not a
 blocker** — the package asks for `YYYY-MM-DD` and raw amounts and names local date order and thousands
 separators as spreadsheet damage, while `BillingExtractTerms` carries no locale term at all, so such a flag
@@ -1397,6 +1398,60 @@ and without a database, 599/599 ep2, 242/242 package checks, 25/25 control, 120/
 stays **PROVISIONAL**, and **no observed amount became Revenue Returned.** One residual risk stated rather
 than papered over: `availableNow` is a **claim about NH's own build**, true only while the catalogue's
 `implemented` flag is accurate, which nothing outside that catalogue verifies.
+
+**Extract-fault reporting decision (2026-10-15).** The second of the four findings, taken on its own. A
+readable CSV with the wrong columns came back `usable: false` and `L0_NOT_READABLE` carrying **no code
+saying why**: the validator had computed `NH-EX-1001..1004`/`NH-BX-1001..1004` into `extractFaults`, and the
+report surfaced `rejectionCodes` — which is **row** level — while dropping the extract-level ones. The one
+case where NH says *"I cannot read this at all"* was the case where it explained least
+([`docs/EXTRACT_FAULT_REPORTING_V1.md`](docs/EXTRACT_FAULT_REPORTING_V1.md)). The rule:
+
+> **A diagnostic may name a column only when the NAME IS OURS.** A declared column name is a contract
+> constant; a header string from the file is customer data of unknown kind. Codes are ours, so codes may be
+> reported; the validator's `detail` is not, so it never leaves the validator.
+
+**The hazard was proved rather than assumed, and it is why the answer is codes-only.** `parseStrictCsv` takes
+`records[0]` as the header **unconditionally**, so a customer export with no header row makes the first
+**data** row the header — and `UNDECLARED_COLUMN`'s detail then reads, verbatim, *`column "ENT-00041" is not
+declared by …`* and *`column "1499.00" is not declared by …`*: real entitlement identity, a real date and a
+real **amount**. A headerless export is an ordinary mistake, so rendering details would leak customer data
+**precisely in the case the diagnostic exists to diagnose.** The privacy test performs the attack, asserts
+the validator really does quote the amount, then asserts none of it reaches the report — with the forbidden
+strings **computed from the validation rather than hardcoded**, so the guard cannot drift from what the
+validator produces. The honest cost is stated: the report does not name *which* required column is missing.
+
+**Two distinctions are asserted rather than assumed.** *"No rows"* (`*-1001`) must not collapse into *"wrong
+shape"* (`*-1002`/`*-1003`) — both are `usable: false` and both are L0, yet the remedies are opposite, and an
+empty extract is **never** read as "nothing was owed". And **extract level is not row level**: an unusable
+extract still reports `rejectedRows: 0`, because no row was examined and claiming one would assert work that
+never happened. That is what the original §6b pin was really protecting, and it survives the fix.
+
+**No version and no customer contract moves**, determined before editing. Neither validator was touched, so
+both extract contracts are untouched outright and a customer's file is judged identically — every
+`docs/pilot-intake/` artefact stays byte-identical. The readiness **scheme** holds because the field is
+additive; the **method version** holds because no level, gate, conjunct, count or refusal changed and no new
+state became reachable — the report stops *dropping* codes it already held. All five constants are pinned by
+a test. A canonical-shape pin keeps the fault record at exactly `{code, detail}` so a later third field fails
+loudly instead of silently entering `expectationValidationWitness`'s preimage; that witness has no production
+caller, which is **not** why this is safe — *"nothing fails today"* was never the right test, and not touching
+the validators is.
+
+**Five mutations, all proved to fail.** **1155 (1 skipped) with and without a database, 599/599 ep2, 242/242
+package checks, 25/25 control, 120/120 journey.** Contract **2.0.0**, both extracts, `exv-2026.1`,
+`bxv-2026.1`, `rdy-2026.2`, `pav-2026.2`, `OBLIGATION_IDENTITY_FIELDS = []` and every frozen artefact
+unmoved; `server/`, `prisma/`, `e2e/` and `docs/pilot-intake/` untouched. Report-only: no money, no
+authority or provenance change, no API, no UI, no customer data, and **no observed amount became Revenue
+Returned.**
+
+**Three things are recorded rather than actioned.** `emit-package.ts` still **hardcodes**
+`NH-EX-1002`/`NH-BX-1002` into a generated customer document — a hand-authored customer-facing claim, which
+is the thing the dependency probe exists to prevent, and it is now **derivable** from this field: the named
+next slice. The **dead `asOf` test fixture** in `dataReadiness.test.ts` survives because a *named `const`
+escapes TypeScript's excess-property check*, which fires only on a fresh literal at the call site — so
+`typecheck:scripts` caught the sibling in `control.ts` and no project catches this one. And
+`expectationExtractCodes.ts` carries **no `ownedBy`** where the billing catalogue does, so §6b's *"and its
+owner"* half is **not** delivered — rendering an owner for one side only would be the `coverage.event` error
+again.
 
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
