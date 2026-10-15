@@ -1453,6 +1453,52 @@ escapes TypeScript's excess-property check*, which fires only on a fresh literal
 owner"* half is **not** delivered — rendering an owner for one side only would be the `coverage.event` error
 again.
 
+**Verifier-log containment decision (2026-10-15).** An independent gate on the slice above asked for proof
+that a validator `detail` cannot reach the report, the CLI, a log or an error path. It held for three of
+those and failed for one: `verify-package.ts` passed `JSON.stringify(val.extractFaults)` as a check
+**detail** at both sites, and the report loop prints every detail **unconditionally, pass or fail**
+([`docs/EXTRACT_FAULT_REPORTING_V1.md`](docs/EXTRACT_FAULT_REPORTING_V1.md) §8b). The rules:
+
+> **A sanitized rendering is taken from the surface whose sanitization is already proved, never
+> re-derived beside the call site.** A second implementation of the same rule is a second thing that can
+> drift from it — so both checks now render `ReadinessReport.*.extractFaultCodes`, already asserted
+> detail-free against the headerless case, rather than a fresh sanitizer written in the verifier.
+
+> **The correct pattern was already on the next two lines.** The row-rejection checks render
+> `` `${r.rowNumber}:${r.code}` `` — code only — and a rejection's detail quotes **cell** values, a larger
+> leak than a header name. The fix restores consistency inside an otherwise-sanitized block rather than
+> inventing a convention.
+
+**The mutations name the load-bearing guard, and it is not the flattering one.** All four — restoring
+either stringify, rendering `f.detail`, adding a third stringify — are caught by the **structural** test
+and by **none** of them by the end-to-end one, because on the committed clean examples the fault list is
+empty and nothing is rendered either way. The end-to-end test does run the real verifier and scan stdout
+and stderr together against detail strings recomputed from the committed CSVs, but `DIR` is hardcoded so it
+cannot induce a failing run. **That is recorded inside the test**, because a reader counting four passing
+mutations would otherwise credit the wrong half — *a test that cannot fail is not a control*, applied to my
+own instrument for the sixth time. The failing-verification case is carried behaviourally instead: a
+**headerless** pair through the real validators, asserting the validator does quote `ENT-00041` and
+`1499.00`, that the rendered values contain neither, and that every rendered token matches
+`/^NH-(EX|BX)-\d{4}$/`.
+
+**The gap it uncovered is larger than the slice, and is reported rather than fixed: CI does not run
+`pilot:verify` at all.** The four jobs run `check:purity`, `test`, `build`, `typecheck:scripts`,
+`test:ep2`, `test:journey` and `verify:registers` — so `pilot:verify` (242 checks), `readiness:control`
+(25), `recon:verify` and `recon:ref:verify` execute **only when invoked by hand**. That is why the
+regression test had to live in a vitest suite rather than as a self-check inside the verifier: *a test CI
+never runs is not a guard*. Four verifiers guarding frozen evidence, a customer-facing package and the
+readiness control sit outside the automated gate. **Its own slice.**
+
+**Check semantics, counts and contracts are untouched:** the predicates still read the validations, so
+pass/fail and **242/242** are unchanged, and no file under `src/contract/` moved but the test. **1159 (1
+skipped) with and without a database, 599/599 ep2, 25/25 control, 120/120 journey.** Gate 2 is now
+absolute for **validator detail strings** across report, CLI stdout, CLI stderr, error branch and verifier
+log, with the whole `scripts/pilot-intake/` directory asserted free of any stringified validation and of
+any stderr site at all. It is **not** categorical about verifier output: `check()` takes a free-text detail
+at 240-odd call sites, and the guard narrows the ban to validations, fault lists, rejection lists and
+accepted rows — the constructs that carry customer text. Breadth beyond that is a convention, not a
+mechanism.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

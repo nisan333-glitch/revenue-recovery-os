@@ -115,6 +115,9 @@ produces.
 
 ## 8 · Reported, not actioned
 
+> **One of the four below is since CLOSED — see §8b.** The verifier's raw-fault logging was not in §8's
+> original list because it was found by the Gate 2 audit that followed; it is recorded there in full.
+
 **a · `emit-package.ts` hardcodes the code this field now provides.** Because the report carried none,
 `columnAbsent()` renders `side === "expectation" ? "NH-EX-1002" : "NH-BX-1002"` into the generated field
 dictionary, its own comment admitting a `?` placeholder was the first attempt. That contradicts the rule
@@ -140,6 +143,60 @@ a contract change with an owner.
 **d · `NH-*-1004` is unreachable through the CLI.** `parseStrictCsv` throws `CSV_DUPLICATE_HEADER` before
 the validator sees a duplicate, so the duplicate-column fault is reachable only by calling the evaluator
 directly, as the control and the tests do. Recorded so the code is not mistaken for dead.
+
+## 8b · Gate 2 · closed 2026-10-15
+
+The slice above proved detail-containment for the report, the CLI and every error path, and found one
+exposure it did not close: `scripts/pilot-intake/verify-package.ts` passed
+`JSON.stringify(val.extractFaults)` as a check **detail** at both sites, and the report loop prints every
+detail **unconditionally, pass or fail**. So a fault detail could reach a log stream.
+
+**The correct pattern was already on the next two lines.** The row-rejection checks immediately below
+render `` `${r.rowNumber}:${r.code}` `` — code only — and a row rejection's detail quotes **cell values**,
+a larger leak than a header name. The two fault checks were the inconsistent pair in an otherwise
+sanitized block.
+
+**And the sanitized surface already existed**, so no second sanitizer was written: both checks now render
+from `ReadinessReport.*.extractFaultCodes`, whose detail-freeness §7 already proves against the headerless
+case, with the fault **count** retained because the count is ours. Check semantics are untouched — the
+predicates still read the validations, so pass/fail and the 242 count are unchanged.
+
+> **A sanitized rendering is taken from the surface whose sanitization is already proved, never
+> re-derived beside the call site.** A second implementation of the same rule is a second thing that can
+> drift from it.
+
+### The mutations name the load-bearing guard, and it is not the flattering one
+
+Four mutations — restoring either `JSON.stringify(val.extractFaults)`, rendering `f.detail`, adding a
+third stringify elsewhere — are caught by the **structural** test and by **none of them** by the
+end-to-end one. On the committed clean examples the fault list is empty, so nothing is rendered either
+way. The end-to-end test does run the real verifier and scan stdout and stderr together against detail
+strings recomputed from the committed CSVs — the gate's literal wording — but `DIR` is hardcoded, so it
+cannot induce a failing run. **That is recorded inside the test**, because a reader counting four passing
+mutations would otherwise credit the wrong half.
+
+The failing-verification case is therefore carried behaviourally: a **headerless** pair through the real
+validators, asserting the validator does quote `ENT-00041` and `1499.00`, that the rendered values contain
+neither, and that every rendered token matches `/^NH-(EX|BX)-\d{4}$/`.
+
+### The gap it uncovered, reported not fixed
+
+**CI does not run `pilot:verify` at all.** The four jobs run `check:purity`, `test`, `build`,
+`typecheck:scripts`, `test:ep2`, `test:journey` and `verify:registers`. So `pilot:verify` (242 checks),
+`readiness:control` (25), `recon:verify` and `recon:ref:verify` execute **only when invoked by hand**.
+This is why the regression test had to live in a vitest suite rather than as a self-check inside the
+verifier — *a test CI never runs is not a guard* — and it is a larger gap than this slice: four
+verifiers guarding frozen evidence, a customer-facing package and the readiness control are outside the
+automated gate. **Its own slice.**
+
+### What Gate 2 now is, exactly
+
+Absolute for **validator detail strings**: no path — report, CLI stdout, CLI stderr, error branch, or
+verifier log — renders one, and the structural guard covers all four files in the directory plus the
+absence of any stderr site. It is **not** a categorical guarantee about verifier output: `check()` takes a
+free-text detail at 240-odd call sites, and the new guard narrows the structural ban to validations,
+fault lists, rejection lists and accepted rows — the constructs that actually carry customer text.
+Breadth beyond that is a convention, not a mechanism.
 
 ## 9 · What this does NOT establish
 
