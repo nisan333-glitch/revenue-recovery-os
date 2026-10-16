@@ -101,6 +101,13 @@ governs only Agents, not every log line. We govern only Recovery Cases.
 
 If any is missing it stays **telemetry / signal — never stored as a Case.**
 
+**EP-31 · where candidates now come from.** Besides the secure-CSV import, a **completed** pilot assessment
+can emit per-account signals for `ActivationMissed`, with every input to the three tests above **derived**
+rather than supplied: the amount from the accepted rows under the governed AssessmentPolicy, the action from
+this type's play, the proof event from its `expectedProofEvent`. The gate is unchanged and is not bypassed —
+a signal below `economicThreshold` is refused and reported, and a candidate still needs an accepted review
+by a second identity before any Case exists. See [`GOVERNED_DETECTION_V1.md`](GOVERNED_DETECTION_V1.md).
+
 **Why these three:** the admission gate **is the Build Filter applied to data** — a
 Case is admitted only if it can be Identified (1), Fixed (2), and Proven (3). The same
 three questions that govern what we *build* govern what we *track*.

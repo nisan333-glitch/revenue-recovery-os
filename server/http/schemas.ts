@@ -210,7 +210,7 @@ export const pilotDatasetSchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "policy", "provenance"],
+    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "provenance"],
     properties: {
       boundaryId: { type: "string", minLength: 1, maxLength: 256 },
       datasetId: { type: "string", minLength: 1, maxLength: 256 },
@@ -220,16 +220,14 @@ export const pilotDatasetSchema = {
       amountFormat: { type: "string", enum: ["US", "EU"] },
       admissionPolicyId: { type: "string", minLength: 1, maxLength: 256 },
       admissionPolicyVersion: { type: "string", minLength: 1, maxLength: 32 },
-      policy: {
-        type: "object",
-        additionalProperties: false,
-        required: ["stallThresholdDays", "asOf", "currency"],
-        properties: {
-          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
-          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-          currency: { type: "string", minLength: 3, maxLength: 3 },
-        },
-      },
+      // EP-26b · WHICH GOVERNED ASSESSMENT POLICY defines this reading — and nothing else. The `policy`
+      // object is GONE from the request, not merely narrowed: the cut-off, the stall threshold and the
+      // currency are all registered, so there is no wire format in which a requester can state any part
+      // of what the assessment measures. `additionalProperties: false` on the body then makes sending
+      // one a 400. The service refuses an absent reference too — this is the outer of two fail-closed
+      // gates, never the only one.
+      analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
       provenance: {
         type: "object",
         additionalProperties: false,
@@ -283,25 +281,36 @@ export const schedulePilotAssessmentSchema = {
   body: {
     type: "object",
     additionalProperties: false,
-    required: ["boundaryId", "datasetId", "declaredVersion", "csvText", "policy", "provenance"],
+    required: ["boundaryId", "datasetId", "csvText", "provenance"],
     properties: {
       boundaryId: { type: "string", minLength: 1, maxLength: 256 },
       datasetId: { type: "string", minLength: 1, maxLength: 256 },
-      declaredVersion: { type: "string", minLength: 1, maxLength: 32 },
+      // S5 · `declaredVersion` IS GONE FROM THIS BODY, not merely ignored. There is no wire format in
+      // which a scheduling request can state a contract version: the authoritative declaration is the
+      // one recorded ON the admission, and `additionalProperties: false` under `removeAdditional: false`
+      // (app.ts) makes sending one a 400 rather than a silent strip — the same treatment EP-26b gave the
+      // `policy` object. It stays REQUIRED on `/pilot/datasets`, where it is the customer's own
+      // declaration about their export and is persisted as made.
+      //
+      // Nothing replaces it. The scheduling body states no version, no threshold, no cut-off, no
+      // currency, no bar and no outcome — only WHICH admitted dataset, and which decision admitted it.
+      // S4 · REFERENCE-FIRST. The admission decision this execution binds to, as the intake returned
+      // it. A reference, not a capability: the service looks it up boundary-scoped, so one minted for
+      // another tenant reads as absent. Optional on the wire because every admission recorded before
+      // the interpretation snapshot existed can only be reached by the legacy discovery path.
+      admissionDecisionId: { type: "string", minLength: 1, maxLength: 256 },
       csvText: { type: "string", minLength: 1, maxLength: 20_971_520 },
       locale: { type: "string", enum: ["MDY", "DMY"] },
       amountFormat: { type: "string", enum: ["US", "EU"] },
       recoveryCaseId: { type: "string", minLength: 1, maxLength: 256 },
-      policy: {
-        type: "object",
-        additionalProperties: false,
-        required: ["stallThresholdDays", "asOf", "currency"],
-        properties: {
-          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
-          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-          currency: { type: "string", minLength: 3, maxLength: 3 },
-        },
-      },
+      // EP-26b · WHICH GOVERNED ASSESSMENT POLICY defines this reading — and nothing else. The `policy`
+      // object is GONE from the request, not merely narrowed: the cut-off, the stall threshold and the
+      // currency are all registered, so there is no wire format in which a requester can state any part
+      // of what the assessment measures. `additionalProperties: false` on the body then makes sending
+      // one a 400. The service refuses an absent reference too — this is the outer of two fail-closed
+      // gates, never the only one.
+      analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
       provenance: {
         type: "object",
         additionalProperties: false,
@@ -372,6 +381,16 @@ export const pilotAssessmentListSchema = {
  * Every threshold is `required` here as well as in the domain. A schema that let one be omitted
  * would push the "unset means no limit" decision one layer down, where it is harder to see.
  */
+//
+// FINDING 3 · `calculationMethodVersion` IS GONE FROM THIS BODY. Its own documented meaning is "which
+// evaluator computed the rates", so it is a statement about the SERVER's implementation and was never
+// the operator's to make. An audit proved the consequence: an arbitrary label passed validation with
+// zero defects, changed `admissionPolicyHash`, and therefore changed the `PAD-` frozen into the
+// decision — while the evaluator that actually ran was untouched and recorded separately. That is the
+// proof capturing a CLAIMED calculation, which Trust Invariant rule 4 forbids.
+//
+// The server now stamps `ADMISSION_EVALUATOR_VERSION` instead. Same treatment, same stated reason, as
+// `analysisTermsSchema` below.
 export const admissionPolicySchema = {
   body: {
     type: "object",
@@ -388,7 +407,6 @@ export const admissionPolicySchema = {
         required: [
           "policyId",
           "policyVersion",
-          "calculationMethodVersion",
           "minAcceptedRows",
           "minDistinctEntities",
           "maxRejectionRate",
@@ -403,7 +421,6 @@ export const admissionPolicySchema = {
         properties: {
           policyId: { type: "string", minLength: 1, maxLength: 256 },
           policyVersion: { type: "string", minLength: 1, maxLength: 32 },
-          calculationMethodVersion: { type: "string", minLength: 1, maxLength: 64 },
           minAcceptedRows: { type: "integer", minimum: 0, maximum: 1000000 },
           minDistinctEntities: { type: "integer", minimum: 0, maximum: 1000000 },
           maxRejectionRate: { type: "number", minimum: 0, maximum: 1 },
@@ -436,6 +453,108 @@ export const policyTransitionSchema = {
       policyVersion: { type: "string", minLength: 1, maxLength: 32 },
       rationale: { type: "string", minLength: 1, maxLength: 2000 },
     },
+  },
+} as const;
+
+/**
+ * EP-26 · Propose an analysis-terms version.
+ *
+ * `rationale` is required for the same reason it is on an admission policy: governance is asked to put
+ * a definition in force on the strength of its stated reasoning, and a cut-off with no reason given
+ * cannot be reviewed. There is no `calculationMethodVersion` here — it is a build constant, not an
+ * operator choice, so letting a request state it would invite a definition blessed for an
+ * implementation that never ran it.
+ */
+export const analysisTermsSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "terms", "rationale"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      // Not merely non-empty: `minLength` alone accepts "   ", which is not a stated reason. The DB
+      // CHECK would refuse it either way — this refuses it at the edge, with a 400 instead of a 500.
+      rationale: { type: "string", minLength: 1, maxLength: 2000, pattern: "\\S" },
+      terms: {
+        type: "object",
+        additionalProperties: false,
+        required: ["termsId", "termsVersion", "asOf", "stallThresholdDays", "currency"],
+        properties: {
+          termsId: { type: "string", minLength: 1, maxLength: 256 },
+          termsVersion: { type: "string", minLength: 1, maxLength: 32 },
+          asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          stallThresholdDays: { type: "integer", minimum: 0, maximum: 3650 },
+          // Shape only. WHICH codes are supported is a domain decision, and the constructor answers it.
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Re-assess an already-admitted dataset under a new calculation method, with NO file re-supplied.
+ *
+ * Note what is absent: no `csvText`. That is the whole point — the retained, hash-verified input is
+ * reused, so the customer is not asked to produce the file again. And no thresholds, no cut-off, no
+ * currency: the request names WHICH governed definition blesses the new method and nothing about what is
+ * measured. A definition that changes the cut-off, the threshold or the currency is refused
+ * (NH-AX-1016), because that is a different reading of the data and the admission was for the old one.
+ *
+ * `reason` is required, and required to be non-blank at the transport as well as in the service and the
+ * database: a revision nobody can explain is indistinguishable from a quiet re-grade.
+ */
+export const reassessPilotAssessmentSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "executionId", "analysisTermsId", "analysisTermsVersion", "reason"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      executionId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsId: { type: "string", minLength: 1, maxLength: 256 },
+      analysisTermsVersion: { type: "string", minLength: 1, maxLength: 32 },
+      reason: { type: "string", minLength: 1, maxLength: 2000, pattern: "\\S" },
+    },
+  },
+} as const;
+
+/** EP-26 · Activate, freeze, resume or retire one analysis-terms version. */
+export const analysisTermsTransitionSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "termsId", "termsVersion", "rationale"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      termsId: { type: "string", minLength: 1, maxLength: 256 },
+      termsVersion: { type: "string", minLength: 1, maxLength: 32 },
+      rationale: { type: "string", minLength: 1, maxLength: 2000, pattern: "\\S" },
+    },
+  },
+} as const;
+
+/** EP-26 · Governed read of one analysis-terms version's lifecycle. */
+export const analysisTermsGovernanceQuerySchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "termsId", "termsVersion"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+      termsId: { type: "string", minLength: 1, maxLength: 256 },
+      termsVersion: { type: "string", minLength: 1, maxLength: 32 },
+    },
+  },
+} as const;
+
+/** EP-26 · The definitions a boundary may cite, with their values and their lifecycle state. */
+export const analysisTermsListQuerySchema = {
+  querystring: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId"],
+    properties: { boundaryId: { type: "string", minLength: 1, maxLength: 256 } },
   },
 } as const;
 

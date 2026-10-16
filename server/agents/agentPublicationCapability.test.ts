@@ -23,7 +23,8 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ADMISSION_CALC_VERSION } from "../../src/contract/pilotAdmissionPolicy";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
+import { scheduleRequestFrom } from "../test/scheduleRequest";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -223,7 +224,6 @@ describe.skipIf(!HAS_DB)("EP-17 · a full assessment-only run with no fabricated
     const policy = {
       policyId: `pol-${uid()}`,
       policyVersion: "1.0.0",
-      calculationMethodVersion: ADMISSION_CALC_VERSION,
       minAcceptedRows: 10,
       minDistinctEntities: 5,
       maxRejectionRate: 0.2,
@@ -243,12 +243,17 @@ describe.skipIf(!HAS_DB)("EP-17 · a full assessment-only run with no fabricated
       method: "POST", url: "/pilot/admission-policies/activate", headers: STEWARD,
       payload: { boundaryId, policyId: policy.policyId, policyVersion: "1.0.0", rationale: "reviewed" },
     });
+    // EP-26 · Governed analysis terms first: nothing is measured under a definition nobody approved.
+    await ensureGovernedTerms(boundaryId);
     const base = {
       boundaryId,
       datasetId: `ds-${uid()}`,
       declaredVersion: PILOT_DATA_CONTRACT_VERSION,
       csvText: syntheticPilotCsv(40),
-      policy: { stallThresholdDays: 30, asOf: "2026-04-15", currency: "USD" },
+      // EP-26b · No `policy` object: the cut-off, the stall threshold and the currency are the
+      // registered definition, which the suite activates for this boundary through the two-identity
+      // lifecycle before submitting. The request names it and nothing more.
+      ...GOVERNED_TERMS_FIELDS,
       provenance: SYNTHETIC_PROVENANCE,
     };
     await app.inject({
@@ -256,7 +261,7 @@ describe.skipIf(!HAS_DB)("EP-17 · a full assessment-only run with no fabricated
       payload: { ...base, admissionPolicyId: policy.policyId },
     });
     const out = (await app.inject({
-      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: base,
+      method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(base),
     })).json();
     expect(out.scheduled).toBe(true);
 

@@ -45,3 +45,55 @@ describe("buildSummary — pure, deterministic methodology export", () => {
     }
   });
 });
+
+describe("DETECTOR #2 · the export carries the second surface, separately and labelled OBSERVED", () => {
+  it("reports the non-stalled overdue exposure in its own section, to the exact minor unit", async () => {
+    const s = buildSummary(await result());
+    expect(s).toContain("## Observed exposure OUTSIDE the activation-stall cohort (exact minor units)");
+    expect(s).toContain("- obligations examined (non-stalled accepted cycles): 1");
+    expect(s).toContain("- OBSERVED overdue unpaid (no activation stall): $5,000.00");
+    expect(s).toContain("- OBSERVED overdue partial outstanding: $0.00");
+  });
+
+  it("leaves the activation-stall headline byte-identical — the new section is additive, not a re-grade", async () => {
+    const s = buildSummary(await result());
+    // The four-money-states block and the Observed breakdown must still read exactly as before.
+    expect(s).toContain("OBSERVED: Unpaid value in the stalled cohort = $10,000.00");
+    expect(s).toContain("- observed unpaid: $10,000.00");
+    expect(s).toContain("- partial outstanding: $0.00");
+    // And the headline sentence must not have acquired the second surface's money.
+    expect(s).not.toContain("OBSERVED: Unpaid value in the stalled cohort = $15,000.00");
+  });
+
+  it("states the combined figure as derived for display from two disjoint surfaces", async () => {
+    const r = await result();
+    const s = buildSummary(r);
+    const combined =
+      r.observed.observedUnpaid.minor +
+      r.observed.partialOutstanding.minor +
+      r.nonStalledExposure.overdueUnpaid.minor +
+      r.nonStalledExposure.overduePartialOutstanding.minor;
+    expect(combined).toBe(1_500_000);
+    expect(s).toContain("- COMBINED OBSERVED exposure (stalled + non-stalled, derived for display): $15,000.00");
+  });
+
+  it("makes no recovery, recoverability, return, proof or causal claim about the new figures", async () => {
+    const s = buildSummary(await result());
+    const open = s.indexOf("## Observed exposure OUTSIDE");
+    const close = s.indexOf("## Data quality", open);
+    expect(open).toBeGreaterThan(-1);
+    expect(close).toBeGreaterThan(open);
+    const section = s.slice(open, close).toLowerCase();
+    for (const word of ["recovered", "recoverable", "returned", "proven", "caused"]) {
+      let at = section.indexOf(word);
+      while (at !== -1) {
+        const before = section.slice(Math.max(0, at - 24), at);
+        expect(before, `"${word}" must be negated, found: ...${before}[${word}]`).toMatch(
+          /\b(not|no|never)\b[ a-z]*$/,
+        );
+        at = section.indexOf(word, at + 1);
+      }
+    }
+    expect(section).toContain("no causal claim is made about why they are overdue");
+  });
+});

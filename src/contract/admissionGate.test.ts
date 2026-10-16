@@ -263,15 +263,15 @@ describe("admission gate — dataset thresholds", () => {
   });
 
   it("11 · an excessive duplicate rate is refused", async () => {
-    const base = syntheticPilotRows(10);
-    const report = await reportFor(toCsv([...base, ...base])); // every row repeated exactly once
+    const base = syntheticPilotRows(20);
+    const report = await reportFor(toCsv([...base, ...base.slice(0, 5)])); // five pairs collide; fifteen unrelated cycles remain
     const decision = evaluateAdmission(
       report,
       assessmentPolicy,
       policy({ minAcceptedRows: 5, minDistinctEntities: 2, maxRejectionRate: 0.9, maxSingleReasonShare: 1, maxDuplicateRate: 0.1, minCoverageDays: 1 }),
     );
     expect(decision.counts.duplicateRows).toBe(10);
-    expect(decision.rates.duplicate).toBeCloseTo(0.5, 5);
+    expect(decision.rates.duplicate).toBeCloseTo(0.4, 5);
     expect(decision.reasons.map((r) => r.code)).toContain("NH-AG-2005");
   });
 

@@ -9,6 +9,7 @@ import type { ExclusionRecord, ExpectationCycle, RowOutcome } from "../types";
 import type { RawRow } from "../parse";
 import { normalizeDate, isAfter, type DateLocale } from "../dateNormalize";
 import { normalizeAmount, type AmountFormat } from "../amountNormalize";
+import { cycleKeyPreserved2x } from "../cycleKeyRule";
 import { fromDecimal, isNegative, isPositive } from "../../domain/money";
 
 export const SAAS_ADAPTER_ID = "saas-activation";
@@ -219,10 +220,22 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
   if (refundFlag && refundedAt === null) return exclude(id, "undated_terminal_state", "refund state has no effective date");
   if (cancelFlag && cancelledAt === null) return exclude(id, "undated_terminal_state", "cancellation state has no effective date");
 
-  // cycleId — prefer an explicit id; else a deterministic composite (collision-tested in assess).
-  const explicitCycle = (c["subscription_id"] ?? c["cycle_id"] ?? "").trim();
+  // cycleId — the derivation now lives in `cycleKeyRule.ts` as a NAMED semantic rule rather than an
+  // inline expression, so a change to it is a change to something with a name and pinned vectors.
+  //
+  // THE PRESERVED RULE IS CALLED BY NAME, not selected. There is no version argument and no dispatch:
+  // this build has exactly one cycle-key semantics, and it is today's. `cycleKeyFuture3x` exists beside
+  // it and is unreachable from here. Note the facts are read as `c[...]` WITHOUT `?? ""` — the
+  // absent/blank distinction is what the preserved rule turns on (defect D1), so flattening it here
+  // would silently implement the future rule.
   const entityId = c["entity_id"]!.trim();
-  const cycleId = explicitCycle !== "" ? explicitCycle : `${entityId}|${signed.iso}|${due.iso}`;
+  const cycleId = cycleKeyPreserved2x({
+    subscriptionId: c["subscription_id"],
+    cycleId: c["cycle_id"],
+    entityId,
+    expectationAt: signed.iso,
+    dueAt: due.iso,
+  }).cycleKey;
 
   const attributes: Record<string, string> = {};
   for (const k of ["plan", "segment", "product"]) {

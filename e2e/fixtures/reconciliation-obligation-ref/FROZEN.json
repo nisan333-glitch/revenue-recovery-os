@@ -1,0 +1,21 @@
+{
+  "frozenAt": "2026-10-07",
+  "variant": "OBLIGATION_REF",
+  "derivedFrom": "V3",
+  "seed": 20261006,
+  "files": {
+    "expectation.csv": "31992d23dc8cd86d25aca9cb993d760d396f78e15294e88be5f17ce912959939",
+    "observation.csv": "76465e962e33969644c1f3c42ec497a88a8dbad48e2d4047ac4b9553a092c478",
+    "ground-truth.csv": "0f5558e402912047783d06d171e2cbfa674ab262de660f9832907f99eb71f074",
+    "planted-register.json": "111db9d180c43fe46939d2889538cd9f5cb2e4c6d7676317f2f34ea6129aab9f"
+  },
+  "generator": "412982a14fa6a803ca5340f3fa086f2f358c96287f00578431216c23e94a1001",
+  "counts": {
+    "payers": 60,
+    "entitlements": 119,
+    "expectation": 614,
+    "observation": 597,
+    "plantedCases": 19
+  },
+  "compositeSha256": "db10300454f3d076790c829cbcd1db2fb58adfb329ee107944042e555e5b1159"
+}

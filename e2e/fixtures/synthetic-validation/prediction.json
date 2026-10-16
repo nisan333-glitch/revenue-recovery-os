@@ -1,0 +1,95 @@
+{
+  "builtBy": "scripts/synthetic-validation/verify.mjs",
+  "builtFrom": "ground-truth.json only — NH has not been run at this point",
+  "outOfCapabilityMinor": 6510000,
+  "outOfCapabilityNote": "Recorded in a SEPARATE register. No row exists for these, so no detector was given a chance at them. Never summed with in-dataset leakage into a single accuracy figure.",
+  "datasets": [
+    {
+      "dataset": "dataset",
+      "sha256": "214bae693372fbda3f7fff6e0635018b74811db27fa1219831da51fd8568240d",
+      "datasetLevelRejectionExpected": null,
+      "cohorts": {
+        "stalledRows": 16,
+        "undeterminedRows": 1,
+        "referenceRows": 239,
+        "excludedRows": 15
+      },
+      "money": {
+        "observedUnpaidMinor": 3165063,
+        "partialOutstandingMinor": 400008,
+        "excludedValueMinor": 849015,
+        "unknownValueMinor": 1050003
+      },
+      "groundTruthLeakage": {
+        "inDatasetMinor": 3565071
+      }
+    },
+    {
+      "dataset": "spot-multicurrency",
+      "sha256": "3643b5528959c1c01b4a9447035ad173f6545ca9a5de75bf5866b382320a6009",
+      "datasetLevelRejectionExpected": "NH-DC-1006 — the dataset mixes more than one currency, so the whole file is unassessable and no money figure is produced",
+      "cohorts": null,
+      "money": null,
+      "groundTruthLeakage": null
+    },
+    {
+      "dataset": "spot-cancelled-after-asof",
+      "sha256": "d7e3d65f698fd0f1dc32caa71054fcd2389cd4baa4a458e762dac4c95b8eae1c",
+      "datasetLevelRejectionExpected": null,
+      "cohorts": {
+        "stalledRows": 1,
+        "undeterminedRows": 1,
+        "referenceRows": 236,
+        "excludedRows": 0
+      },
+      "money": {
+        "observedUnpaidMinor": 670000,
+        "partialOutstandingMinor": 0,
+        "excludedValueMinor": 0,
+        "unknownValueMinor": 0
+      },
+      "groundTruthLeakage": {
+        "inDatasetMinor": 670000
+      }
+    }
+  ],
+  "admissionPolicyPermissive": {
+    "minAcceptedRows": 200,
+    "minDistinctEntities": 50,
+    "minCoverageDays": 90,
+    "maxMissingRecommendedColumns": 0,
+    "maxRejectionRate": 0.1,
+    "maxSingleReasonShare": 0.5,
+    "maxDuplicateRate": 0.05,
+    "maxOrderingDefectRate": 0.05,
+    "requiredLifecycleStates": [
+      "stalled",
+      "reference",
+      "undetermined"
+    ],
+    "requireProvenanceDeclaration": true
+  },
+  "admissionPolicyStrict": {
+    "minAcceptedRows": 200,
+    "minDistinctEntities": 50,
+    "minCoverageDays": 90,
+    "maxMissingRecommendedColumns": 0,
+    "maxRejectionRate": 0.01,
+    "maxSingleReasonShare": 0.5,
+    "maxDuplicateRate": 0.05,
+    "maxOrderingDefectRate": 0.05,
+    "requiredLifecycleStates": [
+      "stalled",
+      "reference",
+      "undetermined"
+    ],
+    "requireProvenanceDeclaration": true,
+    "expectation": "REFUSAL on the main dataset — the planted defect rate is deliberately above 1%. An adversarial control, not a failure."
+  },
+  "claimBoundary": {
+    "syntheticOnly": true,
+    "isRecoveredRevenue": false,
+    "isProvenRevenueReturned": false,
+    "note": "Planted figures are Synthetic Ground-Truth Leakage. Anything NH computes is Detected Revenue Opportunity. Neither is recovered or proven money."
+  }
+}

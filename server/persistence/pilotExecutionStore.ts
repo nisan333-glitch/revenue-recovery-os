@@ -11,6 +11,7 @@
 // second filter is what survives a future refactor of the first: if id derivation were ever changed,
 // a lookup still cannot return another tenant's row — it reads as absent, never as theirs.
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma, type DbClient } from "../db";
 import type {
   ExecutionBinding,
@@ -20,6 +21,7 @@ import type {
   ExecutionTransition,
   AssessmentFinding,
 } from "../../src/contract/assessmentExecution";
+import type { NonStalledExposureFinding } from "../../src/contract/exposureFinding";
 import { deriveExecutionState } from "../../src/contract/assessmentExecution";
 
 export interface ExecutionRecord {
@@ -27,6 +29,9 @@ export interface ExecutionRecord {
   readonly binding: ExecutionBinding;
   readonly bindingHash: string;
   readonly inputHash: string;
+  /** The execution this one revises, or null for an ordinary first assessment. A link, not a successor. */
+  readonly revisesExecutionId: string | null;
+  readonly revisionReason: string | null;
   readonly scheduledByActorId: string;
   readonly scheduledByRole: string;
   readonly scheduledAt: string;
@@ -53,6 +58,8 @@ type ExecutionRow = {
   recoveryCaseId: string | null;
   bindingHash: string;
   inputHash: string;
+  revisesExecutionId: string | null;
+  revisionReason: string | null;
   scheduledByActorId: string;
   scheduledByRole: string;
   scheduledAt: Date;
@@ -85,6 +92,8 @@ function toExecutionRecord(row: ExecutionRow): ExecutionRecord {
       recoveryCaseId: row.recoveryCaseId,
     }),
     bindingHash: row.bindingHash,
+    revisesExecutionId: row.revisesExecutionId,
+    revisionReason: row.revisionReason,
     inputHash: row.inputHash,
     scheduledByActorId: row.scheduledByActorId,
     scheduledByRole: row.scheduledByRole,
@@ -100,6 +109,50 @@ export interface CreateExecutionInput {
   readonly inputHash: string;
   readonly scheduledByActorId: string;
   readonly scheduledByRole: string;
+  /**
+   * The execution this one REVISES, with the reason the caller gave.
+   *
+   * Both or neither: the database enforces that a revision states a reason, because a reason that can be
+   * omitted is a reason nobody supplies, and a revision nobody can explain is indistinguishable from a
+   * quiet re-grade. Absent for an ordinary first assessment, which is what every historical row is.
+   */
+  readonly revision?: { readonly revisesExecutionId: string; readonly revisionReason: string };
+  /**
+   * EP-31 · Per-account at-risk attribution, staged in THIS transaction.
+   *
+   * In here rather than in a call of its own because the ordering is the guarantee: if the execution
+   * cannot be written, no attribution may exist either, and therefore no candidate can ever be derived
+   * from one. A separate write could leave staged rows for an execution that was never created.
+   *
+   * Absent or empty when staging is off for the boundary — which is the default.
+   */
+  readonly attributions?: readonly StagedAttributionRow[];
+  /**
+   * Step 5 · the governed source resolution, or null when none could be established.
+   *
+   * AUDIT LINEAGE ONLY. It is never part of `CandidateLeakInstanceIdentity`, and it is deliberately NOT in
+   * the hashed binding: `canonicalBinding` feeds both `hashExecutionBinding` and `deriveExecutionId`, whose
+   * result is the execution's identity AND its idempotency key, so putting it there would change every
+   * execution id and break replay.
+   */
+  readonly sourceResolution?: {
+    readonly sourceNamespaceId: string;
+    readonly sourceNamespaceVersion: string;
+    readonly sourceBindingMode: string;
+    readonly sourcePermittedSetId: string | null;
+    readonly sourcePermittedSetVersion: string | null;
+    readonly sourceBindingRevision: number | null;
+    readonly sourceResolutionHash: string;
+  } | null;
+}
+
+/** One staged row. `sourceRef` is a pseudonym; the raw account identifier never reaches this layer. */
+export interface StagedAttributionRow {
+  readonly sourceRef: string;
+  readonly amountAtRiskMinor: number;
+  readonly currency: string;
+  readonly contributingCycleCount: number;
+  readonly attributionRule: string;
 }
 
 /**
@@ -141,7 +194,18 @@ export async function createExecutionIfAbsent(
           dateLocale: b.interpretation.dateLocale,
           recoveryCaseId: b.recoveryCaseId,
           bindingHash: input.bindingHash,
+          // Null for every historical row and for any submission no governed authority resolved. The
+          // column-level checks refuse a half-written lineage, so this is all-or-nothing by construction.
+          sourceNamespaceId: input.sourceResolution?.sourceNamespaceId ?? null,
+          sourceNamespaceVersion: input.sourceResolution?.sourceNamespaceVersion ?? null,
+          sourceBindingMode: input.sourceResolution?.sourceBindingMode ?? null,
+          sourcePermittedSetId: input.sourceResolution?.sourcePermittedSetId ?? null,
+          sourcePermittedSetVersion: input.sourceResolution?.sourcePermittedSetVersion ?? null,
+          sourceBindingRevision: input.sourceResolution?.sourceBindingRevision ?? null,
+          sourceResolutionHash: input.sourceResolution?.sourceResolutionHash ?? null,
           inputHash: input.inputHash,
+          revisesExecutionId: input.revision?.revisesExecutionId ?? null,
+          revisionReason: input.revision?.revisionReason ?? null,
           scheduledByActorId: input.scheduledByActorId,
           scheduledByRole: input.scheduledByRole,
         },
@@ -155,6 +219,22 @@ export async function createExecutionIfAbsent(
           inputHash: input.inputHash,
         },
       });
+      // EP-31 · Staged in the SAME transaction as the execution and its input. If anything above or
+      // below fails, these rows do not exist — which is what makes "no candidate without a governed
+      // execution" true of the database rather than of the application's good intentions.
+      if (input.attributions && input.attributions.length > 0) {
+        await tx.pilotAssessmentEntityAttributionRecord.createMany({
+          data: input.attributions.map((attribution) => ({
+            executionId: input.executionId,
+            boundaryId: b.boundaryId,
+            sourceRef: attribution.sourceRef,
+            amountAtRiskMinor: BigInt(attribution.amountAtRiskMinor),
+            currency: attribution.currency,
+            contributingCycleCount: attribution.contributingCycleCount,
+            attributionRule: attribution.attributionRule,
+          })),
+        });
+      }
       await appendExecutionEvent(
         {
           executionId: input.executionId,
@@ -247,25 +327,81 @@ export async function appendExecutionEvent(
   });
 }
 
-/** Full lifecycle history, oldest first. Boundary-scoped; `id` breaks ties so ordering is total. */
+/**
+ * The ordered rows. ONE query, shared by the two public readers so neither pays for the other.
+ *
+ * `at` ASC stays PRIMARY, and that is deliberate rather than inherited: the log spans the migration
+ * that introduced `seq`, so rows older than it have a real timestamp and no append order. Making `seq`
+ * primary would hoist every legacy row to one end of the log.
+ *
+ * `seq` ASC then resolves same-timestamp ties in TRUE APPEND ORDER. `at` is timestamp(3), so ties are
+ * not rare — they are what governed issue #4 was about.
+ *
+ * `id` ASC remains last and is now honest about its job: it keeps the order TOTAL for two legacy rows
+ * that tie on `at` and have no sequence between them. That order is arbitrary, it is no longer trusted,
+ * and `executionStatus` reports it as uncertain rather than presenting it as chronology.
+ */
+async function orderedEventRows(
+  executionId: string,
+  boundaryId: string,
+  client: DbClient,
+): Promise<readonly { transition: string; code: string | null; byId: string; at: Date; seq: bigint | null }[]> {
+  return client.pilotAssessmentExecutionEventRecord.findMany({
+    where: { executionId, boundaryId },
+    orderBy: [{ at: "asc" }, { seq: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    select: { transition: true, code: true, byId: true, at: true, seq: true },
+  });
+}
+
+const toLifecycleEvent = (r: {
+  transition: string; code: string | null; byId: string; at: Date;
+}): ExecutionLifecycleEvent =>
+  Object.freeze({
+    transition: r.transition as ExecutionTransition,
+    code: r.code,
+    byId: r.byId,
+    at: r.at.toISOString(),
+  });
+
+/**
+ * Full lifecycle history, oldest first, chronologically — see `orderedEventRows`.
+ *
+ * `seq` is NOT exposed. A sequence number is not a fact any consumer needs, and the smallest surface is
+ * the right one; what a consumer may need is whether the ORDER can be trusted, and that is reported by
+ * `executionStatus` where a state is actually derived from it.
+ */
 export async function executionEvents(
   executionId: string,
   boundaryId: string,
   client: DbClient = prisma,
 ): Promise<readonly ExecutionLifecycleEvent[]> {
-  const rows = await client.pilotAssessmentExecutionEventRecord.findMany({
-    where: { executionId, boundaryId },
-    orderBy: [{ at: "asc" }, { id: "asc" }],
-  });
+  const rows = await orderedEventRows(executionId, boundaryId, client);
+  return Object.freeze(rows.map(toLifecycleEvent));
+}
+
+/**
+ * Which timestamps in this log hold two or more events with NO append order between them.
+ *
+ * This is the uncertainty preserved explicitly rather than resolved retroactively. Note what does NOT
+ * count: a legacy row ALONE at its timestamp is ordered with certainty, because `at` alone decides it.
+ * Only a tie with nothing to break it is uncertain.
+ */
+function uncertainTimestamps(
+  rows: readonly { at: Date; seq: bigint | null }[],
+): readonly string[] {
+  const byAt = new Map<string, { total: number; withoutSeq: number }>();
+  for (const r of rows) {
+    const k = r.at.toISOString();
+    const g = byAt.get(k) ?? { total: 0, withoutSeq: 0 };
+    g.total += 1;
+    if (r.seq === null) g.withoutSeq += 1;
+    byAt.set(k, g);
+  }
   return Object.freeze(
-    rows.map((r) =>
-      Object.freeze({
-        transition: r.transition as ExecutionTransition,
-        code: r.code,
-        byId: r.byId,
-        at: r.at.toISOString(),
-      }),
-    ),
+    [...byAt.entries()]
+      .filter(([, g]) => g.total > 1 && g.withoutSeq > 1)
+      .map(([k]) => k)
+      .sort(),
   );
 }
 
@@ -274,6 +410,14 @@ export interface ExecutionStatus {
   readonly events: readonly ExecutionLifecycleEvent[];
   /** The code of the most recent stopping transition, if the execution is blocked or failed. */
   readonly code: string | null;
+  /**
+   * False when some timestamp in this log holds two or more events with no append order between them,
+   * which can only be legacy rows written before `seq` existed. The derived state is then the reading
+   * of an ambiguous log, and saying so is the point: it is NOT re-derived, invented or reordered.
+   */
+  readonly orderCertain: boolean;
+  /** The exact timestamps whose internal order is unknown. Empty whenever `orderCertain` is true. */
+  readonly orderUncertainAt: readonly string[];
 }
 
 export async function executionStatus(
@@ -281,13 +425,17 @@ export async function executionStatus(
   boundaryId: string,
   client: DbClient = prisma,
 ): Promise<ExecutionStatus> {
-  const events = await executionEvents(executionId, boundaryId, client);
+  const rows = await orderedEventRows(executionId, boundaryId, client);
+  const events = Object.freeze(rows.map(toLifecycleEvent));
   const state = deriveExecutionState(events);
   const stopped = [...events].reverse().find((e) => e.transition === "BLOCKED" || e.transition === "FAILED");
+  const uncertainAt = uncertainTimestamps(rows);
   return Object.freeze({
     state,
     events,
     code: state === "blocked" || state === "failed" ? (stopped?.code ?? null) : null,
+    orderCertain: uncertainAt.length === 0,
+    orderUncertainAt: uncertainAt,
   });
 }
 
@@ -323,6 +471,16 @@ export interface StoredFinding {
   readonly assessmentId: string;
   readonly finding: AssessmentFinding;
   readonly findingHash: string;
+  /**
+   * DETECTOR #2 · the non-stalled exposure reading, with its own witness and method version.
+   *
+   * NULL for every execution assessed before the detector existed. That is **not computed**, which is a
+   * different fact from zero exposure — a reader that rendered it as 0.00 would be asserting that a
+   * healthy-activation population was checked and found clean, which nobody checked.
+   */
+  readonly exposure: NonStalledExposureFinding | null;
+  readonly exposureHash: string | null;
+  readonly exposureMethodVersion: string | null;
   readonly producedBy: string;
   readonly recordedAt: string;
 }
@@ -333,6 +491,9 @@ function toStoredFinding(row: {
   assessmentId: string;
   finding: unknown;
   findingHash: string;
+  exposure?: unknown;
+  exposureHash?: string | null;
+  exposureMethodVersion?: string | null;
   producedBy: string;
   recordedAt: Date;
 }): StoredFinding {
@@ -342,6 +503,9 @@ function toStoredFinding(row: {
     assessmentId: row.assessmentId,
     finding: row.finding as AssessmentFinding,
     findingHash: row.findingHash,
+    exposure: (row.exposure ?? null) as NonStalledExposureFinding | null,
+    exposureHash: row.exposureHash ?? null,
+    exposureMethodVersion: row.exposureMethodVersion ?? null,
     producedBy: row.producedBy,
     recordedAt: row.recordedAt.toISOString(),
   });
@@ -372,6 +536,15 @@ export async function recordFindingIfAbsent(
   input: {
     readonly finding: AssessmentFinding;
     readonly findingHash: string;
+    /**
+     * DETECTOR #2 · written in the SAME INSERT as the finding, so it inherits this path's idempotency
+     * and atomicity rather than needing a second write with its own conflict rule. Omitted means not
+     * computed, which is how every historical row reads.
+     */
+    readonly exposure?: {
+      readonly finding: NonStalledExposureFinding;
+      readonly hash: string;
+    };
     readonly producedBy: string;
   },
   client: DbClient = prisma,
@@ -393,6 +566,16 @@ export async function recordFindingIfAbsent(
         assessmentId: finding.assessmentId,
         finding: JSON.parse(JSON.stringify(finding)),
         findingHash: input.findingHash,
+        // All three together or none — the DB CHECK enforces the same thing, so a half-written reading
+        // cannot exist in either layer.
+        // `Prisma.DbNull`, NOT `null`. A `Json?` column given `null` stores the JSON VALUE null, which
+        // `IS NULL` does not match — so the all-three-or-none CHECK rejected every finding written
+        // without an exposure. The constraint caught it on the first write, which is what it is for.
+        exposure: input.exposure
+          ? JSON.parse(JSON.stringify(input.exposure.finding))
+          : Prisma.DbNull,
+        exposureHash: input.exposure?.hash ?? null,
+        exposureMethodVersion: input.exposure?.finding.methodVersion ?? null,
         producedBy: input.producedBy,
       },
     });

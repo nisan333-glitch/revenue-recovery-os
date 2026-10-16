@@ -346,6 +346,14 @@ export async function purgeEligibleInputs(
           await tx.pilotAssessmentExecutionInputRecord.delete({
             where: { executionId: input.executionId },
           });
+          // EP-31 · The staged per-account attribution is pseudonymised customer-derived data of the
+          // same class as the input, so the SAME authorization purges it — not a second one, which
+          // could drift and leave one table behind. `deleteMany` rather than `delete` because an
+          // execution that was never enrolled in the bridge has no rows here at all, and that is the
+          // ordinary case rather than an error.
+          await tx.pilotAssessmentEntityAttributionRecord.deleteMany({
+            where: { executionId: input.executionId, boundaryId: input.boundaryId },
+          });
         });
       } catch (error) {
         // Not swallowed and not reinterpreted. See the note above: the two task states every rule

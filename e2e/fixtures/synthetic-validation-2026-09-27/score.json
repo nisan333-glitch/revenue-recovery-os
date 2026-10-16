@@ -1,0 +1,1192 @@
+{
+  "scoredAt": "2026-09-27T04:16:11.563Z",
+  "runId": "7d0bf0f3",
+  "frozen": {
+    "compositeSha256": "c042f004d8a7300ea039fafc0b3e4d8ca5dce939cc25588deebae9d7838bc018",
+    "gitHead": "5478a7d8279a605d366d037fa99dfe799972f396",
+    "runParameters": {
+      "asOf": "2026-06-30",
+      "stallThresholdDays": 30,
+      "currency": "USD",
+      "seed": 20260926,
+      "provenanceCoverage": {
+        "start": "2026-01-01",
+        "end": "2026-07-31"
+      },
+      "admissionPolicyPermissive": {
+        "minAcceptedRows": 200,
+        "minDistinctEntities": 50,
+        "minCoverageDays": 90,
+        "maxMissingRecommendedColumns": 0,
+        "maxRejectionRate": 0.1,
+        "maxSingleReasonShare": 0.5,
+        "maxDuplicateRate": 0.05,
+        "maxOrderingDefectRate": 0.05,
+        "requiredLifecycleStates": [
+          "stalled",
+          "reference",
+          "undetermined"
+        ],
+        "requireProvenanceDeclaration": true
+      },
+      "admissionPolicyStrict": {
+        "minAcceptedRows": 200,
+        "minDistinctEntities": 50,
+        "minCoverageDays": 90,
+        "maxMissingRecommendedColumns": 0,
+        "maxRejectionRate": 0.01,
+        "maxSingleReasonShare": 0.5,
+        "maxDuplicateRate": 0.05,
+        "maxOrderingDefectRate": 0.05,
+        "requiredLifecycleStates": [
+          "stalled",
+          "reference",
+          "undetermined"
+        ],
+        "requireProvenanceDeclaration": true,
+        "expectation": "REFUSAL on the main dataset — the planted defect rate is deliberately above 1%. An adversarial control, not a failure."
+      },
+      "governedAssessmentPolicies": {
+        "primary": {
+          "termsId": "sv-assessment-policy",
+          "termsVersion": "1.0.0",
+          "asOf": "2026-06-30",
+          "stallThresholdDays": 30,
+          "currency": "USD"
+        },
+        "laterCutoff": {
+          "termsId": "sv-assessment-policy",
+          "termsVersion": "2.0.0",
+          "asOf": "2026-07-31",
+          "stallThresholdDays": 30,
+          "currency": "USD"
+        }
+      },
+      "declaredContractVersion": "2.0.0",
+      "governedReReading": {
+        "reReadUnderLaterCutoff": {
+          "expectation": "ACCEPTED. The same bytes, the same boundary, a DIFFERENT governed AssessmentPolicy — so a different submission identity, a second admission decision and a second execution id. The first execution must still be there, unchanged, saying what it said.",
+          "mustNotBe": "NH-DC-4003 (duplicate submission)",
+          "moneyScored": false,
+          "moneyNote": "Observed and reported. NOT compared against the frozen prediction, which is derived under asOf 2026-06-30 alone."
+        },
+        "duplicateUnderIdenticalTerms": {
+          "expectation": "REFUSED 409 NH-DC-4003. The same bytes, the same boundary, the same governed policy, and a DIFFERENT operator-typed datasetId — which under contract 2.0.0 is no longer part of the identity. Before EP-28 this would have been admitted a second time by renaming the file.",
+          "mustBe": "NH-DC-4003",
+          "moneyScored": false
+        }
+      }
+    }
+  },
+  "freezeVerifiedAtScoring": "c042f004d8a7300ea039fafc0b3e4d8ca5dce939cc25588deebae9d7838bc018",
+  "datasets": [
+    {
+      "label": "permissive/dataset",
+      "dataset": "dataset",
+      "admission": {
+        "accepted": true,
+        "usableForAssessment": true,
+        "outcome": "ADMISSIBLE",
+        "datasetFindings": [],
+        "counts": {
+          "dataRows": 271,
+          "acceptedRows": 256,
+          "rejectedRows": 15,
+          "warnedRows": 0
+        },
+        "scheduled": true,
+        "scheduleRefusal": null,
+        "executionState": "completed",
+        "predictedDatasetLevelRejection": null
+      },
+      "cohorts": {
+        "nh": {
+          "stalled": 16,
+          "undetermined": 1,
+          "reference": 239,
+          "acceptedCycles": 256
+        },
+        "predicted": {
+          "stalledRows": 16,
+          "undeterminedRows": 1,
+          "referenceRows": 239,
+          "excludedRows": 15
+        },
+        "stalledMatches": true,
+        "undeterminedMatches": true,
+        "referenceMatches": true,
+        "acceptedMatches": true
+      },
+      "stateCounts": {
+        "Unpaid": 6,
+        "Unknown": 2,
+        "PaidLate": 1,
+        "Refunded": 2,
+        "Cancelled": 2,
+        "NotYetDue": 0,
+        "PaidOnTime": 0,
+        "PartiallyPaid": 3
+      },
+      "money": {
+        "observedUnpaid": {
+          "predictedMinor": 3165063,
+          "nhMinor": 3165063,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 63,
+            "unique": true,
+            "decoded": [
+              "S01",
+              "S02",
+              "S03",
+              "S04",
+              "S05",
+              "S06"
+            ],
+            "candidates": 1
+          }
+        },
+        "partialOutstanding": {
+          "predictedMinor": 400008,
+          "nhMinor": 400008,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 8,
+            "unique": true,
+            "decoded": [
+              "S07",
+              "S08",
+              "S09"
+            ],
+            "candidates": 1
+          }
+        },
+        "excludedValue": {
+          "predictedMinor": 849015,
+          "nhMinor": 849015,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 15,
+            "unique": true,
+            "decoded": [
+              "S10",
+              "S11",
+              "S12",
+              "S13"
+            ],
+            "candidates": 1
+          }
+        },
+        "unknownValue": {
+          "predictedMinor": 1050003,
+          "nhMinor": 1050003,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 3,
+            "unique": true,
+            "decoded": [
+              "S14",
+              "S15"
+            ],
+            "candidates": 1
+          }
+        },
+        "grossEligible": {
+          "nhMinor": 5165070,
+          "note": "checked as an identity in the report, not decoded"
+        }
+      },
+      "reconciliation": [
+        {
+          "scenario_id": "S01",
+          "entity_id": "synthetic-u-never-activated",
+          "leakage_class": "activation_stall_unpaid_invoice",
+          "expected_cohort": "stalled",
+          "expected_bucket": "observedUnpaid",
+          "expected_amount_minor": 420001,
+          "nh_bucket": "observedUnpaid",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "the whole invoice is at risk — the customer never started and never paid",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S02",
+          "entity_id": "synthetic-u-activated-late",
+          "leakage_class": "activation_stall_unpaid_invoice",
+          "expected_cohort": "stalled",
+          "expected_bucket": "observedUnpaid",
+          "expected_amount_minor": 310002,
+          "nh_bucket": "observedUnpaid",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "late activation and an unpaid invoice",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S03",
+          "entity_id": "synthetic-u-one-day-past",
+          "leakage_class": "activation_stall_unpaid_invoice",
+          "expected_cohort": "stalled",
+          "expected_bucket": "observedUnpaid",
+          "expected_amount_minor": 90004,
+          "nh_bucket": "observedUnpaid",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "one day late by the stated definition; a human might call this a rounding argument",
+          "ambiguity": "boundary case: exactly one day past the threshold"
+        },
+        {
+          "scenario_id": "S04",
+          "entity_id": "synthetic-u-activated-after-asof",
+          "leakage_class": "activation_stall_unpaid_invoice",
+          "expected_cohort": "stalled",
+          "expected_bucket": "observedUnpaid",
+          "expected_amount_minor": 1500008,
+          "nh_bucket": "observedUnpaid",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "unpaid and not activated as at the cut-off, even though it activated later",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S05",
+          "entity_id": "synthetic-u-explicit-unpaid-bool",
+          "leakage_class": "activation_stall_unpaid_invoice",
+          "expected_cohort": "stalled",
+          "expected_bucket": "observedUnpaid",
+          "expected_amount_minor": 65016,
+          "nh_bucket": "observedUnpaid",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "unpaid, stated outright by the source system",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S06",
+          "entity_id": "synthetic-u-enterprise-dimensions",
+          "leakage_class": "activation_stall_unpaid_invoice",
+          "expected_cohort": "stalled",
+          "expected_bucket": "observedUnpaid",
+          "expected_amount_minor": 780032,
+          "nh_bucket": "observedUnpaid",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "the dimensions are descriptive; the leakage is the unpaid invoice",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S07",
+          "entity_id": "synthetic-p-half-paid",
+          "leakage_class": "activation_stall_partial_payment",
+          "expected_cohort": "stalled",
+          "expected_bucket": "partialOutstanding",
+          "expected_amount_minor": 300001,
+          "nh_bucket": "partialOutstanding",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "the unpaid remainder is what is at risk, not the whole invoice",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S08",
+          "entity_id": "synthetic-p-mostly-paid",
+          "leakage_class": "activation_stall_partial_payment",
+          "expected_cohort": "stalled",
+          "expected_bucket": "partialOutstanding",
+          "expected_amount_minor": 100002,
+          "nh_bucket": "partialOutstanding",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "a small remainder outstanding",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S09",
+          "entity_id": "synthetic-p-one-cent-short",
+          "leakage_class": "activation_stall_partial_payment",
+          "expected_cohort": "stalled",
+          "expected_bucket": "partialOutstanding",
+          "expected_amount_minor": 5,
+          "nh_bucket": "partialOutstanding",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "arguably settled in business terms; one cent is not revenue leakage",
+          "ambiguity": "one cent outstanding is not commercially meaningful leakage"
+        },
+        {
+          "scenario_id": "S10",
+          "entity_id": "synthetic-x-cancelled",
+          "leakage_class": "stalled_but_terminal_state",
+          "expected_cohort": "stalled",
+          "expected_bucket": "excludedValue",
+          "expected_amount_minor": 250001,
+          "nh_bucket": "excludedValue",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "cancelled before the cut-off — not collectable, and should not be presented as an opportunity",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S11",
+          "entity_id": "synthetic-x-refunded",
+          "leakage_class": "stalled_but_terminal_state",
+          "expected_cohort": "stalled",
+          "expected_bucket": "excludedValue",
+          "expected_amount_minor": 330002,
+          "nh_bucket": "excludedValue",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "refunded money is not leakage",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S12",
+          "entity_id": "synthetic-x-status-cancelled",
+          "leakage_class": "stalled_but_terminal_state",
+          "expected_cohort": "stalled",
+          "expected_bucket": "excludedValue",
+          "expected_amount_minor": 170004,
+          "nh_bucket": "excludedValue",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "same as an explicit cancellation; the source system just says it differently",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S13",
+          "entity_id": "synthetic-x-refunded-bool",
+          "leakage_class": "stalled_but_terminal_state",
+          "expected_cohort": "stalled",
+          "expected_bucket": "excludedValue",
+          "expected_amount_minor": 99008,
+          "nh_bucket": "excludedValue",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "refunded, just barely inside the window",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S14",
+          "entity_id": "synthetic-k-paid-amount-no-date",
+          "leakage_class": "stalled_unresolvable_payment_evidence",
+          "expected_cohort": "stalled",
+          "expected_bucket": "unknownValue",
+          "expected_amount_minor": 440001,
+          "nh_bucket": "unknownValue",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "the source data cannot say whether this was settled; presenting it as an opportunity would be a guess",
+          "ambiguity": "a human would chase the billing system rather than classify this"
+        },
+        {
+          "scenario_id": "S15",
+          "entity_id": "synthetic-k-paid-full-no-date",
+          "leakage_class": "stalled_unresolvable_payment_evidence",
+          "expected_cohort": "stalled",
+          "expected_bucket": "unknownValue",
+          "expected_amount_minor": 610002,
+          "nh_bucket": "unknownValue",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "the source data cannot say whether this was settled; presenting it as an opportunity would be a guess",
+          "ambiguity": "a human would chase the billing system rather than classify this"
+        },
+        {
+          "scenario_id": "S16",
+          "entity_id": "synthetic-g-stalled-paid-late",
+          "leakage_class": "activation_stall_invoice_settled",
+          "expected_cohort": "stalled",
+          "expected_bucket": "grossEligible_only",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "the activation was slow but the money arrived — no revenue is leaking",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S17",
+          "entity_id": "synthetic-n-exactly-at-threshold",
+          "leakage_class": "near_miss_exact_threshold",
+          "expected_cohort": "reference",
+          "expected_bucket": "none",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "activated inside the agreed window; the unpaid invoice is a collections matter, not activation leakage",
+          "ambiguity": "the invoice IS unpaid — a revenue operator would very likely want to see this money somewhere"
+        },
+        {
+          "scenario_id": "S18",
+          "entity_id": "synthetic-n-unpaid-but-activated-promptly",
+          "leakage_class": "unpaid_invoice_without_activation_stall",
+          "expected_cohort": "reference",
+          "expected_bucket": "none",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "an unpaid invoice from a healthy customer is real money at risk, and this product does not surface it",
+          "ambiguity": "THE central coverage question: is unpaid-without-stall in scope for a revenue recovery product?"
+        },
+        {
+          "scenario_id": "S19",
+          "entity_id": "synthetic-n-not-yet-due",
+          "leakage_class": "near_miss_inside_window",
+          "expected_cohort": "undetermined",
+          "expected_bucket": "none",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "too early to call anything wrong",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S21",
+          "entity_id": "synthetic-n-status-active-noise",
+          "leakage_class": "legitimate_variation",
+          "expected_cohort": "reference",
+          "expected_bucket": "none",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "nothing wrong here at all",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S23",
+          "entity_id": "synthetic-e-zero-amount",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "a zero invoice is not an obligation",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S24",
+          "entity_id": "synthetic-e-negative-amount",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "a credit, not an invoice",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S25",
+          "entity_id": "synthetic-e-paid-exceeds",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "an overpayment needs a human, not a silent cohort placement",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S26",
+          "entity_id": "synthetic-e-due-before-signed",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "impossible: invoiced before the contract existed",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S27",
+          "entity_id": "synthetic-e-activation-before-signed",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "impossible: activated before signing",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S28",
+          "entity_id": "synthetic-e-invalid-boolean",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "an unparseable flag must not be guessed",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S29",
+          "entity_id": "synthetic-e-undated-refund",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "a refund with no date cannot be placed in time",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S30",
+          "entity_id": "synthetic-e-is-test",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "internal accounts are not customer revenue",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S31",
+          "entity_id": "synthetic-e-inconsistent-paid",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "the export contradicts itself",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S32",
+          "entity_id": "synthetic-e-paid-date-zero-amount",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "settled on a date, for nothing",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S33",
+          "entity_id": "synthetic-e-timezoneless",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "a wall-clock time with no offset is not a point in time",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S34",
+          "entity_id": "synthetic-e-missing-currency",
+          "leakage_class": "not_a_leakage_defective_row",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "no currency, no comparable amount",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S35",
+          "entity_id": "synthetic-d-duplicate-cycle",
+          "leakage_class": "not_a_leakage_duplicate_cycle",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "an accidental double-paste; the safe reading is to trust neither copy",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S36",
+          "entity_id": "synthetic-w-outside-coverage",
+          "leakage_class": "not_a_leakage_outside_declared_window",
+          "expected_cohort": "excluded",
+          "expected_bucket": "row_excluded",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "EXCLUDED ROW — verified from the rejected-row count and codes, not from a money total",
+          "business_expectation": "the uploader said the extract covers Jan–Jul; a September invoice contradicts the declaration",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S37",
+          "entity_id": "synthetic-h-* (96 entities)",
+          "leakage_class": "control_healthy",
+          "expected_cohort": "reference",
+          "expected_bucket": "none",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "nothing is leaking; these are the customers who worked",
+          "ambiguity": null
+        }
+      ],
+      "detection": {
+        "truePositives": 15,
+        "falseNegatives": 0,
+        "misplaced": 0,
+        "falsePositives": 0,
+        "trueNegativeRows": 240,
+        "precision": 1,
+        "recall": 1,
+        "note": "Counted over scenarios the decode can settle. NH emits no per-entity output, so this is the strongest per-scenario statement the product's own output supports."
+      },
+      "monetary": {
+        "groundTruthInDatasetMinor": 3565071,
+        "nhDetectedOpportunityMinor": 3165063,
+        "nhHeadlinePlusPartialMinor": 3565071,
+        "varianceVsGroundTruthMinor": 0,
+        "exact": true,
+        "note": "NH's HEADLINE is observedUnpaid alone. partialOutstanding is reported beside it and is not part of the headline."
+      }
+    },
+    {
+      "label": "permissive/spot-multicurrency",
+      "dataset": "spot-multicurrency",
+      "admission": {
+        "accepted": false,
+        "usableForAssessment": false,
+        "outcome": "NOT_ASSESSABLE",
+        "datasetFindings": [
+          "NH-DC-1006"
+        ],
+        "counts": {
+          "dataRows": 238,
+          "acceptedRows": 0,
+          "rejectedRows": 1,
+          "warnedRows": 0
+        },
+        "scheduled": false,
+        "scheduleRefusal": "NH-AX-1001",
+        "executionState": null,
+        "predictedDatasetLevelRejection": "NH-DC-1006 — the dataset mixes more than one currency, so the whole file is unassessable and no money figure is produced"
+      },
+      "result": "no finding produced",
+      "verdict": "AS PREDICTED — the dataset was refused whole and produced no money figure"
+    },
+    {
+      "label": "permissive/spot-cancelled-after-asof",
+      "dataset": "spot-cancelled-after-asof",
+      "admission": {
+        "accepted": true,
+        "usableForAssessment": true,
+        "outcome": "ADMISSIBLE",
+        "datasetFindings": [],
+        "counts": {
+          "dataRows": 238,
+          "acceptedRows": 238,
+          "rejectedRows": 0,
+          "warnedRows": 0
+        },
+        "scheduled": true,
+        "scheduleRefusal": null,
+        "executionState": "completed",
+        "predictedDatasetLevelRejection": null
+      },
+      "cohorts": {
+        "nh": {
+          "stalled": 1,
+          "undetermined": 1,
+          "reference": 236,
+          "acceptedCycles": 238
+        },
+        "predicted": {
+          "stalledRows": 1,
+          "undeterminedRows": 1,
+          "referenceRows": 236,
+          "excludedRows": 0
+        },
+        "stalledMatches": true,
+        "undeterminedMatches": true,
+        "referenceMatches": true,
+        "acceptedMatches": true
+      },
+      "stateCounts": {
+        "Unpaid": 1,
+        "Unknown": 0,
+        "PaidLate": 0,
+        "Refunded": 0,
+        "Cancelled": 0,
+        "NotYetDue": 0,
+        "PaidOnTime": 0,
+        "PartiallyPaid": 0
+      },
+      "money": {
+        "observedUnpaid": {
+          "predictedMinor": 670000,
+          "nhMinor": 670000,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 0,
+            "unique": true,
+            "decoded": [
+              "S20"
+            ],
+            "candidates": 1
+          }
+        },
+        "partialOutstanding": {
+          "predictedMinor": 0,
+          "nhMinor": 0,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 0,
+            "unique": true,
+            "decoded": [],
+            "candidates": 1
+          }
+        },
+        "excludedValue": {
+          "predictedMinor": 0,
+          "nhMinor": 0,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 0,
+            "unique": true,
+            "decoded": [],
+            "candidates": 1
+          }
+        },
+        "unknownValue": {
+          "predictedMinor": 0,
+          "nhMinor": 0,
+          "varianceMinor": 0,
+          "exact": true,
+          "decode": {
+            "cents": 0,
+            "unique": true,
+            "decoded": [],
+            "candidates": 1
+          }
+        },
+        "grossEligible": {
+          "nhMinor": 670000,
+          "note": "checked as an identity in the report, not decoded"
+        }
+      },
+      "reconciliation": [
+        {
+          "scenario_id": "S19",
+          "entity_id": "synthetic-n-not-yet-due",
+          "leakage_class": "near_miss_inside_window",
+          "expected_cohort": "undetermined",
+          "expected_bucket": "none",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "too early to call anything wrong",
+          "ambiguity": null
+        },
+        {
+          "scenario_id": "S20",
+          "entity_id": "synthetic-n-cancelled-after-asof",
+          "leakage_class": "terminal_state_after_cutoff",
+          "expected_cohort": "stalled",
+          "expected_bucket": "observedUnpaid",
+          "expected_amount_minor": 670000,
+          "nh_bucket": "observedUnpaid",
+          "classification": "TRUE POSITIVE",
+          "business_expectation": "as at the cut-off the money was still owed; the later cancellation is future information",
+          "ambiguity": "reasonable people could read this either way — spot-checked separately"
+        },
+        {
+          "scenario_id": "S37",
+          "entity_id": "synthetic-h-* (96 entities)",
+          "leakage_class": "control_healthy",
+          "expected_cohort": "reference",
+          "expected_bucket": "none",
+          "expected_amount_minor": 0,
+          "nh_bucket": null,
+          "classification": "TRUE NEGATIVE — expected to contribute nothing, and contributes nothing",
+          "business_expectation": "nothing is leaking; these are the customers who worked",
+          "ambiguity": null
+        }
+      ],
+      "detection": {
+        "truePositives": 1,
+        "falseNegatives": 0,
+        "misplaced": 0,
+        "falsePositives": 0,
+        "trueNegativeRows": 237,
+        "precision": 1,
+        "recall": 1,
+        "note": "Counted over scenarios the decode can settle. NH emits no per-entity output, so this is the strongest per-scenario statement the product's own output supports."
+      },
+      "monetary": {
+        "groundTruthInDatasetMinor": 670000,
+        "nhDetectedOpportunityMinor": 670000,
+        "nhHeadlinePlusPartialMinor": 670000,
+        "varianceVsGroundTruthMinor": 0,
+        "exact": true,
+        "note": "NH's HEADLINE is observedUnpaid alone. partialOutstanding is reported beside it and is not part of the headline."
+      }
+    },
+    {
+      "label": "strict/dataset",
+      "dataset": "dataset",
+      "admission": {
+        "accepted": true,
+        "usableForAssessment": true,
+        "outcome": "NOT_ADMISSIBLE",
+        "datasetFindings": [],
+        "counts": {
+          "dataRows": 271,
+          "acceptedRows": 256,
+          "rejectedRows": 15,
+          "warnedRows": 0
+        },
+        "scheduled": false,
+        "scheduleRefusal": "NH-AX-1003",
+        "executionState": null,
+        "predictedDatasetLevelRejection": null
+      },
+      "result": "no finding produced",
+      "verdict": "AS PREDICTED — the strict bar refused the dataset at admission. An adversarial control, deliberately stated before the run."
+    }
+  ],
+  "identitySemantics": [
+    {
+      "label": "re-read/dataset@laterCutoff",
+      "kind": "reReadUnderLaterCutoff",
+      "assessmentPolicy": {
+        "termsId": "sv-assessment-policy",
+        "termsVersion": "2.0.0",
+        "asOf": "2026-07-31",
+        "stallThresholdDays": 30,
+        "currency": "USD"
+      },
+      "expectation": {
+        "expectation": "ACCEPTED. The same bytes, the same boundary, a DIFFERENT governed AssessmentPolicy — so a different submission identity, a second admission decision and a second execution id. The first execution must still be there, unchanged, saying what it said.",
+        "mustNotBe": "NH-DC-4003 (duplicate submission)",
+        "moneyScored": false,
+        "moneyNote": "Observed and reported. NOT compared against the frozen prediction, which is derived under asOf 2026-06-30 alone."
+      },
+      "uploadStatus": 200,
+      "uploadError": null,
+      "refusalCode": null,
+      "executionId": null,
+      "distinctFromPrimaryExecution": false,
+      "primaryExecutionId": "PAX-c43725372b8550afa5541a1d397771c6",
+      "admissionOutcome": "NOT_ADMISSIBLE",
+      "admissionReasonCodes": [
+        "NH-AG-2007"
+      ],
+      "admissionReasonDetail": [
+        "Lifecycle coverage — undetermined: 0 undetermined cycle(s) present"
+      ],
+      "scheduleStatus": 200,
+      "scheduleRefusalCode": "NH-AX-1003",
+      "observedFinding": null,
+      "verdict": "PARTIAL — admitted, but no distinct execution id was produced. See the raw output."
+    },
+    {
+      "label": "duplicate-control/dataset@renamed",
+      "kind": "duplicateUnderIdenticalTerms",
+      "assessmentPolicy": {
+        "termsId": "sv-assessment-policy",
+        "termsVersion": "1.0.0",
+        "asOf": "2026-06-30",
+        "stallThresholdDays": 30,
+        "currency": "USD"
+      },
+      "expectation": {
+        "expectation": "REFUSED 409 NH-DC-4003. The same bytes, the same boundary, the same governed policy, and a DIFFERENT operator-typed datasetId — which under contract 2.0.0 is no longer part of the identity. Before EP-28 this would have been admitted a second time by renaming the file.",
+        "mustBe": "NH-DC-4003",
+        "moneyScored": false
+      },
+      "uploadStatus": 409,
+      "uploadError": "conflict",
+      "refusalCode": "NH-DC-4003",
+      "executionId": "PAX-c43725372b8550afa5541a1d397771c6",
+      "distinctFromPrimaryExecution": false,
+      "primaryExecutionId": "PAX-c43725372b8550afa5541a1d397771c6",
+      "admissionOutcome": null,
+      "admissionReasonCodes": [],
+      "admissionReasonDetail": [],
+      "scheduleStatus": 200,
+      "scheduleRefusalCode": null,
+      "verdict": "AS PREDICTED — the SAME bytes under the SAME governed definition were refused as a duplicate even though the operator-typed datasetId differed. The label no longer buys a second assessment."
+    }
+  ],
+  "assessmentPolicyGovernance": [
+    {
+      "name": "primaryInA",
+      "proposeStatus": 201,
+      "activateStatus": 200,
+      "state": "ACTIVE",
+      "terms": {
+        "termsRef": "sv-assessment-policy@1.0.0",
+        "asOf": "2026-06-30",
+        "stallThresholdDays": 30,
+        "currency": "USD",
+        "termsHash": "sha256:7cd45818bb9dc57e1bd1fd89a0c667e6a30ffc702d59ac104683df63e082f41b",
+        "calculationMethodVersion": "assess-2026.1-thin"
+      },
+      "proposedByActorId": "sv-operator@company",
+      "activatedByActorId": "sv-governance@company",
+      "proposedBySummaryField": "sv-operator@company",
+      "activatedBySummaryField": "sv-governance@company",
+      "eventsAgreeWithSummary": true,
+      "rationales": [
+        {
+          "transition": "PROPOSED",
+          "actorId": "sv-operator@company",
+          "rationale": "synthetic end-to-end validation, primary definition, stated before the run"
+        },
+        {
+          "transition": "ACTIVATED",
+          "actorId": "sv-governance@company",
+          "rationale": "governance activates the definition for the synthetic validation run"
+        }
+      ],
+      "separationOfDutiesHeld": true,
+      "menuStatus": 200,
+      "menuEntries": 1
+    },
+    {
+      "name": "primaryInB",
+      "proposeStatus": 201,
+      "activateStatus": 200,
+      "state": "ACTIVE",
+      "terms": {
+        "termsRef": "sv-assessment-policy@1.0.0",
+        "asOf": "2026-06-30",
+        "stallThresholdDays": 30,
+        "currency": "USD",
+        "termsHash": "sha256:7cd45818bb9dc57e1bd1fd89a0c667e6a30ffc702d59ac104683df63e082f41b",
+        "calculationMethodVersion": "assess-2026.1-thin"
+      },
+      "proposedByActorId": "sv-operator@company",
+      "activatedByActorId": "sv-governance@company",
+      "proposedBySummaryField": "sv-operator@company",
+      "activatedBySummaryField": "sv-governance@company",
+      "eventsAgreeWithSummary": true,
+      "rationales": [
+        {
+          "transition": "PROPOSED",
+          "actorId": "sv-operator@company",
+          "rationale": "synthetic end-to-end validation, primary definition, stated before the run"
+        },
+        {
+          "transition": "ACTIVATED",
+          "actorId": "sv-governance@company",
+          "rationale": "governance activates the definition for the synthetic validation run"
+        }
+      ],
+      "separationOfDutiesHeld": true,
+      "menuStatus": 200,
+      "menuEntries": 1
+    },
+    {
+      "name": "laterCutoffInA",
+      "proposeStatus": 201,
+      "activateStatus": 200,
+      "state": "ACTIVE",
+      "terms": {
+        "termsRef": "sv-assessment-policy@2.0.0",
+        "asOf": "2026-07-31",
+        "stallThresholdDays": 30,
+        "currency": "USD",
+        "termsHash": "sha256:31922e173b5982839c259a30b9d9b5149657de720e7a65412b56067de7cb499c",
+        "calculationMethodVersion": "assess-2026.1-thin"
+      },
+      "proposedByActorId": "sv-operator@company",
+      "activatedByActorId": "sv-governance@company",
+      "proposedBySummaryField": "sv-operator@company",
+      "activatedBySummaryField": "sv-governance@company",
+      "eventsAgreeWithSummary": true,
+      "rationales": [
+        {
+          "transition": "PROPOSED",
+          "actorId": "sv-operator@company",
+          "rationale": "synthetic end-to-end validation, later cut-off definition, stated before the run"
+        },
+        {
+          "transition": "ACTIVATED",
+          "actorId": "sv-governance@company",
+          "rationale": "governance activates the definition for the synthetic validation run"
+        }
+      ],
+      "separationOfDutiesHeld": true,
+      "menuStatus": 200,
+      "menuEntries": 2
+    }
+  ],
+  "capabilityCoverage": {
+    "question": "Of the business revenue leakage planted, how much can this product see at all?",
+    "businessLeakageClasses": 11,
+    "classesNHCanDetect": 3,
+    "classesRepresentableButNotDetected": 2,
+    "classesNotRepresentable": 6,
+    "classCoverage": 0.2727,
+    "totalBusinessLeakageMinor": 12225066,
+    "detectableValueMinor": 4235066,
+    "representableButNotDetectedValueMinor": 1480000,
+    "notRepresentableValueMinor": 6510000,
+    "valueCoverage": 0.3464,
+    "breakdown": [
+      {
+        "leakage_class": "activation_stall_unpaid_invoice",
+        "businessLeakageMinor": 3165063,
+        "status": "DETECTED BY NH",
+        "missingColumns": null
+      },
+      {
+        "leakage_class": "renewal_at_risk",
+        "businessLeakageMinor": 2400000,
+        "status": "NOT REPRESENTABLE — the data contract declares no column that could carry the signal",
+        "missingColumns": [
+          "renewal_date",
+          "renewal_status",
+          "contract_end_at"
+        ]
+      },
+      {
+        "leakage_class": "usage_adoption_decline",
+        "businessLeakageMinor": 1800000,
+        "status": "NOT REPRESENTABLE — the data contract declares no column that could carry the signal",
+        "missingColumns": [
+          "seats_active",
+          "usage_events",
+          "feature_adoption_at"
+        ]
+      },
+      {
+        "leakage_class": "expansion_stalled",
+        "businessLeakageMinor": 950000,
+        "status": "NOT REPRESENTABLE — the data contract declares no column that could carry the signal",
+        "missingColumns": [
+          "entitled_seats",
+          "purchased_seats",
+          "expansion_opportunity_at"
+        ]
+      },
+      {
+        "leakage_class": "unpaid_invoice_without_activation_stall",
+        "businessLeakageMinor": 930000,
+        "status": "REPRESENTABLE BUT NOT DETECTED — a scope decision, not a schema limit",
+        "missingColumns": null
+      },
+      {
+        "leakage_class": "terminal_state_after_cutoff",
+        "businessLeakageMinor": 670000,
+        "status": "DETECTED BY NH",
+        "missingColumns": null
+      },
+      {
+        "leakage_class": "discount_leakage",
+        "businessLeakageMinor": 620000,
+        "status": "NOT REPRESENTABLE — the data contract declares no column that could carry the signal",
+        "missingColumns": [
+          "list_price",
+          "discount_pct",
+          "discount_expires_at"
+        ]
+      },
+      {
+        "leakage_class": "near_miss_exact_threshold",
+        "businessLeakageMinor": 550000,
+        "status": "REPRESENTABLE BUT NOT DETECTED — a scope decision, not a schema limit",
+        "missingColumns": null
+      },
+      {
+        "leakage_class": "dunning_failure",
+        "businessLeakageMinor": 430000,
+        "status": "NOT REPRESENTABLE — the data contract declares no column that could carry the signal",
+        "missingColumns": [
+          "payment_attempts",
+          "last_attempt_at",
+          "failure_code"
+        ]
+      },
+      {
+        "leakage_class": "activation_stall_partial_payment",
+        "businessLeakageMinor": 400003,
+        "status": "DETECTED BY NH",
+        "missingColumns": null
+      },
+      {
+        "leakage_class": "credit_note_misapplied",
+        "businessLeakageMinor": 310000,
+        "status": "NOT REPRESENTABLE — the data contract declares no column that could carry the signal",
+        "missingColumns": [
+          "credit_note_id",
+          "credit_applied_to",
+          "credit_amount"
+        ]
+      }
+    ],
+    "note": "Separate from detection accuracy and from monetary accuracy on purpose. High precision on a narrow surface is still a narrow surface."
+  },
+  "outOfCapability": {
+    "registerMinor": 6510000,
+    "scenarios": [
+      {
+        "leakage_class": "usage_adoption_decline",
+        "amount_minor": 1800000,
+        "missing_columns": [
+          "seats_active",
+          "usage_events",
+          "feature_adoption_at"
+        ]
+      },
+      {
+        "leakage_class": "renewal_at_risk",
+        "amount_minor": 2400000,
+        "missing_columns": [
+          "renewal_date",
+          "renewal_status",
+          "contract_end_at"
+        ]
+      },
+      {
+        "leakage_class": "expansion_stalled",
+        "amount_minor": 950000,
+        "missing_columns": [
+          "entitled_seats",
+          "purchased_seats",
+          "expansion_opportunity_at"
+        ]
+      },
+      {
+        "leakage_class": "discount_leakage",
+        "amount_minor": 620000,
+        "missing_columns": [
+          "list_price",
+          "discount_pct",
+          "discount_expires_at"
+        ]
+      },
+      {
+        "leakage_class": "dunning_failure",
+        "amount_minor": 430000,
+        "missing_columns": [
+          "payment_attempts",
+          "last_attempt_at",
+          "failure_code"
+        ]
+      },
+      {
+        "leakage_class": "credit_note_misapplied",
+        "amount_minor": 310000,
+        "missing_columns": [
+          "credit_note_id",
+          "credit_applied_to",
+          "credit_amount"
+        ]
+      }
+    ],
+    "note": "A SEPARATE register. No row exists for any of these, so none is a detection failure. Never summed with in-dataset leakage."
+  },
+  "claimBoundary": {
+    "syntheticOnly": true,
+    "isRecoveredRevenue": false,
+    "isProvenRevenueReturned": false,
+    "note": "Planted figures are Synthetic Ground-Truth Leakage. Anything NH computes is Detected Revenue Opportunity. Neither is recovered or proven money.",
+    "restated": "Ground-truth figures are planted. NH's figures are Detected Revenue Opportunity. Neither is recovered money and neither is proven returned revenue."
+  }
+}

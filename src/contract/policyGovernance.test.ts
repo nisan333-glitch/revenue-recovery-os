@@ -8,13 +8,14 @@ import {
   type PolicyLifecycleEvent,
 } from "./policyLifecycle";
 import { hashAdmissionPolicy, policyHashMatches, POLICY_HASH_SCHEME } from "./policyHash";
-import { makeAdmissionPolicy, ADMISSION_CALC_VERSION, type PilotAdmissionPolicy } from "./pilotAdmissionPolicy";
+import { makeAdmissionPolicy, type PilotAdmissionPolicy } from "./pilotAdmissionPolicy";
+import { ADMISSION_EVALUATOR_VERSION } from "./admissionGate";
 
 function policy(over: Partial<PilotAdmissionPolicy> = {}): PilotAdmissionPolicy {
   return makeAdmissionPolicy({
     policyId: "pol-hash",
     policyVersion: "1.0.0",
-    calculationMethodVersion: ADMISSION_CALC_VERSION,
+    calculationMethodVersion: ADMISSION_EVALUATOR_VERSION,
     minAcceptedRows: 10,
     minDistinctEntities: 5,
     maxRejectionRate: 0.2,

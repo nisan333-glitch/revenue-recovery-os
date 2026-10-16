@@ -1,0 +1,132 @@
+--- /tmp/claude-0/-home-user-revenue-recovery-os/6eace78b-d456-5551-91c0-c1a8d0c467c5/scratchpad/v1.norm.mjs	2026-10-06 06:33:24.347201535 +0000
++++ /tmp/claude-0/-home-user-revenue-recovery-os/6eace78b-d456-5551-91c0-c1a8d0c467c5/scratchpad/v2.mjs	2026-10-06 06:33:24.351537418 +0000
+@@ -1,6 +1,3 @@
+-// IT IS NOT PART OF THE HARNESS. It writes to *.v1.* files, is not in the freeze lock's script set,
+-// and nothing runs it except the revision record that cites it.
+-// ═══════════════════════════════════════════════════════════════════════════════════════════════
+ // Score each grain candidate against the ground truth that was frozen before any run.
+ //
+ // IT NEVER IMPORTS THE PRODUCT. It reads `results.json` (what NH said), `ground-truth.csv` and
+@@ -19,17 +16,12 @@
+ const sha = (t) => createHash("sha256").update(t).digest("hex");
+ 
+ // ── The freeze gate · refuse to score an experiment that moved ───────────────────────────────────
+-const frozen = JSON.parse(readFileSync(`${DIR}/FROZEN.json`, "utf8"));
+-const { compositeSha256, ...record } = frozen;
+-const problems = [];
+-if (sha(JSON.stringify(record)) !== compositeSha256) problems.push("FROZEN.json itself was edited");
+-for (const [name, want] of Object.entries(frozen.files)) {
+-  if (sha(readFileSync(`${DIR}/${name}`, "utf8")) !== want) problems.push(`${name} changed since the freeze`);
+-}
+-if (problems.length > 0) {
+-  process.stdout.write(`REFUSING TO SCORE\n${problems.map((p) => `  - ${p}`).join("\n")}\n`);
+-  process.exit(1);
+-}
++//
++// It checks the TRACKED lock, which covers the data AND every script including this one. Gating on the
++// generator's own record instead was the first form's mistake: that record was rewritten on every
++// regeneration, so it always agreed with whatever was on disk.
++import { assertFrozen } from "./freeze.mjs";
++assertFrozen("REFUSING TO SCORE");
+ 
+ const csv = (path) => {
+   const [h, ...lines] = readFileSync(path, "utf8").trim().split("\n");
+@@ -76,7 +68,32 @@
+     return new Set(byPayer ? all.map((e) => payerOf.get(e)).filter(Boolean) : all);
+   };
+ 
++  // ATTRIBUTION CLUSTERS. At a coarse grain two planted mechanisms can land on the SAME unit key —
++  // six payers here carry more than one — and then the residual belongs to both cases and to neither.
++  // The first form of this scorer printed per-mechanism numbers anyway and DOUBLE-COUNTED that money,
++  // which flattered a candidate for being unable to tell two defects apart. So cases sharing any key
++  // are scored as one cluster, and the per-mechanism line says NOT ATTRIBUTABLE instead of a figure.
++  const clusters = [];
++  for (const t of truth) {
++    const keys = keysFor(t);
++    const hit = clusters.find((cl) => [...keys].some((k) => cl.keys.has(k)));
++    if (hit) { hit.cases.push(t); for (const k of keys) hit.keys.add(k); }
++    else clusters.push({ cases: [t], keys: new Set(keys) });
++  }
++  const sharedKeyCases = new Set(clusters.filter((cl) => cl.cases.length > 1).flatMap((cl) => cl.cases.map((t) => t.mechanism)));
++
+   let tp = 0, fn = 0, refusedWarranted = 0, refusedUnwarranted = 0;
++  for (const cl of clusters) {
++    const units = c.units.filter((u) => cl.keys.has(u.entitlementRef));
++    const found = units.filter((u) => u.state === "UNDER_BILLED")
++      .reduce((n, u) => n + (u.residualMinor ?? 0), 0);
++    const planted = cl.cases
++      .filter((t) => t.authoritative_exposure_minor !== "UNKNOWN" && t.nh_should_detect === "yes")
++      .reduce((n, t) => n + Number(t.authoritative_exposure_minor), 0);
++    tp += Math.min(planted, found);
++    fn += Math.max(0, planted - found);
++  }
++
+   const perCase = [];
+   for (const t of truth) {
+     const keys = keysFor(t);
+@@ -88,16 +105,13 @@
+     const refused = units.filter((u) => u.state.startsWith("REFUSED")).length;
+     const planted = t.authoritative_exposure_minor === "UNKNOWN" ? null : Number(t.authoritative_exposure_minor);
+ 
+-    if (planted !== null && t.nh_should_detect === "yes") {
+-      tp += Math.min(planted, positive + paired);
+-      fn += Math.max(0, planted - (positive + paired));
+-    }
+     if (refused > 0) { if (t.nh_must_refuse === "YES") refusedWarranted += 1; else refusedUnwarranted += 1; }
+     perCase.push({
+       mechanism: t.mechanism, cohort: Number(t.cohort_size || 1), plantedMinor: planted,
+       unitsFound: units.length, positiveMinor: positive, pairedMinor: paired, refusedUnits: refused,
+       states: [...new Set(units.map((u) => u.state))].sort(),
+       shouldDetect: t.nh_should_detect, mustRefuse: t.nh_must_refuse,
++      attributable: !sharedKeyCases.has(t.mechanism),
+     });
+   }
+ 
+@@ -108,17 +122,24 @@
+   const fpOutside = c.units
+     .filter((u) => u.state === "UNDER_BILLED" && u.pairedMechanism === null && !plantedKeys.has(u.entitlementRef))
+     .reduce((n, u) => n + (u.residualMinor ?? 0), 0);
+-  const fpInside = perCase
+-    .filter((p) => p.plantedMinor !== null)
+-    .reduce((n, p) => n + Math.max(0, p.positiveMinor + p.pairedMinor - p.plantedMinor), 0);
+-  const fpOnZeroTruth = perCase
+-    .filter((p) => p.plantedMinor === 0)
+-    .reduce((n, p) => n + p.positiveMinor, 0);
++  // Over-reporting is measured per CLUSTER too, for the same reason.
++  let fpInside = 0, fpOnZeroTruth = 0;
++  for (const cl of clusters) {
++    const units = c.units.filter((u) => cl.keys.has(u.entitlementRef));
++    const found = units.filter((u) => u.state === "UNDER_BILLED").reduce((n, u) => n + (u.residualMinor ?? 0), 0);
++    const planted = cl.cases
++      .filter((t) => t.authoritative_exposure_minor !== "UNKNOWN")
++      .reduce((n, t) => n + Number(t.authoritative_exposure_minor), 0);
++    fpInside += Math.max(0, found - planted);
++    if (planted === 0) fpOnZeroTruth += found;
++  }
+ 
+   board.push({
+     candidate: c.candidate, constructible: true, describes: c.describes,
+     expectationKey: c.expectationKey, observationKey: c.observationKey, aliasCount: c.aliasCount,
+     unitCount: c.unitCount, coverage: c.coverage, witness: c.witness,
++    attributionClusters: clusters.length,
++    casesNotIndividuallyAttributable: [...sharedKeyCases].sort(),
+     totalPlantedMinor: totalPlanted,
+     detectedPositiveMinor: c.grossPositiveMinor,
+     truePositiveMinor: tp,
+@@ -166,11 +187,15 @@
+   out += `  unpriced units ${b.unpricedUnits} · refused units ${b.refusedUnits}`;
+   out += ` (warranted ${b.refusalsWarranted} / UNWARRANTED ${b.refusalsUnwarranted})\n`;
+   out += `  mechanisms with any detection ${b.mechanismsWithAnyDetection} of ${b.mechanismsShouldDetect} that should detect\n`;
++  out += `  attribution clusters ${b.attributionClusters} of ${truth.length} cases`;
++  out += b.casesNotIndividuallyAttributable.length
++    ? ` · NOT INDIVIDUALLY ATTRIBUTABLE at this grain: ${b.casesNotIndividuallyAttributable.join(", ")}\n`
++    : ` · every case individually attributable\n`;
+   out += `  per mechanism:\n`;
+   for (const p of b.perCase) {
+     const want = p.plantedMinor === null ? "UNKNOWN" : d(p.plantedMinor);
+     out += `    ${p.mechanism.padEnd(32)} n=${String(p.cohort).padStart(2)} truth ${want.padStart(10)}`;
+-    out += ` found ${d(p.positiveMinor).padStart(10)}`;
++    out += p.attributable ? ` found ${d(p.positiveMinor).padStart(10)}` : `   NOT-ATTRIB${"".padStart(5)}`;
+     out += ` paired ${d(p.pairedMinor).padStart(9)} refused ${String(p.refusedUnits).padStart(3)}`;
+     out += `  ${p.states.join("+") || "(no units)"}\n`;
+   }

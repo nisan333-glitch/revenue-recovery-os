@@ -147,6 +147,18 @@ Intelligence layer is the green-field. Honest mapping:
 | **Coordination** | Case + lifecycle · `riskAmount`/`confidence` · `expectedValue` ranking · `owner`+status via `state/mutate()` | 🟡 mostly built (automated Case *creation* is the gap) |
 | **Intelligence** | only the rule-based `PLAYBOOK` recommender (advises an existing Case) | ❌ absent — no detectors yet |
 
+**EP-31 · the two lanes now meet.** The pilot assessment — the only path that reads a customer's real
+export — can produce per-account `CandidateSignal`s for the class it already detects, so
+`CandidateSignal → canBeCase → Recovery Case → [shared Proof engine]` is reachable from real data for the
+first time. It adds no detector and no RecoveryType: it connects what exists. Off by default, enrolled per
+boundary, strictly downstream of a **completed** execution, and it removes a beneficiary-controlled number
+rather than adding one — the at-risk amount is now derived from a governed execution instead of typed into
+an operator-authored CSV. Full treatment: [`GOVERNED_DETECTION_V1.md`](GOVERNED_DETECTION_V1.md).
+
+This does **not** satisfy the guard below. Agent #1 is still unproven on **real** data; the bridge is the
+precondition for proving it, because until now nothing in production fed the case lane from real business
+data at all.
+
 **The smallest architecture that supports 100 agents without redesign** rests on one
 contract — already specified in [`RECOVERY_CASE.md`](RECOVERY_CASE.md) §2, not yet built:
 

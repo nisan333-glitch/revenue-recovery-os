@@ -1,0 +1,1025 @@
+{
+  "totalPlantedMinor": 8594200,
+  "knownCases": 16,
+  "unknownCases": 3,
+  "mustRefuseCases": 3,
+  "candidates": [
+    {
+      "candidate": "A_SUBSCRIPTION",
+      "constructible": true,
+      "describes": "The implicit assumption today: the contract's entitlement id is the billing subscription id, because billing was provisioned from the contract.",
+      "expectationKey": "entitlement_id",
+      "observationKey": "subscription_id",
+      "aliasCount": 0,
+      "unitCount": 600,
+      "coverage": {
+        "monetary": "REFUSED",
+        "event": "UNAVAILABLE_BILLING_SIDE_UNKEYED",
+        "correlation": "AVAILABLE"
+      },
+      "witness": "sha256:036a0a582e091c170d1637e41eead5bcbbeb2c78daadb3b27f2742e233431415",
+      "attributionClusters": 19,
+      "casesNotIndividuallyAttributable": [],
+      "totalPlantedMinor": 8594200,
+      "detectedPositiveMinor": 8204600,
+      "truePositiveMinor": 6244600,
+      "falsePositiveMinor": 0,
+      "falsePositiveOnZeroTruthMinor": 0,
+      "falseNegativeMinor": 389600,
+      "monetaryRecall": 0.7266063158874589,
+      "monetaryPrecision": 0.7611096214318797,
+      "unknownMoneyCases": 3,
+      "unpricedUnits": 4,
+      "refusedUnits": 79,
+      "refusalsWarranted": 3,
+      "refusalsUnwarranted": 1,
+      "grossNegativeMinor": 2339800,
+      "pairedHeldOutMinor": 2180000,
+      "attributionCoverage": "payer relation supplied",
+      "mechanismsWithAnyDetection": 8,
+      "mechanismsShouldDetect": 9,
+      "perCase": [
+        {
+          "mechanism": "M02-missing-invoice",
+          "cohort": 4,
+          "plantedMinor": 3179800,
+          "unitsFound": 19,
+          "positiveMinor": 3179800,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M03-underbilled",
+          "cohort": 3,
+          "plantedMinor": 776000,
+          "unitsFound": 13,
+          "positiveMinor": 776000,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M04-partial-billing",
+          "cohort": 3,
+          "plantedMinor": 830390,
+          "unitsFound": 15,
+          "positiveMinor": 830390,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M05-split-invoice",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 17,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M06-consolidated-invoice",
+          "cohort": 2,
+          "plantedMinor": 0,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M07-duplicate-masks-missing",
+          "cohort": 2,
+          "plantedMinor": 1960000,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 1960000,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M08-wrong-entitlement",
+          "cohort": 2,
+          "plantedMinor": 279800,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 220000,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M09-wrong-payer",
+          "cohort": 2,
+          "plantedMinor": 329800,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M10-billed-after-cancellation",
+          "cohort": 2,
+          "plantedMinor": 0,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M11-missed-after-amendment",
+          "cohort": 3,
+          "plantedMinor": 899640,
+          "unitsFound": 16,
+          "positiveMinor": 899640,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M12-pause-resume",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 15,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M13-renewal",
+          "cohort": 4,
+          "plantedMinor": 0,
+          "unitsFound": 20,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M14-rekeyed-identity",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 15,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 12,
+          "states": [
+            "MONETARILY_BALANCED",
+            "REFUSED_UNMATCHED_IDENTITY"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M15-billing-migration",
+          "cohort": 28,
+          "plantedMinor": 0,
+          "unitsFound": 144,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 56,
+          "states": [
+            "MONETARILY_BALANCED",
+            "REFUSED_UNMATCHED_IDENTITY"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "depends on grain",
+          "attributable": true
+        },
+        {
+          "mechanism": "M16-unknown-expected-amount",
+          "cohort": 4,
+          "plantedMinor": null,
+          "unitsFound": 21,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NO_RESIDUAL_UNPRICED"
+          ],
+          "shouldDetect": "as UNKNOWN",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M17-ambiguous-identity",
+          "cohort": 2,
+          "plantedMinor": null,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 2,
+          "states": [
+            "MONETARILY_BALANCED",
+            "REFUSED_AMBIGUOUS_LIVE_LINES"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M18-unsupported-relationship",
+          "cohort": 1,
+          "plantedMinor": 79900,
+          "unitsFound": 6,
+          "positiveMinor": 79900,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M19-cross-currency",
+          "cohort": 2,
+          "plantedMinor": null,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 9,
+          "states": [
+            "REFUSED_CURRENCY_MISMATCH"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M20-multiple-mechanisms",
+          "cohort": 1,
+          "plantedMinor": 258870,
+          "unitsFound": 13,
+          "positiveMinor": 258870,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        }
+      ]
+    },
+    {
+      "candidate": "E_SUBSCRIPTION_WITH_LEGACY_ALIAS",
+      "constructible": true,
+      "describes": "Candidate A plus the migration's retained legacy key, declared as an AUTHORITATIVE alias — the source stating the mapping rather than NH guessing it.",
+      "expectationKey": "entitlement_id",
+      "observationKey": "subscription_id, aliased by legacy_subscription_id",
+      "aliasCount": 28,
+      "unitCount": 600,
+      "coverage": {
+        "monetary": "REFUSED",
+        "event": "UNAVAILABLE_BILLING_SIDE_UNKEYED",
+        "correlation": "AVAILABLE"
+      },
+      "witness": "sha256:c336dd1f366b92ea2d6f04acd09043d66b7ff12b00e8b8ea70403159ba104b7c",
+      "attributionClusters": 19,
+      "casesNotIndividuallyAttributable": [],
+      "totalPlantedMinor": 8594200,
+      "detectedPositiveMinor": 8204600,
+      "truePositiveMinor": 6244600,
+      "falsePositiveMinor": 0,
+      "falsePositiveOnZeroTruthMinor": 0,
+      "falseNegativeMinor": 389600,
+      "monetaryRecall": 0.7266063158874589,
+      "monetaryPrecision": 0.7611096214318797,
+      "unknownMoneyCases": 3,
+      "unpricedUnits": 4,
+      "refusedUnits": 23,
+      "refusalsWarranted": 3,
+      "refusalsUnwarranted": 0,
+      "grossNegativeMinor": 2339800,
+      "pairedHeldOutMinor": 2180000,
+      "attributionCoverage": "payer relation supplied",
+      "mechanismsWithAnyDetection": 8,
+      "mechanismsShouldDetect": 9,
+      "perCase": [
+        {
+          "mechanism": "M02-missing-invoice",
+          "cohort": 4,
+          "plantedMinor": 3179800,
+          "unitsFound": 19,
+          "positiveMinor": 3179800,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M03-underbilled",
+          "cohort": 3,
+          "plantedMinor": 776000,
+          "unitsFound": 13,
+          "positiveMinor": 776000,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M04-partial-billing",
+          "cohort": 3,
+          "plantedMinor": 830390,
+          "unitsFound": 15,
+          "positiveMinor": 830390,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M05-split-invoice",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 17,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M06-consolidated-invoice",
+          "cohort": 2,
+          "plantedMinor": 0,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M07-duplicate-masks-missing",
+          "cohort": 2,
+          "plantedMinor": 1960000,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 1960000,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M08-wrong-entitlement",
+          "cohort": 2,
+          "plantedMinor": 279800,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 220000,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M09-wrong-payer",
+          "cohort": 2,
+          "plantedMinor": 329800,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M10-billed-after-cancellation",
+          "cohort": 2,
+          "plantedMinor": 0,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M11-missed-after-amendment",
+          "cohort": 3,
+          "plantedMinor": 899640,
+          "unitsFound": 16,
+          "positiveMinor": 899640,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M12-pause-resume",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 15,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M13-renewal",
+          "cohort": 4,
+          "plantedMinor": 0,
+          "unitsFound": 20,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M14-rekeyed-identity",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 15,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 12,
+          "states": [
+            "MONETARILY_BALANCED",
+            "REFUSED_UNMATCHED_IDENTITY"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M15-billing-migration",
+          "cohort": 28,
+          "plantedMinor": 0,
+          "unitsFound": 144,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "depends on grain",
+          "attributable": true
+        },
+        {
+          "mechanism": "M16-unknown-expected-amount",
+          "cohort": 4,
+          "plantedMinor": null,
+          "unitsFound": 21,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NO_RESIDUAL_UNPRICED"
+          ],
+          "shouldDetect": "as UNKNOWN",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M17-ambiguous-identity",
+          "cohort": 2,
+          "plantedMinor": null,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 2,
+          "states": [
+            "MONETARILY_BALANCED",
+            "REFUSED_AMBIGUOUS_LIVE_LINES"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M18-unsupported-relationship",
+          "cohort": 1,
+          "plantedMinor": 79900,
+          "unitsFound": 6,
+          "positiveMinor": 79900,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M19-cross-currency",
+          "cohort": 2,
+          "plantedMinor": null,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 9,
+          "states": [
+            "REFUSED_CURRENCY_MISMATCH"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M20-multiple-mechanisms",
+          "cohort": 1,
+          "plantedMinor": 258870,
+          "unitsFound": 13,
+          "positiveMinor": 258870,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        }
+      ]
+    },
+    {
+      "candidate": "F_OBLIGATION_REF",
+      "constructible": true,
+      "describes": "Candidate A's grain, with the billing side's own statement of which contract obligation each invoice line settles. The fact C_SCHEDULE_LINE names as missing, supplied by the source.",
+      "expectationKey": "entitlement_id (obligation: schedule_line_id)",
+      "observationKey": "obligation_ref -> schedule_line_id -> entitlement_id",
+      "aliasCount": 0,
+      "unitCount": 600,
+      "coverage": {
+        "monetary": "REFUSED",
+        "event": "AVAILABLE",
+        "correlation": "AVAILABLE"
+      },
+      "witness": "sha256:33a5dad19d21daf86807c8b4908d0a27c3808702ff311d16407358cfe834aaa7",
+      "attributionClusters": 19,
+      "casesNotIndividuallyAttributable": [],
+      "totalPlantedMinor": 8594200,
+      "detectedPositiveMinor": 8204600,
+      "truePositiveMinor": 6244600,
+      "falsePositiveMinor": 0,
+      "falsePositiveOnZeroTruthMinor": 0,
+      "falseNegativeMinor": 389600,
+      "monetaryRecall": 0.7266063158874589,
+      "monetaryPrecision": 0.7611096214318797,
+      "unknownMoneyCases": 3,
+      "unpricedUnits": 4,
+      "refusedUnits": 11,
+      "refusalsWarranted": 2,
+      "refusalsUnwarranted": 0,
+      "grossNegativeMinor": 2339800,
+      "pairedHeldOutMinor": 220000,
+      "attributionCoverage": "payer relation supplied",
+      "mechanismsWithAnyDetection": 8,
+      "mechanismsShouldDetect": 9,
+      "perCase": [
+        {
+          "mechanism": "M02-missing-invoice",
+          "cohort": 4,
+          "plantedMinor": 3179800,
+          "unitsFound": 19,
+          "positiveMinor": 3179800,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M03-underbilled",
+          "cohort": 3,
+          "plantedMinor": 776000,
+          "unitsFound": 13,
+          "positiveMinor": 776000,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M04-partial-billing",
+          "cohort": 3,
+          "plantedMinor": 830390,
+          "unitsFound": 15,
+          "positiveMinor": 830390,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M05-split-invoice",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 17,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M06-consolidated-invoice",
+          "cohort": 2,
+          "plantedMinor": 0,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M07-duplicate-masks-missing",
+          "cohort": 2,
+          "plantedMinor": 1960000,
+          "unitsFound": 10,
+          "positiveMinor": 1960000,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M08-wrong-entitlement",
+          "cohort": 2,
+          "plantedMinor": 279800,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 220000,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M09-wrong-payer",
+          "cohort": 2,
+          "plantedMinor": 329800,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "OVER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M10-billed-after-cancellation",
+          "cohort": 2,
+          "plantedMinor": 0,
+          "unitsFound": 10,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M11-missed-after-amendment",
+          "cohort": 3,
+          "plantedMinor": 899640,
+          "unitsFound": 16,
+          "positiveMinor": 899640,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M12-pause-resume",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 15,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M13-renewal",
+          "cohort": 4,
+          "plantedMinor": 0,
+          "unitsFound": 20,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M14-rekeyed-identity",
+          "cohort": 3,
+          "plantedMinor": 0,
+          "unitsFound": 15,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M15-billing-migration",
+          "cohort": 28,
+          "plantedMinor": 0,
+          "unitsFound": 144,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "depends on grain",
+          "attributable": true
+        },
+        {
+          "mechanism": "M16-unknown-expected-amount",
+          "cohort": 4,
+          "plantedMinor": null,
+          "unitsFound": 21,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NO_RESIDUAL_UNPRICED"
+          ],
+          "shouldDetect": "as UNKNOWN",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M17-ambiguous-identity",
+          "cohort": 2,
+          "plantedMinor": null,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 2,
+          "states": [
+            "MONETARILY_BALANCED",
+            "REFUSED_AMBIGUOUS_LIVE_LINES"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M18-unsupported-relationship",
+          "cohort": 1,
+          "plantedMinor": 79900,
+          "unitsFound": 6,
+          "positiveMinor": 79900,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        },
+        {
+          "mechanism": "M19-cross-currency",
+          "cohort": 2,
+          "plantedMinor": null,
+          "unitsFound": 9,
+          "positiveMinor": 0,
+          "pairedMinor": 0,
+          "refusedUnits": 9,
+          "states": [
+            "REFUSED_CURRENCY_MISMATCH"
+          ],
+          "shouldDetect": "no",
+          "mustRefuse": "YES",
+          "attributable": true
+        },
+        {
+          "mechanism": "M20-multiple-mechanisms",
+          "cohort": 1,
+          "plantedMinor": 258870,
+          "unitsFound": 13,
+          "positiveMinor": 258870,
+          "pairedMinor": 0,
+          "refusedUnits": 0,
+          "states": [
+            "MONETARILY_BALANCED",
+            "NOT_EXPECTED",
+            "UNDER_BILLED"
+          ],
+          "shouldDetect": "yes",
+          "mustRefuse": "no",
+          "attributable": true
+        }
+      ]
+    }
+  ]
+}
