@@ -35,6 +35,21 @@ e2e/fixtures/*
 # RUN OUTPUTS STAY IGNORED. `results.json` alone is ~500 KB per package, it is rewritten by every
 # `recon:run`/`recon:score`, and it is not evidence of the experiment's inputs — tracking it would make
 # every run dirty the tree. The ten files below are 416 KB in total.
+#
+# THE FIFTEEN `baseline.*` ARTEFACTS ARE ALSO TRACKED, as of 2026-10-16, and they pass the inputs/outputs
+# test on a checkable property rather than by argument: NO COMMAND WRITES ONE. `score.mjs` writes
+# `scoreboard.json` and `report.txt`, `run.ts` writes `results.json`; a baseline is a copy taken BY HAND at
+# a moment someone wanted to keep. That is what makes it a preserved historical measurement rather than a
+# regenerated output, and it is why tracking one cannot dirty the tree on a routine run — the test
+# `results.json` fails. Asserted by a test that scans every tracked script for a write whose target names
+# a baseline. 327 KB in total.
+#
+# WHAT THEIR LEDGER ATTESTS, so it is stated where someone will look: continuity of these bytes from
+# `e2e/evidence/reconciliation-baselines.evidence.json`'s `attestedAt` FORWARD. Not original provenance —
+# no baseline file carries a core revision, a scorer revision or a timestamp, and none was ever tracked.
+# Not historical reproducibility — the core has moved four times and a pre-correction baseline cannot run
+# on this build at all. Not independent validation — one party produced, kept and attested all of it. Those
+# three refusals are required literals in `src/evidence/baselineLedger.ts`, not prose.
 !e2e/fixtures/reconciliation-synthetic/
 !e2e/fixtures/reconciliation-obligation-ref/
 e2e/fixtures/reconciliation-synthetic/*
@@ -44,6 +59,7 @@ e2e/fixtures/reconciliation-obligation-ref/*
 !e2e/fixtures/reconciliation-*/ground-truth.csv
 !e2e/fixtures/reconciliation-*/planted-register.json
 !e2e/fixtures/reconciliation-*/FROZEN.json
+!e2e/fixtures/reconciliation-*/baseline.*
 
 # THE TWO VALIDATION-CYCLE PACKAGES ARE TRACKED EVIDENCE, and only the artefacts their records HASH.
 #

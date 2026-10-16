@@ -1,0 +1,107 @@
+SYNTHETIC RECONCILIATION · 614 expectation rows · 597 observation rows
+TOTAL AUTHORITATIVE PLANTED MONEY $85942.00 · 16 priced cases · 3 UNKNOWN · 3 must-refuse
+
+==============================================================================
+A_SUBSCRIPTION
+  keys: entitlement_id  <->  subscription_id
+  units 600 · monetary coverage REFUSED
+  DETECTED POSITIVE      $82046.00
+  TRUE POSITIVE          $62446.00
+  FALSE POSITIVE         $0.00   (on zero-truth cases $0.00)
+  FALSE NEGATIVE         $3896.00
+  MONETARY RECALL        72.66%
+  MONETARY PRECISION     76.11%
+  gross negative $23398.00 · paired held out $21800.00
+  unpriced units 4 · refused units 79 (warranted 3 / UNWARRANTED 1)
+  mechanisms with any detection 8 of 9 that should detect
+  attribution clusters 19 of 19 cases · every case individually attributable
+  per mechanism:
+    M02-missing-invoice              n= 4 truth  $31798.00 found  $31798.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M03-underbilled                  n= 3 truth   $7760.00 found   $7760.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M04-partial-billing              n= 3 truth   $8303.90 found   $8303.90 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M05-split-invoice                n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M06-consolidated-invoice         n= 2 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M07-duplicate-masks-missing      n= 2 truth  $19600.00 found      $0.00 paired $19600.00 refused   0  MONETARILY_BALANCED+OVER_BILLED+UNDER_BILLED
+    M08-wrong-entitlement            n= 2 truth   $2798.00 found      $0.00 paired  $2200.00 refused   0  MONETARILY_BALANCED+OVER_BILLED+UNDER_BILLED
+    M09-wrong-payer                  n= 2 truth   $3298.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+OVER_BILLED
+    M10-billed-after-cancellation    n= 2 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED
+    M11-missed-after-amendment       n= 3 truth   $8996.40 found   $8996.40 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M12-pause-resume                 n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED
+    M13-renewal                      n= 4 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M14-rekeyed-identity             n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused  12  MONETARILY_BALANCED+REFUSED_UNMATCHED_IDENTITY
+    M15-billing-migration            n=28 truth      $0.00 found      $0.00 paired     $0.00 refused  56  MONETARILY_BALANCED+REFUSED_UNMATCHED_IDENTITY
+    M16-unknown-expected-amount      n= 4 truth    UNKNOWN found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NO_RESIDUAL_UNPRICED
+    M17-ambiguous-identity           n= 2 truth    UNKNOWN found      $0.00 paired     $0.00 refused   2  MONETARILY_BALANCED+REFUSED_AMBIGUOUS_LIVE_LINES
+    M18-unsupported-relationship     n= 1 truth    $799.00 found    $799.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M19-cross-currency               n= 2 truth    UNKNOWN found      $0.00 paired     $0.00 refused   9  REFUSED_CURRENCY_MISMATCH
+    M20-multiple-mechanisms          n= 1 truth   $2588.70 found   $2588.70 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED+UNDER_BILLED
+
+==============================================================================
+E_SUBSCRIPTION_WITH_LEGACY_ALIAS
+  keys: entitlement_id  <->  subscription_id, aliased by legacy_subscription_id (28 aliases)
+  units 600 · monetary coverage REFUSED
+  DETECTED POSITIVE      $82046.00
+  TRUE POSITIVE          $62446.00
+  FALSE POSITIVE         $0.00   (on zero-truth cases $0.00)
+  FALSE NEGATIVE         $3896.00
+  MONETARY RECALL        72.66%
+  MONETARY PRECISION     76.11%
+  gross negative $23398.00 · paired held out $21800.00
+  unpriced units 4 · refused units 23 (warranted 3 / UNWARRANTED 0)
+  mechanisms with any detection 8 of 9 that should detect
+  attribution clusters 19 of 19 cases · every case individually attributable
+  per mechanism:
+    M02-missing-invoice              n= 4 truth  $31798.00 found  $31798.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M03-underbilled                  n= 3 truth   $7760.00 found   $7760.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M04-partial-billing              n= 3 truth   $8303.90 found   $8303.90 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M05-split-invoice                n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M06-consolidated-invoice         n= 2 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M07-duplicate-masks-missing      n= 2 truth  $19600.00 found      $0.00 paired $19600.00 refused   0  MONETARILY_BALANCED+OVER_BILLED+UNDER_BILLED
+    M08-wrong-entitlement            n= 2 truth   $2798.00 found      $0.00 paired  $2200.00 refused   0  MONETARILY_BALANCED+OVER_BILLED+UNDER_BILLED
+    M09-wrong-payer                  n= 2 truth   $3298.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+OVER_BILLED
+    M10-billed-after-cancellation    n= 2 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED
+    M11-missed-after-amendment       n= 3 truth   $8996.40 found   $8996.40 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M12-pause-resume                 n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED
+    M13-renewal                      n= 4 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M14-rekeyed-identity             n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused  12  MONETARILY_BALANCED+REFUSED_UNMATCHED_IDENTITY
+    M15-billing-migration            n=28 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M16-unknown-expected-amount      n= 4 truth    UNKNOWN found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NO_RESIDUAL_UNPRICED
+    M17-ambiguous-identity           n= 2 truth    UNKNOWN found      $0.00 paired     $0.00 refused   2  MONETARILY_BALANCED+REFUSED_AMBIGUOUS_LIVE_LINES
+    M18-unsupported-relationship     n= 1 truth    $799.00 found    $799.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M19-cross-currency               n= 2 truth    UNKNOWN found      $0.00 paired     $0.00 refused   9  REFUSED_CURRENCY_MISMATCH
+    M20-multiple-mechanisms          n= 1 truth   $2588.70 found   $2588.70 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED+UNDER_BILLED
+
+==============================================================================
+F_OBLIGATION_REF
+  keys: entitlement_id (obligation: schedule_line_id)  <->  obligation_ref -> schedule_line_id -> entitlement_id
+  units 600 · monetary coverage REFUSED
+  DETECTED POSITIVE      $82046.00
+  TRUE POSITIVE          $62446.00
+  FALSE POSITIVE         $0.00   (on zero-truth cases $0.00)
+  FALSE NEGATIVE         $3896.00
+  MONETARY RECALL        72.66%
+  MONETARY PRECISION     76.11%
+  gross negative $23398.00 · paired held out $2200.00
+  unpriced units 4 · refused units 11 (warranted 2 / UNWARRANTED 0)
+  mechanisms with any detection 8 of 9 that should detect
+  attribution clusters 19 of 19 cases · every case individually attributable
+  per mechanism:
+    M02-missing-invoice              n= 4 truth  $31798.00 found  $31798.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M03-underbilled                  n= 3 truth   $7760.00 found   $7760.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M04-partial-billing              n= 3 truth   $8303.90 found   $8303.90 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M05-split-invoice                n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M06-consolidated-invoice         n= 2 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M07-duplicate-masks-missing      n= 2 truth  $19600.00 found  $19600.00 paired     $0.00 refused   0  MONETARILY_BALANCED+OVER_BILLED+UNDER_BILLED
+    M08-wrong-entitlement            n= 2 truth   $2798.00 found      $0.00 paired  $2200.00 refused   0  MONETARILY_BALANCED+OVER_BILLED+UNDER_BILLED
+    M09-wrong-payer                  n= 2 truth   $3298.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+OVER_BILLED
+    M10-billed-after-cancellation    n= 2 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED
+    M11-missed-after-amendment       n= 3 truth   $8996.40 found   $8996.40 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M12-pause-resume                 n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED
+    M13-renewal                      n= 4 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M14-rekeyed-identity             n= 3 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M15-billing-migration            n=28 truth      $0.00 found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED
+    M16-unknown-expected-amount      n= 4 truth    UNKNOWN found      $0.00 paired     $0.00 refused   0  MONETARILY_BALANCED+NO_RESIDUAL_UNPRICED
+    M17-ambiguous-identity           n= 2 truth    UNKNOWN found      $0.00 paired     $0.00 refused   2  MONETARILY_BALANCED+REFUSED_AMBIGUOUS_LIVE_LINES
+    M18-unsupported-relationship     n= 1 truth    $799.00 found    $799.00 paired     $0.00 refused   0  MONETARILY_BALANCED+UNDER_BILLED
+    M19-cross-currency               n= 2 truth    UNKNOWN found      $0.00 paired     $0.00 refused   9  REFUSED_CURRENCY_MISMATCH
+    M20-multiple-mechanisms          n= 1 truth   $2588.70 found   $2588.70 paired     $0.00 refused   0  MONETARILY_BALANCED+NOT_EXPECTED+UNDER_BILLED
