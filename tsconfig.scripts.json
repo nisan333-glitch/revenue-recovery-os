@@ -8,13 +8,16 @@
   // whose terms type has no such field, inert at runtime and a false claim to any reader, found the first
   // time these files were typechecked.
   //
-  // Scoped to `scripts/data-readiness` deliberately. `scripts/pilot-intake/verify-package.ts` carries
-  // nine further errors of its own (unused bindings and unchecked regex-group indexing); widening this
-  // project would mean editing the package verifier inside a slice that does not own it, so that gap is
-  // reported rather than swept in here.
+  // `scripts/freeze` joined on 2026-10-16, when the baseline preservation ledger added two more tools
+  // there. It was PROBED before being added rather than assumed: all four files typecheck clean, so the
+  // coverage costs nothing and the two new tools are held to the same bar as `src/`.
+  //
+  // Still scoped deliberately. `scripts/pilot-intake/verify-package.ts` carries nine errors of its own
+  // (unused bindings and unchecked regex-group indexing); widening to it would mean editing the package
+  // verifier inside a slice that does not own it, so that gap stays reported rather than swept in here.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["vitest/globals", "node"]
   },
-  "include": ["scripts/data-readiness/**/*.ts", "src"]
+  "include": ["scripts/data-readiness/**/*.ts", "scripts/freeze/**/*.ts", "src"]
 }

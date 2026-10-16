@@ -23,6 +23,8 @@
     "check:purity": "node scripts/check-domain-purity.mjs",
     "verify:evidence": "vite-node scripts/freeze/verify-evidence.ts",
     "attest:evidence": "vite-node scripts/freeze/attest-evidence.ts",
+    "verify:baselines": "vite-node scripts/freeze/verify-baselines.ts",
+    "attest:baselines": "vite-node scripts/freeze/attest-baselines.ts",
     "test:e2e": "vite build && node e2e/smoke.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "fixture:journey": "vite-node scripts/write-journey-fixture.ts",
