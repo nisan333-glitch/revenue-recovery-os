@@ -1546,6 +1546,71 @@ verifier **still outside the gate** and is the recommended next action; it raise
 slice did not answer — whether a recorded historical **measurement** (`baseline.*`) is evidence to preserve
 or output to regenerate.
 
+**Evidence preservation decision (2026-10-16).** The CI-coverage slice left `verify:evidence` outside the
+gate and a governed question unanswered: *is a recorded historical **measurement** evidence to preserve, or
+output to regenerate?* The owner answered it — **historical baseline measurements are preserved evidence,
+not disposable generated outputs** — and the investigation found two families that needed separate answers,
+which is why one answer would have been wrong. `verify:evidence` covers **twenty** `synthetic-validation*`
+artefacts and **not one** `baseline.*` file; the CI-coverage record's claim that it covered the baselines is
+corrected by erratum rather than quietly dropped. Of the twenty, ten scripts were tracked and ten fixtures
+were not, so on a clean checkout every one read `absent` and it exited 1 — the same blocker the four frozen
+verifiers had, proven with `git archive` before being fixed. The rules:
+
+> **A file present on disk and absent from the index is not preserved.** This is the loss already on
+> record: the V1 scorer's bytes were never committed, the artefact had to be reconstructed from recorded
+> patches, and *that it needed reconstructing is the compounding half of that disclosure.*
+
+> **A gate that truncates the limitation is not preserving it.** The metadata print capped values at 96
+> characters, so a CI log read *"NOT an original Git freeze: e2e/fixtures/"* and lost the half that states
+> why. It prints in full now, and the distinction licensing that is load-bearing: these are **our own
+> constants in a record we wrote**, not a validator `detail` quoting cells from a customer's file, which is
+> what the codes-only rule is about. The claim is also **derived** — `continuityLine` builds *"continuity
+> since 2026-09-30 · NOT original historical provenance · tested revision unknown"* from the record's own
+> `attestedAt` and downgrade marker, never a hardcoded date that could outlive the record justifying it.
+
+> **A record of when we looked is not a record of what was tested.** `producingRevision` is a **covered**
+> field whose value is the literal `NOT_ESTABLISHED`; `attestingRevision` is **excluded metadata**. The two
+> can never be collapsed — `evidenceIdentity.ts`'s point-2/point-3 split applied to a new family.
+
+> **Stale claims are corrected where they are prose and PRESERVED where they are evidence.** Tracking made
+> *"`.gitignore` excludes all of `e2e/fixtures/`"* false in three code headers, each now stating the true
+> historical fact. The two 2026-09-30 records carry the old wording and are **not touched**: they were
+> accurate when written, and rewriting an attestation is precisely what the scheme forbids. Append-only
+> errata carry the correction.
+
+**Built 2026-10-16** ([`docs/EVIDENCE_PRESERVATION_V1.md`](docs/EVIDENCE_PRESERVATION_V1.md)). Track B is an
+**additive sibling** — `nh-benchmark-baseline-ledger-v1`, digest `nhbl_`, its own writer and verifier — never
+a widening of the cycle scheme, whose components a test now pins. Its three refusals are **required
+literals** (`NOT_ESTABLISHED`, `NOT_CLAIMED`, `NONE`), covered so softening one changes the identity and
+throws; the two sets are **separate arrays**, because a shape that cannot express the merged set beats a
+label that can be misread; the fifteen paths are **declared, never globbed**; and both tools **re-read** the
+document citing the one recorded hash rather than trusting the ledger's copy — *the agreement that can only
+agree* is the register-tamper-evidence defect. The ledger is dated **2026-10-16, never backdated**, and its
+only numbers are fifteen byte counts. **Inputs versus outputs was decided on a checkable property**: no
+command writes a `baseline.*` — `score.mjs` writes `scoreboard.json`, `run.ts` writes `results.json` — so a
+baseline is a hand-taken snapshot, which is what makes it a preserved measurement and why tracking one
+cannot dirty the tree.
+
+**Thirteen induced defects, all fail closed**, the ledger byte-identical after the three attester refusals,
+and `git archive HEAD` now exits **0** where it exited 1 with twenty `absent` failures. **1187/1187 with a
+database and 1186 + 1 skipped without, 599/599 ep2, 120/120 journey, 242/242 package, 25/25 control**, all
+six verifiers green, `verify:registers` empty. **No version constant moved**, every frozen artefact is
+unmoved, and both existing evidence records are byte-identical. **Three defects were in my own instruments**
+— a prefix scan looking for `syn-` against `synthetic-`, a no-money check that banned a token and then
+tripped on the sentence explaining the token's absence (**fourteenth** instance), and, sharpest, a
+fail-closed regex that escaped `:` as `\:` and therefore **matched nothing, including `|| true`**:
+
+> **A guard that cannot fire is not a weaker guard, it is no guard — and generalising a working check is
+> exactly when it happens.** The test now asserts the pattern fires on a swallowed exit before trusting it
+> not to fire on the real workflow. **Fifteenth** instance. A fourth, in the same block from the previous
+> slice: a comment claimed the inputs *"are tracked"* while `existsSync` read the filesystem, which cannot
+> see the index — the state that kept these verifiers out of CI in the first place.
+
+**What is attested and what is not:** Track A, continuity since **2026-09-30**; Track B, continuity since
+**2026-10-16**. Neither is original provenance, neither is historical reproducibility, and neither is
+independent validation. Everything preserved is synthetic, and **no observed amount became Revenue
+Returned.**
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

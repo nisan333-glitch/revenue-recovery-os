@@ -107,6 +107,19 @@ on it alone. **The division of labour is the point: the control checks meaning, 
 
 ## 6 · Reported, not actioned
 
+> **RESOLVED 2026-10-16, and one claim below is CORRECTED.** `verify:evidence` is inside the gate, and so
+> is a sixth, `verify:baselines`. The governed question was answered: **historical baseline measurements
+> are preserved evidence, not disposable generated outputs.**
+>
+> **The correction, because it is a factual error and not a change of plan:** this section says
+> `verify:evidence` *"covers ten artefacts including the `baseline.*` recordings."* **It does not.** It
+> covers ten artefacts **per cycle** across two `synthetic-validation*` cycles — three datasets, a ground
+> truth, a prediction and five scripts — and **no `baseline.*` file is in either record.** The two
+> families are disjoint and needed separate answers, which is why 2026-10-16 is two tracks rather than
+> one. The prose below is preserved byte-identical.
+>
+> See [`EVIDENCE_PRESERVATION_V1.md`](EVIDENCE_PRESERVATION_V1.md).
+
 **`verify:evidence` is a fifth verifier still outside CI** — same family, same former fixture
 dependency, and the one that guards the frozen *evidence ledger*. It becomes wireable now that the
 inputs are tracked, and it is the **recommended next action**. It raises one question this slice
