@@ -44,3 +44,37 @@ e2e/fixtures/reconciliation-obligation-ref/*
 !e2e/fixtures/reconciliation-*/ground-truth.csv
 !e2e/fixtures/reconciliation-*/planted-register.json
 !e2e/fixtures/reconciliation-*/FROZEN.json
+
+# THE TWO VALIDATION-CYCLE PACKAGES ARE TRACKED EVIDENCE, and only the artefacts their records HASH.
+#
+# `verify:evidence` re-hashes ten artefacts per cycle against a record committed to Git. Ten of those
+# twenty — the five scripts in each `scripts/synthetic-validation*/` — were already tracked. The other ten
+# were not, so on a clean checkout every one read `absent` and the verifier exited 1, which is why it could
+# not be wired into CI. Proven by `git archive HEAD` before this rule existed: 10 absent failures.
+#
+# WHAT THEY ATTEST, stated here because the rule is where someone will look: CONTINUITY SINCE 2026-09-30,
+# not original historical provenance. Neither cycle ever had a Git freeze, and `verify.mjs` overwrote the
+# originally recorded gitHead/frozenAt, so both records carry `systemUnderTestRevision: "unknown"` and a
+# downgrade marker. Tracking the bytes makes them verifiable from the date of the record forward. It does
+# not make them older.
+#
+# SYNTHETIC BY CONSTRUCTION, checked rather than assumed: every identifier is `synthetic-`-prefixed and
+# SEMANTIC — `synthetic-u-never-activated`, `synthetic-e-paid-exceeds` — naming the planted defect, which
+# is the opposite of disguised real data. Zero emails, zero phone numbers, zero person names, zero free
+# text. (The prefix is `synthetic-`, NOT the `syn-` of the reconciliation packages above: a scan looking
+# for the wrong one reports zero identifiers on files where every row carries one.)
+#
+# EXACTLY THE HASH-COVERED ARTEFACTS, and nothing else. `raw-output.json` and `score.json` are run outputs;
+# `*-v1`/`*-v2` are superseded generations; `FROZEN*.txt` likewise. `FROZEN.json` stays ignored on purpose —
+# it is not hash-covered by the record (its substantive content, `runParameters`, is covered as a VALUE),
+# so tracking it would put unverifiable bytes in the evidence set, and `attest:evidence` being unable to
+# run from a clean checkout is correct: re-attesting is the act this scheme exists to make deliberate.
+!e2e/fixtures/synthetic-validation/
+!e2e/fixtures/synthetic-validation-2026-09-27/
+e2e/fixtures/synthetic-validation/*
+e2e/fixtures/synthetic-validation-2026-09-27/*
+!e2e/fixtures/synthetic-validation*/dataset.csv
+!e2e/fixtures/synthetic-validation*/spot-multicurrency.csv
+!e2e/fixtures/synthetic-validation*/spot-cancelled-after-asof.csv
+!e2e/fixtures/synthetic-validation*/ground-truth.json
+!e2e/fixtures/synthetic-validation*/prediction.json
