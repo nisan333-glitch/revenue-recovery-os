@@ -306,8 +306,33 @@ describe("the tracked baseline ledger", () => {
     expect(entry!.path).toBe(RECORDED_BASELINE.path);
     expect(entry!.recordedHashSource).toBe("docs/BENCHMARK_REVISION_V2.md");
     expect(entry!.recordedCoreSha256).toBe(RECORDED_BASELINE.recordedCoreSha256);
-    // The commit the recorded core hash resolves to, kept so the relationship is navigable rather than
-    // merely asserted. Checked against git here, which is the only place it can be checked.
+    expect(entry!.recordedCoreCommit).toMatch(/^[0-9a-f]{7,40}$/);
+    // Ledger and module must agree on the commit too, not only on the core hash — otherwise a ledger
+    // could cite a different commit and the history check below would silently be about something else.
+    expect(entry!.recordedCoreCommit).toBe(RECORDED_BASELINE.recordedCoreCommit);
+
+    // THE HISTORICAL RELATIONSHIP, CHECKED WHERE IT CAN BE CHECKED — and this is a correction. The first
+    // form shelled out to `git show <commit>:…` unconditionally and passed locally for a reason that had
+    // nothing to do with the property: `actions/checkout@v4` makes a SHALLOW clone, so `fa28a80` does not
+    // exist in CI and both `npm run test` jobs went red. A test whose premise is "my working copy has
+    // history" is a test about my working copy.
+    //
+    // IT IS NOT MADE UNCONDITIONALLY SKIPPABLE, because *a test that cannot fail is not a control*. When
+    // the object is unreachable the test asserts WHY — that the repository really is shallow — so a
+    // missing object in a full clone still fails. And CI is not reconfigured to `fetch-depth: 0` to suit
+    // one assertion: widening every job's checkout to make a test pass is changing the environment to fit
+    // the test.
+    const reachable =
+      execFileSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: ROOT, encoding: "utf8" }).trim() ===
+      "false";
+    if (!reachable) {
+      // Shallow: the relationship is unverifiable HERE, stated rather than silently passed over. The
+      // byte-level guard on the baseline itself is `verify:baselines`, which needs no history at all.
+      expect(
+        execFileSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: ROOT, encoding: "utf8" }).trim(),
+      ).toBe("true");
+      return;
+    }
     const blob = execFileSync(
       "git",
       ["show", `${entry!.recordedCoreCommit}:src/benchmark/reconciliationCore.ts`],
