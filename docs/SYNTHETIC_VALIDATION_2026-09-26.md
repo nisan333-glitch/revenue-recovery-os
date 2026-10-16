@@ -371,3 +371,28 @@ Synthetic Ground-Truth Leakage is planted. Detected Revenue Opportunity is what 
 Recovered Revenue and neither is Proven Revenue Returned — no collection happened, no proof standard was
 satisfied, and no recovery case exists. Detection accuracy, monetary accuracy and capability coverage are
 three separate results and must not be combined into a single figure.
+
+---
+
+## ERRATUM · 2026-10-16 · the artefacts are now tracked
+
+**Append-only. The prose above is preserved byte-identical and is not rewritten.**
+
+§12 says *"The artifacts themselves are not committed — `e2e/fixtures/` is gitignored."* That was true when
+written and **is no longer true**. As of 2026-10-16 the five hash-covered artefacts of this cycle —
+`dataset.csv`, `spot-multicurrency.csv`, `spot-cancelled-after-asof.csv`, `ground-truth.json` and
+`prediction.json` — are tracked in Git, which is what lets `npm run verify:evidence` run from a clean
+checkout and sit inside the CI gate. Before that it reported all ten covered artefacts of this cycle as
+`absent` and exited 1.
+
+**What this does and does not change.** It changes what is **verifiable going forward**: from
+`e2e/evidence/synthetic-validation.evidence.json`'s `attestedAt` of **2026-09-30** onward, any change to
+these bytes is a Git-visible change and a CI failure. It changes **nothing about the past**. There was no
+original Git freeze, the recorded `gitHead` was written with no dirty-tree check, and
+`systemUnderTestRevision` remains the literal `"unknown"` with a downgrade marker. **Continuity since
+2026-09-30, never original historical provenance.**
+
+`FROZEN.json` remains untracked: it is not hash-covered by the evidence record, whose coverage of this
+cycle's parameters is of `runParameters` as a **value**.
+
+See [`EVIDENCE_PRESERVATION_V1.md`](EVIDENCE_PRESERVATION_V1.md).

@@ -10,6 +10,7 @@
 //   4. it fails CLOSED on malformed, mis-encoded and mis-keyed input, with the input's own code;
 //   5. an NH defect is reported as an NH defect and never as unreadable customer data.
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PAIR_RUN_PREAMBLE, assessPairFromCsv, parseArguments } from "./assessPairCore";
@@ -306,27 +307,43 @@ describe("7 · the verification covering this path cannot be escaped", () => {
       .toContain('"scripts/data-readiness/**/*.test.ts"');
   });
 
-  it("CI runs all four read-only verifiers, fail-closed", () => {
+  it("CI runs every read-only verifier, fail-closed", () => {
     // THE SECOND GAP THIS DIRECTORY'S WORK UNCOVERED. Nothing in the workflow called `pilot:verify`
     // (242 checks), `readiness:control` (25), `recon:verify` or `recon:ref:verify`, so four verifiers
     // guarding the customer-facing package and both frozen benchmark packages ran only by hand. *A test
     // CI never runs is not a guard* — asserted here because a workflow is configuration and
     // configuration is silently outgrown.
+    //
+    // `verify:evidence` joined them on 2026-10-16. It was the fifth, reported by that slice as still
+    // outside the gate, and it could not be wired until the artefacts its records hash were tracked:
+    // before that, all ten per cycle read `absent` on a clean checkout and it exited 1.
     const root = resolve(__dirname, "..", "..");
     const ci = readFileSync(resolve(root, ".github", "workflows", "ci.yml"), "utf8");
     const scripts = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).scripts;
-    for (const cmd of ["pilot:verify", "readiness:control", "recon:verify", "recon:ref:verify"]) {
+    for (const cmd of ["pilot:verify", "readiness:control", "recon:verify", "recon:ref:verify", "verify:evidence"]) {
       expect(scripts[cmd], `${cmd} must exist as an npm script`).toBeTruthy();
       expect(ci, `CI must run ${cmd}`).toContain(`npm run ${cmd}`);
     }
     // FAIL-CLOSED, structurally. A step that swallowed a non-zero exit would leave the job green while
     // the verifier refused, which is worse than not running it: it would look like coverage.
     expect(ci).not.toContain("continue-on-error");
-    expect(ci).not.toMatch(/npm run (pilot:verify|readiness:control|recon:(ref:)?verify)[^\n]*\|\|/);
-    // ...and the frozen inputs the last three READ are tracked, or they throw ENOENT on a clean
+    expect(ci).not.toMatch(
+      /npm run (pilot:verify|readiness:control|recon:(ref:)?verify|verify:evidence)[^\n]*\|\|/,
+    );
+    // ...and the frozen inputs these verifiers READ are tracked, or they throw ENOENT on a clean
     // checkout and the job is red for a reason that has nothing to do with the freeze.
+    //
+    // READ FROM GIT, NOT FROM THE FILESYSTEM. The first form of this check used `existsSync`, which
+    // cannot establish the property the comment claims: a file present in a developer's working tree and
+    // absent from the index is EXACTLY the state that made these verifiers fail on every clean checkout,
+    // and it is invisible to `existsSync`. A structural guard must read the construct it is actually
+    // asking about, and "tracked" is a fact about the index.
+    const tracked = new Set(
+      execFileSync("git", ["ls-files", "e2e/fixtures"], { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean),
+    );
     for (const pkg of ["reconciliation-synthetic", "reconciliation-obligation-ref"]) {
       for (const f of ["expectation.csv", "observation.csv", "ground-truth.csv", "planted-register.json"]) {
+        expect(tracked.has(`e2e/fixtures/${pkg}/${f}`), `${pkg}/${f} must be tracked`).toBe(true);
         expect(existsSync(resolve(root, "e2e", "fixtures", pkg, f)), `${pkg}/${f} must be present`).toBe(true);
       }
     }

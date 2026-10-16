@@ -12,9 +12,13 @@
 //     with no dirty-tree check, and both trees were provably dirty (cycle 1's ground truth needs a generator
 //     newer than its recorded commit; cycle 2's scripts did not exist at its recorded commit).
 //
-// It does NOT claim a historical Git freeze. None existed: `.gitignore` excludes all of `e2e/fixtures/`, so
-// no dataset, ground truth, prediction or manifest was ever tracked for either cycle. The record states the
-// date it attests from.
+// It does NOT claim a historical Git freeze. None existed: `e2e/fixtures/` was gitignored in full when both
+// cycles ran, so no dataset, ground truth, prediction or manifest was tracked at the time, and nothing
+// establishes the bytes between the run and the attestation. The record states the date it attests from.
+//
+// Since 2026-10-16 the five hash-covered artefacts of each cycle are tracked, so a record written now is
+// verifiable from a clean checkout. That is continuity from `attestedAt` forward. It is not provenance, and
+// this tool must never be read as supplying any.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -53,9 +57,16 @@ const record: Record<string, unknown> = {
   scriptSha256: Object.fromEntries(SCRIPTS.map((f) => [f, sha(readFileSync(`scripts/${cycle}/${f}`))])),
   runParameters: manifest["runParameters"],
   attestedAt: new Date().toISOString().slice(0, 10),
+  // The two 2026-09-30 records carry an earlier wording of this note whose present-tense premise
+  // ("e2e/fixtures/ is gitignored") the 2026-10-16 tracking commit made false. They are PRESERVED
+  // UNCHANGED — they were accurate when written, they are attested evidence, and rewriting an attestation
+  // is precisely what this scheme exists to forbid. The correction lives here, in the verifier's derived
+  // continuity line, and in docs/EVIDENCE_PRESERVATION_V1.md.
   attestedNote:
-    "Attests to components verified on the attestedAt date. NOT an original Git freeze: e2e/fixtures/ is " +
-    "gitignored and no artifact of this cycle was ever tracked. Metadata below is reported, never hashed.",
+    "Attests to components verified on the attestedAt date, and to continuity from that date forward — " +
+    "NOT to original historical provenance. There was no original Git freeze: these artefacts were " +
+    "untracked when the cycle ran, so nothing establishes the bytes between the run and the attestation. " +
+    "Metadata below is reported, never hashed.",
 };
 if (historicalUnknown) {
   record["historicalReproducibility"] = "downgraded";

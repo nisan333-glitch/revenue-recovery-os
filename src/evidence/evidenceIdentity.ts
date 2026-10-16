@@ -25,9 +25,15 @@
 //      being quietly filled in from (2).
 //
 // WHAT IT DOES NOT DO. It does not manufacture a historical Git freeze that never existed. Neither cycle
-// ever had one: `.gitignore` excludes all of `e2e/fixtures/`, so no dataset, ground truth, prediction or
-// manifest was ever tracked. A tracked evidence record attests to components verified on the date it was
-// written, and says so.
+// ever had one: `e2e/fixtures/` was gitignored in full when both cycles ran, so no dataset, ground truth,
+// prediction or manifest was tracked at the time, and nothing establishes the bytes between the run and the
+// attestation. A tracked evidence record attests to components verified on the date it was written, and
+// says so.
+//
+// The five hash-covered artefacts of each cycle ARE tracked as of 2026-10-16, which is what lets
+// `verify:evidence` run from a clean checkout and sit inside the CI gate. That changes what is verifiable
+// GOING FORWARD and changes nothing about the past: continuity since the record's `attestedAt`, never
+// original historical provenance. `FROZEN.json` remains untracked — it is not hash-covered here.
 import { sha256Hex } from "../assessment/fingerprint";
 // The canonical encoder moved to the domain layer once a SECOND caller needed it (the source-resolution
 // lineage in `src/contract/`). The contract layer may only import from `./`, `../assessment/` and
@@ -71,6 +77,32 @@ export const EXCLUDED_METADATA: readonly string[] = Object.freeze([
 
 /** `unknown`, a 40-hex commit, or a 40-hex commit marked dirty. Nothing else is a revision. */
 export const REVISION_PATTERN = /^(unknown|[0-9a-f]{40}(-dirty)?)$/;
+
+/**
+ * The one-line statement of WHAT A RECORD ATTESTS, derived from the record itself.
+ *
+ * Continuity from `attestedAt` forward, and nothing earlier. A record carrying a downgrade marker says so
+ * here too, because "not original historical provenance" is the whole point of the marker and a reader of a
+ * CI log should not have to reconstruct it from two other lines.
+ *
+ * IT LIVES HERE, NOT IN THE COMMAND, for the reason the local readiness CLI already established: a command
+ * whose claims cannot be imported cannot be falsified. `verify-evidence.ts` reads argv and calls
+ * `process.exit` at the top level, so importing it to test one string would run the verifier. The command
+ * keeps the I/O; the derivation is pure and tested.
+ *
+ * DERIVED, NEVER HARDCODED. A literal "2026-09-30" here could outlive the record that justifies it — the
+ * class of defect this repository has met in `wouldBeLiftedBy`, in `coverage.event` and in the stale
+ * caveat about `settled_at`. The date comes from the record and the provenance clause from its marker.
+ */
+export function continuityLine(record: Readonly<Record<string, unknown>>): string {
+  const since = typeof record["attestedAt"] === "string" ? record["attestedAt"] : "an unstated date";
+  const downgraded = record["historicalReproducibility"] === "downgraded";
+  const provenance = downgraded
+    ? "NOT original historical provenance"
+    : "provenance as recorded in systemUnderTestRevision";
+  return `attests  : continuity since ${since} · ${provenance} · ` +
+    `tested revision ${String(record["systemUnderTestRevision"])}`;
+}
 
 export interface EvidenceRecordInput {
   readonly systemUnderTestRevision: string;

@@ -665,3 +665,28 @@ re-reading route works end to end; §10 says it does not.
 **And, restated because it is the one sentence most easily lost:** no figure anywhere in this document is
 recovered money or proven returned revenue. `$31,650.63` is *Detected Revenue Opportunity* on a synthetic
 file. Nothing was collected.
+
+---
+
+## ERRATUM · 2026-10-16 · the hash-covered artefacts are now tracked
+
+**Append-only. The prose above is preserved byte-identical and is not rewritten.**
+
+Finding 3 says *"Nothing was ever Git-tracked. `.gitignore` excludes all of `e2e/fixtures/`."* The
+historical claim — that nothing of either cycle was tracked **at the time either cycle ran** — stands and is
+the reason `systemUnderTestRevision` is `"unknown"` for both. The present-tense premise no longer holds: as
+of 2026-10-16 the five hash-covered artefacts of each cycle are tracked in Git, and the sentence's
+consequence — *"working-tree files that can vanish with no Git-visible change"* — is **no longer true of
+them**. It remains true of everything else in those directories, including the `FROZEN.json` manifests,
+which are deliberately not tracked because the evidence records do not hash them.
+
+This is what made `npm run verify:evidence` wireable into CI: before it, all ten covered artefacts per
+cycle read `absent` and the verifier exited 1 on any clean checkout.
+
+**The limitation is unchanged and is now printed on every run.** `continuityLine` in
+`scripts/freeze/verify-evidence.ts` derives one line per cycle from the record itself —
+*continuity since 2026-09-30 · NOT original historical provenance · tested revision unknown* — so a CI log
+carries it rather than a reader having to reconstruct it. The previous output truncated the `attestedNote`
+at 96 characters and cut the limitation in half; that is corrected.
+
+See [`EVIDENCE_PRESERVATION_V1.md`](EVIDENCE_PRESERVATION_V1.md).

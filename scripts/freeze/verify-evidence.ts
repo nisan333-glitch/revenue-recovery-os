@@ -10,14 +10,22 @@
 // Git, and it either agrees, disagrees, or says which artifact is missing. It never regenerates anything, and
 // it never presents a regenerated object as historical proof.
 //
-// IT DOES NOT CLAIM A HISTORICAL GIT FREEZE. Neither cycle ever had one — `.gitignore` excludes all of
-// `e2e/fixtures/`, so no dataset, ground truth, prediction or manifest was ever tracked. A record here
-// attests to components verified on the date it was written, which each record states.
+// IT DOES NOT CLAIM A HISTORICAL GIT FREEZE. Neither cycle ever had one — `e2e/fixtures/` was gitignored in
+// full when both cycles ran, so no dataset, ground truth, prediction or manifest was tracked at the time,
+// and nothing establishes the bytes between the run and the attestation. A record here attests to
+// components verified on the date it was written, which each record states.
+//
+// SINCE 2026-10-16 THE HASH-COVERED ARTEFACTS ARE TRACKED, which is what lets this run from a clean
+// checkout and sit inside the CI gate. Before that, all ten per cycle read `absent` and it exited 1 — the
+// same blocker the four frozen-package verifiers had. Tracking them changes what is verifiable GOING
+// FORWARD and changes nothing about the past: the records still say `systemUnderTestRevision: "unknown"`,
+// and `continuityLine` below states the limitation on every run so a CI log carries it.
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import {
   COVERED_COMPONENTS,
   EXCLUDED_METADATA,
+  continuityLine,
   stableEvidenceDigest,
 } from "../../src/evidence/evidenceIdentity";
 
@@ -91,10 +99,22 @@ async function verifyCycle(cycle: string, dir: string): Promise<readonly Failure
   console.log(`   evidence identity : ${computed}${recorded === computed ? " · matches the tracked record" : " · MISMATCH"}`);
   console.log(`   tested revision   : ${String(record["systemUnderTestRevision"])}` +
     (record["historicalReproducibility"] ? ` · ${String(record["historicalReproducibility"])}` : ""));
+  // THE LIMITATION, DERIVED FROM THE RECORD AND STATED IN ONE LINE. It is derived rather than hardcoded so
+  // it cannot say 2026-09-30 about a record that says something else: the date comes from `attestedAt`, and
+  // the provenance clause from whether the record carries a downgrade marker.
+  console.log(`   ${continuityLine(record)}`);
   // Metadata is REPORTED and never hashed. Printing it beside the identity is the whole point: a reader can
   // see the provenance fields without being invited to treat them as part of the evidence.
+  //
+  // PRINTED IN FULL, and that is a correction rather than a preference. The previous form truncated at 96
+  // characters, so a CI log read `NOT an original Git freeze: e2e/fixtures/` and lost the half that states
+  // WHY — "is gitignored and no artifact of this cycle was ever tracked". A gate that truncates the
+  // limitation is not preserving it. There is no detail-leak question on this surface and the distinction
+  // is load-bearing: these are our own constants in a record we wrote, not a validator `detail` quoting
+  // cells from a customer's file, which is what the codes-only rule in dataReadiness.ts is about. Asserted
+  // by a test that neither record contains customer data of any kind.
   const metadata = EXCLUDED_METADATA.filter((key) => key in record && key !== "evidenceIdentity");
-  for (const key of metadata) console.log(`   metadata · ${key}: ${String(record[key]).slice(0, 96)}`);
+  for (const key of metadata) console.log(`   metadata · ${key}: ${String(record[key])}`);
   console.log(`   covered components: ${COVERED_COMPONENTS.join(", ")}`);
   for (const failure of failures) console.error(`   ✗ ${failure.kind}: ${failure.detail}`);
   if (failures.length === 0) console.log(`   ✓ ${fileChecks.length} covered artifacts verified`);

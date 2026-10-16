@@ -100,6 +100,19 @@ jobs:
       - name: Obligation-ref variant — freeze, and that V3's own package is unmoved
         run: npm run recon:ref:verify
 
+      # CONTINUITY SINCE 2026-09-30 — NOT ORIGINAL HISTORICAL PROVENANCE, and the step is named that way
+      # so the claim is in the job list rather than only in a log. Neither validation cycle ever had a Git
+      # freeze: `e2e/fixtures/` was gitignored in full when both ran, and `verify.mjs` overwrote the
+      # originally recorded gitHead/frozenAt while printing a digest that read as verification. Both records
+      # therefore carry `systemUnderTestRevision: "unknown"` and a downgrade marker, and the verifier prints
+      # a derived continuity line on every run.
+      #
+      # This became wireable only once the hash-covered artefacts were tracked. Before that, all ten per
+      # cycle read `absent` on any clean checkout and the verifier exited 1 — the same blocker the four
+      # commands above had.
+      - name: Validation-cycle evidence — continuity since 2026-09-30, not original provenance
+        run: npm run verify:evidence
+
   postgres-integration:
     name: EP-9 Postgres-backed verification
     # EP-9.1 · Runs the real governed-backend suites against an ephemeral, pinned

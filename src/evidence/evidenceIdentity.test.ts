@@ -1,5 +1,8 @@
 // The evidence identity must be stable across re-freezes and must refuse everything it cannot pin down.
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   COVERED_COMPONENTS,
   EVIDENCE_IDENTITY_SCHEME,
@@ -8,6 +11,7 @@ import {
   assertKnownKeys,
   assertProspectiveRevision,
   canonicalValue,
+  continuityLine,
   stableEvidenceDigest,
 } from "./evidenceIdentity";
 
@@ -153,5 +157,101 @@ describe("evidence identity · fail-closed", () => {
     const digest = await stableEvidenceDigest(RECORD);
     // Pure: same input, same answer, no clock, no randomness.
     expect(await stableEvidenceDigest(RECORD)).toBe(digest);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// 14-19 · THE TRACKED RECORDS, AND THE LIMITATION THEY CARRY
+//
+// The five hash-covered artefacts of each cycle became tracked on 2026-10-16, which is what lets
+// `verify:evidence` run from a clean checkout and sit inside the CI gate. That changes what is verifiable
+// going forward and changes nothing about the past. These tests hold the two halves apart: the records are
+// preserved exactly as attested, and the limitation is stated rather than implied.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe("tracked evidence records · continuity, not provenance", () => {
+  const CYCLES = ["synthetic-validation", "synthetic-validation-2026-09-27"] as const;
+  const read = (cycle: string) =>
+    JSON.parse(readFileSync(resolve(__dirname, `../../e2e/evidence/${cycle}.evidence.json`), "utf8")) as Record<
+      string,
+      unknown
+    >;
+
+  it("14 · both records still say the tested revision is UNKNOWN and downgraded", () => {
+    for (const cycle of CYCLES) {
+      const record = read(cycle);
+      // Tracking the bytes does not retroactively establish which build produced them. If a future slice
+      // ever fills these in, it must do so from independently established evidence and say how.
+      expect(record["systemUnderTestRevision"], cycle).toBe("unknown");
+      expect(record["historicalReproducibility"], cycle).toBe("downgraded");
+      expect(record["attestedAt"], cycle).toBe("2026-09-30");
+    }
+  });
+
+  it("15 · the continuity line states the date and REFUSES to imply provenance", () => {
+    for (const cycle of CYCLES) {
+      const line = continuityLine(read(cycle));
+      expect(line).toContain("continuity since 2026-09-30");
+      expect(line).toContain("NOT original historical provenance");
+      expect(line).toContain("tested revision unknown");
+    }
+  });
+
+  it("16 · the line is DERIVED — a different record yields a different line, with no hardcoded date", () => {
+    // The failure this forbids is a literal "2026-09-30" outliving the record that justifies it: the shape
+    // of `wouldBeLiftedBy` naming unbuilt channels and of the stale `settled_at` caveat.
+    const other = continuityLine({ ...read("synthetic-validation"), attestedAt: "2027-01-02" });
+    expect(other).toContain("continuity since 2027-01-02");
+    expect(other).not.toContain("2026-09-30");
+    const promoted = continuityLine({
+      attestedAt: "2027-01-02",
+      systemUnderTestRevision: "b".repeat(40),
+    });
+    expect(promoted).toContain("provenance as recorded in systemUnderTestRevision");
+    expect(promoted).not.toContain("NOT original");
+  });
+
+  it("17 · a record with no attestedAt says so instead of inventing one", () => {
+    expect(continuityLine({ systemUnderTestRevision: "unknown" })).toContain("continuity since an unstated date");
+  });
+
+  it("18 · the records carry NO customer data, which is why the verifier may print them in full", () => {
+    // The codes-only rule in dataReadiness.ts exists because a validator `detail` quotes cells from a
+    // customer's file. These records are our own constants over synthetic fixtures, so the full-text
+    // printing restored on 2026-10-16 is sound — and that is asserted here rather than assumed.
+    for (const cycle of CYCLES) {
+      const text = readFileSync(resolve(__dirname, `../../e2e/evidence/${cycle}.evidence.json`), "utf8");
+      expect(text).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+      // Every identifier in the covered fixtures is `synthetic-` prefixed; none of them reach the record,
+      // which holds hashes and parameters only.
+      expect(text).not.toMatch(/synthetic-[a-z]-/);
+    }
+  });
+
+  it("19 · every hash-covered artefact of both cycles is TRACKED, so a clean checkout can verify", () => {
+    // The property the tracking commit exists for, asserted against Git rather than the working tree: a
+    // file present on disk but untracked is exactly what made `verify:evidence` exit 1 on every clean
+    // checkout, and it is invisible to any test that only reads the filesystem.
+    const root = resolve(__dirname, "../..");
+    const tracked = new Set(
+      execFileSync("git", ["ls-files", "e2e/fixtures", "scripts"], { cwd: root, encoding: "utf8" })
+        .split("\n")
+        .filter(Boolean),
+    );
+    for (const cycle of CYCLES) {
+      const record = read(cycle);
+      const datasets = record["datasets"] as { name: string }[];
+      const scripts = Object.keys(record["scriptSha256"] as Record<string, string>);
+      const covered = [
+        ...datasets.map((d) => `e2e/fixtures/${cycle}/${d.name}.csv`),
+        `e2e/fixtures/${cycle}/ground-truth.json`,
+        `e2e/fixtures/${cycle}/prediction.json`,
+        ...scripts.map((f) => `scripts/${cycle}/${f}`),
+      ];
+      expect(covered.length).toBe(10);
+      for (const path of covered) expect(tracked.has(path), `${path} must be tracked`).toBe(true);
+    }
+    // And the deliberate exclusion stays excluded: FROZEN.json is not hash-covered, so tracking it would
+    // put unverifiable bytes in the evidence set.
+    for (const cycle of CYCLES) expect(tracked.has(`e2e/fixtures/${cycle}/FROZEN.json`)).toBe(false);
   });
 });
