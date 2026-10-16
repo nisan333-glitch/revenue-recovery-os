@@ -85,11 +85,11 @@
   "producingRevision": "NOT_ESTABLISHED",
   "producingRevisionReason": "No baseline artefact carries a core revision, a scorer revision or a timestamp — the JSON files' only top-level keys are totalPlantedMinor, knownCases, unknownCases, mustRefuseCases and candidates — and none was ever Git-tracked, so nothing in the repository states which build produced which measurement. The one exception is bounded: docs/BENCHMARK_REVISION_V2.md records one baseline's hash beside core c80b35c5…, which establishes WHICH MEASUREMENT those bytes are and not who produced them or when.",
   "historicalReproducibility": "NOT_CLAIMED",
-  "historicalReproducibilityReason": "The reconciliation core has moved four times since the earliest of these baselines (c80b35c5 -> 831b2dab -> ec1efe95 -> fdc6c785 -> 60e71f6f). A pre-correction baseline cannot be reproduced on this build: the execution would be blocked by the calculation-method compatibility gate before anything was computed. No reproduction was attempted and none is asserted.",
+  "historicalReproducibilityReason": "The reconciliation core has moved four times since the earliest of these baselines (c80b35c5 -> 831b2dab -> ec1efe95 -> fdc6c785 -> 60e71f6f), and every movement changed figures a baseline records. Running recon:run/recon:score on this build therefore answers with THIS core's numbers, not the historical ones. Reproducing a pre-correction baseline would mean checking out the historical core, which was not done and is not asserted. Nothing REFUSES the attempt: this harness imports reconciliationCore directly and is not governed by the assessment path's calculation-method compatibility gate, so an unwitting re-run would quietly answer a different question — which is why this is NOT_CLAIMED rather than blocked, and why the bytes had to be preserved.",
   "independentValidation": "NONE",
   "independentValidationReason": "Every artefact here was produced, retained and now attested by the same party. The benchmark is synthetic throughout and no figure in it is a proven monetary outcome.",
   "attestedAt": "2026-10-16",
-  "attestingRevision": "001fe926087ce69474148e9e039ac8aa1cb2cda2",
+  "attestingRevision": "ac9442a5318b39208d83726cfa342c819a2978c4",
   "attestedNote": "Attests that these bytes were present and hashed to these values on the attestedAt date, and to continuity from that date forward. NOT original provenance, NOT historical reproducibility, NOT independent validation. Metadata is reported, never hashed; attestingRevision is when we LOOKED and is never the revision that produced a measurement.",
   "ledgerIdentity": "nhbl_f3f2510a5897f4cd805c9434d8775bdcccbd29b95c11a89e6d890de5db1df4f1"
 }
