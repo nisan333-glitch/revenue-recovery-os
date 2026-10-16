@@ -182,7 +182,7 @@ pure, reusing `canonicalValue`/`framed`/`sha256Hex` rather than reimplementing t
 | covered field | required value | why it cannot be established |
 |---|---|---|
 | `producingRevision` | `NOT_ESTABLISHED` | no baseline file carries a core revision, a scorer revision or a timestamp — their only top-level keys are `totalPlantedMinor`, `knownCases`, `unknownCases`, `mustRefuseCases`, `candidates` — and none was ever tracked |
-| `historicalReproducibility` | `NOT_CLAIMED` | the core has moved four times (`c80b35c5` → `831b2dab` → `ec1efe95` → `fdc6c785` → `60e71f6f`); a pre-correction baseline **cannot run on this build at all** — the calculation-method gate blocks it before anything is computed |
+| `historicalReproducibility` | `NOT_CLAIMED` | the core has moved four times (`c80b35c5` → `831b2dab` → `ec1efe95` → `fdc6c785` → `60e71f6f`) and every movement changed figures a baseline records, so a re-run answers with **this** core's numbers; reproducing one means checking out the historical core, which was not done. **Nothing refuses the attempt** — see §11.4 |
 | `independentValidation` | `NONE` | one party produced, retained and attested all of it |
 
 **Enforced, not described** — the `submitterStillControls` pattern, *because prose about a limitation can
@@ -321,7 +321,7 @@ It reads `git ls-files` now. **Thirteenth instance.**
   is unestablished, and nothing here establishes it.
 * **Track B attests continuity from 2026-10-16 forward and nothing earlier.** Fourteen baselines have no
   provenance of any kind in their bytes; one has a hash recorded in a document the same party controls.
-* **No baseline is reproducible on this build**, and the ledger says `NOT_CLAIMED` rather than untested.
+* **No baseline is reproducible on this build**, and the ledger says `NOT_CLAIMED` rather than *blocked* — nothing refuses a re-run, it would simply answer a different question, which is exactly why the bytes had to be preserved.
 * **Nothing about money, authority, proof or recovery.** Every figure in every preserved artefact is
   synthetic. No ledger moved, no Recovery Case was created, and **no observed amount became Revenue
   Returned.**

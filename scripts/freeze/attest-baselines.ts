@@ -105,11 +105,24 @@ const ledger: Record<string, unknown> = {
     "beside core c80b35c5…, which establishes WHICH MEASUREMENT those bytes are and not who produced them " +
     "or when.",
   historicalReproducibility: "NOT_CLAIMED",
+  // CORRECTED 2026-10-16, same day. The first wording said a pre-correction baseline "would be blocked by
+  // the calculation-method compatibility gate before anything was computed". That gate — NH-AX-1014 at
+  // schedule time and NH-AX-2006 at run time — governs the GOVERNED ASSESSMENT path in `server/`. This
+  // benchmark harness imports `reconciliationCore` directly from `src/benchmark/` and nothing on its path
+  // reads `calculationMethodVersion` or `makePolicy`, verified by search. The sentence was borrowed from
+  // the re-assessment decision, where it is correct, and applied to a harness it does not govern — the
+  // same error as copying the pre-registration framing onto DATA_OWNER_ATTESTATION, which is right where
+  // it was written and wrong one artefact over. `historicalReproducibilityReason` is excluded metadata, so
+  // correcting it leaves the ledger identity unchanged, which is asserted rather than assumed.
   historicalReproducibilityReason:
     "The reconciliation core has moved four times since the earliest of these baselines " +
-    "(c80b35c5 -> 831b2dab -> ec1efe95 -> fdc6c785 -> 60e71f6f). A pre-correction baseline cannot be " +
-    "reproduced on this build: the execution would be blocked by the calculation-method compatibility " +
-    "gate before anything was computed. No reproduction was attempted and none is asserted.",
+    "(c80b35c5 -> 831b2dab -> ec1efe95 -> fdc6c785 -> 60e71f6f), and every movement changed figures a " +
+    "baseline records. Running recon:run/recon:score on this build therefore answers with THIS core's " +
+    "numbers, not the historical ones. Reproducing a pre-correction baseline would mean checking out the " +
+    "historical core, which was not done and is not asserted. Nothing REFUSES the attempt: this harness " +
+    "imports reconciliationCore directly and is not governed by the assessment path's calculation-method " +
+    "compatibility gate, so an unwitting re-run would quietly answer a different question — which is why " +
+    "this is NOT_CLAIMED rather than blocked, and why the bytes had to be preserved.",
   independentValidation: "NONE",
   independentValidationReason:
     "Every artefact here was produced, retained and now attested by the same party. The benchmark is " +
