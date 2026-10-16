@@ -27,6 +27,6 @@ export default defineConfig({
     //
     // Deliberately narrow: `server/**` has its own Postgres-backed suite and `research/**` is .mjs with a
     // different harness, so neither is swept in here by a broader glob.
-    include: ["src/**/*.test.ts", "scripts/data-readiness/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/data-readiness/**/*.test.ts", "scripts/audit/**/*.test.ts"],
   },
 });

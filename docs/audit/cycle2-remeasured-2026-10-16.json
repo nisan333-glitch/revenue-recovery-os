@@ -1,0 +1,1635 @@
+{
+  "scheme": "nh-cycle2-remeasure-v2-ablation",
+  "cycle": "synthetic-validation-2026-09-27",
+  "measuredAt": "2026-10-16T14:02:25.131Z",
+  "buildRevision": "c06d57c06a11c36f4bc5c36d8394551f89757438-dirty",
+  "inputs": [
+    {
+      "path": "e2e/fixtures/synthetic-validation-2026-09-27/dataset.csv",
+      "sha256": "214bae693372fbda3f7fff6e0635018b74811db27fa1219831da51fd8568240d"
+    },
+    {
+      "path": "e2e/fixtures/synthetic-validation-2026-09-27/spot-multicurrency.csv",
+      "sha256": "3643b5528959c1c01b4a9447035ad173f6545ca9a5de75bf5866b382320a6009"
+    },
+    {
+      "path": "e2e/fixtures/synthetic-validation-2026-09-27/spot-cancelled-after-asof.csv",
+      "sha256": "d7e3d65f698fd0f1dc32caa71054fcd2389cd4baa4a458e762dac4c95b8eae1c"
+    },
+    {
+      "path": "e2e/fixtures/synthetic-validation-2026-09-27/ground-truth.json",
+      "sha256": "6de2135a28fc8d102574d5ce45b8aa12e3fc4e4612dae9b46853fe5d1a019f6a"
+    }
+  ],
+  "policy": {
+    "asOf": "2026-06-30",
+    "stallThresholdDays": 30,
+    "currency": "USD"
+  },
+  "perDataset": {
+    "dataset": {
+      "baseline": {
+        "observed.grossEligible": 5265070,
+        "observed.observedUnpaid": 3265063,
+        "observed.partialOutstanding": 400008,
+        "observed.unknownValue": 1050003,
+        "observed.excludedValue": 849015,
+        "nonStalledExposure.overdueUnpaid": 1480000,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "cohortCounts": {
+        "acceptedCycleCount": 258,
+        "excludedRowCount": 13,
+        "stalledCount": 17,
+        "undeterminedCount": 2,
+        "referenceCount": 239,
+        "nonStalledPopulation": 241,
+        "csvRows": 271,
+        "distinctEntities": 130,
+        "scenariosInThisDataset": 35
+      },
+      "unclaimed": {
+        "entityCount": 96,
+        "rowsWithheld": 236,
+        "delta": {
+          "observed.grossEligible": 0,
+          "observed.observedUnpaid": 0,
+          "observed.partialOutstanding": 0,
+          "observed.unknownValue": 0,
+          "observed.excludedValue": 0,
+          "nonStalledExposure.overdueUnpaid": 0,
+          "nonStalledExposure.overduePartialOutstanding": 0,
+          "nonStalledExposure.unknownValue": 0,
+          "nonStalledExposure.excludedValue": 0
+        }
+      },
+      "completeness": {
+        "observed.grossEligible": {
+          "baseline": 5265070,
+          "attributed": 5265070,
+          "residual": 0
+        },
+        "observed.observedUnpaid": {
+          "baseline": 3265063,
+          "attributed": 3265063,
+          "residual": 0
+        },
+        "observed.partialOutstanding": {
+          "baseline": 400008,
+          "attributed": 400008,
+          "residual": 0
+        },
+        "observed.unknownValue": {
+          "baseline": 1050003,
+          "attributed": 1050003,
+          "residual": 0
+        },
+        "observed.excludedValue": {
+          "baseline": 849015,
+          "attributed": 849015,
+          "residual": 0
+        },
+        "nonStalledExposure.overdueUnpaid": {
+          "baseline": 1480000,
+          "attributed": 1480000,
+          "residual": 0
+        },
+        "nonStalledExposure.overduePartialOutstanding": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.unknownValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.excludedValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        }
+      },
+      "crossCheck": [
+        {
+          "field": "observed.observedUnpaid",
+          "truthBucket": "observedUnpaid",
+          "centTagScenarios": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06"
+          ],
+          "ablationScenarios": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S33"
+          ],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.unknownValue",
+          "truthBucket": "unknownValue",
+          "centTagScenarios": [
+            "S14",
+            "S15"
+          ],
+          "ablationScenarios": [
+            "S14",
+            "S15"
+          ],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.excludedValue",
+          "truthBucket": "excludedValue",
+          "centTagScenarios": [
+            "S10",
+            "S11",
+            "S12",
+            "S13"
+          ],
+          "ablationScenarios": [
+            "S10",
+            "S11",
+            "S12",
+            "S13"
+          ],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.partialOutstanding",
+          "truthBucket": "partialOutstanding",
+          "centTagScenarios": [],
+          "ablationScenarios": [
+            "S07",
+            "S08",
+            "S09"
+          ],
+          "agrees": false,
+          "undecodable": true
+        }
+      ]
+    },
+    "spot-multicurrency": {
+      "baseline": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "cohortCounts": {
+        "acceptedCycleCount": 237,
+        "excludedRowCount": 1,
+        "stalledCount": 0,
+        "undeterminedCount": 1,
+        "referenceCount": 236,
+        "nonStalledPopulation": 237,
+        "csvRows": 238,
+        "distinctEntities": 98,
+        "scenariosInThisDataset": 3
+      },
+      "unclaimed": {
+        "entityCount": 96,
+        "rowsWithheld": 236,
+        "delta": {
+          "observed.grossEligible": 0,
+          "observed.observedUnpaid": 0,
+          "observed.partialOutstanding": 0,
+          "observed.unknownValue": 0,
+          "observed.excludedValue": 0,
+          "nonStalledExposure.overdueUnpaid": 0,
+          "nonStalledExposure.overduePartialOutstanding": 0,
+          "nonStalledExposure.unknownValue": 0,
+          "nonStalledExposure.excludedValue": 0
+        }
+      },
+      "completeness": {
+        "observed.grossEligible": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "observed.observedUnpaid": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "observed.partialOutstanding": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "observed.unknownValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "observed.excludedValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.overdueUnpaid": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.overduePartialOutstanding": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.unknownValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.excludedValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        }
+      },
+      "crossCheck": [
+        {
+          "field": "observed.observedUnpaid",
+          "truthBucket": "observedUnpaid",
+          "centTagScenarios": [],
+          "ablationScenarios": [],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.unknownValue",
+          "truthBucket": "unknownValue",
+          "centTagScenarios": [],
+          "ablationScenarios": [],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.excludedValue",
+          "truthBucket": "excludedValue",
+          "centTagScenarios": [],
+          "ablationScenarios": [],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.partialOutstanding",
+          "truthBucket": "partialOutstanding",
+          "centTagScenarios": [],
+          "ablationScenarios": [],
+          "agrees": true,
+          "undecodable": false
+        }
+      ]
+    },
+    "spot-cancelled-after-asof": {
+      "baseline": {
+        "observed.grossEligible": 670000,
+        "observed.observedUnpaid": 670000,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "cohortCounts": {
+        "acceptedCycleCount": 238,
+        "excludedRowCount": 0,
+        "stalledCount": 1,
+        "undeterminedCount": 1,
+        "referenceCount": 236,
+        "nonStalledPopulation": 237,
+        "csvRows": 238,
+        "distinctEntities": 98,
+        "scenariosInThisDataset": 3
+      },
+      "unclaimed": {
+        "entityCount": 96,
+        "rowsWithheld": 236,
+        "delta": {
+          "observed.grossEligible": 0,
+          "observed.observedUnpaid": 0,
+          "observed.partialOutstanding": 0,
+          "observed.unknownValue": 0,
+          "observed.excludedValue": 0,
+          "nonStalledExposure.overdueUnpaid": 0,
+          "nonStalledExposure.overduePartialOutstanding": 0,
+          "nonStalledExposure.unknownValue": 0,
+          "nonStalledExposure.excludedValue": 0
+        }
+      },
+      "completeness": {
+        "observed.grossEligible": {
+          "baseline": 670000,
+          "attributed": 670000,
+          "residual": 0
+        },
+        "observed.observedUnpaid": {
+          "baseline": 670000,
+          "attributed": 670000,
+          "residual": 0
+        },
+        "observed.partialOutstanding": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "observed.unknownValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "observed.excludedValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.overdueUnpaid": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.overduePartialOutstanding": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.unknownValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        },
+        "nonStalledExposure.excludedValue": {
+          "baseline": 0,
+          "attributed": 0,
+          "residual": 0
+        }
+      },
+      "crossCheck": [
+        {
+          "field": "observed.observedUnpaid",
+          "truthBucket": "observedUnpaid",
+          "centTagScenarios": [],
+          "ablationScenarios": [
+            "S20"
+          ],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.unknownValue",
+          "truthBucket": "unknownValue",
+          "centTagScenarios": [],
+          "ablationScenarios": [],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.excludedValue",
+          "truthBucket": "excludedValue",
+          "centTagScenarios": [],
+          "ablationScenarios": [],
+          "agrees": true,
+          "undecodable": false
+        },
+        {
+          "field": "observed.partialOutstanding",
+          "truthBucket": "partialOutstanding",
+          "centTagScenarios": [],
+          "ablationScenarios": [],
+          "agrees": true,
+          "undecodable": false
+        }
+      ]
+    }
+  },
+  "ablations": [
+    {
+      "scenarioId": "S01",
+      "entityId": "synthetic-u-never-activated",
+      "businessClass": "activation_stall_unpaid_invoice",
+      "businessLeakageMinor": 420001,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 420001,
+        "observed.observedUnpaid": 420001,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 420001,
+      "predicted2026_09_27": {
+        "bucket": "observedUnpaid",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S02",
+      "entityId": "synthetic-u-activated-late",
+      "businessClass": "activation_stall_unpaid_invoice",
+      "businessLeakageMinor": 310002,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 310002,
+        "observed.observedUnpaid": 310002,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 310002,
+      "predicted2026_09_27": {
+        "bucket": "observedUnpaid",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S03",
+      "entityId": "synthetic-u-one-day-past",
+      "businessClass": "activation_stall_unpaid_invoice",
+      "businessLeakageMinor": 90004,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 90004,
+        "observed.observedUnpaid": 90004,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 90004,
+      "predicted2026_09_27": {
+        "bucket": "observedUnpaid",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S04",
+      "entityId": "synthetic-u-activated-after-asof",
+      "businessClass": "activation_stall_unpaid_invoice",
+      "businessLeakageMinor": 1500008,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 1500008,
+        "observed.observedUnpaid": 1500008,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 1500008,
+      "predicted2026_09_27": {
+        "bucket": "observedUnpaid",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S05",
+      "entityId": "synthetic-u-explicit-unpaid-bool",
+      "businessClass": "activation_stall_unpaid_invoice",
+      "businessLeakageMinor": 65016,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 65016,
+        "observed.observedUnpaid": 65016,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 65016,
+      "predicted2026_09_27": {
+        "bucket": "observedUnpaid",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S06",
+      "entityId": "synthetic-u-enterprise-dimensions",
+      "businessClass": "activation_stall_unpaid_invoice",
+      "businessLeakageMinor": 780032,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 780032,
+        "observed.observedUnpaid": 780032,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 780032,
+      "predicted2026_09_27": {
+        "bucket": "observedUnpaid",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S07",
+      "entityId": "synthetic-p-half-paid",
+      "businessClass": "activation_stall_partial_payment",
+      "businessLeakageMinor": 300001,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 500001,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 300001,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.partialOutstanding"
+      ],
+      "detectedMinor": 300001,
+      "predicted2026_09_27": {
+        "bucket": "partialOutstanding",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S08",
+      "entityId": "synthetic-p-mostly-paid",
+      "businessClass": "activation_stall_partial_payment",
+      "businessLeakageMinor": 100002,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 1200002,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 100002,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.partialOutstanding"
+      ],
+      "detectedMinor": 100002,
+      "predicted2026_09_27": {
+        "bucket": "partialOutstanding",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S09",
+      "entityId": "synthetic-p-one-cent-short",
+      "businessClass": "activation_stall_partial_payment",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 80004,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 5,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.partialOutstanding"
+      ],
+      "detectedMinor": 5,
+      "predicted2026_09_27": {
+        "bucket": "partialOutstanding",
+        "nhCanDetect": true
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S10",
+      "entityId": "synthetic-x-cancelled",
+      "businessClass": "stalled_but_terminal_state",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 250001,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "excludedValue",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S11",
+      "entityId": "synthetic-x-refunded",
+      "businessClass": "stalled_but_terminal_state",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 330002,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "excludedValue",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S12",
+      "entityId": "synthetic-x-status-cancelled",
+      "businessClass": "stalled_but_terminal_state",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 170004,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "excludedValue",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S13",
+      "entityId": "synthetic-x-refunded-bool",
+      "businessClass": "stalled_but_terminal_state",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 99008,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "excludedValue",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S14",
+      "entityId": "synthetic-k-paid-amount-no-date",
+      "businessClass": "stalled_unresolvable_payment_evidence",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 440001,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "unknownValue",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S15",
+      "entityId": "synthetic-k-paid-full-no-date",
+      "businessClass": "stalled_unresolvable_payment_evidence",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 610002,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "unknownValue",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S16",
+      "entityId": "synthetic-g-stalled-paid-late",
+      "businessClass": "activation_stall_invoice_settled",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 220000,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "grossEligible_only",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S17",
+      "entityId": "synthetic-n-exactly-at-threshold",
+      "businessClass": "near_miss_exact_threshold",
+      "businessLeakageMinor": 550000,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 550000,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "nonStalledExposure.overdueUnpaid"
+      ],
+      "detectedMinor": 550000,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": true,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S18",
+      "entityId": "synthetic-n-unpaid-but-activated-promptly",
+      "businessClass": "unpaid_invoice_without_activation_stall",
+      "businessLeakageMinor": 930000,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 930000,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "nonStalledExposure.overdueUnpaid"
+      ],
+      "detectedMinor": 930000,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": true,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S19",
+      "entityId": "synthetic-n-not-yet-due",
+      "businessClass": "near_miss_inside_window",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S21",
+      "entityId": "synthetic-n-status-active-noise",
+      "businessClass": "legitimate_variation",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S23",
+      "entityId": "synthetic-e-zero-amount",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S24",
+      "entityId": "synthetic-e-negative-amount",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S25",
+      "entityId": "synthetic-e-paid-exceeds",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S26",
+      "entityId": "synthetic-e-due-before-signed",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S27",
+      "entityId": "synthetic-e-activation-before-signed",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S28",
+      "entityId": "synthetic-e-invalid-boolean",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S29",
+      "entityId": "synthetic-e-undated-refund",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S30",
+      "entityId": "synthetic-e-is-test",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S31",
+      "entityId": "synthetic-e-inconsistent-paid",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S32",
+      "entityId": "synthetic-e-paid-date-zero-amount",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S33",
+      "entityId": "synthetic-e-timezoneless",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 100000,
+        "observed.observedUnpaid": 100000,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 100000,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "FALSE_POSITIVE_CANDIDATE",
+      "supersedesPrediction": true,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S34",
+      "entityId": "synthetic-e-missing-currency",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S35",
+      "entityId": "synthetic-d-duplicate-cycle",
+      "businessClass": "not_a_leakage_duplicate_cycle",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 2,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S36",
+      "entityId": "synthetic-w-outside-coverage",
+      "businessClass": "not_a_leakage_outside_declared_window",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S37",
+      "entityId": "synthetic-h-* (96 entities)",
+      "businessClass": "control_healthy",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 0,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "dataset"
+    },
+    {
+      "scenarioId": "S19",
+      "entityId": "synthetic-n-not-yet-due",
+      "businessClass": "near_miss_inside_window",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "spot-multicurrency"
+    },
+    {
+      "scenarioId": "S22",
+      "entityId": "synthetic-e-currency-mismatch",
+      "businessClass": "not_a_leakage_defective_row",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "row_excluded",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "spot-multicurrency"
+    },
+    {
+      "scenarioId": "S37",
+      "entityId": "synthetic-h-* (96 entities)",
+      "businessClass": "control_healthy",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 0,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "spot-multicurrency"
+    },
+    {
+      "scenarioId": "S19",
+      "entityId": "synthetic-n-not-yet-due",
+      "businessClass": "near_miss_inside_window",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "spot-cancelled-after-asof"
+    },
+    {
+      "scenarioId": "S20",
+      "entityId": "synthetic-n-cancelled-after-asof",
+      "businessClass": "terminal_state_after_cutoff",
+      "businessLeakageMinor": 670000,
+      "representable": true,
+      "rowsWithheld": 1,
+      "delta": {
+        "observed.grossEligible": 670000,
+        "observed.observedUnpaid": 670000,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [
+        "observed.observedUnpaid"
+      ],
+      "detectedMinor": 670000,
+      "predicted2026_09_27": {
+        "bucket": "observedUnpaid",
+        "nhCanDetect": true
+      },
+      "verdict": "DETECTED",
+      "supersedesPrediction": false,
+      "dataset": "spot-cancelled-after-asof"
+    },
+    {
+      "scenarioId": "S37",
+      "entityId": "synthetic-h-* (96 entities)",
+      "businessClass": "control_healthy",
+      "businessLeakageMinor": 0,
+      "representable": true,
+      "rowsWithheld": 0,
+      "delta": {
+        "observed.grossEligible": 0,
+        "observed.observedUnpaid": 0,
+        "observed.partialOutstanding": 0,
+        "observed.unknownValue": 0,
+        "observed.excludedValue": 0,
+        "nonStalledExposure.overdueUnpaid": 0,
+        "nonStalledExposure.overduePartialOutstanding": 0,
+        "nonStalledExposure.unknownValue": 0,
+        "nonStalledExposure.excludedValue": 0
+      },
+      "detectedIn": [],
+      "detectedMinor": 0,
+      "predicted2026_09_27": {
+        "bucket": "none",
+        "nhCanDetect": false
+      },
+      "verdict": "NOT_A_LEAKAGE",
+      "supersedesPrediction": false,
+      "dataset": "spot-cancelled-after-asof"
+    }
+  ],
+  "falsePositives": [
+    {
+      "scenarioId": "S33",
+      "dataset": "dataset",
+      "businessClass": "not_a_leakage_defective_row",
+      "bookedMinor": 100000,
+      "bookedIn": [
+        "observed.observedUnpaid"
+      ],
+      "truthSays": "row_excluded"
+    }
+  ],
+  "falsePositiveMinor": 100000,
+  "coverage": {
+    "businessClasses": 11,
+    "classesDetectedNow": 5,
+    "classesRepresentableNotDetected": 0,
+    "classesNotRepresentable": 6,
+    "classCoverage": 0.45454545454545453,
+    "totalBusinessLeakageMinor": 12225066,
+    "detectedValueMinor": 5715066,
+    "representableNotDetectedValueMinor": 0,
+    "notRepresentableValueMinor": 6510000,
+    "valueCoverage": 0.46748753749059513
+  },
+  "claimBoundary": {
+    "syntheticOnly": true,
+    "isRecoveredRevenue": false,
+    "isProvenRevenueReturned": false,
+    "note": "Planted figures are Synthetic Ground-Truth Leakage. Anything this build computed is Detected Revenue Opportunity — OBSERVED exposure only. No figure here is Revenue Returned or Auditable Revenue, and no Recovery Case was created."
+  }
+}
