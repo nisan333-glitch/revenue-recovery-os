@@ -317,19 +317,42 @@ describe("7 · the verification covering this path cannot be escaped", () => {
     // `verify:evidence` joined them on 2026-10-16. It was the fifth, reported by that slice as still
     // outside the gate, and it could not be wired until the artefacts its records hash were tracked:
     // before that, all ten per cycle read `absent` on a clean checkout and it exited 1.
+    //
+    // `verify:baselines` is the sixth, added with the preservation ledger it verifies. A tracked record
+    // nothing checks is a receipt for a lost artefact, so the gate and the preservation are one act.
     const root = resolve(__dirname, "..", "..");
     const ci = readFileSync(resolve(root, ".github", "workflows", "ci.yml"), "utf8");
     const scripts = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).scripts;
-    for (const cmd of ["pilot:verify", "readiness:control", "recon:verify", "recon:ref:verify", "verify:evidence"]) {
+    const VERIFIERS = [
+      "pilot:verify",
+      "readiness:control",
+      "recon:verify",
+      "recon:ref:verify",
+      "verify:evidence",
+      "verify:baselines",
+    ];
+    for (const cmd of VERIFIERS) {
       expect(scripts[cmd], `${cmd} must exist as an npm script`).toBeTruthy();
       expect(ci, `CI must run ${cmd}`).toContain(`npm run ${cmd}`);
     }
     // FAIL-CLOSED, structurally. A step that swallowed a non-zero exit would leave the job green while
     // the verifier refused, which is worse than not running it: it would look like coverage.
     expect(ci).not.toContain("continue-on-error");
-    expect(ci).not.toMatch(
-      /npm run (pilot:verify|readiness:control|recon:(ref:)?verify|verify:evidence)[^\n]*\|\|/,
-    );
+    // Built from the same list, so a seventh verifier cannot be added to one half and forgotten in the
+    // other — the drift a hand-kept duplicate invites.
+    //
+    // NO ESCAPING, and that is the correction rather than an oversight. This generalisation's first form
+    // escaped the colon as `\\:`, which inside a RegExp source means a literal BACKSLASH followed by a
+    // colon — so the pattern matched nothing at all, including `|| true`. A colon needs no escaping in a
+    // regex, which is why the hardcoded form it replaced worked. Fifteenth instance of the same lesson,
+    // and the sharpest kind: a guard that cannot fire is not a weaker guard, it is no guard, and
+    // generalising a working check is exactly when it happens. So the pattern is asserted to FIRE on a
+    // swallowed exit before it is trusted not to fire on the real workflow.
+    const swallowed = new RegExp(`npm run (${VERIFIERS.join("|")})[^\\n]*\\|\\|`);
+    expect(swallowed.test("        run: npm run verify:baselines || true")).toBe(true);
+    expect(swallowed.test("        run: npm run pilot:verify || echo ignored")).toBe(true);
+    expect(swallowed.test("        run: npm run verify:baselines")).toBe(false);
+    expect(ci).not.toMatch(swallowed);
     // ...and the frozen inputs these verifiers READ are tracked, or they throw ENOENT on a clean
     // checkout and the job is red for a reason that has nothing to do with the freeze.
     //

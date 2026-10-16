@@ -1,0 +1,95 @@
+{
+  "ledgerScheme": "nh-benchmark-baseline-ledger-v1",
+  "authenticatedBaselines": [
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.prefix.v2.json",
+      "sha256": "5a951e406350d2a6b3c6d0d3cb3dde0fd154da230cd12e374826f0fdd5a82fef",
+      "bytes": 29987,
+      "recordedHashSource": "docs/BENCHMARK_REVISION_V2.md",
+      "recordedCoreSha256": "c80b35c5ee929293264c61397f62aee77140454d22b663641753ce6fc50018ea",
+      "recordedCoreCommit": "fa28a80"
+    }
+  ],
+  "unauthenticatedBaselines": [
+    {
+      "path": "e2e/fixtures/reconciliation-obligation-ref/baseline.variant.json",
+      "sha256": "faed52e9ce674b0efbcfb012347dad24e7653c6e601f876d2ff9dfdcf87e68ea",
+      "bytes": 28994
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-obligation-ref/baseline.variant.postcapability.json",
+      "sha256": "0b085765e1a4f4873e6eabd81a2089997f343fcb5e639a030649e950a0438ed8",
+      "bytes": 29035
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-obligation-ref/baseline.variant.postpairing.json",
+      "sha256": "728fd4532ff3110b82cd056d169da7e9acf38e1518a9e8263303265674cd2436",
+      "bytes": 28989
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-obligation-ref/baseline.variant.postpairing.txt",
+      "sha256": "d4108bab3f58af1a138fa72bf5760f96fe2ec5c643d15a46216ba575faa907e8",
+      "bytes": 10333
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-obligation-ref/baseline.variant.txt",
+      "sha256": "c79a552b46627ce8d8d53798ea021ab4b7d539b5ca73c7e87ad41ab6803a0be6",
+      "bytes": 10334
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.postfix.v2.json",
+      "sha256": "96db9840a429c8734c4ba83d6a5be0f9d4cf310522d6c15a871a2892cd2be88e",
+      "bytes": 29938
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.postfix.v2.txt",
+      "sha256": "05ed66efa8034a119a04ac8fe58307bc026074cc66a3dd49c5bfa490ccd4e370",
+      "bytes": 11270
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.prefix.v2.txt",
+      "sha256": "5b9c6794c9b4ba7b471517c306d437d12cfa13eae21df62a16c0778fd1e45849",
+      "bytes": 11483
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.v3.postcapability.json",
+      "sha256": "260cf04b78a31c5413cbee032ca23d272ee74fd1daac940d6bc3f0d636be29c8",
+      "bytes": 30503
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.v3.postfix.json",
+      "sha256": "15180925ac9c626fd472e3ac86a231c93ffe89a81ac7e259e65357f83d56464d",
+      "bytes": 30434
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.v3.postfix.txt",
+      "sha256": "63b2942c50cc1f94a8a7dcabd0022def56c2a79a0a846e04bc89b36ea3ac4267",
+      "bytes": 11673
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.v3.postpairing.json",
+      "sha256": "5295331b3b1730180a93213c4e3b18fa9d78643d99df4d43a3455b01776d7526",
+      "bytes": 30434
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.v3.prefix.json",
+      "sha256": "fe468339ba9081c0712ceac0ee9f76e1e0e5d9f12bd94b80b739ab9d8c11d50c",
+      "bytes": 29998
+    },
+    {
+      "path": "e2e/fixtures/reconciliation-synthetic/baseline.v3.prefix.txt",
+      "sha256": "ebe8a78d9c7b946c2ed23ff4b855d97166cab32febf47f6342510978a4b95caa",
+      "bytes": 11296
+    }
+  ],
+  "producingRevision": "NOT_ESTABLISHED",
+  "producingRevisionReason": "No baseline artefact carries a core revision, a scorer revision or a timestamp — the JSON files' only top-level keys are totalPlantedMinor, knownCases, unknownCases, mustRefuseCases and candidates — and none was ever Git-tracked, so nothing in the repository states which build produced which measurement. The one exception is bounded: docs/BENCHMARK_REVISION_V2.md records one baseline's hash beside core c80b35c5…, which establishes WHICH MEASUREMENT those bytes are and not who produced them or when.",
+  "historicalReproducibility": "NOT_CLAIMED",
+  "historicalReproducibilityReason": "The reconciliation core has moved four times since the earliest of these baselines (c80b35c5 -> 831b2dab -> ec1efe95 -> fdc6c785 -> 60e71f6f). A pre-correction baseline cannot be reproduced on this build: the execution would be blocked by the calculation-method compatibility gate before anything was computed. No reproduction was attempted and none is asserted.",
+  "independentValidation": "NONE",
+  "independentValidationReason": "Every artefact here was produced, retained and now attested by the same party. The benchmark is synthetic throughout and no figure in it is a proven monetary outcome.",
+  "attestedAt": "2026-10-16",
+  "attestingRevision": "001fe926087ce69474148e9e039ac8aa1cb2cda2",
+  "attestedNote": "Attests that these bytes were present and hashed to these values on the attestedAt date, and to continuity from that date forward. NOT original provenance, NOT historical reproducibility, NOT independent validation. Metadata is reported, never hashed; attestingRevision is when we LOOKED and is never the revision that produced a measurement.",
+  "ledgerIdentity": "nhbl_f3f2510a5897f4cd805c9434d8775bdcccbd29b95c11a89e6d890de5db1df4f1"
+}

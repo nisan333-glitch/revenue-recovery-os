@@ -113,6 +113,22 @@ jobs:
       - name: Validation-cycle evidence — continuity since 2026-09-30, not original provenance
         run: npm run verify:evidence
 
+      # THE FIFTEEN HISTORICAL BASELINE MEASUREMENTS, preserved as evidence rather than regenerated as
+      # output. No command writes a `baseline.*` file, so there is nothing that could regenerate one and
+      # tracking them cannot dirty the tree — the test `results.json` fails and the reason both can sit
+      # under the same rule.
+      #
+      # A PASS MEANS THE BYTES ARE UNCHANGED SINCE 2026-10-16 AND NOTHING MORE. The ledger states
+      # NOT_ESTABLISHED for the producing revision, NOT_CLAIMED for historical reproducibility and NONE
+      # for independent validation — required literals, printed on every run, so a green step cannot be
+      # read as more than it is. One of the fifteen has its hash recorded in docs/BENCHMARK_REVISION_V2.md
+      # beside a core revision; that document is re-read here rather than the ledger's copy being trusted.
+      #
+      # It verifies the thing the commit before it preserved, because a tracked record nothing checks is a
+      # receipt for a lost artefact — the rule this whole slice rests on.
+      - name: Historical baselines — bytes unchanged since 2026-10-16, no provenance claimed
+        run: npm run verify:baselines
+
   postgres-integration:
     name: EP-9 Postgres-backed verification
     # EP-9.1 · Runs the real governed-backend suites against an ephemeral, pinned

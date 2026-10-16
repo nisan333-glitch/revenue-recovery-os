@@ -238,3 +238,82 @@ describe("baseline ledger · the witness is read, not trusted", () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// 18-21 · THE TRACKED LEDGER ITSELF
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe("the tracked baseline ledger", () => {
+  const LEDGER = "e2e/evidence/reconciliation-baselines.evidence.json";
+  const text = () => readFileSync(resolve(ROOT, LEDGER), "utf8");
+  const ledgerFile = () => JSON.parse(text()) as Record<string, unknown>;
+
+  it("18 · is tracked, covers the declared fifteen, and its identity verifies", async () => {
+    const tracked = new Set(
+      execFileSync("git", ["ls-files", "e2e/evidence"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean),
+    );
+    expect(tracked.has(LEDGER)).toBe(true);
+    const l = ledgerFile();
+    expect(await stableBaselineLedgerDigest(l)).toBe(l["ledgerIdentity"]);
+  });
+
+  it("19 · states the three refusals verbatim and carries a date that is not backdated", () => {
+    const l = ledgerFile();
+    expect(l["producingRevision"]).toBe("NOT_ESTABLISHED");
+    expect(l["historicalReproducibility"]).toBe("NOT_CLAIMED");
+    expect(l["independentValidation"]).toBe("NONE");
+    // The attestation is dated when it was made, never when the measurements were taken. A ledger dated
+    // back to the measurement would assert exactly the continuity nobody can establish.
+    expect(l["attestedAt"]).toBe("2026-10-16");
+    // And `attestingRevision` is a real, clean commit — the one carrying the tools that produced it — so
+    // "when we looked" is itself checkable, while still never standing in for what produced a measurement.
+    expect(String(l["attestingRevision"])).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("20 · contains NO money, because a preservation record is not a measurement", () => {
+    // The baselines themselves are full of figures; the ledger that preserves them holds paths, hashes,
+    // byte counts and stated limitations. The same rule the readiness report is held to: a record about
+    // evidence must not quietly become a report of the evidence's numbers.
+    expect(text()).not.toMatch(/\$[\d,]/);
+    // WALKED STRUCTURALLY, not scanned lexically — and that is a correction to this test's own first
+    // form, which banned the token `totalPlantedMinor` and then failed on the ledger's own explanation
+    // that `totalPlantedMinor` is one of the only five keys a baseline file carries. The sentence saying a
+    // figure is absent is not the figure. Fourteenth instance in this repository of a guard matching a
+    // term rather than the claim it is about, this time in an instrument I wrote three minutes earlier.
+    //
+    // The real property: the only NUMBERS in this ledger are byte counts.
+    const numeric: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (typeof node === "number") {
+        numeric.push(path);
+      } else if (Array.isArray(node)) {
+        node.forEach((v, i) => walk(v, `${path}[${i}]`));
+      } else if (node !== null && typeof node === "object") {
+        for (const [k, v] of Object.entries(node)) walk(v, `${path}.${k}`);
+      }
+    };
+    walk(ledgerFile(), "$");
+    expect(numeric.length).toBe(15);
+    for (const path of numeric) expect(path, `${path} must be a byte count`).toMatch(/\.bytes$/);
+  });
+
+  it("21 · the authenticated entry carries its citation and its core relationship", () => {
+    const [entry] = ledgerFile()["authenticatedBaselines"] as {
+      path: string;
+      recordedHashSource: string;
+      recordedCoreSha256: string;
+      recordedCoreCommit: string;
+    }[];
+    expect(entry!.path).toBe(RECORDED_BASELINE.path);
+    expect(entry!.recordedHashSource).toBe("docs/BENCHMARK_REVISION_V2.md");
+    expect(entry!.recordedCoreSha256).toBe(RECORDED_BASELINE.recordedCoreSha256);
+    // The commit the recorded core hash resolves to, kept so the relationship is navigable rather than
+    // merely asserted. Checked against git here, which is the only place it can be checked.
+    const blob = execFileSync(
+      "git",
+      ["show", `${entry!.recordedCoreCommit}:src/benchmark/reconciliationCore.ts`],
+      { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 24 },
+    );
+    const digest = execFileSync("sha256sum", [], { input: blob, encoding: "utf8" }).split(" ")[0];
+    expect(digest).toBe(RECORDED_BASELINE.recordedCoreSha256);
+  });
+});
