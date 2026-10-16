@@ -269,6 +269,10 @@ cannot be added to one half and forgotten in the other.
 The ledger is proven byte-identical after 11–13. And #4 is the one that proves the slice: before the
 tracking commit it exited **1** with twenty `absent` failures.
 
+Two more, added after CI found a defect thirteen could not: **a wrong `recordedCoreCommit` in the ledger**
+fails in a full clone, and **a real `git clone --depth 1`** reproduces the runner's shallow checkout, where
+the suite passes 40/40. See §11.4.
+
 ## 10 · Verification
 
 `build` · `build:server` · `tsc --noEmit` on all three projects · `check:purity` (21 core files) ·
@@ -310,7 +314,30 @@ All the same family, and the third is the sharpest kind.
 > it not to fire on the real workflow, and the property was falsified end to end: `|| true` appended to the
 > real step turns it red; reverting it turns it green. **Fifteenth instance.**
 
-A fourth, in a guard from the previous slice and in the block being edited: the comment claimed the frozen
+**4. A test about my working copy, caught by CI and not by me.** Test 21 shelled out to
+`git show fa28a80:src/benchmark/reconciliationCore.ts` unconditionally. `actions/checkout@v4` makes a
+**shallow** clone, so the object does not exist on a runner: both `npm run test` jobs went red on
+`95d0044` with `fatal: invalid object name 'fa28a80'`, while the three jobs that do not run that suite —
+including the new `frozen-verifiers` steps — were green.
+
+> **A test whose premise is "my working copy has history" is a test about my working copy.** The remedy is
+> not `fetch-depth: 0`, which would widen every job's checkout to suit one assertion — *changing the
+> environment to fit the test.* The test asks whether the object is reachable and, when it is not, asserts
+> **why**: that the repository really is shallow. A missing object in a full clone still fails, so it is
+> not an unconditional skip.
+
+Both branches were falsified: in a full clone a wrong commit in the ledger (`de885a3`) fails two tests and
+the check resolves it to core `60e71f6f` instead of `c80b35c5`, proving the history path works; and a real
+`git clone --depth 1` reproduces the CI condition exactly, with the suite passing 40/40 in it. **The first
+falsifier attempt mutated the module constant and the test passed**, because test 21 reads the commit from
+the *tracked ledger* — a falsifier aimed at the wrong input, which exposed a real gap: ledger and module
+were compared on the core hash and not on the commit, so a ledger could cite a different commit and the
+history check would silently be about something else. Now asserted.
+
+**This is the clearest argument for the gate in the whole slice.** The defect was invisible to a local run
+by construction, and the job that found it is one of the four that were outside CI until nine days ago.
+
+**5.** A guard from the previous slice, in the block being edited: the comment claimed the frozen
 inputs *"are tracked"* while `existsSync` checked the filesystem. **A file in a working tree and absent
 from the index is exactly the state that kept these verifiers out of CI**, and `existsSync` cannot see it.
 It reads `git ls-files` now. **Thirteenth instance.**

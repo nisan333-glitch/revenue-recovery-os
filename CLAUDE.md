@@ -1606,6 +1606,26 @@ fail-closed regex that escaped `:` as `\:` and therefore **matched nothing, incl
 > slice: a comment claimed the inputs *"are tracked"* while `existsSync` read the filesystem, which cannot
 > see the index — the state that kept these verifiers out of CI in the first place.
 
+**And CI found a fifth that no local run could, which is the clearest argument for the gate in the slice.**
+A test shelled out to `git show fa28a80:…` unconditionally; `actions/checkout@v4` makes a **shallow** clone,
+so the object does not exist on a runner and both `npm run test` jobs went red while the three that do not
+run that suite stayed green.
+
+> **A test whose premise is "my working copy has history" is a test about my working copy.** The remedy is
+> not `fetch-depth: 0` — widening every job's checkout to suit one assertion is changing the environment to
+> fit the test. The test asks whether the object is reachable and, when it is not, asserts **why**: that the
+> repository really is shallow. A missing object in a full clone still fails, so it is not an unconditional
+> skip. Falsified both ways, including in a real `git clone --depth 1`.
+
+**One claim of my own is corrected on evidence.** The ledger first said a pre-correction baseline *"would be
+blocked by the calculation-method compatibility gate"*. That gate governs the **assessment** path in
+`server/`; this harness imports `reconciliationCore` directly and nothing on its path reads
+`calculationMethodVersion`. The sentence was borrowed from the re-assessment decision, where it is correct —
+the same error as copying the pre-registration framing onto `DATA_OWNER_ATTESTATION`. **The truth is
+stronger:** nothing refuses a re-run; `recon:score` on this build simply answers with *this* core's numbers,
+so an unwitting re-run would quietly answer a different question. That is why reproducibility is
+`NOT_CLAIMED` rather than *blocked*, and precisely why the bytes had to be preserved.
+
 **What is attested and what is not:** Track A, continuity since **2026-09-30**; Track B, continuity since
 **2026-10-16**. Neither is original provenance, neither is historical reproducibility, and neither is
 independent validation. Everything preserved is synthetic, and **no observed amount became Revenue
