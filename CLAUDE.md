@@ -1631,6 +1631,95 @@ so an unwitting re-run would quietly answer a different question. That is why re
 independent validation. Everything preserved is synthetic, and **no observed amount became Revenue
 Returned.**
 
+**Diagnostic capability audit, V2 (2026-10-16).** The owner asked what NH can actually detect, prove and
+recover before any further feature work, against a 9.5/10 target. Audited at `c06d57c` over eight
+commercial leakage categories; **nothing in the product was changed** — no detector, no monetary
+calculation, no contract, no version, no frozen artefact — and the one thing built is a read-only
+measurement tool ([`docs/NH_DIAGNOSTIC_AUDIT_V2.md`](docs/NH_DIAGNOSTIC_AUDIT_V2.md)). V1 is preserved
+byte-identical under an append-only `SUPERSEDED IN PART` marker, and every V1 claim was re-derived rather
+than quoted. The rules:
+
+> **A capability in the benchmark lane is not a product capability.** `src/benchmark/reconciliationCore.ts`
+> has **zero production callers** — two harness scripts and its own tests. So **$62,446.00 TP / 72.66%
+> recall / $0.00 FP** is an honest measurement of a benchmark module and not a statement about the
+> product's path. The rubric encodes this rather than footnoting it: `BENCHMARK_ONLY` is capped at **4**.
+
+> **The scoring rubric is written before the cells are filled, and three scores are reported, never
+> blended.** Averaging detection with proof is the conflation the constitution forbids. Eight-category
+> production-weighted: **3.0/10**. V1's continuity scores on V1's own denominators: detection **1 → 2
+> families** (9.1% → 18.2% of 11). Recovery-proof, alone: **0/10**.
+
+> **Reach, not accuracy, is the bottleneck — and the measurement says so exactly.** NH's value coverage
+> **46.75%** is *identical* to the fraction of planted money contract 2.0.0 can represent: representable
+> $57,150.66, detected $57,150.66. So **recall on representable leakage is 100.00%** at **98.28% monetary
+> precision**, while **53.25% ($65,100.00) is structurally unreachable** — six classes with no
+> representable column. Further detection gains need **new source facts, not better detectors**.
+
+**Detector #2 is vindicated by measurement, not by argument:** against a ground truth frozen eight days
+before it existed, it closed **exactly the $14,800.00** that truth recorded as representable-but-undetected
+— S17 $5,500.00 + S18 $9,300.00, to the cent. Class coverage **27.27% → 45.45%**, value **34.64% →
+46.75%**, representable-not-detected **$14,800.00 → $0.00**.
+
+**And the audit found a $1,000.00 FALSE POSITIVE on the headline figure.** S33's `signed_at` is
+`2026-03-01 09:30:00`, a wall-clock datetime with no offset; the frozen truth expects the row excluded
+(*"a wall-clock time with no offset is not a point in time"*, business leakage $0) and the build books
+$1,000.00 into `observed.observedUnpaid`. The mechanism is **deliberate**, not a parser bug —
+`dateNormalize.ts:37` matches `(?:[T ].*)?` and truncates to day granularity by design. **Reported, not
+fixed**: whether to refuse such a row is a contract decision with an owner. The latent risk generalises
+and is stated rather than buried — a timezone-less wall clock is ±1 day ambiguous and the stall rule is a
+**day-threshold** rule, so near a boundary this silently resolves the ambiguity in one direction; S33 is
+months past its deadline, so this dollar is correctly classified on the stall axis even though the row
+arguably should never have been admitted.
+
+**The finding that outranks the matrix: the loop runs on seed data.** `AssessmentResult` reaches exactly
+two **display** screens and never becomes a `RecoveryEvent`; all 22 `RecoveryEvent`s come from
+`src/data/seed.ts` and `seedTrust.ts`. Recovery-proof coverage is **0** with **four independent blocks** —
+the empty `OBLIGATION_IDENTITY_FIELDS`, a lifecycle-only `LeakageType` with **no value for any of the
+eight categories**, an aggregate-only `AssessmentResult`, and `constitutesProof: false as const`.
+**Closing any single one changes nothing**, which is why the ranked recommendation puts the governed
+object **first** and wiring the reconciliation core **third despite the biggest number** — a dependency
+order, not a preference.
+
+**SIX DEFECTS, ALL IN THE MEASURER, NONE IN THE PRODUCT**, and the first nearly reached the report:
+
+> **An attribution mechanism supplied by a prediction cannot see where the prediction was wrong.** The
+> frozen truth's cent-tag device tags only scenarios it *expected* to contribute money, so {S17, S18, S20}
+> carry `cent_tag: 0` — exactly the set whose status changed. It reported **9.09% / 25.89%**, artefacts in
+> the **pessimistic** direction, which is not a defence. Replaced by **leave-one-out ablation** over the
+> product's own public output: no tag metadata, so the blindness is impossible by construction.
+
+> **An audit blind to false positives only ever reports flattering news.** The verdict vocabulary had no
+> false-positive slot, so the $1,000.00 was filed `NOT_A_LEAKAGE` and never surfaced.
+
+> **`business_leakage_minor` is a COMMERCIAL judgement; `expected_bucket` is a PREDICTION about where the
+> product should put the money.** Conflating them flagged S09 — a one-cent boundary case priced at zero
+> precisely because it is immaterial — for doing exactly what the truth predicted.
+
+Also: one dataset measured against a three-dataset denominator (10 classes / $115,550.66 vs the recorded
+11 / $122,250.66 — *V1's own warning realised*, since `terminal_state_after_cutoff` lives in
+`spot-cancelled-after-asof.csv`); the same conflation inside `supersedesPrediction`; and a test assertion
+that read cents 11 as naming two of three scenarios when a bitmask names all three. **The completeness
+identity is what makes the result trustworthy** — Σ(per-scenario deltas) + unclaimed filler = the baseline,
+**residual $0.00 on all 27 field×dataset pairs** — and it is also the only thing that can detect the one
+case ablation cannot see directly, two rows masking each other.
+
+**A defect in the RULER is recorded and not repaired.** S09 carries `cent_tag: 4` against
+`expected_amount_minor: 5`, so `partialOutstanding`'s tags sum to 7 while its own declared total's cents
+are 8 and the bucket is undecodable **by the truth's own arithmetic**; NH reported $4,000.08, the truth's
+expected total exactly. The ruler has the defect, the product agrees with the ruler's money, the frozen
+file is untouched, and a test asserts the defect stays **visible** rather than being papered over.
+
+**Every monetary figure in the report traces to a tracked source or a declared derivation, enforced by a
+test** — and that guard caught an orphan in the report it was written for: **$9,800.00**, quoted from this
+constitution, is a *delta* between two baselines and appears in neither, now derived from both
+`pairedHeldOutMinor` values. An audit's own figures are exactly what nobody re-checks.
+
+**27/27 audit falsifiers** — including that the instrument **can fail**, that the pure core imports no
+`fs`, that the CLI writes exactly one path and it is outside `e2e/`, and that a full run leaves seven
+frozen artefacts byte-identical — plus 1206 + 1 skipped. **Phase 3, the 30+ adversarial pack, is a
+separate slice and has NOT been run.** Everything measured is synthetic and **no observed amount became
+Revenue Returned.**
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

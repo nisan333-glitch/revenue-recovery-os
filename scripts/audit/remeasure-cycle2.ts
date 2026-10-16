@@ -64,9 +64,43 @@ const r = await remeasure({
   buildRevision: dirty ? `${head}-dirty` : head,
 });
 
+// WRITE ONCE, THEN VERIFY — the attest/verify split this repository already settled, applied to the
+// audit's own output. The first form rewrote the dated file on every invocation, so each test run that
+// exercised this command dirtied the tree: the `results.json` problem, in a file the report cites as a
+// source. A measurement that rewrites itself on every run cannot be the source of a quoted figure.
+//
+// So a re-run RE-DERIVES and COMPARES the substantive content — everything except `measuredAt` and
+// `buildRevision`, which are metadata about when we looked — and writes nothing. Agreement is reported;
+// disagreement exits non-zero and names the field.
 mkdirSync(OUT_DIR, { recursive: true });
 const out = `${OUT_DIR}/cycle2-remeasured-${measuredAt.slice(0, 10)}.json`;
-writeFileSync(out, `${JSON.stringify(r, null, 2)}\n`, { encoding: "utf8" });
+const substantive = (x: Record<string, unknown>) => {
+  const { measuredAt: _m, buildRevision: _b, ...rest } = x;
+  return JSON.stringify(rest, null, 2);
+};
+let existing: string | null = null;
+try {
+  existing = readFileSync(out, "utf8");
+} catch {
+  existing = null;
+}
+if (existing === null) {
+  writeFileSync(out, `${JSON.stringify(r, null, 2)}\n`, { encoding: "utf8" });
+  console.log(`\nwrote ${out}`);
+} else {
+  const recorded = substantive(JSON.parse(existing) as Record<string, unknown>);
+  const fresh = substantive(r as unknown as Record<string, unknown>);
+  if (recorded !== fresh) {
+    console.error(
+      `\nDISAGREES with the recorded measurement ${out}.\n` +
+        "The product's answer on the frozen package has changed since that file was written. That is a\n" +
+        "finding, not something to overwrite: delete the file deliberately to re-record it, and say in\n" +
+        "the report what moved and why.",
+    );
+    process.exit(1);
+  }
+  console.log(`\n${out} · re-derived and AGREES · nothing written`);
+}
 
 console.log(`\n── ${CYCLE} · re-measured on the current build · leave-one-out ablation`);
 console.log(`   build revision : ${r.buildRevision}`);
@@ -133,5 +167,4 @@ if (residualSeen) {
   console.log(`\n   ⚠ a non-zero residual means money the per-scenario ablations do not account for —`);
   console.log(`     either an interaction between rows or a gap in the truth's coverage. Reported, not absorbed.`);
 }
-console.log(`\nwrote ${out}`);
 console.log("OBSERVED exposure only · no Recovery Case · no Revenue Returned · synthetic throughout");

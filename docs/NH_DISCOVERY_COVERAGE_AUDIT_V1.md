@@ -1,5 +1,36 @@
 # NH discovery coverage audit · how much revenue leakage can NH actually find today?
 
+> ## SUPERSEDED IN PART · 2026-10-16
+>
+> **Append-only. Every word below is preserved byte-identical and is not rewritten.** The successor is
+> [`NH_DIAGNOSTIC_AUDIT_V2.md`](NH_DIAGNOSTIC_AUDIT_V2.md), which re-derived every claim here against the
+> code at `c06d57c` rather than quoting it.
+>
+> **What moved.** Score **A · detection coverage** was `1` family — the activation stall. It is now **2**:
+> Detector #2 (`src/assessment/nonStalledExposure.ts`) shipped on 2026-10-05 and prices overdue unsettled
+> obligations on the complement of the stalled cohort. Score **B** moved identically. On this document's
+> own denominators that is 9.1% → **18.2%** of 11 families and 4.0% → **8.0%** of 25. §7's
+> self-falsification table asked for *"a second production rule identifying a leakage condition from
+> admissible input"* and said **No** — that answer is now **Yes**, and it was measured rather than
+> asserted: against a ground truth frozen eight days before the detector existed, it closed exactly the
+> **$14,800.00** the 2026-09-27 score had recorded as representable-but-undetected, to the cent.
+>
+> **What still holds, unchanged.** Score **C · recovery-proof coverage from NH's own detection** is still
+> **0**, and V2 found that it is blocked four independent ways rather than one. The claim that *"the
+> detection slot is wired, governed and empty"* remains the right characterisation of the loop: every
+> `RecoveryEvent` in the product still comes from 22 hand-authored seed rows. The 20+ unreachable
+> families, the absent estimate/forecast/baseline, and the aggregate-only output all stand.
+>
+> **One thing V2 adds that this document could not see.** A **$1,000.00 false positive** on the headline
+> `observedUnpaid` figure, found by leave-one-out ablation. This audit had no per-instance attribution
+> mechanism and so could not have found it.
+>
+> **The 27.3% / 34.6% figures below are NOT superseded.** They measured a different, narrower question —
+> of 11 classes planted inside one package, how many NH found — and V2 re-measured exactly that question
+> on the current build, getting **45.45% / 46.75%**. Both are correct about their own question and must
+> not be quoted interchangeably, which is this document's own warning applied to its own numbers.
+
+
 **Read-only audit, 2026-10-04, at `51c39da`.** No production behaviour changed. No identity, hash,
 `pds`/`PAD-`/`PAX-` or candidate-enablement change. No detector was written.
 

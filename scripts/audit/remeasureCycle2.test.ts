@@ -255,13 +255,17 @@ describe("the command · read-only, proved against the filesystem", () => {
       EVIDENCE_RECORD,
     ];
     const before = covered.map((p) => sha(read(p)));
+    const outputBefore = sha(read("docs/audit/cycle2-remeasured-2026-10-16.json"));
     const run = spawnSync("npx", ["vite-node", "scripts/audit/remeasure-cycle2.ts"], {
       cwd: ROOT, encoding: "utf8", timeout: 180_000,
     });
     expect(run.status, run.stderr?.slice(0, 2000)).toBe(0);
     expect(covered.map((p) => sha(read(p)))).toEqual(before);
-    // And the one thing it DOES write is outside e2e/.
-    expect(run.stdout).toContain("docs/audit/cycle2-remeasured-");
+    // And the dated output is not rewritten either: a re-run RE-DERIVES and compares. A tracked output
+    // that every test run rewrites dirties the tree and cannot be the source of a quoted figure — the
+    // `results.json` problem, which this command's first form reproduced.
+    expect(run.stdout).toMatch(/re-derived and AGREES · nothing written/);
+    expect(sha(read("docs/audit/cycle2-remeasured-2026-10-16.json"))).toBe(outputBefore);
   }, 240_000);
 
   it("17 · the module opens nothing under e2e/ — the I/O is all in the edge", () => {
