@@ -67,6 +67,19 @@ Every monetary figure traces to one of three sources, named at each use: a **tra
 `docs/audit/cycle2-remeasured-2026-10-16.json`. A figure with no source is not published. Where evidence
 cannot support a metric it is **NOT ESTABLISHED**, and that verdict is used freely below.
 
+**Enforced, not promised.** A test extracts every `$N.NN` in this document and requires it to be a
+minor-unit integer in a tracked source or a *declared derivation whose own inputs are in tracked sources*,
+so arithmetic cannot launder an invented number. It caught an orphan in this report while it was being
+written: **$9,800.00**, quoted from `CLAUDE.md`, is a delta between two baselines and appears in neither.
+
+**One source had to be tracked to make this true.** `e2e/fixtures/synthetic-validation-2026-09-27/score.json`
+is the only place the 2026-09-27 figures exist, and it was untracked — so the comparison table in §2a
+quoted a file a clean checkout does not have, which is the "receipt for a lost artefact" problem in this
+report's own evidence. It is now tracked under the governance decision that already covers its class: *a
+recorded historical measurement is preserved evidence, not a disposable generated output.* It is **not**
+hash-covered by the evidence record, so `verify:evidence` does not check it, and that limit is stated
+rather than implied.
+
 ---
 
 ## 1 · The capability matrix

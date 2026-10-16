@@ -14,6 +14,7 @@
 // A figure that is neither fails the build. $0.00 is exempt: it is the absence of money, it appears in
 // every ledger, and requiring it to "trace" would be theatre.
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -70,6 +71,15 @@ describe("audit report · every monetary figure traces to a tracked source", () 
   const figures = [...new Set([...report.matchAll(/\$[0-9][0-9,]*\.[0-9]{2}/g)].map((m) => m[0]))].sort();
   const universe = new Set<number>();
   for (const s of SOURCES) for (const n of minorUnitsIn(read(s))) universe.add(n);
+
+  it("0 · every declared source is TRACKED, or this guard passes only on my machine", () => {
+    // The defect that took CI red: `score.json` was a declared source and was untracked, so the guard
+    // threw ENOENT on a clean checkout. Asserted here so a future source cannot silently be local-only.
+    const tracked = new Set(
+      execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean),
+    );
+    for (const s of SOURCES) expect(tracked.has(s), `${s} must be tracked`).toBe(true);
+  });
 
   it("1 · the report contains monetary figures at all, so this guard has a subject", () => {
     // A guard whose subject could vanish is not a guard. If the report is ever rewritten without

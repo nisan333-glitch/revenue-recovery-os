@@ -94,3 +94,15 @@ e2e/fixtures/synthetic-validation-2026-09-27/*
 !e2e/fixtures/synthetic-validation*/spot-cancelled-after-asof.csv
 !e2e/fixtures/synthetic-validation*/ground-truth.json
 !e2e/fixtures/synthetic-validation*/prediction.json
+#
+# AND CYCLE 2'S RECORDED SCORE, added 2026-10-16 because the V2 diagnostic audit CITES IT. It is the only
+# place the 2026-09-27 figures exist — $42,350.66 detectable, 27.27% class coverage, 34.64% value coverage
+# — and the audit's comparison table quotes them, so leaving it untracked would make the report a receipt
+# for a lost artefact. That is the governance decision the owner already made for `baseline.*`: a recorded
+# historical MEASUREMENT is preserved evidence, not a disposable generated output. A recorded score is the
+# same kind of object; it was simply outside the preservation slice's declared scope.
+#
+# It is NOT hash-covered by the evidence record, so `verify:evidence` does not check it and the report
+# says so. Synthetic by construction: 44 KB, zero emails, every identifier `synthetic-`-prefixed.
+# Cycle 1's score stays ignored — nothing cites it.
+!e2e/fixtures/synthetic-validation-2026-09-27/score.json

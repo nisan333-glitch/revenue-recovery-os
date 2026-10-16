@@ -245,15 +245,24 @@ describe("the measurement · against the real frozen package", () => {
 
 describe("the command · read-only, proved against the filesystem", () => {
   it("16 · a full CLI run leaves every frozen artefact byte-identical", () => {
+    // TRACKED PATHS ONLY, and that is a correction. The first form included `FROZEN.json`, which is
+    // deliberately untracked — so the test passed here and failed in CI with ENOENT. A test whose
+    // premise is "my working copy has files the repository does not track" is a test about my working
+    // copy, which is the same defect as the shallow-clone one, one day later. The list is now asserted
+    // tracked, so an untracked path cannot silently re-enter it.
     const covered = [
       `${FIXTURE_DIR}/dataset.csv`,
       `${FIXTURE_DIR}/spot-multicurrency.csv`,
       `${FIXTURE_DIR}/spot-cancelled-after-asof.csv`,
       `${FIXTURE_DIR}/ground-truth.json`,
       `${FIXTURE_DIR}/prediction.json`,
-      `${FIXTURE_DIR}/FROZEN.json`,
+      `${FIXTURE_DIR}/score.json`,
       EVIDENCE_RECORD,
     ];
+    const tracked = new Set(
+      execFileSync("git", ["ls-files", "e2e/"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean),
+    );
+    for (const p of covered) expect(tracked.has(p), `${p} must be tracked to be covered here`).toBe(true);
     const before = covered.map((p) => sha(read(p)));
     const outputBefore = sha(read("docs/audit/cycle2-remeasured-2026-10-16.json"));
     const run = spawnSync("npx", ["vite-node", "scripts/audit/remeasure-cycle2.ts"], {
@@ -306,8 +315,14 @@ describe("the command · read-only, proved against the filesystem", () => {
     expect(out.falsePositiveMinor).toBe(fresh.falsePositiveMinor);
   }, 60_000);
 
-  it("20 · git confirms no tracked file under e2e/ is modified", () => {
-    const dirty = execFileSync("git", ["status", "--porcelain", "e2e/"], { cwd: ROOT, encoding: "utf8" }).trim();
-    expect(dirty, `e2e/ must be untouched by the audit, got:\n${dirty}`).toBe("");
+  it("20 · git confirms no tracked file under e2e/ is MODIFIED or DELETED", () => {
+    // Narrowed from "e2e/ is clean", which was imprecise: a staged ADDITION is not a modification, and
+    // the first form went red while `score.json` was being added to the index — flagging the one change
+    // the audit is allowed to make. The property that matters is that no EXISTING evidence moved.
+    const lines = execFileSync("git", ["status", "--porcelain", "e2e/"], { cwd: ROOT, encoding: "utf8" })
+      .split("\n")
+      .filter(Boolean);
+    const touched = lines.filter((l) => /^(.[MD]|[MD].)/.test(l));
+    expect(touched, `no tracked file under e2e/ may be modified or deleted, got:\n${touched.join("\n")}`).toEqual([]);
   });
 });
