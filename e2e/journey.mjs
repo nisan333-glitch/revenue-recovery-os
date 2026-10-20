@@ -39,7 +39,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const API_PORT = Number(process.env.JOURNEY_API_PORT ?? 4000);
@@ -64,6 +64,24 @@ const TERMS_ID = `journey-terms-${randomUUID().slice(0, 8)}`;
 const TERMS_VERSION = "1.0.0";
 const STALL_N = "30";
 const CURRENCY = "USD";
+
+// ── The synthetic evidence source ─────────────────────────────────────────────────────────────────
+//
+// Section 13 ingests outcome evidence, which must carry an Ed25519 attestation from the SOURCE system.
+// The point of that mechanism is that the beneficiary does not hold the signing key, so the key is
+// generated here, per run, and split: the API process is given only the PUBLIC half, and the private
+// half reaches `scripts/seed-journey-case-evidence.ts` and nothing else. Nothing is written to disk,
+// nothing survives the run, and no deployment ever sees it.
+const EVIDENCE_KEY_ID = `JOURNEY-billing-${randomUUID().slice(0, 8)}`;
+const evidenceKeys = generateKeyPairSync("ed25519");
+const EVIDENCE_PUBLIC_KEYS = JSON.stringify([
+  {
+    keyId: EVIDENCE_KEY_ID,
+    sourceSystem: "billing",
+    publicKey: evidenceKeys.publicKey.export({ type: "spki", format: "pem" }).toString(),
+  },
+]);
+const EVIDENCE_PRIVATE_KEY = evidenceKeys.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 
 const results = [];
 let failures = 0;
@@ -171,6 +189,14 @@ function startApi() {
     // Supplying a fabricated RecoveryType:threshold pair here would put an invented number into the
     // configuration of a test whose whole subject is not inventing numbers.
     NH_PILOT_ASSESSMENT_AGENT_ENABLED: "true",
+    // Section 13 · the activation detector, which DOES publish candidates and therefore does need an
+    // economic bar. The threshold is the journey's own, named here rather than hidden in the seeder,
+    // and it is deliberately BELOW the observation's at-risk amount so the candidate is admitted —
+    // section 13 asserts the number the screen shows against the number the seeder reports.
+    NH_ACTIVATION_DETECTOR_ENABLED: "true",
+    NH_AGENT_ADMISSION_POLICIES: "ActivationMissed:5000",
+    // Only the PUBLIC half. The API can verify an attestation and cannot produce one.
+    NH_EVIDENCE_SOURCE_KEYS: EVIDENCE_PUBLIC_KEYS,
     NH_PILOT_INPUT_TERMINAL_GRACE_HOURS: "24",
     NH_PILOT_INPUT_ABANDONED_RETENTION_DAYS: "7",
   });
@@ -1353,6 +1379,311 @@ try {
     /pilot assessment/i.test(revisionText) &&
     /Neither is proof of recovered revenue/i.test(revisionText) &&
     /No recovery case is created/i.test(revisionText));
+
+  // ── 13 · Identify → own → fix → evidence → prove, on ONE Recovery Case ──────────────────────────
+  //
+  // Everything above is the ASSESSMENT lane: a governed observation that creates no case and claims no
+  // money, and says so on its own screen. This section is the other lane, and it is the one the
+  // constitution calls the complete loop — a detector finding becomes a case someone owns, acts on,
+  // evidences and proves, with the two ledgers visibly apart at every hop.
+  //
+  // ONLY THE OBSERVATION IS INJECTED. `seed-journey-activation-task.ts` enqueues the payload a system
+  // watching the customer's accounts would produce, because NH has no screen that creates one — on
+  // purpose, since a UI that let an operator hand-write a finding would let the beneficiary author the
+  // thing the review gate exists to judge. The detector, the worker, the candidate store, the review
+  // screen, the promotion and every governed write after it are the real product.
+  //
+  // EVERY FIGURE HERE IS SYNTHETIC, and the at-risk amount is a request INPUT on this path rather than
+  // something derived from customer data. That is why nothing below calls it recovered money, and why
+  // the case screen's two panels are checked as two different numbers rather than one.
+  const seeded = JSON.parse(
+    execFileSync("npx", ["vite-node", "scripts/seed-journey-activation-task.ts", BOUNDARY], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: process.env,
+    }),
+  );
+  check(
+    "an activation observation is queued for the real detector",
+    typeof seeded.taskId === "string" && seeded.amountAtRiskMinor === 10_000,
+    `${seeded.taskId} · ${seeded.amountAtRiskMinor} ${seeded.currency}`,
+  );
+
+  await page.getByRole("button", { name: "Candidate Review" }).click();
+  await page.getByLabel("Pilot boundary ID").fill(BOUNDARY).catch(async () => {
+    await page.locator('input[placeholder="Enter the exact customer/pilot boundary"]').fill(BOUNDARY);
+  });
+
+  // The worker polls; the candidate appears when the detector has run and the admission bar has
+  // admitted it. Clicking "Load candidates" until one shows is how an operator would actually find out.
+  const loadCandidates = page.getByRole("button", { name: "Load candidates" });
+  let candidateText = "";
+  for (let attempt = 0; attempt < 40 && !/pending review/.test(candidateText); attempt += 1) {
+    await loadCandidates.click();
+    await page.waitForTimeout(500);
+    candidateText = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  }
+  const candidateVisible = /pending review/.test(candidateText);
+  check("the detector's finding reaches the operator's review queue", candidateVisible,
+    candidateText.slice(0, 160));
+  haltIf(
+    !candidateVisible,
+    "no candidate reached the review queue, so every later step in this section is unreachable",
+  );
+
+  // THE FIRST LEDGER CHECK, before anything is decided. The queue states the figure is an opportunity.
+  check(
+    "the queue labels the figure Revenue Opportunity and shows Revenue Returned as nothing counted",
+    // Case-insensitive: both labels are rendered through a CSS `uppercase`, and `innerText` returns the
+    // text as the browser lays it out rather than as the DOM holds it.
+    /revenue opportunity · not proven/i.test(candidateText) && /review never counts money/i.test(candidateText),
+    candidateText.slice(0, 200),
+  );
+
+  // ── 13a · A review decision without a reason is refused by the screen ──────────────────────────
+  const acceptButton = page.getByRole("button", { name: "Accept for case creation" });
+  await acceptButton.click();
+  const noReason = (await page.locator('[role="alert"]').innerText().catch(() => "")) || "";
+  check(
+    "accepting with no reason is refused, and the refusal says the decision is immutable",
+    /review reason is required/i.test(noReason) && /immutable/i.test(noReason),
+    noReason.slice(0, 120),
+  );
+  check(
+    "and no Recovery Case was created by the refused attempt",
+    !/Recovery Case RC-/.test((await page.locator("body").innerText()).replace(/\s+/g, " ")),
+  );
+
+  // ── 13b · Accept, then promote — two separate operator acts ────────────────────────────────────
+  await page.locator('input[placeholder="Required immutable review reason"]').fill(
+    "journey · confirmed against the account record",
+  );
+  await acceptButton.click();
+  await page.waitForTimeout(400);
+  const afterAccept = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  check(
+    "acceptance is not promotion — the screen says a separate operator action is still required",
+    /Promotion still requires a separate operator action/.test(afterAccept),
+    afterAccept.slice(0, 160),
+  );
+
+  await page.getByRole("button", { name: "Create Recovery Case" }).click();
+  await page.waitForTimeout(600);
+  const afterPromote = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  const caseIdMatch = afterPromote.match(/Recovery Case (RC-[0-9a-f-]+)/i);
+  const recoveryCaseId = caseIdMatch?.[1] ?? "";
+  check("promotion creates the authoritative Recovery Case root", recoveryCaseId !== "",
+    afterPromote.slice(0, 200));
+  haltIf(recoveryCaseId === "", "no Recovery Case id was reported, so the case cannot be read back");
+
+  // ── 13c · NO DUPLICATE CASE for the same finding ───────────────────────────────────────────────
+  //
+  // Two mechanisms, and both are checked because they fail independently. The QUEUE no longer offers
+  // the candidate — a promoted candidate is excluded from `listPending` — so the screen cannot be used
+  // to make a second case. And the API itself refuses to make one: `sourceCandidateId` is UNIQUE and
+  // the promotion is idempotent, which is the half that still has to hold when something other than
+  // this screen calls it.
+  await loadCandidates.click();
+  await page.waitForTimeout(400);
+  const queueAfter = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  check(
+    "the promoted candidate leaves the queue, so the screen cannot create a second case",
+    /No pending candidates or accepted candidates awaiting promotion/.test(queueAfter),
+    queueAfter.slice(0, 160),
+  );
+  const replay = await page.evaluate(async ([boundaryId, actorId]) => {
+    const list = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
+      headers: { "x-actor-id": actorId, "x-actor-role": "operator" },
+    });
+    return { status: list.status, pending: list.ok ? (await list.json()).length : -1 };
+  }, [BOUNDARY, "pilot-operator@company"]);
+  check("and the server agrees the queue is empty for this boundary",
+    replay.status === 200 && replay.pending === 0, `status=${replay.status} pending=${replay.pending}`);
+
+  // ── 13d · The case is readable in the product, with the two ledgers apart ──────────────────────
+  await page.getByRole("button", { name: "Recovery Case", exact: true }).click();
+  const readCase = async () => {
+    await page.getByLabel("Recovery Case ID").fill(recoveryCaseId);
+    await page.getByRole("button", { name: "Read case" }).click();
+    await page.waitForTimeout(500);
+    return (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
+  };
+  let caseText = await readCase();
+  check("the promoted case is readable on a real screen, from the governed record",
+    caseText.includes(recoveryCaseId), caseText.slice(0, 160));
+  check(
+    "it shows the identified exposure and states it is NOT money returned",
+    /\$100\.00/.test(caseText) && /not money returned/i.test(caseText),
+    caseText.slice(0, 200),
+  );
+  check(
+    "Revenue Returned reads NOT COMPUTED, never $0.00, because no proof exists yet",
+    /NOT COMPUTED/.test(caseText) && !/\$0\.00/.test(caseText),
+    caseText.slice(0, 200),
+  );
+  const stageReached = async (stage) =>
+    (await page.locator(`[data-testid="stage-${stage}"]`).getAttribute("data-reached")) === "yes";
+  check("the case starts at OPENED and nothing further is claimed",
+    (await stageReached("OPENED")) && !(await stageReached("OWNED")) && !(await stageReached("PROVEN")));
+
+  // ── 13e · Author → baseline → intervene → evidence → prove, through the governed API ───────────
+  //
+  // Driven through `page.evaluate` rather than a screen because these writes have no screen of their
+  // own yet — `EventDetail` offers them only for a seed event. They are the REAL governed endpoints
+  // with the REAL separation of duties: the author/operator half and the approver half are two
+  // different identities, and the server refuses them from one.
+  const drive = await page.evaluate(async ([caseId]) => {
+    const call = async (method, path, actorId, role, body) => {
+      // The content-type header is set ONLY when there is a body. Fastify refuses a request that
+      // declares `application/json` and sends nothing, and `/author` and `/intervention` take no body —
+      // so declaring it unconditionally made the harness fail two writes the product accepts.
+      const headers = { "x-actor-id": actorId, "x-actor-role": role };
+      if (body !== undefined) headers["content-type"] = "application/json";
+      const res = await fetch(`/api${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return { status: res.status, body: await res.text() };
+    };
+    const out = {};
+    out.author = await call("POST", `/cases/${caseId}/author`, "dana@company", "author");
+    out.baseline = await call("POST", `/cases/${caseId}/baseline`, "dana@company", "author", {
+      baselineId: `BL-journey-${caseId.slice(3, 11)}`,
+      calculatedMinor: 2_000,
+      currency: "USD",
+      method: "matched_historical_cohort",
+      methodVersion: 1,
+      sourceRefs: ["journey-src-1"],
+      effectiveAt: "2026-07-01T00:00:00.000Z",
+    });
+    out.intervention = await call("POST", `/cases/${caseId}/intervention`, "dana@company", "author");
+    return out;
+  }, [recoveryCaseId]);
+  check("the case is authored, baselined and intervened through the governed API",
+    drive.author.status === 201 && drive.baseline.status === 201 && drive.intervention.status === 201,
+    `author=${drive.author.status} baseline=${drive.baseline.status} intervention=${drive.intervention.status}`);
+
+  caseText = await readCase();
+  check("the screen now shows INTERVENED, derived from the record and not from a stored status",
+    (await stageReached("INTERVENED")) && !(await stageReached("EVIDENCED")));
+  check("and the proven ledger is STILL not computed — a fix is not a recovery",
+    /NOT COMPUTED/.test(caseText) && !/\$0\.00/.test(caseText));
+
+  // Evidence needs a source attestation the browser cannot forge, so it is ingested by the same
+  // fixture verifier the server matrix uses, through the same endpoint, from the harness.
+  const evidence = JSON.parse(
+    execFileSync("npx", ["vite-node", "scripts/seed-journey-case-evidence.ts", recoveryCaseId], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        JOURNEY_API_PORT: String(API_PORT),
+        JOURNEY_EVIDENCE_KEY_ID: EVIDENCE_KEY_ID,
+        JOURNEY_EVIDENCE_PRIVATE_KEY: EVIDENCE_PRIVATE_KEY,
+      },
+    }),
+  );
+  check("outcome evidence is ingested against the case", evidence.ingested === true,
+    JSON.stringify(evidence).slice(0, 200));
+
+  caseText = await readCase();
+  check("the screen shows EVIDENCED and lists the evidence record",
+    (await stageReached("EVIDENCED")) && caseText.includes(evidence.evidenceId), caseText.slice(0, 200));
+  check(
+    "evidence is still not money — the proven ledger remains NOT COMPUTED",
+    /NOT COMPUTED/.test(caseText) && !/\$0\.00/.test(caseText),
+  );
+
+  // THE APPROVAL. A different identity, in a different role, as the server requires.
+  const approval = await page.evaluate(async ([caseId, baselineId, evidenceId]) => {
+    const res = await fetch("/api/proofs", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-actor-id": "cfo@company", "x-actor-role": "approver" },
+      body: JSON.stringify({
+        proofId: `PF-journey-${caseId.slice(3, 11)}`,
+        recoveryCaseId: caseId,
+        currency: "USD",
+        collectedMinor: 9_000,
+        excludedRecoveryMinor: 0,
+        exclusionStatement: "journey · no exclusions asserted",
+        recoveryReason: "UsageActivation",
+        attribution: "ar-system",
+        evidenceIds: [evidenceId],
+        baselineId,
+        confidenceUsed: 95,
+      }),
+    });
+    return { status: res.status, body: await res.text() };
+  }, [recoveryCaseId, `BL-journey-${recoveryCaseId.slice(3, 11)}`, evidence.evidenceId]);
+  check("an approver — never the author — freezes the proof", approval.status === 201,
+    `${approval.status} ${approval.body.slice(0, 160)}`);
+
+  caseText = await readCase();
+  check("the case reads PROVEN", await stageReached("PROVEN"), caseText.slice(0, 200));
+  check(
+    "Revenue Returned is the kernel's figure, collected minus baseline, and names the proof it came from",
+    /\$70\.00/.test(caseText) && /PF-journey-/.test(caseText),
+    caseText.slice(0, 240),
+  );
+  // THE WHOLE POINT OF THE SECTION, on one screen at one moment: an identified gap of $100.00 and a
+  // proven return of $70.00, two numbers, neither standing in for the other.
+  check(
+    "the identified gap and the proven return are shown as two DIFFERENT numbers on the same screen",
+    /\$100\.00/.test(caseText) && /\$70\.00/.test(caseText) && /not money returned/i.test(caseText),
+  );
+
+  // ── 13f · The governed record agrees, and no second case exists ────────────────────────────────
+  const finalState = await page.evaluate(async ([caseId, boundaryId]) => {
+    const res = await fetch(`/api/recovery-cases/${caseId}`, {
+      headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" },
+    });
+    const view = res.ok ? await res.json() : null;
+    const queue = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
+      headers: { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" },
+    });
+    return { status: res.status, view, pending: queue.ok ? (await queue.json()).length : -1 };
+  }, [recoveryCaseId, BOUNDARY]);
+  check(
+    "the server's own record carries the same two figures the screen showed",
+    finalState.status === 200 &&
+      finalState.view?.lifecycle?.exposure?.minor === 10_000 &&
+      finalState.view?.provenRevenueReturnedMinor === 7_000 &&
+      finalState.view?.lifecycle?.exposureIsNotRecoveredRevenue === true,
+    JSON.stringify(finalState.view?.lifecycle?.exposure ?? {}),
+  );
+  check(
+    "the case's root still names the candidate and the detector it came from",
+    finalState.view?.root?.detectorVersion === "activation-deadline-v1" &&
+      typeof finalState.view?.root?.sourceCandidateId === "string" &&
+      finalState.view.root.sourceCandidateId.startsWith("CC-"),
+    `${finalState.view?.root?.detectorVersion} · ${finalState.view?.root?.sourceCandidateId}`,
+  );
+  check("and the boundary still holds no further candidate awaiting promotion", finalState.pending === 0);
+
+  // ── 13g · FAILS CLOSED · the beneficiary cannot read the proof provenance ──────────────────────
+  //
+  // The operator who opened this case is the actor who benefits from a larger recovery number. The
+  // separation is the server's, not the screen's, so it is checked against the server.
+  const refusals = await page.evaluate(async ([caseId]) => {
+    const get = async (actorId, role, id) => {
+      const res = await fetch(`/api/recovery-cases/${id}`, { headers: { "x-actor-id": actorId, "x-actor-role": role } });
+      return { status: res.status, body: await res.text() };
+    };
+    return {
+      operator: await get("pilot-operator@company", "operator", caseId),
+      author: await get("dana@company", "author", caseId),
+      missing: await get("cfo@company", "approver", "RC-00000000-0000-0000-0000-000000000000"),
+    };
+  }, [recoveryCaseId]);
+  check("the case owner's own operator identity is refused the proof provenance, 403",
+    refusals.operator.status === 403 && refusals.author.status === 403,
+    `operator=${refusals.operator.status} author=${refusals.author.status}`);
+  check("a case id with no authoritative root is 404, not an empty case",
+    refusals.missing.status === 404, `${refusals.missing.status} ${refusals.missing.body.slice(0, 120)}`);
+  check("and the refusal body carries no case data",
+    !refusals.operator.body.includes("amountAtRisk") && !refusals.operator.body.includes("exposure"),
+    refusals.operator.body.slice(0, 120));
 
   // ── 12 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
