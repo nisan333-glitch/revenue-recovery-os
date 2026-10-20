@@ -2,6 +2,14 @@
 // (via effectiveProofs + proofIsAuditable), never recomputed from mutable Cases. Each line is a
 // frozen proof: baseline/collected/returned as-approved, with the confidence and threshold that
 // were stamped at approval.
+//
+// THE DATA SOURCE IS SEED DATA, AND THAT IS LABELLED ON THE SCREEN RATHER THAN FIXED HERE. `useRecovery()`
+// is the seed-backed React context (`src/data/seed.ts`), not the governed Postgres proof chain behind
+// `/audit/cases/:caseId` and `/proofs`. The arithmetic, the chain folding and the auditable gate on this
+// screen are the real domain kernel; the ROWS they operate on are hand-authored. Silently swapping the
+// source to the API would make a demonstration look like a capability, which is the one thing a CFO
+// screen must not do, so the banner says what this is and the governed equivalent has its own screen
+// ("Recovery Case"). Rewiring it is a larger slice with its own evidence.
 import { useMemo, useState } from "react";
 import { useRecovery } from "../state/RecoveryContext";
 import { effectiveProofs, type Proof } from "../domain/proof";
@@ -96,6 +104,18 @@ export function CFOProofView({ focusCaseId }: { focusCaseId?: string }) {
           </button>
         }
       />
+
+      <div
+        role="note"
+        data-testid="cfo-seed-data-banner"
+        className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-200"
+      >
+        <strong>Demonstration data.</strong> The proof rows on this screen come from the built-in seed set, not
+        from the governed record in the database. The ledger rules applied to them are the real ones — chain
+        folding, the stamped threshold, the auditable gate — but no figure here was produced by a detector
+        finding on customer data. For an authoritative case read from the governed record, use{" "}
+        <span className="font-medium">Recovery Case</span>.
+      </div>
 
       <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard label="Baseline (counterfactual)" value={formatMoney(money(totalBaseline, CURRENCY))} />

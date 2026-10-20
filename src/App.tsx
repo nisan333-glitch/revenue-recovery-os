@@ -19,6 +19,7 @@ import { PilotPolicyGovernance } from "./modules/governance/PilotPolicyGovernanc
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
 import { CandidateReviewQueue } from "./modules/CandidateReviewQueue";
+import { RecoveryCaseCenter } from "./modules/RecoveryCaseCenter";
 
 // The single case used by the Guided Demo navigation mode. Only an identifier — no business values here.
 const DEMO_CASE_ID = "RE-1014";
@@ -39,6 +40,7 @@ type ModuleKey =
   | "reassessment"
   | "synthetic-pilot"
   | "candidate-review"
+  | "recovery-case"
   | "policy-governance";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
@@ -51,6 +53,7 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "attribution", label: "Attribution Engine", group: "Prove" },
   { key: "queue", label: "Recovery Queue", group: "Operate" },
   { key: "candidate-review", label: "Candidate Review", group: "Operate" },
+  { key: "recovery-case", label: "Recovery Case", group: "Operate" },
   { key: "events", label: "Recovery Events", group: "Operate" },
   { key: "reasons", label: "Recovery Reasons", group: "Operate" },
   { key: "confidence", label: "Confidence Score", group: "Trust" },
@@ -199,6 +202,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}
           {active === "candidate-review" && <CandidateReviewQueue />}
+          {active === "recovery-case" && <RecoveryCaseCenter />}
           {active === "events" && <RecoveryEventsTable />}
           {active === "cfo" && <CFOProofView focusCaseId={focusCaseId} />}
           {active === "reconciliation" && <Reconciliation />}

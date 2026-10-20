@@ -217,3 +217,60 @@ export async function getCaseAuditTrail(caseId: string, actor: DevActor): Promis
 export async function getCfoExport(caseId: string, actor: DevActor): Promise<CfoExportDTO> {
   return apiRequest("GET", `/audit/cases/${caseId}/cfo-export`, actor);
 }
+
+/**
+ * The authoritative Recovery Case — root, derived lifecycle, evidence and the proven ledger.
+ *
+ * `provenRevenueReturnedMinor` is `number | null` and the `null` IS THE ANSWER: it means the proven
+ * ledger was not computed, with `provenLedgerUnavailableReason` saying why. It must never be coalesced
+ * to `0` on the way to a screen — "we found no proof" and "a proof established nothing" are different
+ * claims, and only one of them is usually true.
+ */
+export interface RecoveryCaseRootDTO {
+  recoveryCaseId: string;
+  boundaryId: string;
+  sourceCandidateId: string;
+  recoveryType: string;
+  sourceRef: string;
+  amountAtRiskMinor: number;
+  currency: string;
+  detectorVersion: string;
+  openedByActorId: string;
+  openedByRole: string;
+  policyVersion: string;
+  openedAt: string;
+}
+
+export interface CaseLifecycleDTO {
+  recoveryCaseId: string;
+  progress: "OPENED" | "OWNED" | "BASELINED" | "INTERVENED" | "EVIDENCED" | "PROVEN";
+  governance: ("FLAGGED" | "HALTED" | "EXCLUDED")[];
+  responsible: { actorId: string; role: string } | null;
+  trail: { action: string; actorId: string; role: string; at: string }[];
+  trailOrderCertain: boolean;
+  exposure: MoneyDTO;
+  revenueReturned: MoneyDTO | null;
+  exposureIsNotRecoveredRevenue: true;
+}
+
+export interface RecoveryCaseViewDTO {
+  root: RecoveryCaseRootDTO;
+  lifecycle: CaseLifecycleDTO;
+  exposureLabel: string;
+  provenRevenueReturnedMinor: number | null;
+  provenLedgerUnavailableReason: "no_effective_recovery_proof" | "proof_currency_disagreement" | null;
+  provenFromProofIds: string[];
+  baselineCount: number;
+  evidence: {
+    evidenceId: string;
+    evidenceRole: string;
+    trustClassification: string;
+    beneficiaryControl: boolean;
+    sourceVerification: boolean;
+  }[];
+  unknownAuthorityActions: string[];
+}
+
+export async function getRecoveryCase(caseId: string, actor: DevActor): Promise<RecoveryCaseViewDTO> {
+  return apiRequest<RecoveryCaseViewDTO>("GET", `/recovery-cases/${encodeURIComponent(caseId)}`, actor);
+}
