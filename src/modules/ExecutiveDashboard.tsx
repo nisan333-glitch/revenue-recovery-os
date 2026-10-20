@@ -9,6 +9,7 @@ import { provenLedger } from "../domain/provenLedger";
 import { formatMoney, money as makeMoney } from "../domain/money";
 import { money, percent } from "../lib/format";
 import { reasonLabel } from "../domain/reasons";
+import { DemoDataBanner } from "../components/DemoDataBanner";
 import {
   Bar,
   Panel,
@@ -36,6 +37,8 @@ export function ExecutiveDashboard({ onOpenCfo }: { onOpenCfo: () => void }) {
         subtitle="Revenue lost between signature and activation — found, recovered, and proven. Detected opportunity and proven recovery never blend."
       />
 
+
+      <DemoDataBanner />
       {/* The two numbers that must never mix */}
       <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <Panel className="p-5">

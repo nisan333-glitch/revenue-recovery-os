@@ -5,6 +5,7 @@ import { isCounted } from "../domain/invariants";
 import { money } from "../lib/format";
 import { Panel, SectionHeader } from "../components/ui";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 export function RecoveryReasons() {
   const { events } = useRecovery();
   const buckets = byReason(events);
@@ -21,6 +22,8 @@ export function RecoveryReasons() {
         subtitle="The canonical taxonomy. A dollar is only counted when attributed to a reason."
       />
 
+
+      <DemoDataBanner />
       {unclassified.length > 0 && (
         <Panel className="mb-5 border-detect-600/40 p-4">
           <div className="text-sm font-medium text-detect-500">

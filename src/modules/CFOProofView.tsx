@@ -8,7 +8,8 @@
 // `/audit/cases/:caseId` and `/proofs`. The arithmetic, the chain folding and the auditable gate on this
 // screen are the real domain kernel; the ROWS they operate on are hand-authored. Silently swapping the
 // source to the API would make a demonstration look like a capability, which is the one thing a CFO
-// screen must not do, so the banner says what this is and the governed equivalent has its own screen
+// screen must not do, so the shared `DemoDataBanner` says what this is and the governed equivalent has
+// its own screen
 // ("Recovery Case"). Rewiring it is a larger slice with its own evidence.
 import { useMemo, useState } from "react";
 import { useRecovery } from "../state/RecoveryContext";
@@ -21,6 +22,7 @@ import { dateShort } from "../lib/format";
 import { Panel, SectionHeader, StatCard } from "../components/ui";
 import { EventDetail } from "../components/EventDetail";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 const CURRENCY = "USD";
 
 // `focusCaseId` is an optional, presentational continuity hint: when the CFO view is opened from the
@@ -105,17 +107,7 @@ export function CFOProofView({ focusCaseId }: { focusCaseId?: string }) {
         }
       />
 
-      <div
-        role="note"
-        data-testid="cfo-seed-data-banner"
-        className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-200"
-      >
-        <strong>Demonstration data.</strong> The proof rows on this screen come from the built-in seed set, not
-        from the governed record in the database. The ledger rules applied to them are the real ones — chain
-        folding, the stamped threshold, the auditable gate — but no figure here was produced by a detector
-        finding on customer data. For an authoritative case read from the governed record, use{" "}
-        <span className="font-medium">Recovery Case</span>.
-      </div>
+      <DemoDataBanner />
 
       <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard label="Baseline (counterfactual)" value={formatMoney(money(totalBaseline, CURRENCY))} />

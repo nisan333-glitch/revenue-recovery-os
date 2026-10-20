@@ -12,6 +12,7 @@ import { reasonLabel } from "../domain/reasons";
 import { money } from "../lib/format";
 import { Panel, SectionHeader } from "../components/ui";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 export function Outcomes() {
   const { events, proofs } = useRecovery();
   const outcomes = outcomesByLeakage(events);
@@ -27,6 +28,8 @@ export function Outcomes() {
         subtitle="Problems, not events. Forecast (what we can recover) and proof (what we did) are reported in separate columns — never blended."
       />
 
+
+      <DemoDataBanner />
       {/* Backstage operator view. Forecast is shown beside proof, never merged.
           Not part of the product's positioning — see docs/VISION.md §7. */}
       <Panel className="mb-4 p-4 text-sm text-slate-400">

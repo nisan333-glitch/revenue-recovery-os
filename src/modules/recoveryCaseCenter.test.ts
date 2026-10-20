@@ -193,7 +193,10 @@ describe("structural · the screen reads the governed record, and the seed scree
     // Not rewired — deliberately. Silently swapping its data source would make a demonstration look
     // like a capability, so the honest move is the label, and the label has to actually be rendered.
     expect(importsOf(code)).toContain("../state/RecoveryContext");
-    expect(code).toContain('data-testid="cfo-seed-data-banner"');
-    expect(code).toContain("Demonstration data.");
+    // The label is now the SHARED `DemoDataBanner`, so there is one implementation of the claim rather
+    // than ten that can drift. `seedDataLabelling.test.ts` enforces it across every seed-backed screen;
+    // this line keeps the CFO screen named here, where its deliberate non-rewiring is the subject.
+    expect(importsOf(code)).toContain("../components/DemoDataBanner");
+    expect(code).toContain("<DemoDataBanner />");
   });
 });

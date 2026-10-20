@@ -4,6 +4,7 @@ import { globalAuditFeed } from "../domain/audit";
 import { dateTime } from "../lib/format";
 import { Panel, SectionHeader } from "../components/ui";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 const TYPE_LABEL: Record<string, string> = {
   created: "Created",
   assigned: "Assigned",
@@ -44,6 +45,8 @@ export function AuditTrail() {
           />
         }
       />
+
+      <DemoDataBanner />
 
       <Panel className="overflow-hidden">
         <table className="w-full text-sm">

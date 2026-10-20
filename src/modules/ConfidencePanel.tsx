@@ -16,6 +16,7 @@ import {
 import { reportableReturned } from "../domain/invariants";
 import { EventDetail } from "../components/EventDetail";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 export function ConfidencePanel() {
   const { events } = useRecovery();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -37,6 +38,8 @@ export function ConfidencePanel() {
         subtitle="Why a recovery is — or isn't — proof-grade. Low confidence stays visible but separated."
       />
 
+
+      <DemoDataBanner />
       <div className="mb-5 grid grid-cols-3 gap-4">
         <StatCard
           label={`High (≥ ${PROOF_THRESHOLD}) — proof-grade`}
