@@ -11,6 +11,12 @@ individually.
 
 ## 1 · Verdict
 
+> **SCOPE OF THIS DOCUMENT: contract compatibility only.** On instruction, a contract decision may not
+> rest on field-level compatibility alone — it must separately establish obligation-level identity,
+> database-key migration safety, historical case continuity and rollout ordering. Those four are
+> determined in [`OBLIGATION_MERGE_RISK_V1.md`](OBLIGATION_MERGE_RISK_V1.md) §4, and **two of them are
+> open**. The verdict below is one input of five, and it is the least important of them.
+
 > **MINOR is correct — `2.0.0` → `2.1.0` — for ONE OPTIONAL field with zero synonyms that is kept out of
 > the cycle key.** It is safe on identity, on meaning and on historical reproduction.
 >

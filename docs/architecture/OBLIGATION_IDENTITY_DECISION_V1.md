@@ -24,6 +24,10 @@ answer is not "yes with caveats".
 | Ambiguous identity must fail closed with an actionable explanation | **PASS, vacuously** | `leakInstanceIdentityStatus()` refuses everything today, so no ambiguous identity is ever acted on |
 | Identity must not be invented from execution ids or row positions | **PASS** | verified below |
 
+> **The merge is quantified separately**, on instruction, in
+> [`OBLIGATION_MERGE_RISK_V1.md`](OBLIGATION_MERGE_RISK_V1.md) — including which path is reachable today,
+> what happens to existing candidates and cases, and the five determinations a contract decision needs.
+
 **The first criterion passes for the wrong reason.** Stability is produced by *coarseness*, not by
 correctness: the key is stable because it ignores the obligation. A design that merges two obligations
 will never report a duplicate, and reporting that as "stable" would be the flattering reading.
