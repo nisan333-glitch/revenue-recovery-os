@@ -13,6 +13,7 @@ import type {
   IngestEvidenceRequest,
 } from "./services/proofService";
 import * as auditService from "./audit/auditService";
+import * as recoveryCaseRead from "./services/recoveryCaseRead";
 import * as pilotIntakeService from "./services/pilotIntakeService";
 import * as pilotAssessmentService from "./services/pilotAssessmentService";
 import type { SchedulePilotAssessmentRequest } from "./services/pilotAssessmentService";
@@ -485,6 +486,19 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     async (req, reply) => {
       const actor = await resolveActor(req, options.identityResolver);
       return reply.send(await auditService.cfoAuditExport(actor, req.params.caseId));
+    },
+  );
+
+  // The authoritative Recovery Case (governed read). A SEPARATE route from `/audit/cases/:caseId`
+  // because that one is deliberately root-tolerant — `EventDetail` calls it with seed event ids that
+  // have no promotion row — while this one FAILS CLOSED on a missing root and boundary-checks against
+  // the root's own boundary. See services/recoveryCaseRead.ts for the full reasoning.
+  app.get<{ Params: { caseId: string } }>(
+    "/recovery-cases/:caseId",
+    { schema: caseParamsSchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(await recoveryCaseRead.readRecoveryCase(actor, req.params.caseId));
     },
   );
 
