@@ -1808,6 +1808,74 @@ policy's own test. The order of work is fixed by the revert rule: **no identity 
 production code that reads it ships in the same slice**, and the step to verify first is the one the
 reverted attempt stopped short of — the value surviving `projectExecutionInput`.
 
+**Identity, compatibility and ledger integrity — investigated 2026-10-20.** The three blockers above were
+measured before anything was authorised. Nothing was implemented: no contract bump, no migration, no
+change to `OBLIGATION_IDENTITY_FIELDS`, no historical `AuthorityEvent` touched
+([`docs/architecture/`](docs/architecture/)). **Two sentences of the paragraph above are corrected by it,
+and the corrections are the point of the slice.**
+
+> **The step to verify first is NOT the value surviving `projectExecutionInput`** — that sentence is
+> wrong. The projection hard-allowlists `attributes` to `paid_timing` and replaces every identifier with
+> an ordinal, so the value *cannot* survive; but **candidate staging runs BEFORE the projection**, on
+> `report.acceptedCycles`, so the worker never needs it. The consequence is favourable and load-bearing:
+> no change to the projection or to `hashExecutionInput`, so **no retained input can read as
+> `execution_input_tampered`.**
+
+> **And the blocker is not the contract field at all — it is a PRIMARY KEY.**
+> `PilotAssessmentEntityAttributionRecord` is `@@id([executionId, sourceRef])` with `sourceRef`
+> account-grained, so two obligations of one account collide on it. The table cannot hold
+> obligation-grained rows whatever the contract declares. **The migration comes first; the field buys
+> nothing before it.**
+
+**Identity over time: the answer is NO, and the first acceptance criterion passes for the wrong reason.**
+Identity is **account-grained at every layer** — cycle key, staged attribution PK, candidate dedupe key —
+so re-running an assessment creates no duplicate *because the key ignores the obligation*. Stability from
+coarseness is not correctness: a design that merges two obligations will never report a duplicate. Two
+structural failures are measured, not argued: a **renewal** under one `subscription_id` collides two
+obligations onto one cycle key, and `dedupeCollisions` then excludes **both**, so a paying customer leaves
+the measured population; and **two obligations of one customer** are distinguishable only if their due
+dates differ. Identity is never invented from an execution id or a row position — `CYCLE_KEY_SOURCE_COLUMNS`
+declares the five columns that may reach the key, as data.
+
+**`2.1.0` is confirmed MINOR, and not because the `pds` hash is unchanged.** All eight identity surfaces
+were checked individually. Exactly one moves — `PAX-` for **new** executions, because `canonicalBinding`
+carries the full contract version — and **no historical one moves**, because the binding reads
+`decision.contractVersion` from the immutable admission decision rather than the build constant. The rule:
+
+> **A version bump is safe when every surface that could re-identify history reads its version from the
+> frozen record rather than from the build.** Three conditions bound the verdict and breaching any one
+> ends it: OPTIONAL never RECOMMENDED; the field never enters `CYCLE_KEY_SOURCE_COLUMNS`, or the same
+> historical input yields a different `findingHash`; and **the consumer ships before the producer**,
+> because a file declaring `2.1.0` on a `2.0.0` build is refused while the reverse is accepted.
+
+Two findings reported rather than patched: the **declared version does not gate the column set** —
+`UNDECLARED_COLUMN` compares against the *build's* field table — and `PILOT_DATA_CONTRACT_FIELDS` has **no
+generated-document consumer**, so the customer contract doc is hand-authored and nothing would catch it
+drifting.
+
+**The ledger: yes, correctable without touching history — and the two issues are COUPLED.** The free fix
+for the revision/approval conflation pairs the proof chain to the ledger *in time order*, so it inherits
+exactly the ordering uncertainty of the second issue. The rule that decides the design:
+
+> **A token that a gate reads is load-bearing, and replacing it is not a tidy-up.** `enforceSeparation`
+> builds `approvers = idsFor("Approve")`. **Measured:** an actor who only ever *revised* a proof is in
+> that set today and is refused `Verify` with a 403. Writing a distinct token *instead of* `Approve`
+> would drop them out and turn that 403 into a **201** — silently removing a control. Substitution is
+> **REJECTED**; the correction must be read-side or additive.
+
+The recommended correction needs no token and no migration: the `Proof` chain already distinguishes an
+approval from a revision immutably — a chain root has `previousProofId === null` — and it works
+**retroactively on every row ever written**. Issue 2 was **measured, not assumed**: **0 ties in 20 cases**,
+against 4 in 40 for the execution-event log that motivated the concern, with the bound stated (idle
+database, one process) and the structural reason pinned — that log appended several events per
+transaction while this one appends **at most one**, so a tie needs two separate transactions in the same
+millisecond. No monetary surface reads ledger order.
+
+**Everything here is investigation.** Contract **2.0.0**, both extracts, every `*_VERSION`/`*_SCHEME`
+constant, `OBLIGATION_IDENTITY_FIELDS = []`, every frozen artefact and the three engine hashes are
+unmoved; `prisma/`, `e2e/` and `docs/pilot-intake/` are untouched; and **no observed amount became
+Revenue Returned.**
+
 **Nothing here produces Revenue Returned from customer data.** Every figure is synthetic, and on the
 activation path the at-risk amount is a request **input** rather than something derived from a customer's
 file — so the slice makes the case *governed and visible* and does not make NH's detection broader.
