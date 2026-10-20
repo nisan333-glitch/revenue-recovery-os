@@ -1720,6 +1720,100 @@ frozen artefacts byte-identical — plus 1206 + 1 skipped. **Phase 3, the 30+ ad
 separate slice and has NOT been run.** Everything measured is synthetic and **no observed amount became
 Revenue Returned.**
 
+**Recovery Case decision (2026-10-20).** The V2 audit scored recovery-proof coverage **0/10** and named
+four independent blocks. That is right about one thing and wrong about another, and the distinction is the
+slice: the recovery-proof **machinery** is built, governed and CI-exercised — candidate store with a unique
+dedupe key, immutable reviews, `RecoveryCaseRecord` with `sourceCandidateId` UNIQUE, operator-role and
+boundary gates on promotion, the full author → baseline → intervene → evidence → approve → revise → verify
+lifecycle under separation of duties, atomic halt enforcement, and the whole loop end to end in
+`syntheticPilot.ts`. What is zero is a **detector-originated entry from real customer data**. Reporting the
+first as if it were the second would be the conflation the constitution forbids, one level up.
+
+Two real gaps were found, and only one of them was ours to close. The governing rules are now:
+
+> **A promoted case that nothing reads is a value written with no consumer** — the `obligation_ref` lesson
+> in reverse. Until this slice the ONLY production reader of `RecoveryCaseRecord` was a boolean existence
+> probe: who opened the case, which candidate it came from, which detector found it and the at-risk amount
+> were all persisted and never read back.
+
+> **Case status is DERIVED from the append-only history, never stored.** A `status` column is a mutable
+> cache of an immutable ledger, which is what this repository has refused for admission decisions, analysis
+> terms and execution events alike. `prisma/schema.prisma` gained no table and no column.
+
+> **The monetary separation is enforced by the TYPE SYSTEM, not by a naming convention.**
+> `ObservedExposure` and `ProvenRevenueReturned` are branded, so the compiler refuses to put one where the
+> other belongs — proved by three `@ts-expect-error` lines that `tsc` checks — and the proven brand cannot
+> be minted without naming **every** proof it was summed from. An absent proof is `null`, NOT COMPUTED, with
+> the reason named beside it; a renderer asserting `$0.00` would claim a proof was found and established
+> nothing. The screen test asserts the string `$0.00` appears nowhere in the markup.
+
+**Two assumptions were corrected by reading the code rather than trusting the plan.** The lifecycle is
+**not** all in the authority ledger — `EstablishBaseline` and `IngestEvidence` reach it not at all, leaving
+their trace in `BaselineSnapshot` and `EvidenceRecord`, so a derivation reading only that ledger would have
+reported a fully proven case as merely OWNED. And the ledger has **three writers**, not one:
+`recordAuthority` writes six actions while `proofStore.authorityRow` writes `Approve` and
+`postgresCandidateReviewStore.promote` writes `PromoteCandidate`, both straight to `authorityEvent.create`.
+A structural test now derives the vocabulary by scanning all three. **Reported and deliberately not
+patched:** `revise()` writes `action: "Approve"`, the same token `approve()` writes, so the ledger cannot
+tell an original approval from a linked correction — changing it would change how every historical row
+reads, which is a governance decision with an owner. It costs the derivation nothing, because PROVEN comes
+from an *effective* proof and a reversed proof leaves its `Approve` row behind.
+
+**`GET /recovery-cases/:caseId` is a NEW route, decided on the code and not on preference.**
+`caseAuditTrail` never touches `RecoveryCaseRecord` and answers for ids with no root at all — because
+`EventDetail` calls it with **seed event ids** — so making it fail closed would break the one screen using
+it. The new route fails closed three ways: `AuditRead` first, so an unauthorized actor cannot probe which
+ids are real; then a missing root is **404**; then boundary access against the **root's own** boundary,
+which no request parameter can name. The consequence is stated rather than hidden: the case's own operator
+does not hold `AuditRead`, so a beneficiary cannot read their own case's proof provenance, and widening
+EP-8.1 H2 to admit one is a governance change with an owner, not a convenience.
+
+**`CFOProofView` was NOT rewired, and that is the honest move.** It renders `useRecovery()` — the
+seed-backed context, 22 hand-authored rows — which is the concrete mechanism behind *"the loop runs on seed
+data"*: the **presentation** layer does, even though the governed layer does not. Silently swapping its
+data source would make a demonstration look like a capability, which is the one thing a CFO screen must not
+do. It carries a banner saying the rows are seed data while the ledger rules applied to them are the real
+kernel, and a test pins both halves — it still imports the seed context, and it still says so.
+
+**The complete loop now runs in a real browser on a real detector finding** (`e2e/journey.mjs` §13,
+**120 → 149 checks**). Only the **observation** is injected, because NH has no screen that creates a
+detector task — deliberately, since a UI that let an operator hand-write a finding would let the
+beneficiary author the thing the review gate exists to judge. Evidence is signed by an ephemeral Ed25519
+key generated per run and **split**: the API process receives only the public half, and the private half
+reaches one script and nothing else, because a page able to mint a source attestation would be the Trust
+Invariant's standing test answered the wrong way. The arc proves, in order: the finding reaches the queue
+labelled Revenue Opportunity; a decision with no reason is refused and creates no case; acceptance is not
+promotion; promotion creates the root; the candidate leaves the queue **and** the API refuses a second case
+(two independent mechanisms); OPENED with $100.00 identified and Revenue Returned NOT COMPUTED;
+author/baseline/intervene → INTERVENED, still not computed — **a fix is not a recovery**; evidence →
+EVIDENCED, still not computed — **evidence is not money**; an approver, never the author, freezes the
+proof; and the case then shows **$100.00 identified beside $70.00 proven, two numbers on one screen,
+neither standing in for the other**. Both defects in the first run were in the harness — a `content-type`
+header on two bodyless writes, and case-sensitive matching of labels rendered through a CSS `uppercase`,
+which `innerText` applies.
+
+**The entry from the assessment path stays BLOCKED, correctly.** `deriveStagedAttributions` computes
+per-entity attribution and checks it reconciles — both live, both passing — and then refuses at
+`leakInstanceIdentityStatus()`. Routing around it with a per-execution key was considered and **rejected**:
+the execution id is unique per run, so re-assessing one extract would open a **second case for one real
+leak**. The contract-change proposal is recorded and implemented nowhere
+([`docs/OBLIGATION_IDENTITY_PROPOSAL_V1.md`](docs/OBLIGATION_IDENTITY_PROPOSAL_V1.md)), and it corrects my
+own plan: a new identity component does **not** enter `pds`, because `pds` is derived over
+`sha256(csvText)` — a customer who adds a column changes their bytes and gets a new identity with no change
+to the derivation. So no MAJOR is forced, no stored key is re-identified, **no migration is needed**, and
+it is a MINOR (`2.0.0` → `2.1.0`, proposed). **OPTIONAL and never RECOMMENDED**, for a mechanical reason:
+a recommended column absent from an export counts against `policy.maxMissingRecommendedColumns` on an
+already-frozen policy, so a "minor" addition could reject a dataset valid the day before — major by the
+policy's own test. The order of work is fixed by the revert rule: **no identity field is declared until the
+production code that reads it ships in the same slice**, and the step to verify first is the one the
+reverted attempt stopped short of — the value surviving `projectExecutionInput`.
+
+**Nothing here produces Revenue Returned from customer data.** Every figure is synthetic, and on the
+activation path the at-risk amount is a request **input** rather than something derived from a customer's
+file — so the slice makes the case *governed and visible* and does not make NH's detection broader.
+Contract **2.0.0**, both extracts, every `*_VERSION`/`*_SCHEME` constant, `OBLIGATION_IDENTITY_FIELDS = []`
+and every frozen artefact are unmoved, and `prisma/schema.prisma` is untouched.
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

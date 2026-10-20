@@ -15,8 +15,9 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import {
   CYCLE,
   EVIDENCE_RECORD,
@@ -265,16 +266,40 @@ describe("the command · read-only, proved against the filesystem", () => {
     for (const p of covered) expect(tracked.has(p), `${p} must be tracked to be covered here`).toBe(true);
     const before = covered.map((p) => sha(read(p)));
     const outputBefore = sha(read("docs/audit/cycle2-remeasured-2026-10-16.json"));
-    const run = spawnSync("npx", ["vite-node", "scripts/audit/remeasure-cycle2.ts"], {
-      cwd: ROOT, encoding: "utf8", timeout: 180_000,
+    const recordedBefore = readdirSync(`${ROOT}/docs/audit`).sort();
+
+    // THE COMMAND WRITES SOMEWHERE ELSE FOR THIS TEST, and that is the fix for a defect this test used
+    // to carry. Its output path carries the date, so the "AGREES · nothing written" branch is only taken
+    // when a file for TODAY already exists — the first run on each new calendar day wrote one instead,
+    // failed here, and left an untracked file in `docs/`. A test that fails once a day because of the
+    // clock is a test about the clock. Pointed at a temp directory it exercises BOTH branches on ANY
+    // date, which is strictly more than it checked before.
+    const outDir = mkdtempSync(join(tmpdir(), "nh-audit-"));
+    const env = { ...process.env, NH_AUDIT_OUT_DIR: outDir };
+    const first = spawnSync("npx", ["vite-node", "scripts/audit/remeasure-cycle2.ts"], {
+      cwd: ROOT, encoding: "utf8", timeout: 180_000, env,
     });
-    expect(run.status, run.stderr?.slice(0, 2000)).toBe(0);
+    expect(first.status, first.stderr?.slice(0, 2000)).toBe(0);
+    expect(first.stdout).toMatch(/^wrote /m);
+    const written = readdirSync(outDir);
+    expect(written).toHaveLength(1);
+    const writtenBytes = sha(readFileSync(join(outDir, written[0]!), "utf8"));
+
+    // A RE-RUN RE-DERIVES AND COMPARES, writing nothing. An output that every run rewrites dirties the
+    // tree and cannot be the source of a quoted figure — the `results.json` problem, which this
+    // command's first form reproduced.
+    const second = spawnSync("npx", ["vite-node", "scripts/audit/remeasure-cycle2.ts"], {
+      cwd: ROOT, encoding: "utf8", timeout: 180_000, env,
+    });
+    expect(second.status, second.stderr?.slice(0, 2000)).toBe(0);
+    expect(second.stdout).toMatch(/re-derived and AGREES · nothing written/);
+    expect(sha(readFileSync(join(outDir, written[0]!), "utf8"))).toBe(writtenBytes);
+
+    // Nothing under the frozen package moved, and nothing was added to or changed in `docs/audit`.
     expect(covered.map((p) => sha(read(p)))).toEqual(before);
-    // And the dated output is not rewritten either: a re-run RE-DERIVES and compares. A tracked output
-    // that every test run rewrites dirties the tree and cannot be the source of a quoted figure — the
-    // `results.json` problem, which this command's first form reproduced.
-    expect(run.stdout).toMatch(/re-derived and AGREES · nothing written/);
     expect(sha(read("docs/audit/cycle2-remeasured-2026-10-16.json"))).toBe(outputBefore);
+    expect(readdirSync(`${ROOT}/docs/audit`).sort()).toEqual(recordedBefore);
+    rmSync(outDir, { recursive: true, force: true });
   }, 240_000);
 
   it("17 · the module opens nothing under e2e/ — the I/O is all in the edge", () => {
@@ -287,7 +312,12 @@ describe("the command · read-only, proved against the filesystem", () => {
     // The edge writes exactly one path, and it is not under e2e/.
     const writes = [...edge.matchAll(/writeFileSync\(([^,]+),/g)].map((m) => m[1]!.trim());
     expect(writes).toEqual(["out"]);
-    expect(edge).toMatch(/const OUT_DIR = "docs\/audit"/);
+    // The DEFAULT target is `docs/audit`, and the override is an environment variable rather than an
+    // argument — so nothing a caller passes on the command line can redirect a recorded measurement, and
+    // the default is still pinned here. The property this line protects is "the edge writes under
+    // docs/audit unless a test deliberately points it elsewhere", not the exact spelling of a constant.
+    expect(edge).toMatch(/const OUT_DIR = process\.env\.NH_AUDIT_OUT_DIR \?\? "docs\/audit";/);
+    expect(edge).not.toMatch(/OUT_DIR\s*=\s*process\.argv/);
   });
 
   it("18 · it is wired into the suite CI runs, and into the typecheck project", () => {

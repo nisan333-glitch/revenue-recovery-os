@@ -10,7 +10,16 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { CYCLE, EVIDENCE_RECORD, FIXTURE_DIR, remeasure } from "./remeasureCycle2";
 
-const OUT_DIR = "docs/audit";
+// Overridable so a TEST can exercise this command without writing into the repository.
+//
+// FOUND BY RUNNING THE SUITE ON A NEW DAY. The output path carries the date, and the write-once-then-
+// verify branch only reports "AGREES" when a file for TODAY already exists — so the first run on each
+// new calendar day took the write branch, failed the test that asserts the AGREES wording, and left an
+// untracked dated file in `docs/`. A test that fails once a day because of the clock is a test about the
+// clock, and a test that writes into a tracked directory is the `results.json` problem it was written to
+// prevent. The dated path stays — a recorded measurement IS dated evidence — and the test now points
+// this elsewhere, which also lets it exercise BOTH branches on any date instead of one branch on one.
+const OUT_DIR = process.env.NH_AUDIT_OUT_DIR ?? "docs/audit";
 const sha = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const usd = (minor: number) => `$${(minor / 100).toFixed(2)}`;
 const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
