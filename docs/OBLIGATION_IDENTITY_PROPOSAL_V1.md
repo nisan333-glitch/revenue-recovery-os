@@ -8,6 +8,33 @@ change.
 
 Written 2026-10-20, against `dfbad96`.
 
+> ## ⚠ SUPERSEDED IN PART · erratum 2026-10-20
+>
+> **The prose below is preserved unchanged.** A superseded conclusion is corrected and preserved, never
+> deleted and never silently rewritten — so the corrections live here and the original stands as the
+> record of what was argued.
+>
+> **E1 · §8 step 2 is wrong about where the value must survive.** It says the reference "must survive
+> `projectExecutionInput`, or the worker cannot see it", and names that as the step to verify first. The
+> premise holds — the projection hard-allowlists `attributes` to `paid_timing` alone — but the conclusion
+> does not: **candidate staging runs BEFORE the projection**, on `report.acceptedCycles`
+> (`server/services/pilotAssessmentService.ts:746`, projection at `:699`), so staging sees the full cycle
+> and the worker never needs the value. The consequence is favourable: no change to the projection or to
+> `hashExecutionInput`, so no retained input can read as `execution_input_tampered`.
+>
+> **E2 · §8's order of work omits the actual blocker.** `PilotAssessmentEntityAttributionRecord` is
+> `@@id([executionId, sourceRef])` with `sourceRef` account-grained, so two obligations of one account
+> **collide on the primary key**. Obligation grain needs a schema migration *before* the contract field
+> buys anything. The field is not the first step; the primary key is.
+>
+> **E3 · §6 understates the compatibility work.** MINOR is confirmed correct, but
+> `docs/CUSTOMER_PILOT_DATA_CONTRACT_V1.md` is hand-authored — `PILOT_DATA_CONTRACT_FIELDS` has no
+> generated-document consumer — so the bump needs a manual customer-document edit that no test would catch
+> if forgotten.
+>
+> Full treatment: [`architecture/OBLIGATION_IDENTITY_DECISION_V1.md`](architecture/OBLIGATION_IDENTITY_DECISION_V1.md)
+> and [`architecture/CONTRACT_2_1_COMPATIBILITY_REVIEW_V1.md`](architecture/CONTRACT_2_1_COMPATIBILITY_REVIEW_V1.md).
+
 ---
 
 ## 1 · What is blocked, and exactly where
