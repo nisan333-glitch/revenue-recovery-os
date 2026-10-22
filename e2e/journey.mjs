@@ -91,6 +91,16 @@ function check(name, ok, detail = "") {
   results.push({ name, ok });
   if (!ok) failures += 1;
   console.log(`${ok ? "PASS" : "FAIL"} · ${name}${detail ? ` · ${detail}` : ""}`);
+  if (!ok) annotate(`FAIL · ${name}${detail ? ` · ${detail}` : ""}`);
+}
+/**
+ * Surface a failure as a GitHub Actions error annotation. Annotations are readable from the check-run
+ * record by anyone who can see the run, which a raw job log is not always (log download can be refused
+ * where the check-run API is not). It prints a plain line outside Actions, so it is inert locally.
+ */
+function annotate(message) {
+  const text = String(message).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").slice(0, 900);
+  console.log(`::error title=journey::${text}`);
 }
 /**
  * A dev-identity label ("Dana Levy (operator)") reduced to the actor id the API expects.
@@ -1868,9 +1878,11 @@ try {
     // non-zero (haltIf guarantees it), so the run still reports FAILED — it just reports it truthfully.
     halted = error.message;
     console.error(`HALTED · ${error.message}`);
+    annotate(`HALTED · ${error.message}`);
   } else {
     failures += 1;
     console.error(`FAIL · harness error · ${error instanceof Error ? error.stack : String(error)}`);
+    annotate(`HARNESS ERROR · ${error instanceof Error ? error.message : String(error)}`);
   }
 } finally {
   if (browser) await browser.close().catch(() => undefined);
