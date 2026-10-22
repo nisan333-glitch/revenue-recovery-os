@@ -179,3 +179,86 @@ what §4.4 shows cannot ship without a continuity rule.
 * **What an existing case means after the grain moves.** §4.4 — a governance decision, not a code one.
 * **The sibling-table design is recommended, not validated.** No schema was written, so its interaction
   with the purge path and the emitter's execution grouping is reasoned, not tested.
+
+---
+
+# ERRATUM · 2026-10-22 · §2, §2.2 and §3 — the activation path DOES record the absorption
+
+**Append-only. Nothing above this line is edited.** The prose in §2, §2.2 and §3 is preserved exactly as
+written, because a recorded conclusion is corrected and preserved, never rewritten — the same treatment
+the `obligation_ref` stopped-field record gets.
+
+## What is NO LONGER VALID
+
+Three claims, all in the same direction and all mine:
+
+| where | the claim as written | the fact |
+|---|---|---|
+| §2 table | *"**no** — nothing is recorded at all"* | the `task.succeeded` event records `{admittedCount, createdCount, filteredCount}` |
+| §2.2, test 6 | *"`created: false` goes to the caller and is **not persisted**"* | it is persisted, as `createdCount: 0`, in `agent_task_events.metadata` |
+| §2.2 blockquote | *"no audit of the stored rows can recover that it ever existed"* | an audit can: the event survives in an append-only table with no purge path |
+
+## Why I got it wrong, which is the part worth keeping
+
+**I measured a lane the product does not run and reported its behaviour as the product's.** Tests 5 and 6
+drove `CaseAdmissionService` over `InMemoryCaseCandidateStore`. That class pair genuinely records nothing —
+`createIfAbsent` returns the existing candidate and the discarded signal is dropped on the floor. The
+deployed path is a different chain:
+
+```
+postgresTaskStore.succeed()
+  → PostgresCandidateSignalWriter.writeWithin      (ON CONFLICT (dedupe_key) DO NOTHING)
+  → returns { admittedCount, createdCount, filteredCount }
+  → merged into the task.succeeded event metadata  (postgresTaskStore.ts:383)
+  → agent_task_events                              (append-only by DB trigger, no purge path)
+```
+
+This is the *a capability in the benchmark lane is not a product capability* rule, **inverted**: a
+LIMITATION measured in a non-production lane is not a product limitation either. The direction of the
+error does not change the lesson — in both forms, the lane has to be named before the result is quoted.
+
+## What is STILL BINDING, and it is most of the document
+
+The erratum narrows one fact and overturns no conclusion:
+
+* **The merge itself is unchanged.** Two obligations of one account still collapse into one candidate and
+  one case, and the surviving candidate still carries the **first** amount. §1 and the §2 money row stand.
+* **The money is still lost where it matters.** The absorbed observation's amount reaches **no candidate,
+  no case, no screen and no figure**. The event metadata records *that* a signal was absorbed and carries
+  **no amount at all**. §2's *"the second $600.00 exists nowhere"* is right about every surface a user or a
+  CFO can read; it is wrong only about the audit log.
+* **Silent discard is still worse than conflation**, for the reason §2.2 gives: there is nothing to split.
+* **§3 stands in full.** Assessment-path candidates still cannot exist; activation-path exposure is still a
+  question about deployed data; merged cases are still *incomplete rather than corrupt*; and **no proven
+  figure is wrong because of the merge.**
+* **All five determinations in §4 stand**, and none of them turned on this fact.
+
+## What it CHANGES, and it is a gain
+
+Because the record exists, **absorption is derivable from the tables that already exist, with no schema
+change** — which is what made `npm run exposure:absorbed` buildable in the same slice as the disclosure
+rather than waiting on a migration. `admittedCount >= 1 AND createdCount = 0` on a `task.succeeded` event
+**is** the stored evidence that a signal cleared every gate and was then swallowed.
+
+Two bounds on that evidence, stated here so the diagnostic is never over-read:
+
+1. **It records an absorbed OBSERVATION, never a distinct OBLIGATION.** No column anywhere identifies an
+   obligation, so two absorbed observations with differing `sourcePayloadHash` are *either* two obligations
+   *or* one obligation re-observed after a reschedule, a renewal or a corrected amount. This is why the
+   disclosure state is named `ABSORBED_OBSERVATIONS_RECORDED` and not `CONFIRMED_COLLISION`.
+2. **An event carrying no `admittedCount` is NOT ESTABLISHABLE, not zero.** The publisher was not wired
+   when that task ran. Coalescing the absent key to 0 would assert a population was checked when nobody
+   checked it.
+
+## Corrected by measurement, in code
+
+`server/agents/obligationMergeExposure.test.ts` now names its in-memory describe as that lane, carries a
+dated correction block, and adds two Postgres-backed tests: **5p** proves `admittedCount: 1,
+createdCount: 0` is the stored record and that the survivor carries the first amount; **6p** proves the
+candidate columns still hold no absorbed count and that the append-only triggers exist — so what is
+recorded lives on the event and the candidate really does lose the money.
+
+§7's first unresolved risk is unchanged: **whether any deployed boundary has already absorbed an
+observation is still unknown.** The mechanism is proven reachable and now proven *recorded*; the incidence
+is a question about deployed data, and the Phase 1 verdict stayed
+`UNKNOWN — ACCESS OR EVIDENCE INSUFFICIENT`.
