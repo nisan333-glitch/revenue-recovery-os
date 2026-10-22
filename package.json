@@ -31,6 +31,7 @@
     "fixture:journey": "vite-node scripts/write-journey-fixture.ts",
     "test:journey": "npm run fixture:journey && node e2e/journey.mjs",
     "verify:registers": "vite-node scripts/verify-register-integrity.ts",
+    "exposure:absorbed": "vite-node scripts/exposure/absorbed-observations.ts",
     "recon:generate": "node scripts/reconciliation-synthetic/generate.mjs",
     "recon:run": "vite-node scripts/reconciliation-synthetic/run.ts",
     "recon:score": "node scripts/reconciliation-synthetic/score.mjs",
