@@ -1876,6 +1876,89 @@ constant, `OBLIGATION_IDENTITY_FIELDS = []`, every frozen artefact and the three
 unmoved; `prisma/`, `e2e/` and `docs/pilot-intake/` are untouched; and **no observed amount became
 Revenue Returned.**
 
+**Obligation-merge safety decision (2026-10-22).** The investigation above measured the account-level merge;
+this slice made it impossible to misread, and deliberately did **not** fix it. Candidate identity is
+`digest([boundaryId, recoveryType, sourceRef])` with `sourceRef` **account-grained**, so two obligations of one
+customer collapse into one candidate and one Recovery Case — and nothing on any read surface said so, which
+meant an account-level case and a genuinely single-obligation case rendered identically. The governing rule is
+now:
+
+> **A case states what its identity COVERS, and three states stay distinguishable: the key CANNOT distinguish
+> obligations (always true, from the identity rule alone), a second observation WAS absorbed (true only on
+> evidence), and obligation uniqueness is GUARANTEED (structurally unreachable).** An operation needing the
+> guarantee fails closed by asking about the **guarantee**, never by enumerating today's actions.
+
+`CONFIRMED_COLLISION` was **rejected as a name.** The evidence can establish an absorbed **observation**; it
+cannot establish a distinct **obligation**, because no column anywhere identifies one — two absorbed
+observations with differing digests are *either* two obligations *or* one re-observed after a reschedule,
+renewal or corrected amount. Calling that a confirmed collision would overstate exactly the way `settled_at`
+and the rejected `VERIFIED_FOR_PILOT` did. **Built 2026-10-22**
+([`docs/architecture/OBLIGATION_IDENTITY_MIGRATION_PLAN_V1.md`](docs/architecture/OBLIGATION_IDENTITY_MIGRATION_PLAN_V1.md)
+is design only). The disclosure is **derived at read time and stored nowhere**, so it reaches every case ever
+recorded with no backfill, no migration and no mutable status column — a `grain` column would have been the
+stored cache of an immutable fact this repository has refused three times already.
+
+**The highest-value single fix was one sentence.** *"Recovery Case RC-1 already existed; no duplicate was
+created"* reads as reassurance and, on an account-grained key, **also** describes a second genuinely different
+obligation being folded in. It now says the case already exists for this **account**, that this may be the same
+obligation or a different one now absorbed, and that **the record cannot tell them apart.**
+
+**An absent disclosure fails closed**, found rather than foreseen: the pre-existing queue tests supply a
+candidate with no grain and the first component crashed on them. Making the fixture pass was the smaller fix and
+the wrong one — a response can arrive without the field (older server mid-deploy, cached payload, unwired
+route), and reading that silence as *nothing to warn about* would let a **deploy skew delete the warning.**
+So absence renders `NOT_STATED` and says absence is not reassurance.
+
+**Absorption is derivable with no schema change**, which is what let the diagnostic ship in the same slice:
+`admittedCount >= 1 AND createdCount = 0` on a `task.succeeded` event **is** the stored record, in a table
+append-only by trigger with no purge path. `exposure:absorbed` is read-only, imports nothing in its summariser,
+prints counts and our own labels only — never a `sourceRef`, amount or digest — and treats an event carrying
+**no** `admittedCount` as **NOT ESTABLISHABLE, not zero**, because coalescing a missing key to 0 asserts a
+population was checked when nobody checked it. An **empty database returns `NOT_ESTABLISHABLE` with exit 2**:
+reporting success having examined nothing is the one outcome that would make it worse than not existing.
+
+**Deployed exposure: `UNKNOWN — ACCESS OR EVIDENCE INSUFFICIENT`**, and the local estate is not evidence. A
+real run read **67 succeeded events over 60 boundaries, 0 recorded absorption, 65 NOT ESTABLISHABLE** — and 65
+unreadable events is precisely why that cannot be reported as "no exposure". No deployment mechanism is
+committed, and the only near-production manifest has the detector off.
+
+**My own prior claim is corrected by append-only erratum.**
+[`docs/architecture/OBLIGATION_MERGE_RISK_V1.md`](docs/architecture/OBLIGATION_MERGE_RISK_V1.md) said the
+activation path records *"nothing at all"* and that `created: false` is *"not persisted"*. True of
+`CaseAdmissionService` + the in-memory store — **which is what my test measured** — and false of production. I
+measured a non-production lane and reported its behaviour as the product's: *a capability in the benchmark lane
+is not a product capability*, **inverted** — a limitation measured in a non-production lane is not a product
+limitation either, and in both forms the lane must be named before the result is quoted. The original 181 lines
+are proven byte-identical; two Postgres-backed tests replace the wrong assertions.
+
+**Five defects were found by running things rather than reading them**, and the first two matter beyond this
+slice. Marking the queue read `async` converted three **synchronous** gates into rejected promises, so a caller
+written as `try { … } catch` stops seeing them — **a gate's delivery mechanism is part of the gate**, caught by
+two pre-existing tests that assert that shape. And the diagnostic compared digests only **among absorbed**
+observations, so the ordinary merge — first observation creates, second is absorbed — scored **zero**, firing
+only from a third observation onwards; caught by driving the real production chain end to end, which a fixture
+over shapes I chose could not have caught. Also: the CLI's `main()` fired on import, so *a command whose claims
+cannot be imported cannot be falsified* needs its other half; the report printed 67 boundaries before the three
+numbers that matter; and three comments described a per-account sum as *"an obligation observed unsettled"*,
+one of them contradicting itself fourteen lines later.
+
+**And no server test is typechecked by anything.** `tsconfig.server.json` excludes `server/**/*.test.ts`, so
+`tsc --listFiles` puts **zero** test files in the program — which is why `actor("auditor", "auditor", …)`
+compiled when `BackendRole` has no such role. **Measured, not asserted:** including them yields **35 errors
+across 19 of 65 files**, mostly `import.meta` under CommonJS, which is a module-setting decision with an owner
+rather than a bug list. Reported and **not fixed** — the recorded *a type nobody checks is not a guard* lesson,
+in the one directory nobody had checked.
+
+**What this does NOT do, stated rather than implied.** The merge is untouched: two obligations still collapse,
+the survivor still carries the **first** amount, and the absorbed money still reaches no candidate, no case and
+no figure — the event metadata records *that* a signal was absorbed and carries **no amount at all**. Dedupe
+keys (pinned to a bare hex literal), monetary amounts, the eight-token authority vocabulary, historical
+`AuthorityEvent`s, proof semantics, both extracts, every `*_VERSION`/`*_SCHEME`, `OBLIGATION_IDENTITY_FIELDS = []`,
+contract **2.0.0** and every frozen artefact are unmoved; `prisma/schema.prisma` is untouched. **The merge is an
+exposure-accuracy defect, never a proof defect** — `Collected − Baseline` is computed from evidence and a locked
+baseline, not from `amountAtRiskMinor`, so **no proven figure is wrong because of it**, and **no observed amount
+became Revenue Returned.**
+
 **Nothing here produces Revenue Returned from customer data.** Every figure is synthetic, and on the
 activation path the at-risk amount is a request **input** rather than something derived from a customer's
 file — so the slice makes the case *governed and visible* and does not make NH's detection broader.
