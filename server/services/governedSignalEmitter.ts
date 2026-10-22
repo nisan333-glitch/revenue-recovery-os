@@ -24,8 +24,13 @@
 // the candidate dedupe key is `(boundary, recoveryType, sourceRef)` — an account that already has a
 // candidate yields `created: false` rather than a second one.
 //
-// NOTHING HERE IS A CLAIM OF MONEY. `amountAtRiskMinor` is an obligation observed unsettled as of the
-// governed cut-off. A candidate is `pending_review`; it is not a Case, and a Case is not a Proof.
+// NOTHING HERE IS A CLAIM OF MONEY. `amountAtRiskMinor` is an ACCOUNT'S unsettled obligations summed as of
+// the governed cut-off — one figure that may cover several obligations, never one invoice —
+// never recovered, collected or proven money. A candidate is `pending_review`; it is not a Case,
+// and a Case is not a Proof.
+//
+// THE WORDING WAS CORRECTED 2026-10-22. It said "an obligation observed unsettled", singular, of a
+// field that carries a per-account SUM — the exact misreading the grain disclosure exists to stop.
 import { prisma } from "../db";
 import { CaseAdmissionService, type CaseCandidateStore } from "../agents/caseAdmission";
 import { canBeCase, type RecoveryTypeAdmissionPolicy } from "../agents/admission";

@@ -9,10 +9,27 @@
 //
 //   • the ASSESSMENT path SUMS them into one figure and then DROPS the count that would have disclosed
 //     the merge — structurally unreachable today, because the identity gate refuses;
-//   • the ACTIVATION path SILENTLY DISCARDS the second one — live today.
+//   • the ACTIVATION path DISCARDS the second one's amount — live today.
 //
-// Silent discard is the worse of the two, and it is the reachable one. That asymmetry is the finding.
+// Discard is the worse of the two, and it is the reachable one. That asymmetry is the finding.
+//
+// ── CORRECTION, 2026-10-22 ───────────────────────────────────────────────────────────────────────
+//
+// Tests 5 and 6 below originally measured `CaseAdmissionService` + `InMemoryCaseCandidateStore` and
+// concluded that the absorption is recorded NOWHERE. That is true of those two classes and FALSE of the
+// deployed path, which does not use them: production goes
+// `postgresTaskStore.succeed()` → `PostgresCandidateSignalWriter.writeWithin` → the returned
+// `{admittedCount, createdCount}` merged into `agent_task_events.metadata`, a table that is append-only
+// by database trigger and has no purge path anywhere.
+//
+// So I measured a non-production lane and reported its behaviour as the product's — "a capability in the
+// benchmark lane is not a product capability", inverted. Tests 5 and 6 are now split: the in-memory
+// behaviour is kept and LABELLED as such, and tests 5p/6p measure the writer that actually ships. The
+// amount is still lost; what was wrong was the claim that nothing knows it happened.
 import { describe, it, expect } from "vitest";
+import { createHash } from "node:crypto";
+import { prisma } from "../db";
+import { uid } from "../test/fixtures";
 import { attributeByEntity } from "../../src/assessment/entityAttribution";
 import { makePolicy } from "../../src/assessment/policy";
 import type { ExpectationCycle } from "../../src/assessment/types";
@@ -92,7 +109,7 @@ describe("A · the ASSESSMENT path SUMS two obligations, then drops the disclosu
   });
 });
 
-describe("A · the ACTIVATION path SILENTLY DISCARDS the second obligation — and it is LIVE", () => {
+describe("A · the ACTIVATION path discards the second obligation's amount — in-memory lane, NOT production", () => {
   const signal = (over: Partial<CandidateSignal>): CandidateSignal =>
     Object.freeze({
       signalId: `ACT-${"a".repeat(32)}`,
@@ -118,6 +135,8 @@ describe("A · the ACTIVATION path SILENTLY DISCARDS the second obligation — a
   });
 
   it("5 · THE DAMAGE · the second obligation's amount is DISCARDED, not summed and not reported", async () => {
+    // NOTE: `CaseAdmissionService` + `InMemoryCaseCandidateStore` are NOT the deployed path. See the
+    // correction in the header and tests 5p/6p for what production records.
     const store = new InMemoryCaseCandidateStore();
     const service = new CaseAdmissionService(store, () => new Date("2026-06-01T00:00:00.000Z"));
     const policy = { recoveryType: "ActivationMissed", economicThresholdMinor: 10_000 };
@@ -147,7 +166,7 @@ describe("A · the ACTIVATION path SILENTLY DISCARDS the second obligation — a
     // under one label. Here $600.00 of observed exposure is simply gone.
   });
 
-  it("6 · the discard is INVISIBLE in the stored candidate — nothing records that a second arrived", async () => {
+  it("6 · in THIS lane the discard is invisible in the candidate — but see 5p: production records it", async () => {
     const store = new InMemoryCaseCandidateStore();
     const service = new CaseAdmissionService(store, () => new Date("2026-06-01T00:00:00.000Z"));
     const policy = { recoveryType: "ActivationMissed", economicThresholdMinor: 10_000 };
@@ -158,8 +177,9 @@ describe("A · the ACTIVATION path SILENTLY DISCARDS the second obligation — a
       policy,
     );
     if (!second.admitted) throw new Error("admitted");
-    // `created: false` is returned to the CALLER and is not persisted on the candidate. A reviewer
-    // opening the queue sees one candidate at $400.00 with no indication a second was absorbed.
+    // `created: false` is returned to the CALLER and is not persisted on the CANDIDATE. A reviewer opening
+    // the queue still sees one candidate at $400.00 — true in production too, because the queue reads
+    // `agent_case_candidates` and never `agent_task_events`. What IS recorded lives on the task event.
     expect(Object.keys(second.candidate)).not.toContain("absorbedCount");
     expect(JSON.stringify(second.candidate)).not.toContain("60000");
   });
@@ -177,5 +197,90 @@ describe("A · what is NOT exposed today — the bound on the risk", () => {
     expect(OBLIGATION_IDENTITY_FIELDS).toHaveLength(0);
     expect(leakInstanceIdentityStatus().establishable).toBe(false);
     expect(leakInstanceIdentityStatus().reason).toBe("leak_instance_identity_unavailable");
+  });
+});
+
+// ── THE PRODUCTION LANE · what the deployed path actually records ─────────────────────────────────
+//
+// Postgres-backed, because the evidence IS the database. Skips without DATABASE_URL.
+describe.skipIf(!process.env.DATABASE_URL)("A · production · absorption IS recorded, and the amount is still lost", () => {
+  const policies = new Map([["ActivationMissed", { recoveryType: "ActivationMissed", economicThresholdMinor: 10_000 }]]);
+
+  /** Two observations of ONE account that differ in amount — the merge scenario, production shapes. */
+  const prodSignal = (boundaryId: string, sourceRef: string, amountAtRiskMinor: number, seed: string) =>
+    Object.freeze({
+      signalId: `ACT-${seed.repeat(32).slice(0, 32)}`,
+      boundaryId,
+      recoveryType: "ActivationMissed",
+      sourceRef,
+      sourcePayloadHash: seed.repeat(64).slice(0, 64),
+      detectorVersion: "activation-deadline-v1",
+      observedAt: "2026-06-01T00:00:00.000Z",
+      amountAtRiskMinor,
+      currency: "USD",
+      actionAvailable: true,
+      expectedProofEvent: "activation followed by next invoice paid",
+    });
+
+  it("5p · the SECOND signal is admitted and `createdCount` is 0 — the absorption is a returned fact", async () => {
+    const { PostgresCandidateSignalWriter } = await import("./postgresCandidateSignalWriter");
+    const writer = new PostgresCandidateSignalWriter(policies);
+    const boundaryId = `TEST-merge-${uid()}`;
+    const sourceRef = `hmac-sha256:${createHash("sha256").update(boundaryId).digest("hex")}`;
+
+    // The writer takes a transaction-scoped SQL client. Prisma's raw result IS the row array, so
+    // `rowCount` is derived from its length exactly as the store's own client does.
+    const run = async (signal: ReturnType<typeof prodSignal>) =>
+      writer.writeWithin(
+        {
+          query: async (sql: string, params: readonly unknown[]) => {
+            const rows = (await prisma.$queryRawUnsafe(sql, ...params)) as unknown[];
+            return { rows, rowCount: rows.length } as never;
+          },
+        } as never,
+        { taskId: `T-${uid()}`, boundaryId, agentId: "activation-deadline-v1", signals: [signal] },
+      );
+
+    const first = await run(prodSignal(boundaryId, sourceRef, 40_000, "1"));
+    expect(first.admittedCount).toBe(1);
+    expect(first.createdCount).toBe(1);
+
+    // A DIFFERENT observation — different signalId, different payload hash, different amount — for the
+    // SAME account. It clears the admission gate and creates nothing.
+    const second = await run(prodSignal(boundaryId, sourceRef, 60_000, "2"));
+    expect(second.admittedCount).toBe(1);
+    expect(second.createdCount).toBe(0);
+
+    // THE CORRECTION, stated as an assertion: `admittedCount >= 1 && createdCount === 0` IS the record
+    // that a signal passed the gate and was swallowed. `postgresTaskStore` merges exactly this object
+    // into `agent_task_events.metadata`, which is append-only by trigger and has no purge path.
+    expect(second.admittedCount >= 1 && second.createdCount === 0).toBe(true);
+
+    // And the amount is still lost: one candidate, carrying the FIRST figure.
+    const stored = await prisma.agentCaseCandidateRecord.findMany({ where: { boundaryId } });
+    expect(stored).toHaveLength(1);
+    expect((stored[0]!.signal as { amountAtRiskMinor: number }).amountAtRiskMinor).toBe(40_000);
+  });
+
+  it("6p · the absorption fact is on the TASK EVENT, never on the candidate — both halves asserted", async () => {
+    // Why the queue still cannot show it without new work: the review queue reads
+    // `agent_case_candidates` and never joins `agent_task_events`. The evidence exists and no screen
+    // reads it — which is exactly why the disclosure says "not checked" rather than "none".
+    const candidateColumns = Object.keys(
+      (await prisma.agentCaseCandidateRecord.findFirst()) ?? {
+        candidateId: "", dedupeKey: "", boundaryId: "", agentId: "", signal: {},
+        status: "", submittedAt: new Date(), persistedAt: new Date(),
+      },
+    );
+    for (const absent of ["absorbedCount", "observationCount", "contributingCycleCount"]) {
+      expect(candidateColumns).not.toContain(absent);
+    }
+    // The event table is where it lands, and it is append-only: a row cannot be edited or removed.
+    const trigger = await prisma.$queryRawUnsafe<{ tgname: string }[]>(
+      `SELECT tgname FROM pg_trigger WHERE tgrelid = 'agent_task_events'::regclass AND NOT tgisinternal`,
+    );
+    const names = trigger.map((t) => t.tgname);
+    expect(names).toContain("agent_task_events_no_update");
+    expect(names).toContain("agent_task_events_no_delete");
   });
 });

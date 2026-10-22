@@ -11,8 +11,13 @@
 // being the number the assessment reported. `attributionReconciles` below is the assertion of that
 // identity, and the tests hold it to the minor unit.
 //
-// WHAT IT IS NOT. Not a claim. The value is AT RISK — an obligation observed unsettled as of the
-// governed cut-off — never recovered, collected or proven money. Nothing here imports the proof kernel,
+// WHAT IT IS NOT. Not a claim. The value is AT RISK — an ACCOUNT'S unsettled obligations summed as of
+// the governed cut-off — one figure that may cover several obligations, never one invoice —
+// never recovered, collected or proven money.
+//
+// CORRECTED 2026-10-22: this said "an obligation observed unsettled", singular, and contradicted its
+// own `contributingCycleCount` comment fourteen lines below — which exists precisely "so a single
+// figure is never mistaken for one invoice". The count was right and the sentence was wrong. Nothing here imports the proof kernel,
 // the ledger, or anything that can count a dollar, and nothing here knows what a CandidateSignal is.
 //
 // AGGREGATED PER ENTITY, WHICH IS NOT COSMETIC. One entity may own many cycles (`ExpectationCycle.entityId`

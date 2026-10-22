@@ -23,8 +23,10 @@
 // the payment classification, the finding and every figure the assessment reports are untouched. A
 // caller that never calls this module observes no difference at all.
 //
-// WHAT IT IS NOT. Not a claim. The value is AT RISK — an obligation observed unsettled as of the
-// governed cut-off — never recovered, collected or proven money.
+// WHAT IT IS NOT. Not a claim. The value is AT RISK — an ACCOUNT'S unsettled obligations summed as of
+// the governed cut-off — one figure that may cover several obligations, never one invoice —
+// never recovered, collected or proven money. CORRECTED 2026-10-22, same defect as the sibling in
+// `entityAttribution.ts`: "an obligation", singular, of a per-key sum.
 import type { ExpectationCycle } from "./types";
 import type { AssessmentPolicy } from "./policy";
 import { splitCohorts } from "./cohort";
