@@ -17,7 +17,7 @@
 //
 // ── WHAT BECOMES A CANDIDATE, AND WHAT DELIBERATELY DOES NOT ─────────────────────────────────────────
 //
-//   * UNDER_BILLED with `pairedWith === null`  → ONE candidate for the residual (expected − billed).
+//   * UNDER_BILLED with `pairedWith === null`  → a qualifying UNIT; one payer's units form ONE candidate.
 //   * UNDER_BILLED but PAIRED with a counterpart → NOT a candidate. The core holds that money out of
 //     its headline "pending attribution" because the shortfall may be money already received under
 //     another unit. Emitting it would turn a deliberate hold into a claim.
@@ -31,13 +31,19 @@
 //
 // ── THE GRAIN, STATED RATHER THAN IMPLIED ────────────────────────────────────────────────────────────
 //
-// A reconciliation UNIT is (entitlement, period). A unit is not proven to be ONE OBLIGATION: two live
+// A reconciliation UNIT is (entitlement, period), and a unit is not proven to be ONE OBLIGATION: two live
 // expectation lines in one unit are refused by the core precisely because the contract carries a count
-// of rows, not a count of obligations. `sourceRef` below pseudonymises the UNIT. That keeps two units of
-// one customer from silently absorbing each other in the candidate store — but it does NOT make the case
-// a per-obligation claim, and the case disclosure (identity cannot guarantee a single obligation) is
-// left exactly as it is. Obligation-grained identity needs a primary-key migration on the assessment
-// path and is governed separately; nothing here depends on it or pretends to.
+// of rows, not a count of obligations. The CANDIDATE, however, is ACCOUNT-GRAINED — one candidate per
+// payer — because that is what every read surface already says a candidate is ("account pseudonym",
+// "account-level", and the identity disclosure beneath them). Pseudonymising the unit instead would have
+// made those screens describe a unit reference as an account, which is a false statement on the page.
+//
+// So the units are reconciled individually, and the POSITIVE residuals of one payer's units are summed
+// into that payer's single candidate. Only positives are summed: a payer's over-billed unit is a
+// liability signal and is never subtracted. The consequence is the product's existing, disclosed one —
+// a LATER run that finds a new shortfall for the same payer is absorbed by the first candidate and its
+// money reaches no figure — and nothing here pretends otherwise. Obligation-grained identity needs a
+// primary-key migration on the assessment path and is governed separately.
 //
 // FIRST OBSERVATION WINS. The candidate store keeps the first amount observed for a dedupe key. A later,
 // corrected run of the same unit is absorbed and does not change the existing candidate's figure. That
@@ -84,7 +90,8 @@ export interface ReconciliationObservationInput {
   readonly currency: string;
 }
 
-export interface PlannedCandidate {
+/** One reconciliation unit that is UNDER_BILLED, unpaired and priced. Not yet a candidate. */
+export interface PlannedUnit {
   readonly entitlementRef: string;
   readonly periodStart: string;
   readonly periodEnd: string;
@@ -94,15 +101,27 @@ export interface PlannedCandidate {
   readonly observedMinor: number;
 }
 
+/** ONE candidate per payer: the sum of that payer's qualifying units. Positives only, never netted. */
+export interface PlannedCandidate {
+  readonly accountRef: string;
+  readonly units: readonly PlannedUnit[];
+  readonly residualMinor: number;
+}
+
 /** Counts of everything that did NOT become a candidate. A refusal and an unknown are answers. */
 export interface ReconciliationPlanCounts {
   readonly units: number;
+  /** Qualifying UNITS (before they are grouped by payer). */
+  readonly candidateUnits: number;
+  /** Candidates = payers with at least one qualifying unit. */
   readonly candidates: number;
   readonly monetarilyBalanced: number;
   readonly overBilledLiability: number;
   readonly underBilledPairedHeld: number;
   /** UNDER_BILLED, unpaired, but a sibling period of the SAME entitlement was refused — see planReconciliation. */
   readonly underBilledWithheldBySiblingRefusal: number;
+  /** UNDER_BILLED, unpaired, but no single payer could be named for the unit — withheld, never guessed. */
+  readonly underBilledWithheldNoSingleAccount: number;
   readonly unpricedUnknown: number;
   readonly refused: number;
   readonly notExpected: number;
@@ -154,8 +173,8 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
     { currency },
   );
   const emptyCounts: ReconciliationPlanCounts = {
-    units: 0, candidates: 0, monetarilyBalanced: 0, overBilledLiability: 0, underBilledPairedHeld: 0,
-    underBilledWithheldBySiblingRefusal: 0, unpricedUnknown: 0, refused: 0, notExpected: 0,
+    units: 0, candidateUnits: 0, candidates: 0, monetarilyBalanced: 0, overBilledLiability: 0, underBilledPairedHeld: 0,
+    underBilledWithheldBySiblingRefusal: 0, underBilledWithheldNoSingleAccount: 0, unpricedUnknown: 0, refused: 0, notExpected: 0,
     expectationRowsRejected: e.rejections.length, billingRowsRejected: b.rejections.length,
   };
   const boundary = Object.freeze({ observationOnly: true as const, constitutesProof: false as const, constitutesRevenue: false as const });
@@ -211,18 +230,33 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
   const refusedEntitlements = new Set(
     result.units.filter((u) => u.state.startsWith("REFUSED_")).map((u) => u.entitlementRef),
   );
-  const candidates: PlannedCandidate[] = [];
-  let balanced = 0, over = 0, held = 0, withheld = 0, unpriced = 0, refused = 0, notExpected = 0;
+  // The payer of a unit is whatever the CONTRACT side says it is. Exactly one distinct, stated payer or
+  // the unit cannot be attributed to an account and is withheld: choosing between two payers, or using
+  // the billing side's payer, would be NH authoring the identity it is supposed to be reading.
+  const payersOfUnit = new Map<string, Set<string>>();
+  for (const x of expectations) {
+    const k = `${x.entitlementRef}|${x.periodStart}|${x.periodEnd}`;
+    const set = payersOfUnit.get(k) ?? new Set<string>();
+    if (x.customerRef !== "") set.add(x.customerRef);
+    payersOfUnit.set(k, set);
+  }
+  const units: { readonly accountRef: string; readonly unit: PlannedUnit }[] = [];
+  let balanced = 0, over = 0, held = 0, withheld = 0, noAccount = 0, unpriced = 0, refused = 0, notExpected = 0;
   for (const u of result.units) {
     switch (u.state) {
       case "UNDER_BILLED":
         if (u.pairedWith !== null) { held += 1; break; }
         if (refusedEntitlements.has(u.entitlementRef)) { withheld += 1; break; }
         if (u.residualMinor !== null && u.residualMinor > 0 && u.expectedMinor !== null) {
-          candidates.push(Object.freeze({
-            entitlementRef: u.entitlementRef, periodStart: u.periodStart, periodEnd: u.periodEnd,
-            residualMinor: u.residualMinor, expectedMinor: u.expectedMinor, observedMinor: u.observedMinor,
-          }));
+          const payers = payersOfUnit.get(`${u.entitlementRef}|${u.periodStart}|${u.periodEnd}`) ?? new Set<string>();
+          if (payers.size !== 1) { noAccount += 1; break; }
+          units.push({
+            accountRef: [...payers][0]!,
+            unit: Object.freeze({
+              entitlementRef: u.entitlementRef, periodStart: u.periodStart, periodEnd: u.periodEnd,
+              residualMinor: u.residualMinor, expectedMinor: u.expectedMinor, observedMinor: u.observedMinor,
+            }),
+          });
         }
         break;
       case "MONETARILY_BALANCED": balanced += 1; break;
@@ -232,17 +266,32 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
       default: refused += 1; // every REFUSED_* state, counted and never zeroed
     }
   }
-  // Order is by identity, never by input position: reordering the files must not change the plan.
-  candidates.sort((x, y) =>
-    `${x.entitlementRef}|${x.periodStart}|${x.periodEnd}`.localeCompare(`${y.entitlementRef}|${y.periodStart}|${y.periodEnd}`));
+  // Group by payer. Order is by identity, never by input position: reordering the files must not change
+  // the plan, so units sort by (entitlement, period) and accounts by their reference.
+  const byAccount = new Map<string, PlannedUnit[]>();
+  for (const { accountRef, unit } of units) byAccount.set(accountRef, [...(byAccount.get(accountRef) ?? []), unit]);
+  const byIdentity = (x: PlannedUnit, y: PlannedUnit): number =>
+    `${x.entitlementRef}|${x.periodStart}|${x.periodEnd}`.localeCompare(`${y.entitlementRef}|${y.periodStart}|${y.periodEnd}`);
+  const candidates: PlannedCandidate[] = [...byAccount.entries()]
+    .sort(([x], [y]) => x.localeCompare(y))
+    .map(([accountRef, us]) => {
+      const sorted = [...us].sort(byIdentity);
+      return Object.freeze({
+        accountRef,
+        units: Object.freeze(sorted),
+        residualMinor: sorted.reduce((n, x) => n + x.residualMinor, 0),
+      });
+    });
 
   return Object.freeze({
     usable: true,
     currency,
     candidates: Object.freeze(candidates),
     counts: Object.freeze({
-      units: result.units.length, candidates: candidates.length, monetarilyBalanced: balanced,
-      overBilledLiability: over, underBilledPairedHeld: held, underBilledWithheldBySiblingRefusal: withheld, unpricedUnknown: unpriced, refused, notExpected,
+      units: result.units.length, candidateUnits: units.length, candidates: candidates.length,
+      monetarilyBalanced: balanced, overBilledLiability: over, underBilledPairedHeld: held,
+      underBilledWithheldBySiblingRefusal: withheld, underBilledWithheldNoSingleAccount: noAccount,
+      unpricedUnknown: unpriced, refused, notExpected,
       expectationRowsRejected: e.rejections.length, billingRowsRejected: b.rejections.length,
     }),
     observedExposureMinor: candidates.reduce((n, c) => n + c.residualMinor, 0),
@@ -250,10 +299,10 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
   });
 }
 
-/** A stable pseudonym for ONE reconciliation unit. The key is a deployment secret, never a payload field. */
-export function unitSourceRef(key: string, c: Pick<PlannedCandidate, "entitlementRef" | "periodStart" | "periodEnd">): string {
+/** A stable pseudonym for ONE payer account. The key is a deployment secret, never a payload field. */
+export function accountSourceRef(key: string, accountRef: string): string {
   return `hmac-sha256:${createHmac("sha256", key)
-    .update(JSON.stringify(["reconciliation-unit", c.entitlementRef, c.periodStart, c.periodEnd]))
+    .update(JSON.stringify(["reconciliation-account", accountRef]))
     .digest("hex")}`;
 }
 
@@ -281,13 +330,15 @@ export function signalsForPlan(
   if (!plan.usable || !context.actionAvailable) return [];
   return plan.candidates.map((c) => {
     const digest = createHash("sha256").update(JSON.stringify([
-      c.entitlementRef, c.periodStart, c.periodEnd, c.expectedMinor, c.observedMinor, c.residualMinor, plan.currency,
+      c.accountRef,
+      c.units.map((u) => [u.entitlementRef, u.periodStart, u.periodEnd, u.expectedMinor, u.observedMinor, u.residualMinor]),
+      c.residualMinor, plan.currency,
     ])).digest("hex");
     const signal: CandidateSignal = {
       signalId: `REC-${digest.slice(0, 32)}`,
       boundaryId: context.boundaryId,
       recoveryType: RECONCILIATION_RECOVERY_TYPE,
-      sourceRef: unitSourceRef(context.pseudonymKey, c),
+      sourceRef: accountSourceRef(context.pseudonymKey, c.accountRef),
       sourcePayloadHash: digest,
       detectorVersion: RECONCILIATION_AGENT_ID,
       observedAt: context.observedAt,

@@ -10,7 +10,7 @@ import {
   planReconciliation,
   reconciliationObserver,
   signalsForPlan,
-  unitSourceRef,
+  accountSourceRef,
 } from "./reconciliationObserver";
 import {
   BILLING_COLUMNS,
@@ -43,14 +43,14 @@ describe("reconciliation observer · the plan (pure)", () => {
   it("turns exactly the unpaired, priced, under-billed units into candidates — and counts the rest", () => {
     const plan = planReconciliation(demoInput());
     expect(plan.usable).toBe(true);
-    expect(plan.candidates.map((c) => [c.entitlementRef, c.periodStart, c.residualMinor])).toEqual([
-      ["ENT-DEMO-A", "2026-03-01", 60_000],   // billed 1800 of 2400
-      ["ENT-DEMO-B", "2026-02-01", 150_000],  // never invoiced
-      ["ENT-DEMO-G", "2026-01-01", 100_000],  // shortfall; the obligation references refute the timing pairing
+    expect(plan.candidates.map((c) => [c.accountRef, c.units.map((u) => [u.entitlementRef, u.periodStart]), c.residualMinor])).toEqual([
+      ["PAYER-DEMO-1", [["ENT-DEMO-A", "2026-03-01"]], 60_000],   // billed 1800 of 2400
+      ["PAYER-DEMO-2", [["ENT-DEMO-B", "2026-02-01"]], 150_000],  // never invoiced
+      ["PAYER-DEMO-6", [["ENT-DEMO-G", "2026-01-01"]], 100_000],  // shortfall; obligation references refute the timing pairing
     ]);
     expect(plan.counts).toMatchObject({
-      units: 10, candidates: 3, monetarilyBalanced: 4, overBilledLiability: 2, underBilledPairedHeld: 0,
-      underBilledWithheldBySiblingRefusal: 0, unpricedUnknown: 1, refused: 0, notExpected: 0,
+      units: 10, candidateUnits: 3, candidates: 3, monetarilyBalanced: 4, overBilledLiability: 2, underBilledPairedHeld: 0,
+      underBilledWithheldBySiblingRefusal: 0, underBilledWithheldNoSingleAccount: 0, unpricedUnknown: 1, refused: 0, notExpected: 0,
       expectationRowsRejected: 0, billingRowsRejected: 0,
     });
   });
@@ -105,17 +105,43 @@ describe("reconciliation observer · the plan (pure)", () => {
       ...demoInput(),
       billing: { columns: BILLING_COLUMNS, rows: [...billing, lone] },
     });
-    expect(plan.candidates.some((c) => c.entitlementRef === "ENT-DEMO-G")).toBe(false);
+    expect(plan.candidates.some((c) => c.accountRef === "PAYER-DEMO-6")).toBe(false);
     expect(plan.counts.underBilledWithheldBySiblingRefusal).toBeGreaterThanOrEqual(1);
     expect(plan.counts.refused).toBeGreaterThanOrEqual(1);
     // ...and the refusal is scoped to the entitlement: the other candidates are untouched.
-    expect(plan.candidates.map((c) => c.entitlementRef)).toEqual(["ENT-DEMO-A", "ENT-DEMO-B"]);
+    expect(plan.candidates.map((c) => c.accountRef)).toEqual(["PAYER-DEMO-1", "PAYER-DEMO-2"]);
   });
 
   it("does not reduce a candidate because an UNRELATED payer was over-billed", () => {
     const plan = planReconciliation(demoInput());
-    const a = plan.candidates.find((c) => c.entitlementRef === "ENT-DEMO-A")!;
-    expect(a.residualMinor).toBe(a.expectedMinor - a.observedMinor);
+    const a = plan.candidates.find((c) => c.accountRef === "PAYER-DEMO-1")!;
+    expect(a.units).toHaveLength(1);
+    expect(a.residualMinor).toBe(a.units[0]!.expectedMinor - a.units[0]!.observedMinor);
+  });
+
+  it("sums ONE payer's positive units into ONE candidate, and the sum is still positives only", () => {
+    // PAYER-DEMO-1: February now billed 2000.00 of 2400.00 as well as March 1800.00 of 2400.00.
+    const billing = DEMO_BILLING_ROWS.map((r) =>
+      r.cells.invoice_ref === "INV-DEMO-0002" ? { ...r, cells: { ...r.cells, invoice_line_amount: "2000.00" } } : r);
+    const plan = planReconciliation({ ...demoInput(), billing: { columns: BILLING_COLUMNS, rows: billing } });
+    const p1 = plan.candidates.filter((c) => c.accountRef === "PAYER-DEMO-1");
+    expect(p1).toHaveLength(1);
+    expect(p1[0]!.units.map((u) => [u.periodStart, u.residualMinor])).toEqual([
+      ["2026-02-01", 40_000], ["2026-03-01", 60_000],
+    ]);
+    expect(p1[0]!.residualMinor).toBe(100_000);
+    expect(plan.counts).toMatchObject({ candidateUnits: 4, candidates: 3 });
+    // Over-billed units of OTHER payers are still not subtracted from anything.
+    expect(plan.observedExposureMinor).toBe(100_000 + 150_000 + 100_000);
+  });
+
+  it("withholds an under-billed unit whose contract side names no single payer, rather than choosing one", () => {
+    const expectation = DEMO_EXPECTATION_ROWS.map((r) =>
+      r.cells.schedule_line_ref === "SL-DEMO-B2" ? { ...r, cells: { ...r.cells, payer_ref: "" } } : r);
+    const plan = planReconciliation({ ...demoInput(), expectation: { columns: EXPECTATION_COLUMNS, rows: expectation } });
+    if (plan.counts.expectationRowsRejected > 0) return; // the validator already refuses a payer-less row: nothing to attribute
+    expect(plan.candidates.some((c) => c.accountRef === "PAYER-DEMO-2")).toBe(false);
+    expect(plan.counts.underBilledWithheldNoSingleAccount).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -142,7 +168,7 @@ describe("reconciliation observer · signals", () => {
     for (const s of signals) expect(s.sourceRef).toMatch(/^hmac-sha256:[a-f0-9]{64}$/);
   });
 
-  it("gives every unit its own identity, and the same unit the same identity on every run", () => {
+  it("gives every payer its own identity, and the same payer the same identity on every run", () => {
     expect(new Set(signals.map((s) => s.sourceRef)).size).toBe(3);
     expect(new Set(signals.map((s) => s.signalId)).size).toBe(3);
     const again = signalsForPlan(plan, {
@@ -150,7 +176,7 @@ describe("reconciliation observer · signals", () => {
     });
     expect(again).toEqual(signals);
     // A different deployment key yields different references: they are not derivable from the data alone.
-    const other = unitSourceRef("z".repeat(40), plan.candidates[0]!);
+    const other = accountSourceRef("z".repeat(40), plan.candidates[0]!.accountRef);
     expect(other).not.toBe(signals[0]!.sourceRef);
   });
 
@@ -272,7 +298,7 @@ describe("reconciliation observer · through the real admission boundary", () =>
     corrected.billing.rows = corrected.billing.rows.map((r) =>
       r.cells.invoice_ref === "INV-DEMO-0003" ? { ...r, cells: { ...r.cells, invoice_line_amount: "1900.00" } } : r);
     const later = (await handler.run(corrected, CONTEXT)).find((s) => s.amountAtRiskMinor === 50_000)!;
-    expect(later.sourceRef).toBe(original.sourceRef); // same unit, same identity
+    expect(later.sourceRef).toBe(original.sourceRef); // same payer, same identity
     const second = await service.submit(RECONCILIATION_AGENT_ID, later, POLICY);
     expect(first).toMatchObject({ admitted: true, created: true });
     expect(second).toMatchObject({ admitted: true, created: false });
