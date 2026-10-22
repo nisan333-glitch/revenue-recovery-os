@@ -68,7 +68,13 @@ describe.skipIf(!process.env.DATABASE_URL)("reconciliation worker controlled ope
       // account-grained behaviour, asserted here on the production store rather than on the in-memory one.
       await enqueue(payload((r) => (r.cells.invoice_ref === "INV-DEMO-0003"
         ? { ...r, cells: { ...r.cells, invoice_line_amount: "1900.00" } } : r)));
-      await new Promise((r) => setTimeout(r, 1500));
+      // Wait for the worker to FINISH the second task rather than for a fixed time, so "no new candidate"
+      // is a statement about a processed observation and not about one that had not been read yet.
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline && (await prisma.agentTaskRecord.count({ where: { boundaryId, status: "succeeded" } })) < 2) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(await prisma.agentTaskRecord.count({ where: { boundaryId, status: "succeeded" } })).toBe(2);
       const after = await prisma.agentCaseCandidateRecord.findMany({ where: { boundaryId } });
       expect(after).toHaveLength(3);
       expect(after.map((r) => (r.signal as { amountAtRiskMinor: number }).amountAtRiskMinor).sort((a, b) => a - b))
