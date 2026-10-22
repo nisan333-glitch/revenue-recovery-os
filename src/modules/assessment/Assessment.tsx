@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AssessmentResult, ColumnMapping } from "../../assessment/types";
 import type { DateLocale } from "../../assessment/dateNormalize";
 import type { AmountFormat } from "../../assessment/amountNormalize";
+import type { ObligationScope } from "../../domain/obligationScope";
 import { runAssessment } from "./runAssessment";
 import { planColumnMapping, type MappingPlan } from "../../assessment/assess";
 import { UploadScreen } from "./UploadScreen";
@@ -24,6 +25,7 @@ export function Assessment() {
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
   const [plan, setPlan] = useState<MappingPlan | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [obligationScope, setObligationScope] = useState<ObligationScope | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("upload");
 
@@ -41,6 +43,7 @@ export function Assessment() {
       setCsvText(text);
       setMapping(useMapping ?? null);
       setResult(outcome.result);
+      setObligationScope(outcome.obligationScope); // always replaced together with its result
       setStep("quality");
     } else {
       // Keep the prior result visible but surface the error (never a silent stale re-run).
@@ -111,6 +114,7 @@ export function Assessment() {
       {step === "quality" && result && (
         <DataQualityCohortScreen
           result={result}
+          obligationScope={obligationScope ?? undefined}
           n={n}
           error={error}
           onChangeN={(newN) => void changeN(newN)}
@@ -119,7 +123,7 @@ export function Assessment() {
         />
       )}
       {step === "observed" && result && (
-        <ObservedResultsScreen result={result} onBack={() => setStep("quality")} />
+        <ObservedResultsScreen result={result} obligationScope={obligationScope ?? undefined} onBack={() => setStep("quality")} />
       )}
     </div>
   );

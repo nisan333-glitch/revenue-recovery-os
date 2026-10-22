@@ -2,8 +2,11 @@
 // currency columns. It maps one CSV row to a neutral ExpectationCycle, or to an ExclusionRecord with
 // an explicit reason. It never deduplicates or aggregates: collisions are the assess step's concern.
 //
-// Grain: one row = one subscription's expectation cycle (signed → activation → next invoice).
-// cycleId is derived (preferring an explicit subscription/cycle id) and kept distinct from entityId.
+// Grain: one row = one subscription's expectation cycle (signed → activation → next invoice), as the
+// source RECORDED it. That is a unit of record, not a proven single invoice: the amount may already
+// aggregate several charges, and a derived cycleId (entity|signed|due) cannot separate two obligations
+// that share those fields. cycleId prefers an explicit subscription/cycle id, else is derived, and its
+// basis is stamped on the cycle (identityBasis) so downstream scope derivation never has to guess.
 import type { AssessmentPolicy } from "../policy";
 import type { ExclusionRecord, ExpectationCycle, RowOutcome } from "../types";
 import type { RawRow } from "../parse";
@@ -170,9 +173,11 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
   const cancelled = parseBool(c["cancelled"] ?? "") === true || statusRaw?.toLowerCase() === "cancelled";
 
   // cycleId — prefer an explicit id; else a deterministic composite (collision-tested in assess).
+  // The basis is recorded, not inferred later: a composite is synthesized, an explicit id is the source's.
   const explicitCycle = (c["subscription_id"] ?? c["cycle_id"] ?? "").trim();
   const entityId = c["entity_id"]!.trim();
   const cycleId = explicitCycle !== "" ? explicitCycle : `${entityId}|${signed.iso}|${due.iso}`;
+  const identityBasis = explicitCycle !== "" ? ("SOURCE_IDENTIFIER" as const) : ("DERIVED_COMPOSITE" as const);
 
   const attributes: Record<string, string> = {};
   for (const k of ["plan", "segment", "product"]) {
@@ -184,6 +189,7 @@ export function toCycle(row: RawRow, policy: AssessmentPolicy, opts: AdapterOpti
 
   const cycle: ExpectationCycle = Object.freeze({
     cycleId,
+    identityBasis,
     sourceRowId: id,
     entityId,
     expectationAt: signed.iso,

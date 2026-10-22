@@ -8,6 +8,8 @@ import { splitCohorts } from "./cohort";
 import { observedSummary } from "./observed";
 import { shortHash, fingerprintSource } from "./fingerprint";
 import { parseCsv } from "./parse";
+import { assessmentObligationScope } from "./obligationScope";
+import type { ObligationScope } from "../domain/obligationScope";
 import {
   toCycle,
   missingRequiredColumns,
@@ -32,7 +34,12 @@ export interface AssessMeta {
   readonly dateLocale: string; // "MDY" | "DMY" | "auto"
 }
 
-/** Reject cycleId collisions: every row sharing a duplicated cycleId is excluded and reported. */
+/**
+ * Reject cycleId collisions: every row sharing a duplicated cycleId is excluded and reported — no
+ * "winner" is picked. This RECORDS an absorption; it does not decide whether the colliding rows are
+ * duplicates of one obligation or separate obligations. The excluded rows' value is surfaced by
+ * ./obligationScope as an unclassified upper bound, never folded into any total.
+ */
 function dedupeCollisions(cycles: ExpectationCycle[]): {
   unique: ExpectationCycle[];
   collisions: ExclusionRecord[];
@@ -171,4 +178,23 @@ export async function assessCsv(
     amountFormat: opts.amountFormat ?? "auto",
     dateLocale: opts.locale ?? "auto",
   });
+}
+
+/**
+ * `assessCsv` plus the obligation scope of the same run. The result is EXACTLY what `assessCsv`
+ * returns (it is produced by calling it); the scope is a separate, read-only description of what the
+ * units of record can and cannot be said to be. Kept beside — not inside — AssessmentResult so every
+ * historical result, assessmentId and tamper-evident record hash stays byte-identical.
+ */
+export async function assessCsvWithScope(
+  csvText: string,
+  policy: AssessmentPolicy,
+  opts: AdapterOptions & { createdAt: string; mapping?: ColumnMapping },
+): Promise<{ result: AssessmentResult; obligationScope: ObligationScope }> {
+  const result = await assessCsv(csvText, policy, opts); // throws first on a structurally bad file
+  const parsed = parseCsv(csvText);
+  const mapping = opts.mapping ?? autoDetectMapping(parsed.headers, SAAS_MAPPING_SPEC).mapping;
+  const mapped = applyMapping(parsed, mapping);
+  const outcomes = mapped.rows.map((r) => toCycle(r, policy, opts));
+  return { result, obligationScope: assessmentObligationScope(outcomes, policy) };
 }

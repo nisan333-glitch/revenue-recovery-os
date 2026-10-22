@@ -114,3 +114,16 @@ export async function getEvidenceByIds(
   });
   return rows.map(rowToEvidence);
 }
+
+/**
+ * Read-only: the OUTCOME-role evidence records ingested for a case. Used only to DESCRIBE what a
+ * claim's outcome records can and cannot be said to be (see server/domain/caseObligationScope.ts);
+ * it never feeds a counted number.
+ */
+export async function listOutcomeEvidenceForCase(recoveryCaseId: string): Promise<IngestedEvidence[]> {
+  const rows = await prisma.evidenceRecord.findMany({
+    where: { recoveryCaseId, evidenceRole: "outcome" },
+    orderBy: { ingestedAt: "asc" },
+  });
+  return rows.map(rowToEvidence);
+}

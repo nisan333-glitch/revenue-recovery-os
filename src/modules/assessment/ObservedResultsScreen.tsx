@@ -1,14 +1,20 @@
 import type { AssessmentResult } from "../../assessment/types";
 import { formatMoney, money } from "../../domain/money";
+import { unitNoun, type ObligationScope, unavailableObligationScope } from "../../domain/obligationScope";
 import { SectionHeader, Panel, StatCard } from "../../components/ui";
+import { ObligationScopeNotice } from "../../components/ObligationScopeNotice";
 import { downloadSummary } from "./exportSummary";
 
 export interface ObservedResultsScreenProps {
   result: AssessmentResult;
+  /** Obligation scope of the same run. Omitted ⇒ the notice fails closed (single-obligation refused). */
+  obligationScope?: ObligationScope;
   onBack: () => void;
 }
 
-export function ObservedResultsScreen({ result, onBack }: ObservedResultsScreenProps) {
+export function ObservedResultsScreen({ result, obligationScope, onBack }: ObservedResultsScreenProps) {
+  const scope = obligationScope ?? unavailableObligationScope("ASSESSMENT");
+  const noun = unitNoun(scope); // "record" unless a single-obligation reading is SUPPORTED
   const o = result.observed;
   const cur = o.currency;
   const zero = money(0, cur);
@@ -21,7 +27,7 @@ export function ObservedResultsScreen({ result, onBack }: ObservedResultsScreenP
         right={
           <div className="flex gap-2">
             <button onClick={onBack} className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">← Cohort</button>
-            <button onClick={() => downloadSummary(result)} className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">Export summary</button>
+            <button onClick={() => downloadSummary(result, scope)} className="rounded-lg border border-ink-500/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-ink-700/50">Export summary</button>
           </div>
         }
       />
@@ -67,15 +73,20 @@ export function ObservedResultsScreen({ result, onBack }: ObservedResultsScreenP
         <Panel className="p-4 text-[12px] text-slate-400">
           <div className="mb-1 text-sm font-semibold text-slate-200">What this is — and is not</div>
           <p className="mb-2">
-            <span className="text-slate-300">Observed Unpaid</span> is a fact from your data: invoices in
+            <span className="text-slate-300">Observed Unpaid</span> is a fact from your data: {noun}s in
             the stalled cohort that were due by {result.policy.asOf} and not settled. It does not prove
             the activation stall <em>caused</em> that loss, and it is not recovered revenue.
+            {scope.singleObligation === "SUPPORTED"
+              ? null
+              : ` It also does not establish that each ${noun} is a single obligation (see Obligation scope below).`}
           </p>
           <p className="text-[11px] text-slate-500">
             assessmentId {result.assessmentId} · N {result.policy.stallThresholdDays}d · {result.fingerprintAlgo} fingerprint · Proven $0.
           </p>
         </Panel>
       </div>
+
+      <ObligationScopeNotice scope={scope} surface="ASSESSMENT" className="mt-4" />
     </div>
   );
 }

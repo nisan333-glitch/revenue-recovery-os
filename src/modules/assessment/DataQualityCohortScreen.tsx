@@ -1,10 +1,14 @@
 import { useState } from "react";
 import type { AssessmentResult } from "../../assessment/types";
+import type { ObligationScope } from "../../domain/obligationScope";
 import { summarizeExclusions } from "../../assessment/summarize";
 import { SectionHeader, Panel, StatCard } from "../../components/ui";
+import { ObligationScopeNotice } from "../../components/ObligationScopeNotice";
 
 export interface DataQualityCohortScreenProps {
   result: AssessmentResult;
+  /** Obligation scope of the same run. Omitted ⇒ the notice fails closed (single-obligation refused). */
+  obligationScope?: ObligationScope;
   n: number;
   error: string | null;
   onChangeN: (n: number) => void;
@@ -12,7 +16,7 @@ export interface DataQualityCohortScreenProps {
   onNext: () => void;
 }
 
-export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, onNext }: DataQualityCohortScreenProps) {
+export function DataQualityCohortScreen({ result, obligationScope, n, error, onChangeN, onBack, onNext }: DataQualityCohortScreenProps) {
   const [nInput, setNInput] = useState(n);
   const reasons = summarizeExclusions(result);
 
@@ -97,6 +101,8 @@ export function DataQualityCohortScreen({ result, n, error, onChangeN, onBack, o
           </table>
         </Panel>
       </div>
+
+      <ObligationScopeNotice scope={obligationScope} surface="ASSESSMENT" className="mt-4" />
     </div>
   );
 }

@@ -10,6 +10,9 @@ import { getProofById, getCaseProofs } from "../persistence/proofStore";
 import { authorityFor, type AuthorityRecord } from "../auth/authorityStore";
 import { requireCan, firstInterveneEvent } from "../auth/authorityGate";
 import { getBaselineSnapshot } from "../persistence/baselineStore";
+import { listOutcomeEvidenceForCase } from "../persistence/evidenceStore";
+import { caseObligationScope } from "../domain/caseObligationScope";
+import type { ObligationScope } from "../../src/domain/obligationScope";
 import type { ActorContext } from "../auth/identity";
 import { NotFoundError } from "../http/errors";
 import { prisma } from "../db";
@@ -140,6 +143,20 @@ export interface CaseAuditTrail {
   excluded: boolean;
   authorityTrail: AuthorityRecord[];
   proofs: ProofReconstruction[];
+  /**
+   * Additive, read-only disclosure of what the case's outcome records can and cannot be said to be.
+   * A Case is one governed CLAIM; this never asserts it is a single obligation. Changes no number.
+   */
+  obligationScope: ObligationScope;
+}
+
+/** Describe (never decide) the obligation scope of a case from its persisted outcome evidence. */
+async function obligationScopeOf(recoveryCaseId: string): Promise<ObligationScope> {
+  const outcome = await listOutcomeEvidenceForCase(recoveryCaseId);
+  return caseObligationScope(
+    recoveryCaseId,
+    outcome.map((e) => ({ evidenceId: e.evidenceId, amountMinor: e.amountMinor, currency: e.currency })),
+  );
 }
 
 /** The full authority history + proof chain for a case. */
@@ -152,6 +169,7 @@ export async function caseAuditTrail(actor: ActorContext, recoveryCaseId: string
     excluded,
     authorityTrail: await authorityFor(recoveryCaseId),
     proofs: await Promise.all(proofs.map((p) => reconstruct(p, excluded))),
+    obligationScope: await obligationScopeOf(recoveryCaseId),
   };
 }
 
@@ -165,6 +183,8 @@ export interface CfoAuditExport {
   auditableRevenueMinor: number;
   authorityTrail: AuthorityRecord[];
   chain: ProofReconstruction[];
+  /** Additive, read-only: the same disclosure as the case audit trail. Changes no ledger figure. */
+  obligationScope: ObligationScope;
 }
 
 /**
@@ -198,5 +218,6 @@ export async function cfoAuditExport(actor: ActorContext, recoveryCaseId: string
     auditableRevenueMinor: auditable.minor,
     authorityTrail: await authorityFor(recoveryCaseId),
     chain: await Promise.all(proofs.map((p) => reconstruct(p, excluded))),
+    obligationScope: await obligationScopeOf(recoveryCaseId),
   };
 }

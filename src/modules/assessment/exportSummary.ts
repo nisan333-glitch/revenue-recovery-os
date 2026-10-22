@@ -3,6 +3,7 @@
 import type { AssessmentResult } from "../../assessment/types";
 import { summarizeExclusions } from "../../assessment/summarize";
 import { formatMoney } from "../../domain/money";
+import { unavailableObligationScope, type ObligationScope } from "../../domain/obligationScope";
 
 /** A minimal CSV template a Design Partner can populate (one row = one expectation cycle). */
 export const CSV_TEMPLATE =
@@ -11,7 +12,9 @@ export const CSV_TEMPLATE =
   "ACME-002,SUB-1002,2026-01-06,2026-01-12,2026-02-06,2026-02-01,8000.00,USD,";
 
 /** PURE: a deterministic, human-readable methodology + result summary. No browser APIs. */
-export function buildSummary(result: AssessmentResult): string {
+export function buildSummary(result: AssessmentResult, obligationScope?: ObligationScope): string {
+  // Fail closed: an export built without a computed scope still carries the refusal, never silence.
+  const scope = obligationScope ?? unavailableObligationScope("ASSESSMENT");
   const p = result.policy;
   const o = result.observed;
   const exclusions = summarizeExclusions(result)
@@ -69,6 +72,14 @@ export function buildSummary(result: AssessmentResult): string {
     `- excluded rows: ${result.excludedRowCount}`,
     exclusions || "  - (none)",
     "",
+    "## Obligation scope (what a record can and cannot be said to be)",
+    `- version: ${scope.version}`,
+    `- identity grain: ${scope.identity.grain}`,
+    `- single-obligation reading: ${scope.singleObligation}`,
+    `- ambiguity: ${scope.ambiguity.status}${scope.ambiguity.reasons.length ? ` (${scope.ambiguity.reasons.join(", ")})` : ""}`,
+    `- recorded absorption: ${scope.recordedAbsorption.status}`,
+    ...scope.disclosure.map((line) => `- ${line}`),
+    "",
     "> Observed Unpaid is read directly from the customer's records. It is NOT proven recovery and " +
       "NOT a forecast. It cannot establish that the activation stall CAUSED the unpaid value.",
   ].join("\n");
@@ -85,8 +96,8 @@ function downloadText(filename: string, text: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function downloadSummary(result: AssessmentResult): void {
-  downloadText(`assessment-${result.assessmentId}.md`, buildSummary(result));
+export function downloadSummary(result: AssessmentResult, obligationScope?: ObligationScope): void {
+  downloadText(`assessment-${result.assessmentId}.md`, buildSummary(result, obligationScope));
 }
 
 export function downloadTemplate(): void {

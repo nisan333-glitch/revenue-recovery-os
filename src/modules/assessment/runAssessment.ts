@@ -2,7 +2,8 @@
 // (valid / BOM / missing-headers / invalid-currency / re-run) are unit-testable at the exact code
 // path the UI uses — without a DOM. The container is a thin wiring layer around this.
 import type { AssessmentResult, ColumnMapping } from "../../assessment/types";
-import { assessCsv } from "../../assessment/assess";
+import { assessCsvWithScope } from "../../assessment/assess";
+import type { ObligationScope } from "../../domain/obligationScope";
 import { makePolicy } from "../../assessment/policy";
 import type { DateLocale } from "../../assessment/dateNormalize";
 import type { AmountFormat } from "../../assessment/amountNormalize";
@@ -19,7 +20,7 @@ export interface RunParams {
 }
 
 export type RunOutcome =
-  | { ok: true; result: AssessmentResult }
+  | { ok: true; result: AssessmentResult; obligationScope: ObligationScope }
   | { ok: false; error: string };
 
 export async function runAssessment(csvText: string, params: RunParams): Promise<RunOutcome> {
@@ -29,13 +30,15 @@ export async function runAssessment(csvText: string, params: RunParams): Promise
       asOf: params.asOf,
       currency: params.currency,
     });
-    const result = await assessCsv(csvText, policy, {
+    // `result` is exactly what assessCsv returns; `obligationScope` describes what its units of
+    // record can and cannot be said to be, and travels beside it so no screen can drop it silently.
+    const { result, obligationScope } = await assessCsvWithScope(csvText, policy, {
       createdAt: new Date().toISOString(),
       locale: params.locale,
       amountFormat: params.amountFormat,
       mapping: params.mapping,
     });
-    return { ok: true, result };
+    return { ok: true, result, obligationScope };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

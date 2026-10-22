@@ -166,7 +166,11 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
 
   await enforceSeparation(req.recoveryCaseId, actor, "Approve", req.collectedMinor);
 
-  // Duplicate-count prevention: one counted proof-chain root per atomic claim (frozen rule).
+  // Duplicate-count prevention: one counted proof-chain root per Recovery Case (frozen rule).
+  // The Case is a governed COUNTING unit (one atomic claim). It is NOT a proven single obligation:
+  // several outcome records may be counted under it. See docs/OBLIGATION_SCOPE.md and
+  // server/domain/caseObligationScope.ts. This guard prevents counting a claim twice; it asserts nothing
+  // about how many obligations the claim covers.
   if (await chainRootExists(req.recoveryCaseId)) {
     throw new ConflictError("duplicate recovery: a counted proof chain already exists for this claim");
   }

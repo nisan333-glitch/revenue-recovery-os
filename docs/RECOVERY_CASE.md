@@ -117,7 +117,9 @@ actually fired for this account.
 
 **Boundaries:**
 
-- **Dedup:** one Case per (account × leak instance); duplicates are `Dismissed`.
+- **Dedup:** one Case per (account × leak instance); duplicates are `Dismissed`. This is a rule for
+  counting a claim once — it does not establish that the (account × leak instance) is a single
+  obligation. Obligation scope is disclosed, never assumed: see [`OBLIGATION_SCOPE.md`](OBLIGATION_SCOPE.md).
 - **Exit:** a Case leaves the open inventory only as `Recovered` (proven), `Failed`
   (action ran, no recovery), or `Dismissed` (admitted in error / duplicate / false
   positive).

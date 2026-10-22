@@ -20,7 +20,7 @@ export interface AssessmentPolicy {
   /** Human-readable definitions (from the adapter) captured for the audit trail. */
   readonly activationDefinition: string;
   readonly paymentDefinition: string;
-  /** v1: cycles are analysed as-is; no aggregation across rows. */
+  /** v1: this system does not aggregate across rows. (A source row may itself already be an aggregate — see obligationScope.) */
   readonly aggregationMethod: "none";
   /** Thin slice: Estimated Leakage is deliberately not calculated. */
   readonly baselineMethod: "not_calculated";

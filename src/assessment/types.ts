@@ -5,8 +5,13 @@
 // paid, and a Deviation is the gap. The SaaS Activation vocabulary lives entirely in the adapter.
 //
 // The unit of analysis (grain) is the ExpectationCycle: one entity, one expectation window, and the
-// single monetary event associated with it. `cycleId`, `entityId` and `sourceRowId` are three
+// monetary event the source recorded against it. `cycleId`, `entityId` and `sourceRowId` are three
 // DISTINCT identities — an account may hold many cycles, so entity uniqueness is never assumed.
+//
+// A cycle is a unit of RECORD, not a proven single obligation: nothing here establishes that the
+// recorded amount is exactly one invoice/charge. The source row may already be an aggregate, and a
+// cycleId synthesized from entity + dates cannot tell apart two obligations that share those fields.
+// What may be said about that is derived in ./obligationScope (and src/domain/obligationScope.ts).
 import type { Money } from "../domain/money";
 import type { AssessmentPolicy } from "./policy";
 
@@ -18,12 +23,12 @@ export type PaymentState =
   | "PaidOnTime" // paid in full on/before the due date
   | "PaidLate" // paid in full after the due date but on/before asOf
   | "Refunded" // settled then reversed/credited
-  | "Cancelled" // the obligation was cancelled
+  | "Cancelled" // the recorded obligation was cancelled
   | "Unknown"; // insufficient data to classify
 
 export interface MonetaryEvent {
   readonly dueAt: string; // ISO date (YYYY-MM-DD), timezone-agnostic
-  readonly amount: Money; // gross obligation, exact minor units
+  readonly amount: Money; // gross amount the source recorded for this cycle, exact minor units (not proven to be one obligation)
   /** Observed settling time. null = no settling payment recorded. */
   readonly paidAt: string | null; // ISO date | null
   /** Observed settled amount when known (for partial detection). null = unknown. */
@@ -35,6 +40,12 @@ export interface MonetaryEvent {
 export interface ExpectationCycle {
   /** Stable identity of THIS cycle — distinct from the entity and the source row. */
   readonly cycleId: string;
+  /**
+   * Where `cycleId` came from: supplied by the source, or synthesized by the adapter. Optional so
+   * hand-built cycles stay valid; when absent the identity basis is treated as UNDECLARED (fail closed).
+   * Never part of AssessmentResult, so it cannot change a result, its id or its record hash.
+   */
+  readonly identityBasis?: "SOURCE_IDENTIFIER" | "DERIVED_COMPOSITE";
   /** Provenance: the originating CSV row identity. */
   readonly sourceRowId: string;
   /** The owning entity (account). NOT assumed unique — one entity may own many cycles. */
