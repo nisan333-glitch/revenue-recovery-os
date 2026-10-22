@@ -42,6 +42,14 @@ function view(over: Partial<RecoveryCaseViewDTO> = {}): RecoveryCaseViewDTO {
       exposureIsNotRecoveredRevenue: true,
     },
     exposureLabel: "OBSERVED EXPOSURE recorded when this case was opened — an identified gap, not money returned.",
+    identityGrain: {
+      grain: "ACCOUNT_GRAINED_POTENTIAL",
+      mayCoverMultipleObligations: true,
+      obligationUniquenessGuaranteed: false,
+      reason: "the pilot data contract declares no obligation-level identifier",
+      absorbedObservations: { checked: false },
+      headline: "ACCOUNT-LEVEL IDENTITY. This case is identified by the customer account, not by the obligation.",
+    },
     provenRevenueReturnedMinor: null,
     provenLedgerUnavailableReason: "no_effective_recovery_proof",
     provenFromProofIds: [],
@@ -137,6 +145,83 @@ describe("the Recovery Case screen keeps the two ledgers apart", () => {
     const el = document.createElement("div");
     el.innerHTML = html;
     expect(el.querySelector('[data-testid="stage-PROVEN"]')?.getAttribute("data-reached")).toBe("yes");
+  });
+
+  it("5b · THE GRAIN DISCLOSURE IS RENDERED, above the figures it qualifies", async () => {
+    const html = await render(view());
+    const el = document.createElement("div");
+    el.innerHTML = html;
+    const notice = el.querySelector('[data-testid="identity-grain-notice"]');
+    expect(notice).not.toBeNull();
+    expect(notice!.getAttribute("data-grain")).toBe("ACCOUNT_GRAINED_POTENTIAL");
+    // The server's words, not the component's.
+    expect(notice!.textContent).toContain("ACCOUNT-LEVEL IDENTITY");
+    expect(notice!.textContent).toContain("declares no obligation-level identifier");
+    // ABOVE the exposure panel: a disclosure under the number it qualifies is read after the number has
+    // already been believed. Index comparison on the rendered markup, not on intent.
+    expect(html.indexOf('data-testid="identity-grain-notice"')).toBeLessThan(
+      html.indexOf('data-testid="case-exposure"'),
+    );
+  });
+
+  it("5c · NOT CHECKED is rendered as not checked, never as none found", async () => {
+    const html = await render(view());
+    expect(html).toContain('data-testid="absorbed-not-checked"');
+    expect(html).toMatch(/not been checked/);
+    // The failure this forbids: reporting a zero nobody measured.
+    expect(html).not.toMatch(/no absorptions|0 absorbed|none found/i);
+  });
+
+  it("5d · a RECORDED absorption renders its count and the stronger headline", async () => {
+    const html = await render(
+      view({
+        identityGrain: {
+          ...view().identityGrain,
+          grain: "ABSORBED_OBSERVATIONS_RECORDED",
+          absorbedObservations: { checked: true, count: 2 },
+          headline: "ACCOUNT-LEVEL IDENTITY, AND A SECOND OBSERVATION WAS ABSORBED.",
+        },
+      }),
+    );
+    expect(textOf(html, "absorbed-count")).toBe("2");
+    expect(html).toContain("A SECOND OBSERVATION WAS ABSORBED");
+    expect(html).not.toContain('data-testid="absorbed-not-checked"');
+  });
+
+  it("5e · the account key is VISIBLE and labelled as not an obligation reference", async () => {
+    // It was not rendered at all before, so a reader could not see identity was account-shaped.
+    const html = await render(view());
+    expect(textOf(html, "case-source-ref")).toBe("hmac-sha256:" + "a".repeat(64));
+    expect(html).toMatch(/account pseudonym — not an obligation reference/);
+    expect(html).toMatch(/Identified exposure · account-level/);
+  });
+
+  it("5g · an ABSENT disclosure fails closed — the case screen too", async () => {
+    // The DTO declares the field required, so TypeScript is satisfied; the RUNTIME is not bound by that.
+    // An older server during a rolling deploy, or a cached payload, can drop it — and reading that
+    // silence as "nothing to warn about" would let a deploy skew delete the warning. The same property
+    // the queue screen asserts, because both screens render the one component.
+    const without = view();
+    delete (without as { identityGrain?: unknown }).identityGrain;
+    const html = await render(without);
+    expect(html).toContain('data-grain="NOT_STATED"');
+    expect(html).toContain('data-testid="grain-not-stated"');
+    expect(html).toContain("Absence is not reassurance");
+  });
+
+  it("5f · the notice is SILENT in the state this build cannot reach", async () => {
+    // A notice saying "identity is fine" is noise. Nothing renders when the guarantee holds.
+    const html = await render(
+      view({
+        identityGrain: {
+          ...view().identityGrain,
+          grain: "OBLIGATION_UNIQUENESS_GUARANTEED",
+          mayCoverMultipleObligations: false,
+          obligationUniquenessGuaranteed: true,
+        },
+      }),
+    );
+    expect(html).not.toContain('data-testid="identity-grain-notice"');
   });
 
   it("6 · a refusal shows the server's reason and NO substitute figures", async () => {

@@ -10,6 +10,7 @@ import {
 import type { DevActor } from "../data/devActor";
 import { Panel, Pill, SectionHeader } from "../components/ui";
 import { formatMoney, money } from "../domain/money";
+import { IdentityGrainNotice } from "../components/IdentityGrainNotice";
 
 const OPERATOR: DevActor = { actorId: "pilot-operator@company", role: "operator" };
 
@@ -94,7 +95,14 @@ export function CandidateReviewQueue() {
         kind: "success",
         message: result.created
           ? `Recovery Case ${result.recoveryCase.recoveryCaseId} created.`
-          : `Recovery Case ${result.recoveryCase.recoveryCaseId} already existed; no duplicate was created.`,
+          // NOT "no duplicate was created", which reads as reassurance. On an account-grained key this
+          // branch ALSO covers "a second, genuinely different obligation was folded into the existing
+          // case" — and the two are indistinguishable from here. The message must not pick the
+          // comfortable reading. See docs/architecture/OBLIGATION_MERGE_RISK_V1.md §2.2.
+          : `Recovery Case ${result.recoveryCase.recoveryCaseId} already exists for this ACCOUNT and ` +
+            "recovery type, so no new case was created. Identity is account-level, so this may mean this " +
+            "candidate is the same obligation already open — or a different obligation now folded into " +
+            "that one case. The record cannot tell them apart.",
         recoveryCase: result.recoveryCase,
       });
     } catch (error) {
@@ -144,6 +152,8 @@ export function CandidateReviewQueue() {
         </div>
       )}
 
+      {loadedBoundary && items[0] && <IdentityGrainNotice grain={items[0].identityGrain} />}
+
       {loadedBoundary && (
         <div className="mb-4">
           <div className="mb-2 text-[11px] text-slate-500">
@@ -192,7 +202,11 @@ export function CandidateReviewQueue() {
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 text-[12px] text-slate-400 md:grid-cols-3">
-                <div><span className="text-slate-500">Source ref</span><br />{item.signal.sourceRef}</div>
+                <div>
+                  <span className="text-slate-500">Source ref · account pseudonym, not an obligation</span>
+                  <br />
+                  <span className="break-all">{item.signal.sourceRef}</span>
+                </div>
                 <div><span className="text-slate-500">Expected proof event</span><br />{item.signal.expectedProofEvent}</div>
                 <div><span className="text-slate-500">Action available</span><br />{item.signal.actionAvailable ? "Yes" : "No"}</div>
               </div>

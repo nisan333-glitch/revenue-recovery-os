@@ -26,6 +26,7 @@ import { APPROVER, STEWARD } from "../data/devActor";
 import { Panel, Pill, SectionHeader } from "../components/ui";
 import { formatMoney, money } from "../domain/money";
 import { CASE_PROGRESS_ORDER } from "../domain/caseLifecycle";
+import { IdentityGrainNotice } from "../components/IdentityGrainNotice";
 
 const VERIFIER: DevActor = { actorId: "val@company", role: "verifier" };
 
@@ -142,9 +143,21 @@ export function RecoveryCaseCenter({ read = getRecoveryCase }: RecoveryCaseCente
 
       {view && (
         <div data-testid="recovery-case-body">
+          {/* FIRST, above the figures. A disclosure under the number it qualifies is read after the
+              number has already been believed. */}
+          <IdentityGrainNotice grain={view.identityGrain} />
+
           <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
             <Panel className="p-4" >
-              <div className="text-xs uppercase text-slate-500">Identified exposure</div>
+              {/* THE QUALIFIER IS DERIVED FROM THE SAME PREDICATE THE NOTICE USES, and it reads a
+                  possibly-absent payload the way the notice does — defaulting to the account-level label
+                  when the grain was not stated, because an absent disclosure must not quietly promote
+                  this figure to a per-obligation claim. Reading `.mayCoverMultipleObligations` directly
+                  threw on a response without the field, which is both a crash and a second
+                  implementation of a rule that already has one. */}
+              <div className="text-xs uppercase text-slate-500">
+                Identified exposure{view.identityGrain?.obligationUniquenessGuaranteed ? "" : " · account-level"}
+              </div>
               <div data-testid="case-exposure" className="mt-2 text-2xl font-semibold text-detect-500">
                 {formatMoney(money(view.lifecycle.exposure.minor, view.lifecycle.exposure.currency), { exact: true })}
               </div>
@@ -208,6 +221,14 @@ export function RecoveryCaseCenter({ read = getRecoveryCase }: RecoveryCaseCente
               <div><span className="text-slate-500">Opened by</span><br />{view.root.openedByActorId} ({view.root.openedByRole})</div>
               <div><span className="text-slate-500">Responsible</span><br />{view.lifecycle.responsible ? `${view.lifecycle.responsible.actorId} (${view.lifecycle.responsible.role})` : "— not yet authored"}</div>
               <div><span className="text-slate-500">Boundary</span><br /><span className="font-mono">{view.root.boundaryId}</span></div>
+              <div>
+                <span className="text-slate-500">Identified by</span><br />
+                <span data-testid="case-source-ref" className="font-mono text-[11px] break-all">{view.root.sourceRef}</span>
+                <br />
+                <span className="text-[10px] text-amber-200/70">
+                  account pseudonym — not an obligation reference
+                </span>
+              </div>
             </div>
           </Panel>
 
