@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { assertCandidateSignal } from "./admission";
 import type { AgentHandler, CandidateSignal } from "./types";
 import { createPilotAssessmentAgent } from "./pilotAssessmentAgent";
+import { reconciliationObserver } from "./reconciliationObserver";
 
 export const ACTIVATION_AGENT_ID = "activation-deadline-v1";
 const fields = ["sourceRef", "signedAt", "activationDueAt", "activatedAt", "observedAt", "amountAtRiskMinor", "currency", "actionAvailable"];
@@ -59,6 +60,9 @@ export function configuredAgentHandlers(env: Readonly<Record<string, string | un
   return [
     ...optIn(env, "NH_ACTIVATION_DETECTOR_ENABLED", () => activationDetector()),
     ...optIn(env, "NH_PILOT_ASSESSMENT_AGENT_ENABLED", () => createPilotAssessmentAgent()),
+    // The reconciliation observer needs a deployment secret to pseudonymise unit references. Enabling it
+    // without one is a startup error rather than a handler that publishes references anyone could invert.
+    ...optIn(env, "NH_RECONCILIATION_OBSERVER_ENABLED", () => reconciliationObserver(env.NH_RECONCILER_PSEUDONYM_KEY ?? "")),
   ];
 }
 

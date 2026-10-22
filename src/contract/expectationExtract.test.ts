@@ -106,6 +106,15 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
       "scripts/pilot-intake/dependency.ts",
       "scripts/pilot-intake/emit-package.ts",
       "scripts/pilot-intake/verify-package.ts",
+      // THE RECONCILIATION OBSERVER (product-completion slice). This is the one importer that is NOT
+      // readiness-path, and it is named here on purpose: it is the CONSUMER the rule above demands —
+      // it reads the expectation and billing extracts through their real validators, hands the accepted
+      // rows to the reconciliation core, and turns only unpaired, priced, under-billed units into
+      // candidate signals. It lives under server/agents, is opt-in behind its own flag, publishes
+      // OBSERVED exposure into the Revenue Opportunity ledger only, and has no path to proof or to
+      // Revenue Returned. The forbidden-module guard below is about the MONEY PATH (ledger, proof,
+      // assessment execution) and still applies to it: this file imports none of those.
+      "server/agents/reconciliationObserver.ts",
       "src/contract/dataReadiness.test.ts",
       "src/contract/dataReadiness.ts",
       // The provenance attestation's corroborator and its falsifiers: they read the two VALIDATIONS to
@@ -130,9 +139,19 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
   });
 
   it("NO monetary, reconciliation or assessment module reaches it — the money path is undisturbed", () => {
+    // The reconciliation observer IS a reconciliation consumer and is the single named exception to the
+    // file-name form of this check; what it must still never reach is the ledger, the proof chain or the
+    // assessment execution path, which the content check below asserts on its SOURCE.
     const forbidden = /(reconciliationCore|obligationAwareReconciliation|assessmentExecution|exposureFinding|provenLedger|domain\/(money|outcomes|invariants))/;
-    for (const f of importers()) {
+    const namedConsumer = "server/agents/reconciliationObserver.ts";
+    for (const f of importers().filter((x) => x !== namedConsumer)) {
       expect(f, `${f} imports the expectation extract`).not.toMatch(forbidden);
+    }
+    const moneyPath = /(assessmentExecution|exposureFinding|provenLedger|domain\/(money|outcomes|invariants)|proofStore|recoveryCase|revenueReturned)/;
+    const consumerSpecifiers = [...readFileSync(resolve(__dirname, "..", "..", namedConsumer), "utf8")
+      .matchAll(/(?:from|import|require)\s*\(?\s*["']([^"']+)["']/g)].map((m) => m[1]!);
+    for (const spec of consumerSpecifiers) {
+      expect(spec, `reconciliation observer imports ${spec}`).not.toMatch(moneyPath);
     }
     // ...and the readiness evaluator itself imports none of them either, so the wiring cannot leak.
     const readiness = readFileSync(resolve(__dirname, "dataReadiness.ts"), "utf8");
