@@ -10,6 +10,7 @@ import {
 import { money } from "../lib/format";
 import { Panel, SectionHeader } from "../components/ui";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 type Dimension = "reason" | "owner" | "stage";
 
 export function AttributionEngine() {
@@ -33,6 +34,8 @@ export function AttributionEngine() {
         subtitle="How recovered dollars are credited by reason / owner / stage — transparently enough to defend."
       />
 
+
+      <DemoDataBanner />
       <Panel className="mb-4 p-3 text-[12px] text-slate-400">
         <span className="font-semibold text-slate-300">Operational attribution (provisional).</span>{" "}
         These per-dimension Returned / Auditable figures are Case-level estimates for analysis — the

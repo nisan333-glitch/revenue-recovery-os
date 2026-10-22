@@ -24,12 +24,17 @@
 // Case → Evidence → Approval path, by a human, under the trust gates that already exist.
 
 /** Semantic version of the contract itself. Consumers pin, compare and negotiate on this. */
-export const PILOT_DATA_CONTRACT_VERSION = "1.1.0";
+export const PILOT_DATA_CONTRACT_VERSION = "2.0.0";
 
 /** Stable identity of this contract, stamped into every report and manifest. */
 export const PILOT_DATA_CONTRACT_ID = "nh.customer-pilot-data-contract";
 
 /** `id@version` — the form that appears in reports and audit records. */
+// The previous-major SUPPORT CEILING is a separate declared fact from row-semantics identity; see
+// `previousMajorSupport.ts`. This is the only import this module has, and it is one-directional: that
+// module imports nothing, so the contract root acquires no cycle.
+import { previousMajorSupport, previousMajorSupportDecision } from "./previousMajorSupport";
+
 export const PILOT_DATA_CONTRACT_REF = `${PILOT_DATA_CONTRACT_ID}@${PILOT_DATA_CONTRACT_VERSION}`;
 
 // ── 1 · Field requirements ────────────────────────────────────────────────────────────────────────
@@ -140,7 +145,16 @@ export const PILOT_DATA_CONTRACT_FIELDS: readonly FieldSpec[] = Object.freeze([
     requirement: "recommended",
     kind: "identifier",
     piiClass: "identifier_pseudonymous",
-    description: "Stable cycle-level join key. Without it the cycle key is derived, and two real cycles can collide.",
+    // EDITORIAL ONLY — this string states the semantics that have ALWAYS been in force; no behaviour,
+    // parsing, acceptance, identity or hash is affected by it. `description` has zero non-test readers
+    // and never enters a preimage. It is corrected because the field's NAME says "subscription" while
+    // its meaning is per-cycle, and the customer-facing document described neither.
+    description:
+      "ONE BILLING CYCLE / INVOICE, not a subscription group. Identifies the single billing " +
+      "obligation this row represents: stable for the same obligation, and DISTINCT for genuinely " +
+      "different obligations. Two rows sharing this value are treated as one colliding cycle identity " +
+      "and BOTH are excluded — so a group id reused across several invoices loses every one of them. " +
+      "Without it the cycle key is derived, and two real cycles can collide.",
     typicalSourceSystem: "billing",
     since: "1.0.0",
   }),
@@ -520,8 +534,20 @@ export const COMPATIBILITY_POLICY = Object.freeze({
   acceptsOlderMinorOfSameMajor: true,
   /** A dataset declaring a NEWER version than the code implements is rejected, never guessed at. */
   acceptsNewerThanImplemented: false,
-  /** Two majors are supported concurrently for at least one full pilot cycle before removal. */
+  /**
+   * Two majors are supported concurrently for at least one full pilot cycle before removal.
+   *
+   * EP-27 · "One full pilot cycle" has no definition anywhere — it is a commercial period, not an
+   * engineering constant, and inventing a duration here would invent a threshold nobody decided. So the
+   * window is expressed as `MAJOR_ROW_SEMANTICS`, an explicit per-major declaration a human withdraws,
+   * rather than as a clock. That is checkable; a timer nobody set is not.
+   */
   deprecationWindow: "one full pilot cycle, minimum",
+  /** Which previous majors the current build accepts. Read from the same declaration the gate uses. */
+  get acceptedPreviousMajors(): readonly number[] {
+    const impl = parseContractVersion(PILOT_DATA_CONTRACT_VERSION);
+    return impl ? (MAJOR_ROW_SEMANTICS[impl.major] ?? []) : [];
+  },
 });
 
 export interface ParsedVersion {
@@ -537,14 +563,84 @@ export function parseContractVersion(version: string): ParsedVersion | null {
 }
 
 /**
- * May this build process a dataset declaring `declared`? Same major and not newer than implemented.
- * Fails closed on anything unparseable — an unreadable version is not a compatible one.
+ * EP-27 · Which PREVIOUS majors a given implemented major declares row-semantics-identical to.
+ *
+ * §10 promises that two majors are supported concurrently for at least one full pilot cycle. Honouring
+ * that does NOT require a second interpretation of the data — it requires being able to say, and to
+ * check, that there is nothing to interpret differently. A major appears here only when every row-level
+ * rule is unchanged from it: no field added, removed or renamed, no field's MEANING changed, no
+ * validation rule tightened. The identity derivation and the request envelope are deliberately not in
+ * that list, because §10's promise is about the customer's export, not about our HTTP shape.
+ *
+ * FAIL-CLOSED BY CONSTRUCTION. A major with no entry accepts no previous major at all, so the moment a
+ * future major does change what a field means, saying nothing is the safe answer and the build refuses.
+ * An entry is a human withdrawing or granting compatibility, never something inferred from a diff.
+ *
+ * Empty today: the implemented major is 1 and there is no major 0. The mechanism is nonetheless proved
+ * rather than promised — `isSupportedContractVersion` takes the implemented version as a parameter, so
+ * the rule is tested at a hypothetical 2.0.0 without bumping the published constant. Evidence before the
+ * change, not after it.
+ *
+ * Reasoning and the rejected alternatives: docs/CONTRACT_DUAL_MAJOR_V1.md.
  */
-export function isSupportedContractVersion(declared: string): boolean {
+export const MAJOR_ROW_SEMANTICS: Readonly<Record<number, readonly number[]>> = Object.freeze({
+  1: Object.freeze([]),
+  /**
+   * EP-28 · Major 2 declares major 1's ROW SEMANTICS IDENTICAL, and that is a claim about the customer's
+   * export, checked field by field before it was written here: 2.0.0 adds no field, removes none, renames
+   * none, redefines no field's meaning and tightens no row-level rule. What it changes is the submission
+   * IDENTITY and the request ENVELOPE — neither of which a 1.x CSV can be wrong about. So a 1.x export is
+   * still accepted, which is what §10 promised, and this is the first entry the window has ever had.
+   */
+  2: Object.freeze([1]),
+});
+
+/** Does `implementedMajor` declare `declaredMajor`'s row semantics identical to its own? */
+export function acceptsPreviousMajor(implementedMajor: number, declaredMajor: number): boolean {
+  return (MAJOR_ROW_SEMANTICS[implementedMajor] ?? []).includes(declaredMajor);
+}
+
+/**
+ * May this build process a dataset declaring `declared`?
+ *
+ * Same major and not newer than implemented — or a PREVIOUS major the build has declared
+ * row-semantics-identical to its own (§10's two-major window, see `MAJOR_ROW_SEMANTICS`).
+ *
+ * `implemented` is a parameter so the rule is a pure function of both versions and can be exercised at a
+ * future major without bumping the constant. Fails closed on anything unparseable — an unreadable version
+ * is not a compatible one — and on a NEWER major, always: a build never guesses at a contract it does not
+ * implement, which is the same rule `acceptsNewerThanImplemented: false` states for minors.
+ */
+export function isSupportedContractVersion(
+  declared: string,
+  implemented: string = PILOT_DATA_CONTRACT_VERSION,
+): boolean {
   const d = parseContractVersion(declared);
-  const impl = parseContractVersion(PILOT_DATA_CONTRACT_VERSION);
+  const impl = parseContractVersion(implemented);
   if (!d || !impl) return false;
-  if (d.major !== impl.major) return false;
+  if (d.major > impl.major) return false;
+  if (d.major < impl.major) {
+    // ONE COMPLETE DECISION, MADE IN ONE PLACE. The registry owns entry presence, the ceiling, the mode
+    // and the mode's own requirement; this call site supplies the two things only it can know — the real
+    // entry, and whether `MAJOR_ROW_SEMANTICS` declares that major's row semantics identical to ours.
+    //
+    // THE ROW-SEMANTICS EVIDENCE IS PASSED, NOT REQUIRED. An earlier version of this branch was
+    // `acceptsPreviousMajor(...) && withinPreviousMajorCeiling(...)`, which demanded that evidence for
+    // EVERY mode. Right for `IDENTICAL`; wrong for `PRESERVED_INTERPRETER`, whose premise is that the
+    // semantics are NOT identical — so a future preserved major would have been refused here while the
+    // selector accepted it, and the tempting repair would have been to add that major to
+    // `MAJOR_ROW_SEMANTICS`, declaring an identity that does not hold.
+    //
+    // It also returned before any minor or patch comparison, so an implemented 2.0.0 accepted
+    // `1.999.999` — a version no build ever implemented — while refusing `2.0.1` as too new. The
+    // published contract refuses anything newer than the build implements and "never interpreted
+    // optimistically"; the ceiling, now inside the decision, makes that true for a previous major too.
+    return previousMajorSupportDecision(
+      previousMajorSupport(impl.major, d.major),
+      d,
+      acceptsPreviousMajor(impl.major, d.major),
+    );
+  }
   if (d.minor > impl.minor) return false;
   if (d.minor === impl.minor && d.patch > impl.patch) return false;
   return true;

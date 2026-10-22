@@ -1,0 +1,125 @@
+{
+  "builtBy": "scripts/synthetic-validation-2026-09-27/verify.mjs",
+  "builtFrom": "ground-truth.json only — NH has not been run at this point",
+  "outOfCapabilityMinor": 6510000,
+  "outOfCapabilityNote": "Recorded in a SEPARATE register. No row exists for these, so no detector was given a chance at them. Never summed with in-dataset leakage into a single accuracy figure.",
+  "datasets": [
+    {
+      "dataset": "dataset",
+      "sha256": "214bae693372fbda3f7fff6e0635018b74811db27fa1219831da51fd8568240d",
+      "datasetLevelRejectionExpected": null,
+      "cohorts": {
+        "stalledRows": 16,
+        "undeterminedRows": 1,
+        "referenceRows": 239,
+        "excludedRows": 15
+      },
+      "money": {
+        "observedUnpaidMinor": 3165063,
+        "partialOutstandingMinor": 400008,
+        "excludedValueMinor": 849015,
+        "unknownValueMinor": 1050003
+      },
+      "groundTruthLeakage": {
+        "inDatasetMinor": 3565071
+      }
+    },
+    {
+      "dataset": "spot-multicurrency",
+      "sha256": "3643b5528959c1c01b4a9447035ad173f6545ca9a5de75bf5866b382320a6009",
+      "datasetLevelRejectionExpected": "NH-DC-1006 — the dataset mixes more than one currency, so the whole file is unassessable and no money figure is produced",
+      "cohorts": null,
+      "money": null,
+      "groundTruthLeakage": null
+    },
+    {
+      "dataset": "spot-cancelled-after-asof",
+      "sha256": "d7e3d65f698fd0f1dc32caa71054fcd2389cd4baa4a458e762dac4c95b8eae1c",
+      "datasetLevelRejectionExpected": null,
+      "cohorts": {
+        "stalledRows": 1,
+        "undeterminedRows": 1,
+        "referenceRows": 236,
+        "excludedRows": 0
+      },
+      "money": {
+        "observedUnpaidMinor": 670000,
+        "partialOutstandingMinor": 0,
+        "excludedValueMinor": 0,
+        "unknownValueMinor": 0
+      },
+      "groundTruthLeakage": {
+        "inDatasetMinor": 670000
+      }
+    }
+  ],
+  "admissionPolicyPermissive": {
+    "minAcceptedRows": 200,
+    "minDistinctEntities": 50,
+    "minCoverageDays": 90,
+    "maxMissingRecommendedColumns": 0,
+    "maxRejectionRate": 0.1,
+    "maxSingleReasonShare": 0.5,
+    "maxDuplicateRate": 0.05,
+    "maxOrderingDefectRate": 0.05,
+    "requiredLifecycleStates": [
+      "stalled",
+      "reference",
+      "undetermined"
+    ],
+    "requireProvenanceDeclaration": true
+  },
+  "admissionPolicyStrict": {
+    "minAcceptedRows": 200,
+    "minDistinctEntities": 50,
+    "minCoverageDays": 90,
+    "maxMissingRecommendedColumns": 0,
+    "maxRejectionRate": 0.01,
+    "maxSingleReasonShare": 0.5,
+    "maxDuplicateRate": 0.05,
+    "maxOrderingDefectRate": 0.05,
+    "requiredLifecycleStates": [
+      "stalled",
+      "reference",
+      "undetermined"
+    ],
+    "requireProvenanceDeclaration": true,
+    "expectation": "REFUSAL on the main dataset — the planted defect rate is deliberately above 1%. An adversarial control, not a failure."
+  },
+  "governedAssessmentPolicies": {
+    "primary": {
+      "termsId": "sv-assessment-policy",
+      "termsVersion": "1.0.0",
+      "asOf": "2026-06-30",
+      "stallThresholdDays": 30,
+      "currency": "USD"
+    },
+    "laterCutoff": {
+      "termsId": "sv-assessment-policy",
+      "termsVersion": "2.0.0",
+      "asOf": "2026-07-31",
+      "stallThresholdDays": 30,
+      "currency": "USD"
+    }
+  },
+  "declaredContractVersion": "2.0.0",
+  "governedReReading": {
+    "reReadUnderLaterCutoff": {
+      "expectation": "ACCEPTED. The same bytes, the same boundary, a DIFFERENT governed AssessmentPolicy — so a different submission identity, a second admission decision and a second execution id. The first execution must still be there, unchanged, saying what it said.",
+      "mustNotBe": "NH-DC-4003 (duplicate submission)",
+      "moneyScored": false,
+      "moneyNote": "Observed and reported. NOT compared against the frozen prediction, which is derived under asOf 2026-06-30 alone."
+    },
+    "duplicateUnderIdenticalTerms": {
+      "expectation": "REFUSED 409 NH-DC-4003. The same bytes, the same boundary, the same governed policy, and a DIFFERENT operator-typed datasetId — which under contract 2.0.0 is no longer part of the identity. Before EP-28 this would have been admitted a second time by renaming the file.",
+      "mustBe": "NH-DC-4003",
+      "moneyScored": false
+    }
+  },
+  "claimBoundary": {
+    "syntheticOnly": true,
+    "isRecoveredRevenue": false,
+    "isProvenRevenueReturned": false,
+    "note": "Planted figures are Synthetic Ground-Truth Leakage. Anything NH computes is Detected Revenue Opportunity. Neither is recovered or proven money."
+  }
+}

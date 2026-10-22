@@ -1,5 +1,6 @@
 import { apiRequest } from "./apiClient";
 import type { DevActor } from "./devActor";
+import type { CaseIdentityGrainDTO } from "./governedTrustClient";
 
 export interface CandidateSignalDTO {
   signalId: string;
@@ -37,6 +38,8 @@ export interface CandidateQueueItemDTO {
   submittedAt: string;
   review: CandidateReviewDTO | null;
   recoveryCaseId: string | null;
+  /** What this candidate's identity covers. Account-grained today — see `CaseIdentityGrainDTO`. */
+  identityGrain: CaseIdentityGrainDTO;
 }
 
 export interface RecoveryCaseDTO {

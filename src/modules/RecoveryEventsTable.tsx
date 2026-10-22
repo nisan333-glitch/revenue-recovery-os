@@ -12,6 +12,7 @@ import {
 } from "../components/ui";
 import { EventDetail } from "../components/EventDetail";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 type SortKey = "riskAmount" | "revenueReturned" | "confidence" | "customer";
 
 const STATUS_FILTERS: (RecoveryStatus | "All")[] = [
@@ -59,6 +60,8 @@ export function RecoveryEventsTable() {
         subtitle="Every recovery event with its full record. Click a row to open the workflow."
       />
 
+
+      <DemoDataBanner />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           className="num-input w-56"

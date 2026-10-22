@@ -4,6 +4,7 @@ import { provenLedger } from "../domain/provenLedger";
 import { money } from "../lib/format";
 import { Bar, Panel, SectionHeader } from "../components/ui";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 export function Reconciliation() {
   const { events, proofs } = useRecovery();
   const r = reconcile(events);
@@ -67,6 +68,8 @@ export function Reconciliation() {
         subtitle="From gross recovered (provisional, operational) down to CFO-auditable (proof-derived) — every excluded dollar explained. We do not count money we cannot explain."
       />
 
+
+      <DemoDataBanner />
       {/* The waterfall */}
       <Panel className="mb-5 p-5">
         <div className="space-y-3">

@@ -1,7 +1,12 @@
 // Guided column mapping — shown when auto-detection could not match every REQUIRED column exactly, or
 // matched one only by a synonym guess (real Stripe/Chargebee/NetSuite/Salesforce exports rarely use
 // our canonical names). The operator confirms/corrects the source column for each required field; the
-// completed mapping is stamped into the result for reproducibility. Client-side; nothing is uploaded.
+// completed mapping is stamped into the result for reproducibility.
+//
+// EP-19 · The old note here said "Client-side; nothing is uploaded." That is wrong and was wrong from
+// EP-13: this screen is reached only AFTER the server has validated and admitted the dataset, so by
+// the time an operator maps a column the file has already been uploaded. The mapping choice itself is
+// made locally; the file is not.
 import { useState } from "react";
 import type { ColumnMapping } from "../../assessment/types";
 import { SectionHeader, Panel } from "../../components/ui";

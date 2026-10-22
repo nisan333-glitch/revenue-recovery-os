@@ -2,6 +2,15 @@
 // (via effectiveProofs + proofIsAuditable), never recomputed from mutable Cases. Each line is a
 // frozen proof: baseline/collected/returned as-approved, with the confidence and threshold that
 // were stamped at approval.
+//
+// THE DATA SOURCE IS SEED DATA, AND THAT IS LABELLED ON THE SCREEN RATHER THAN FIXED HERE. `useRecovery()`
+// is the seed-backed React context (`src/data/seed.ts`), not the governed Postgres proof chain behind
+// `/audit/cases/:caseId` and `/proofs`. The arithmetic, the chain folding and the auditable gate on this
+// screen are the real domain kernel; the ROWS they operate on are hand-authored. Silently swapping the
+// source to the API would make a demonstration look like a capability, which is the one thing a CFO
+// screen must not do, so the shared `DemoDataBanner` says what this is and the governed equivalent has
+// its own screen
+// ("Recovery Case"). Rewiring it is a larger slice with its own evidence.
 import { useMemo, useState } from "react";
 import { useRecovery } from "../state/RecoveryContext";
 import { effectiveProofs, type Proof } from "../domain/proof";
@@ -13,6 +22,7 @@ import { dateShort } from "../lib/format";
 import { Panel, SectionHeader, StatCard } from "../components/ui";
 import { EventDetail } from "../components/EventDetail";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 const CURRENCY = "USD";
 
 // `focusCaseId` is an optional, presentational continuity hint: when the CFO view is opened from the
@@ -96,6 +106,8 @@ export function CFOProofView({ focusCaseId }: { focusCaseId?: string }) {
           </button>
         }
       />
+
+      <DemoDataBanner />
 
       <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard label="Baseline (counterfactual)" value={formatMoney(money(totalBaseline, CURRENCY))} />

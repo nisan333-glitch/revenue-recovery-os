@@ -1,0 +1,104 @@
+{
+  "systemUnderTestRevision": "unknown",
+  "datasets": [
+    {
+      "name": "dataset",
+      "sha256": "214bae693372fbda3f7fff6e0635018b74811db27fa1219831da51fd8568240d"
+    },
+    {
+      "name": "spot-multicurrency",
+      "sha256": "3643b5528959c1c01b4a9447035ad173f6545ca9a5de75bf5866b382320a6009"
+    },
+    {
+      "name": "spot-cancelled-after-asof",
+      "sha256": "d7e3d65f698fd0f1dc32caa71054fcd2389cd4baa4a458e762dac4c95b8eae1c"
+    }
+  ],
+  "groundTruthSha256": "6de2135a28fc8d102574d5ce45b8aa12e3fc4e4612dae9b46853fe5d1a019f6a",
+  "predictionSha256": "6edcf862018f14698099cbaa060746079a800e24b564c7397872a13abd613954",
+  "scriptSha256": {
+    "generate.mjs": "6f4853c0378334c61ca3145d5d7c623abe9380755d87667b1df091c4baef0b37",
+    "verify.mjs": "ebeda2aa84797f884726614bca008978846e7353135fff7857b8416767dbfbbb",
+    "run.mjs": "77d309880a2eaa87f8cda762d68f6b38ad0a190f2ea94ba963063226b90a11ce",
+    "score.mjs": "e50e2c1ed69b584aef79bc83cff90644aaf001c1eb52c994693b0d328917879a",
+    "browser-confirm.mjs": "1207d2414143c01de0c38938a530c3c26c3998c87cbe2767af66a025dfb352b5"
+  },
+  "runParameters": {
+    "asOf": "2026-06-30",
+    "stallThresholdDays": 30,
+    "currency": "USD",
+    "seed": 20260926,
+    "provenanceCoverage": {
+      "start": "2026-01-01",
+      "end": "2026-07-31"
+    },
+    "admissionPolicyPermissive": {
+      "minAcceptedRows": 200,
+      "minDistinctEntities": 50,
+      "minCoverageDays": 90,
+      "maxMissingRecommendedColumns": 0,
+      "maxRejectionRate": 0.1,
+      "maxSingleReasonShare": 0.5,
+      "maxDuplicateRate": 0.05,
+      "maxOrderingDefectRate": 0.05,
+      "requiredLifecycleStates": [
+        "stalled",
+        "reference",
+        "undetermined"
+      ],
+      "requireProvenanceDeclaration": true
+    },
+    "admissionPolicyStrict": {
+      "minAcceptedRows": 200,
+      "minDistinctEntities": 50,
+      "minCoverageDays": 90,
+      "maxMissingRecommendedColumns": 0,
+      "maxRejectionRate": 0.01,
+      "maxSingleReasonShare": 0.5,
+      "maxDuplicateRate": 0.05,
+      "maxOrderingDefectRate": 0.05,
+      "requiredLifecycleStates": [
+        "stalled",
+        "reference",
+        "undetermined"
+      ],
+      "requireProvenanceDeclaration": true,
+      "expectation": "REFUSAL on the main dataset — the planted defect rate is deliberately above 1%. An adversarial control, not a failure."
+    },
+    "governedAssessmentPolicies": {
+      "primary": {
+        "termsId": "sv-assessment-policy",
+        "termsVersion": "1.0.0",
+        "asOf": "2026-06-30",
+        "stallThresholdDays": 30,
+        "currency": "USD"
+      },
+      "laterCutoff": {
+        "termsId": "sv-assessment-policy",
+        "termsVersion": "2.0.0",
+        "asOf": "2026-07-31",
+        "stallThresholdDays": 30,
+        "currency": "USD"
+      }
+    },
+    "declaredContractVersion": "2.0.0",
+    "governedReReading": {
+      "reReadUnderLaterCutoff": {
+        "expectation": "ACCEPTED. The same bytes, the same boundary, a DIFFERENT governed AssessmentPolicy — so a different submission identity, a second admission decision and a second execution id. The first execution must still be there, unchanged, saying what it said.",
+        "mustNotBe": "NH-DC-4003 (duplicate submission)",
+        "moneyScored": false,
+        "moneyNote": "Observed and reported. NOT compared against the frozen prediction, which is derived under asOf 2026-06-30 alone."
+      },
+      "duplicateUnderIdenticalTerms": {
+        "expectation": "REFUSED 409 NH-DC-4003. The same bytes, the same boundary, the same governed policy, and a DIFFERENT operator-typed datasetId — which under contract 2.0.0 is no longer part of the identity. Before EP-28 this would have been admitted a second time by renaming the file.",
+        "mustBe": "NH-DC-4003",
+        "moneyScored": false
+      }
+    }
+  },
+  "attestedAt": "2026-09-30",
+  "attestedNote": "Attests to components verified on the attestedAt date. NOT an original Git freeze: e2e/fixtures/ is gitignored and no artifact of this cycle was ever tracked. Metadata below is reported, never hashed.",
+  "historicalReproducibility": "downgraded",
+  "historicalReproducibilityReason": "verify.mjs recorded git rev-parse HEAD with no dirty-tree check; the recorded gitHead 5478a7d8 predates this cycle's own scripts, which first appear in the newer commit 15771d5, so the tree was dirty and the tested revision is unestablished",
+  "evidenceIdentity": "nhev_c88b03718920bd92b19cc9ac146ec731ffe8e4001fcde8400c0fda3a2e840914"
+}

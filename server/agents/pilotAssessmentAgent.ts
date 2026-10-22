@@ -22,12 +22,14 @@ import {
   deriveExecutionId,
   hashExecutionInput,
   hashFinding,
-  runProjectedAssessment,
+  findingFromProjectedResult,
+  projectedAssessmentResult,
   type ExecutionInput,
 } from "../../src/contract/assessmentExecution";
 import { executionCode, type ExecutionRefusal } from "../../src/contract/executionCodes";
+import { hashExposureFinding, makeNonStalledExposureFinding } from "../../src/contract/exposureFinding";
 import { mayEvaluate, whyCannotEvaluate } from "../../src/contract/policyLifecycle";
-import { makePolicy } from "../../src/assessment/policy";
+import { ASSESSMENT_CALC_VERSION, makePolicy } from "../../src/assessment/policy";
 import { findSubmissionByDecisionId } from "../persistence/pilotDatasetStore";
 import { policyGovernanceState } from "../persistence/pilotPolicyGovernanceStore";
 import {
@@ -241,8 +243,35 @@ async function executeAssessment(
     throw new ExecutionBlocked("execution_input_tampered", "the stored input does not match its recorded hash");
   }
 
-  // 6 · Run it. `makePolicy` rebuilds the SAME policy the binding froze, so the run cannot drift onto
-  // a different as-of date or threshold than the one its identity was derived from.
+  // 5b · CALCULATION-METHOD DRIFT, between scheduling and running.
+  //
+  // THE COMMENT BELOW USED TO CLAIM MORE THAN IT COULD. It said `makePolicy` "rebuilds the SAME policy
+  // the binding froze, so the run cannot drift" — true of the as-of date, the threshold, the currency
+  // and both policy ids, because those are passed in from the binding. It was FALSE of
+  // `calculationMethodVersion`: `makePolicy` accepts no such input and always stamps the current build
+  // constant. So a redeploy between scheduling and claiming would compute the finding by one
+  // implementation while the binding named another, and nothing would notice — step 1's
+  // `deriveExecutionId` cannot, because it hashes the binding as STORED rather than as this build would
+  // build it.
+  //
+  // That matters for the proof and not merely for tidiness: Trust Invariant rule 4 requires the proof to
+  // capture the calculation ACTUALLY USED. A finding recorded under drift would carry a binding that
+  // names the wrong one.
+  //
+  // BLOCKED, NOT FAILED. A retry on this build re-reads the same binding and the same constant, so the
+  // answer cannot change; `blocked` is terminal and says so. Checked HERE, before the policy is rebuilt
+  // and before anything is computed, so no finding exists to have to withdraw.
+  if (binding.assessmentPolicy.calculationMethodVersion !== ASSESSMENT_CALC_VERSION) {
+    throw new ExecutionBlocked(
+      "calculation_method_drift",
+      `the binding froze ${binding.assessmentPolicy.calculationMethodVersion}; this build implements ${ASSESSMENT_CALC_VERSION}`,
+    );
+  }
+
+  // 6 · Run it. `makePolicy` rebuilds the policy the binding froze from the binding's own fields, so the
+  // run cannot drift onto a different as-of date, threshold or currency than the one its identity was
+  // derived from. The one field it does NOT take from the binding is `calculationMethodVersion`, which
+  // is why 5b above has to compare it explicitly rather than relying on this reconstruction.
   const policy = makePolicy({
     policyId: binding.assessmentPolicy.policyId,
     policyVersion: binding.assessmentPolicy.policyVersion,
@@ -250,7 +279,11 @@ async function executeAssessment(
     asOf: binding.assessmentPolicy.asOf,
     currency: binding.assessmentPolicy.currency,
   });
-  const finding = runProjectedAssessment({
+  // ONE assessment, TWO artifacts. `projectedAssessmentResult` is the same computation
+  // `runProjectedAssessment` performs — it delegates here — so the finding below is byte-identical to
+  // what this agent produced before Detector #2 existed. Assessing twice would be two chances to
+  // disagree about the same data.
+  const assessed = projectedAssessmentResult({
     executionId,
     binding,
     input,
@@ -259,14 +292,25 @@ async function executeAssessment(
     // fingerprint, the policy and the interpretation, never from when the run happened.
     createdAt: now().toISOString(),
   });
+  const finding = findingFromProjectedResult(executionId, binding.boundaryId, assessed);
 
   // 7 · Record it, idempotently. The finding is deterministic given the binding and the input, so a
   // retry after a lost lease re-derives byte-identical content and the second write is a provable
   // no-op. A DIFFERENT hash under the same execution id is not reconciled — it is a tamper signal.
   const findingHash = await hashFinding(finding);
+  // DETECTOR #2 · the non-stalled exposure reading, carried on the SAME write. It is a SEPARATE artifact
+  // with its own canonical form, its own witness and its own method version, so adding it leaves every
+  // historical `findingHash` reproducible from (input, governed terms, calculation method) — which is
+  // exactly what folding these scalars into `canonicalFinding` would have destroyed.
+  const exposureFinding = makeNonStalledExposureFinding({
+    executionId,
+    boundaryId: binding.boundaryId,
+    summary: assessed.nonStalledExposure,
+  });
   const result = await recordFindingIfAbsent({
     finding,
     findingHash,
+    exposure: { finding: exposureFinding, hash: await hashExposureFinding(exposureFinding) },
     producedBy: PILOT_ASSESSMENT_AGENT_ID,
   });
   if (result.conflict) {

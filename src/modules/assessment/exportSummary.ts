@@ -2,7 +2,7 @@
 // the download helpers are browser-only (Blob + object URL) and perform NO network I/O.
 import type { AssessmentResult } from "../../assessment/types";
 import { summarizeExclusions } from "../../assessment/summarize";
-import { formatMoney } from "../../domain/money";
+import { addMoney, formatMoney } from "../../domain/money";
 import {
   buildDataRequestGuide,
   buildIntakeManifest,
@@ -20,12 +20,17 @@ export const CSV_TEMPLATE =
 export function buildSummary(result: AssessmentResult): string {
   const p = result.policy;
   const o = result.observed;
+  const x = result.nonStalledExposure;
   const exclusions = summarizeExclusions(result)
     .map(({ reason, count }) => `  - ${reason}: ${count}`)
     .join("\n");
   const states = Object.entries(o.stateCounts)
     .filter(([, n]) => n > 0)
     .map(([s, n]) => `  - ${s}: ${n}`)
+    .join("\n");
+  const nonStalledStates = Object.entries(x.stateCounts)
+    .filter(([, n]) => n > 0)
+    .map(([st, n]) => `  - ${st}: ${n}`)
     .join("\n");
   const mapping = Object.entries(result.columnMapping)
     .map(([canonical, source]) => `  - ${canonical} ← ${source}`)
@@ -70,6 +75,27 @@ export function buildSummary(result: AssessmentResult): string {
     `- unknown: ${formatMoney(o.unknownValue, { exact: true })}`,
     "  payment states:",
     states || "  - (none)",
+    "",
+    // DETECTOR #2 · a SEPARATE section, deliberately not folded into the four-money-states block above.
+    // The block above is the activation-stall headline and is unchanged. These figures come from the
+    // complement of the stalled cohort, so the two populations are disjoint and the combined line below
+    // is a presentational sum — never a stored or hashed figure.
+    "## Observed exposure OUTSIDE the activation-stall cohort (exact minor units)",
+    `- obligations examined (non-stalled accepted cycles): ${x.population}`,
+    `- OBSERVED overdue unpaid (no activation stall): ${formatMoney(x.overdueUnpaid, { exact: true })}`,
+    `- OBSERVED overdue partial outstanding: ${formatMoney(x.overduePartialOutstanding, { exact: true })}`,
+    `- excluded (dated cancelled/refunded): ${formatMoney(x.excludedValue, { exact: true })}`,
+    `- unknown (not counted as exposure): ${formatMoney(x.unknownValue, { exact: true })}`,
+    "  payment states:",
+    nonStalledStates || "  - (none)",
+    `- COMBINED OBSERVED exposure (stalled + non-stalled, derived for display): ${formatMoney(
+      addMoney(addMoney(o.observedUnpaid, o.partialOutstanding), addMoney(x.overdueUnpaid, x.overduePartialOutstanding)),
+      { exact: true },
+    )}`,
+    "",
+    "> These are OBSERVED overdue obligations read from the customer's records, over accounts that did " +
+      "NOT have an activation stall. They are not a forecast, not an estimate, not recoverable value, " +
+      "and not proven revenue. No causal claim is made about why they are overdue.",
     "",
     "## Data quality — exclusions (never silent)",
     `- excluded rows: ${result.excludedRowCount}`,

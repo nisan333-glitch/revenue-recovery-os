@@ -14,9 +14,12 @@ import { AuditTrail } from "./modules/AuditTrail";
 import { RecoveryReasons } from "./modules/RecoveryReasons";
 import { ConfidencePanel } from "./modules/ConfidencePanel";
 import { Assessment } from "./modules/assessment/Assessment";
+import { ReassessmentScreen } from "./modules/assessment/ReassessmentScreen";
+import { PilotPolicyGovernance } from "./modules/governance/PilotPolicyGovernance";
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
 import { CandidateReviewQueue } from "./modules/CandidateReviewQueue";
+import { RecoveryCaseCenter } from "./modules/RecoveryCaseCenter";
 
 // The single case used by the Guided Demo navigation mode. Only an identifier — no business values here.
 const DEMO_CASE_ID = "RE-1014";
@@ -34,8 +37,11 @@ type ModuleKey =
   | "confidence"
   | "audit"
   | "assessment"
+  | "reassessment"
   | "synthetic-pilot"
-  | "candidate-review";
+  | "candidate-review"
+  | "recovery-case"
+  | "policy-governance";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "demo", label: `Guided Demo — ${DEMO_CASE_ID}`, group: "Demo" },
@@ -47,11 +53,21 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "attribution", label: "Attribution Engine", group: "Prove" },
   { key: "queue", label: "Recovery Queue", group: "Operate" },
   { key: "candidate-review", label: "Candidate Review", group: "Operate" },
+  { key: "recovery-case", label: "Recovery Case", group: "Operate" },
   { key: "events", label: "Recovery Events", group: "Operate" },
   { key: "reasons", label: "Recovery Reasons", group: "Operate" },
   { key: "confidence", label: "Confidence Score", group: "Trust" },
   { key: "audit", label: "Audit Trail", group: "Trust" },
   { key: "assessment", label: "Revenue Opportunity Assessment", group: "Assess" },
+  // Its own entry rather than a step inside the assessment flow: it acts on an execution that already
+  // exists, not on a file being uploaded, and the operator reaching it has usually come back days later
+  // because a calculation method moved. A button buried at the end of an upload wizard would be found
+  // by nobody in that situation.
+  { key: "reassessment", label: "Re-assessment", group: "Assess" },
+  // EP-19 · Deliberately its own entry, outside "Assess": proposing a fitness bar and putting one in
+  // force are two acts by two people, and a screen that walked from one to the other would model a
+  // beneficiary setting the bar that judges them.
+  { key: "policy-governance", label: "Pilot Policy Governance", group: "Govern" },
 ];
 
 // `initialModule` is a small, optional, additive testability seam (defaults to "loop"); omitting it
@@ -186,6 +202,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}
           {active === "candidate-review" && <CandidateReviewQueue />}
+          {active === "recovery-case" && <RecoveryCaseCenter />}
           {active === "events" && <RecoveryEventsTable />}
           {active === "cfo" && <CFOProofView focusCaseId={focusCaseId} />}
           {active === "reconciliation" && <Reconciliation />}
@@ -193,9 +210,15 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
           {active === "reasons" && <RecoveryReasons />}
           {active === "confidence" && <ConfidencePanel />}
           {active === "audit" && <AuditTrail />}
+          {active === "policy-governance" && <PilotPolicyGovernance />}
           {active === "assessment" && (
             <AssessmentErrorBoundary>
               <Assessment />
+            </AssessmentErrorBoundary>
+          )}
+          {active === "reassessment" && (
+            <AssessmentErrorBoundary>
+              <ReassessmentScreen />
             </AssessmentErrorBoundary>
           )}
         </div>

@@ -1,0 +1,74 @@
+{
+  "systemUnderTestRevision": "unknown",
+  "datasets": [
+    {
+      "name": "dataset",
+      "sha256": "214bae693372fbda3f7fff6e0635018b74811db27fa1219831da51fd8568240d"
+    },
+    {
+      "name": "spot-multicurrency",
+      "sha256": "3643b5528959c1c01b4a9447035ad173f6545ca9a5de75bf5866b382320a6009"
+    },
+    {
+      "name": "spot-cancelled-after-asof",
+      "sha256": "d7e3d65f698fd0f1dc32caa71054fcd2389cd4baa4a458e762dac4c95b8eae1c"
+    }
+  ],
+  "groundTruthSha256": "323f13b2dbf790f963e16332a1147617fe7bacca947d61728a3ad7bc601c970e",
+  "predictionSha256": "db6764c8ba91542752fb456553b944c00e2983e8211e618a41c2089e09345dcf",
+  "scriptSha256": {
+    "generate.mjs": "cf925fc88a5a07e9a92054f0e3dda6791201f96d7c89f233c0c920ae2912ef09",
+    "verify.mjs": "c26679e654501269754c03b78c9f1e1ce51d7feacedd546358dca955ad1a929d",
+    "run.mjs": "83f430c1f20e2458011e6eaf8365ce90d2abd92bff2215e597b8c6a8f23ea692",
+    "score.mjs": "e3923232add2f2dc09b420b651e34963c4286c2cd9dbf493aa2cbdcd82a490df",
+    "browser-confirm.mjs": "76dd672bdc0851f6cce01ff0e6743a4fb5c1b4680cfc007bc70e72fb7058d996"
+  },
+  "runParameters": {
+    "asOf": "2026-06-30",
+    "stallThresholdDays": 30,
+    "currency": "USD",
+    "seed": 20260926,
+    "provenanceCoverage": {
+      "start": "2026-01-01",
+      "end": "2026-07-31"
+    },
+    "admissionPolicyPermissive": {
+      "minAcceptedRows": 200,
+      "minDistinctEntities": 50,
+      "minCoverageDays": 90,
+      "maxMissingRecommendedColumns": 0,
+      "maxRejectionRate": 0.1,
+      "maxSingleReasonShare": 0.5,
+      "maxDuplicateRate": 0.05,
+      "maxOrderingDefectRate": 0.05,
+      "requiredLifecycleStates": [
+        "stalled",
+        "reference",
+        "undetermined"
+      ],
+      "requireProvenanceDeclaration": true
+    },
+    "admissionPolicyStrict": {
+      "minAcceptedRows": 200,
+      "minDistinctEntities": 50,
+      "minCoverageDays": 90,
+      "maxMissingRecommendedColumns": 0,
+      "maxRejectionRate": 0.01,
+      "maxSingleReasonShare": 0.5,
+      "maxDuplicateRate": 0.05,
+      "maxOrderingDefectRate": 0.05,
+      "requiredLifecycleStates": [
+        "stalled",
+        "reference",
+        "undetermined"
+      ],
+      "requireProvenanceDeclaration": true,
+      "expectation": "REFUSAL on the main dataset — the planted defect rate is deliberately above 1%. An adversarial control, not a failure."
+    }
+  },
+  "attestedAt": "2026-09-30",
+  "attestedNote": "Attests to components verified on the attestedAt date. NOT an original Git freeze: e2e/fixtures/ is gitignored and no artifact of this cycle was ever tracked. Metadata below is reported, never hashed.",
+  "historicalReproducibility": "downgraded",
+  "historicalReproducibilityReason": "verify.mjs recorded git rev-parse HEAD with no dirty-tree check; the recorded gitHead 117ded4d cannot have produced this cycle's ground truth 323f13b2, which requires the generator as of the newer commit c15efd2, so the tree was dirty and the tested revision is unestablished",
+  "evidenceIdentity": "nhev_be6cadfb0eda46f0649d4d356babc80a512a72efe149ccd67c8ba21712cfeb7c"
+}

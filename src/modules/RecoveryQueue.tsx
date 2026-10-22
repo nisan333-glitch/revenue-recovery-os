@@ -13,6 +13,7 @@ import {
 } from "../components/ui";
 import { EventDetail } from "../components/EventDetail";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 export function RecoveryQueue() {
   const { events } = useRecovery();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -52,6 +53,8 @@ export function RecoveryQueue() {
         }
       />
 
+
+      <DemoDataBanner />
       <div className="space-y-2">
         {queue.length === 0 && (
           <Panel className="p-6 text-center text-slate-500">

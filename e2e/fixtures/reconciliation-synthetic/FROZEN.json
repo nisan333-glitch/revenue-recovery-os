@@ -1,0 +1,19 @@
+{
+  "frozenAt": "2026-10-06",
+  "seed": 20261006,
+  "files": {
+    "expectation.csv": "31992d23dc8cd86d25aca9cb993d760d396f78e15294e88be5f17ce912959939",
+    "observation.csv": "0ef21e4097f488877a09f35ab9fa8f1c7ac61e167bc4163dce1b5199a6dfb186",
+    "ground-truth.csv": "0f5558e402912047783d06d171e2cbfa674ab262de660f9832907f99eb71f074",
+    "planted-register.json": "111db9d180c43fe46939d2889538cd9f5cb2e4c6d7676317f2f34ea6129aab9f"
+  },
+  "generator": "a0df75a7be2720575b7f0c60f1e6695d173158e40c2f000eaf50fc64ba393240",
+  "counts": {
+    "payers": 60,
+    "entitlements": 119,
+    "expectation": 614,
+    "observation": 597,
+    "plantedCases": 19
+  },
+  "compositeSha256": "610c35993fc1f0a4559adb0cc55fa19fb2ae4b9a8024c5ca1f18ecedf9fc117d"
+}

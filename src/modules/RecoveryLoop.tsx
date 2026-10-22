@@ -12,6 +12,7 @@ import { formatMoney } from "../domain/money";
 import { money, percent } from "../lib/format";
 import { StatCard, Panel, SectionHeader, Pill } from "../components/ui";
 
+import { DemoDataBanner } from "../components/DemoDataBanner";
 /** Targets the loop can drill into. A subset of App's ModuleKey. */
 type LoopTarget = "queue" | "cfo" | "audit";
 
@@ -26,6 +27,8 @@ export function RecoveryLoop({ onOpen }: { onOpen: (key: LoopTarget) => void }) 
         subtitle="Revenue lost between signature and activation — found, acted on, returned, and proven."
       />
 
+
+      <DemoDataBanner />
       {/* A money screen, not a dashboard. Four money numbers in two columns: open
           exposure (forecast) vs proven results (realized cash). Amber vs green is
           the forecast/proven Constitution shown visually; the two columns are
