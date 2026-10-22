@@ -56,6 +56,7 @@ if (!process.env.DATABASE_URL) {
 // One boundary per run. The worker polls a fixed boundary list, so it has to be known before the
 // server starts; deriving it here (rather than hardcoding) keeps repeat runs from colliding.
 const BOUNDARY = `journey-${randomUUID().slice(0, 8)}`;
+const RECONCILER_PSEUDONYM_KEY = `journey-${randomUUID()}-${randomUUID()}`;
 const POLICY_ID = `journey-bar-${randomUUID().slice(0, 8)}`;
 const POLICY_VERSION = "1.0.0";
 const AS_OF = "2026-03-01";
@@ -194,7 +195,12 @@ function startApi() {
     // and it is deliberately BELOW the observation's at-risk amount so the candidate is admitted —
     // section 13 asserts the number the screen shows against the number the seeder reports.
     NH_ACTIVATION_DETECTOR_ENABLED: "true",
-    NH_AGENT_ADMISSION_POLICIES: "ActivationMissed:5000",
+    // Section 14 adds the reconciliation observer and ITS economic bar. The pseudonym key is the
+    // deployment secret that turns a payer reference into the opaque reference the queue shows; it is
+    // ephemeral and per run, it lives in the API process only, and the seeder never sees it.
+    NH_RECONCILIATION_OBSERVER_ENABLED: "true",
+    NH_RECONCILER_PSEUDONYM_KEY: RECONCILER_PSEUDONYM_KEY,
+    NH_AGENT_ADMISSION_POLICIES: "ActivationMissed:5000,RevenueUnderBilled:10000",
     // Only the PUBLIC half. The API can verify an attestation and cannot produce one.
     NH_EVIDENCE_SOURCE_KEYS: EVIDENCE_PUBLIC_KEYS,
     NH_PILOT_INPUT_TERMINAL_GRACE_HOURS: "24",
@@ -1684,6 +1690,173 @@ try {
   check("and the refusal body carries no case data",
     !refusals.operator.body.includes("amountAtRisk") && !refusals.operator.body.includes("exposure"),
     refusals.operator.body.slice(0, 120));
+
+  // ── 14 · Reconciler-driven observations: expected obligations vs billed lines ───────────────────
+  //
+  // The second detector, and the first whose observation comes from COMPARING two systems rather than
+  // from one system's own deadline. `seed-journey-reconciliation-task.ts` injects two raw extracts from
+  // a labelled SYNTHETIC demo book; the real validators, the real reconciliation core, the real worker,
+  // the real admission bar and the real review screen do everything else.
+  //
+  // WHAT THE BOOK CONTAINS, and therefore what must and must not reach the queue: three payers are
+  // under-billed (candidates: $600.00, $1,500.00, $1,000.00), one is balanced, one is OVER-billed (a
+  // liability, never a candidate and never netted), one is unpriced (an UNKNOWN, never a $0.00 finding).
+  // The queue must show exactly the three, total $3,100.00, labelled Revenue Opportunity.
+  //
+  // THE ARC STOPS AT EVIDENCE, DELIBERATELY. The proof's `recoveryReason` is a closed vocabulary of
+  // retention and activation plays; it has no value that truthfully names "a corrective invoice was
+  // raised". Attaching `UsageActivation` to a billing correction would write a false reason into an
+  // immutable proof. Adding the value is a vocabulary change with an owner, so it is asked for rather
+  // than made — and the section asserts the case is NOT proven, so the stop is visible, not silent.
+  const seededRecon = JSON.parse(
+    execFileSync("npx", ["vite-node", "scripts/seed-journey-reconciliation-task.ts", BOUNDARY], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: process.env,
+    }),
+  );
+  check("a synthetic reconciliation observation is queued for the real reconciler",
+    typeof seededRecon.taskId === "string" && /SYNTHETIC/.test(seededRecon.label),
+    `${seededRecon.taskId} · ${seededRecon.label}`);
+
+  await page.getByRole("button", { name: "Candidate Review" }).click();
+  await page.locator('input[placeholder="Enter the exact customer/pilot boundary"]').fill(BOUNDARY);
+  const loadReconCandidates = page.getByRole("button", { name: "Load candidates" });
+  const pendingCount = () => page.getByText("pending review", { exact: true }).count();
+  let reconPending = 0;
+  for (let attempt = 0; attempt < 60 && reconPending < 3; attempt += 1) {
+    await loadReconCandidates.click();
+    await page.waitForTimeout(500);
+    reconPending = await pendingCount();
+  }
+  const reconText = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  check("exactly the three under-billed payers reach the review queue", reconPending === 3,
+    `${reconPending} pending · ${reconText.slice(0, 160)}`);
+  haltIf(reconPending !== 3, "the reconciler's candidates did not reach the queue, so the rest of section 14 is unreachable");
+
+  const reconApi = await page.evaluate(async ([boundaryId]) => {
+    const res = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
+      headers: { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" },
+    });
+    return { status: res.status, items: res.ok ? await res.json() : [] };
+  }, [BOUNDARY]);
+  const reconAmounts = reconApi.items.map((i) => i.signal.amountAtRiskMinor).sort((a, b) => a - b);
+  checkEqual("the queue holds the three shortfalls and nothing else — no balanced, over-billed or unpriced unit",
+    JSON.stringify(reconAmounts), JSON.stringify([60_000, 100_000, 150_000]));
+  check("each carries the reconciler's own type and detector, and an opaque pseudonymous reference",
+    reconApi.items.every((i) => i.signal.recoveryType === "RevenueUnderBilled" &&
+      i.signal.detectorVersion === "reconciliation-observation-v1" &&
+      /^hmac-sha256:[a-f0-9]{64}$/.test(i.signal.sourceRef)) &&
+      new Set(reconApi.items.map((i) => i.signal.sourceRef)).size === 3,
+    reconApi.items.map((i) => i.signal.sourceRef.slice(0, 22)).join(" "));
+  check("the screen total is $3,100.00 and every figure is labelled Revenue Opportunity, not proven",
+    /\$3,100\.00/.test(reconText) &&
+      (reconText.match(/revenue opportunity · not proven/gi) ?? []).length === 3,
+    reconText.slice(0, 220));
+  check("no raw contract, payer or invoice reference from the extracts is shown anywhere",
+    !/(ENT|PAYER|SL|INV)-DEMO/.test(reconText));
+
+  // Which candidate is "first" is the screen's order, which this harness does not assume matches the
+  // API's. The promoted case therefore has to show exactly ONE of the three known figures, and the
+  // governed record has to agree with the one the screen showed.
+  const fmtMoney = (minor) => `$${(minor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  await page.locator('input[placeholder="Required immutable review reason"]').first().fill(
+    "journey · confirmed against the contract schedule (synthetic)",
+  );
+  await page.getByRole("button", { name: "Accept for case creation" }).first().click();
+  await page.waitForTimeout(400);
+  await page.getByRole("button", { name: "Create Recovery Case" }).first().click();
+  await page.waitForTimeout(600);
+  const reconPromoted = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  const reconCaseId = reconPromoted.match(/Recovery Case (RC-[0-9a-f-]+)/i)?.[1] ?? "";
+  check("promoting ONE candidate creates ONE Recovery Case", reconCaseId !== "" && reconCaseId !== recoveryCaseId,
+    reconPromoted.slice(0, 200));
+  haltIf(reconCaseId === "", "no Recovery Case id was reported for the reconciler candidate");
+
+  const afterReconPromote = await page.evaluate(async ([boundaryId]) => {
+    const res = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
+      headers: { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" },
+    });
+    return res.ok ? (await res.json()).length : -1;
+  }, [BOUNDARY]);
+  check("the other two shortfalls stay pending — one promotion promotes one candidate",
+    afterReconPromote === 2, `pending=${afterReconPromote}`);
+
+  await page.getByRole("button", { name: "Recovery Case", exact: true }).click();
+  // `readCase` closes over the §13 case id, so this section reads its own case explicitly.
+  let reconCaseText = "";
+  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
+  await page.getByRole("button", { name: "Read case" }).click();
+  await page.waitForTimeout(500);
+  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
+  const shownAmounts = [60_000, 100_000, 150_000].filter((a) => reconCaseText.includes(fmtMoney(a)));
+  check("the case shows exactly one identified exposure, from the promoted candidate, and states it is not money returned",
+    reconCaseText.includes(reconCaseId) && shownAmounts.length === 1 && /not money returned/i.test(reconCaseText),
+    `${shownAmounts.join(",")} · ${reconCaseText.slice(0, 200)}`);
+  check("Revenue Returned reads NOT COMPUTED and no $0.00 appears for any unit — an unknown is not a zero",
+    /NOT COMPUTED/.test(reconCaseText) && !/\$0\.00/.test(reconCaseText), reconCaseText.slice(0, 220));
+
+  const reconDrive = await page.evaluate(async ([caseId]) => {
+    const call = async (method, path, actorId, role, body) => {
+      const headers = { "x-actor-id": actorId, "x-actor-role": role };
+      if (body !== undefined) headers["content-type"] = "application/json";
+      const res = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      return { status: res.status, body: await res.text() };
+    };
+    return {
+      author: await call("POST", `/cases/${caseId}/author`, "dana@company", "author"),
+      baseline: await call("POST", `/cases/${caseId}/baseline`, "dana@company", "author", {
+        baselineId: `BL-journey-${caseId.slice(3, 11)}`,
+        calculatedMinor: 2_000,
+        currency: "USD",
+        method: "matched_historical_cohort",
+        methodVersion: 1,
+        sourceRefs: ["journey-recon-src-1"],
+        effectiveAt: "2026-07-01T00:00:00.000Z",
+      }),
+      intervention: await call("POST", `/cases/${caseId}/intervention`, "dana@company", "author"),
+    };
+  }, [reconCaseId]);
+  check("the reconciler's case is authored, baselined and intervened through the governed API",
+    reconDrive.author.status === 201 && reconDrive.baseline.status === 201 && reconDrive.intervention.status === 201,
+    `author=${reconDrive.author.status} baseline=${reconDrive.baseline.status} intervention=${reconDrive.intervention.status}`);
+
+  const reconEvidence = JSON.parse(
+    execFileSync("npx", ["vite-node", "scripts/seed-journey-case-evidence.ts", reconCaseId], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        JOURNEY_API_PORT: String(API_PORT),
+        JOURNEY_EVIDENCE_KEY_ID: EVIDENCE_KEY_ID,
+        JOURNEY_EVIDENCE_PRIVATE_KEY: EVIDENCE_PRIVATE_KEY,
+      },
+    }),
+  );
+  check("outcome evidence is ingested against the reconciler's case", reconEvidence.ingested === true,
+    JSON.stringify(reconEvidence).slice(0, 200));
+
+  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
+  await page.getByRole("button", { name: "Read case" }).click();
+  await page.waitForTimeout(500);
+  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
+  check("the case reads EVIDENCED, and is NOT proven — evidence is not money",
+    (await stageReached("EVIDENCED")) && !(await stageReached("PROVEN")) &&
+      /NOT COMPUTED/.test(reconCaseText) && !/\$0\.00/.test(reconCaseText),
+    reconCaseText.slice(0, 220));
+
+  const reconView = await page.evaluate(async ([caseId]) => {
+    const res = await fetch(`/api/recovery-cases/${caseId}`, {
+      headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" },
+    });
+    return { status: res.status, view: res.ok ? await res.json() : null };
+  }, [reconCaseId]);
+  check("the governed record names the reconciler as the origin and holds no proven figure",
+    reconView.status === 200 &&
+      reconView.view?.root?.detectorVersion === "reconciliation-observation-v1" &&
+      shownAmounts.length === 1 && reconView.view?.lifecycle?.exposure?.minor === shownAmounts[0] &&
+      reconView.view?.provenRevenueReturnedMinor === null,
+    JSON.stringify({ d: reconView.view?.root?.detectorVersion, e: reconView.view?.lifecycle?.exposure?.minor, p: reconView.view?.provenRevenueReturnedMinor }));
 
   // ── 12 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
