@@ -253,10 +253,21 @@ export interface CaseLifecycleDTO {
   exposureIsNotRecoveredRevenue: true;
 }
 
+/** Mirrors `CaseIdentityGrainDisclosure`. Read verbatim; nothing here is recomputed on the client. */
+export interface CaseIdentityGrainDTO {
+  grain: "ACCOUNT_GRAINED_POTENTIAL" | "ABSORBED_OBSERVATIONS_RECORDED" | "OBLIGATION_UNIQUENESS_GUARANTEED";
+  mayCoverMultipleObligations: boolean;
+  obligationUniquenessGuaranteed: boolean;
+  reason: string;
+  absorbedObservations: { checked: false } | { checked: true; count: number };
+  headline: string;
+}
+
 export interface RecoveryCaseViewDTO {
   root: RecoveryCaseRootDTO;
   lifecycle: CaseLifecycleDTO;
   exposureLabel: string;
+  identityGrain: CaseIdentityGrainDTO;
   provenRevenueReturnedMinor: number | null;
   provenLedgerUnavailableReason: "no_effective_recovery_proof" | "proof_currency_disagreement" | null;
   provenFromProofIds: string[];

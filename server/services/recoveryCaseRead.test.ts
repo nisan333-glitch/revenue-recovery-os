@@ -20,6 +20,11 @@ import { CandidatePromotionService } from "../agents/recoveryCase";
 import { PostgresCandidateReviewStore } from "../agents/postgresCandidateReviewStore";
 import { caseCandidateDedupeKey, caseCandidateId } from "../agents/caseAdmission";
 import { AUTHORITY_ACTIONS } from "../../src/domain/caseLifecycle";
+import { refusesObligationLevelGuarantee } from "../../src/domain/caseIdentityGrain";
+import {
+  LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL,
+  OBLIGATION_IDENTITY_FIELDS,
+} from "../../src/contract/leakInstanceIdentity";
 import type { ActorContext } from "../auth/identity";
 
 const HAS_DB = !!process.env.DATABASE_URL;
@@ -271,6 +276,59 @@ describe.skipIf(!HAS_DB)("the governed Recovery Case read surface", () => {
     // A halt must make a case MORE inspectable — `caseGuard.ts` says every read stays available on a
     // halted case, and this surface is a read.
     expect(view.root.recoveryCaseId).toBe(caseId);
+  });
+
+  it("8b · THE GRAIN DISCLOSURE · the case says what its identity covers, and refuses the guarantee", async () => {
+    const b = boundary();
+    const { recoveryCase } = await promoteCase(b, operatorIn(b));
+    const view = await readRecoveryCase(approverIn(b), recoveryCase.recoveryCaseId);
+
+    // Account-grained, and the payload says so rather than leaving a reader to infer it from `sourceRef`.
+    expect(view.identityGrain.grain).toBe("ACCOUNT_GRAINED_POTENTIAL");
+    expect(view.identityGrain.mayCoverMultipleObligations).toBe(true);
+    expect(view.identityGrain.obligationUniquenessGuaranteed).toBe(false);
+    expect(view.identityGrain.headline).toMatch(/ACCOUNT-LEVEL IDENTITY/);
+    // The reason is the contract's own exported sentence, not one authored at this call site.
+    expect(view.identityGrain.reason).toBe(LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL);
+
+    // NOT CHECKED is not NONE. This route does not run the forensic join, and it says so rather than
+    // reporting a zero nobody measured.
+    expect(view.identityGrain.absorbedObservations).toEqual({ checked: false });
+
+    // FAILS CLOSED: any action wanting a per-obligation guarantee is refused, with the reason attached.
+    const gate = refusesObligationLevelGuarantee(view.identityGrain);
+    expect(gate.permitted).toBe(false);
+    expect(gate.refusal).toContain(LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL);
+  });
+
+  it("8c · the disclosure is derived from the CONTRACT, so it cannot be set affirmative here", async () => {
+    // The negative control at the API boundary. `OBLIGATION_IDENTITY_FIELDS` is empty, so the guaranteed
+    // state is unreachable through this route for any case, promoted however.
+    expect(OBLIGATION_IDENTITY_FIELDS).toHaveLength(0);
+    const b = boundary();
+    const { recoveryCase } = await promoteCase(b, operatorIn(b));
+    const view = await readRecoveryCase(approverIn(b), recoveryCase.recoveryCaseId);
+    expect(view.identityGrain.grain).not.toBe("OBLIGATION_UNIQUENESS_GUARANTEED");
+  });
+
+  it("8d · the disclosure leaks nothing · the refusals still fire and carry no case data", async () => {
+    const b = boundary();
+    const { recoveryCase } = await promoteCase(b, operatorIn(b));
+    // A beneficiary role and a wrong boundary are still refused — the new field did not widen the gate.
+    await expect(
+      readRecoveryCase(actor("op@test", "operator", [b]), recoveryCase.recoveryCaseId),
+    ).rejects.toThrow(/may not perform 'AuditRead'/);
+    await expect(
+      readRecoveryCase(actor("cfo@other", "approver", ["OTHER"]), recoveryCase.recoveryCaseId),
+    ).rejects.toThrow(/not authorized for this boundary/);
+    // And a 403 body carries no grain disclosure either, which would otherwise be a free read.
+    const res = await app.inject({
+      method: "GET", url: `/recovery-cases/${recoveryCase.recoveryCaseId}`,
+      headers: { "x-actor-id": "op@test", "x-actor-role": "operator" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.body).not.toContain("ACCOUNT-LEVEL IDENTITY");
+    expect(res.body).not.toContain("identityGrain");
   });
 
   it("9 · the HTTP route carries the whole governed answer, not a summary", async () => {

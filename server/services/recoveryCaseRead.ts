@@ -32,6 +32,14 @@ import {
   unknownAuthorityActions,
   type CaseLifecycle,
 } from "../../src/domain/caseLifecycle";
+import {
+  deriveCaseIdentityGrain,
+  type CaseIdentityGrainDisclosure,
+} from "../../src/domain/caseIdentityGrain";
+import {
+  leakInstanceIdentityStatus,
+  LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL,
+} from "../../src/contract/leakInstanceIdentity";
 
 /** Why the proven ledger could not be stated. NAMED, never collapsed into a zero or a null. */
 export type ProvenLedgerUnavailableReason = "no_effective_recovery_proof" | "proof_currency_disagreement";
@@ -47,6 +55,20 @@ export interface RecoveryCaseView {
    * structural on the lifecycle; this is the sentence a human reads.
    */
   readonly exposureLabel: string;
+  /**
+   * WHAT THIS CASE'S IDENTITY COVERS — one account, or one obligation.
+   *
+   * This is the field that stops the payload being readable as a per-obligation claim. `root.sourceRef`
+   * is a pseudonym of the ACCOUNT, so `lifecycle.exposure` may cover more than one obligation and a
+   * merged figure is indistinguishable from a single-obligation figure by amount alone.
+   *
+   * `absorbedObservations` is `{ checked: false }` here, DELIBERATELY AND SAID SO. Establishing absorption
+   * requires a content join over `agent_tasks.result`/`payload` against the candidate's dedupe triple —
+   * exact, but unindexed jsonb, which is a forensic query and not a governed read path. Reporting
+   * `count: 0` instead would assert work this route did not do. `scripts/exposure/absorbed-observations.ts`
+   * is the thing that looks.
+   */
+  readonly identityGrain: CaseIdentityGrainDisclosure;
   /** `null` when the proven ledger is unavailable; the reason is always stated beside it. */
   readonly provenRevenueReturnedMinor: number | null;
   readonly provenLedgerUnavailableReason: ProvenLedgerUnavailableReason | null;
@@ -165,6 +187,13 @@ export async function readRecoveryCase(
     exposureLabel:
       "OBSERVED EXPOSURE recorded when this case was opened — an identified gap, not money returned. " +
       "It is never summed into Revenue Returned and never into Auditable Revenue.",
+    identityGrain: deriveCaseIdentityGrain({
+      // The real contract status, never a literal: the day obligation identity is declared, this payload
+      // changes with it and no edit here is required.
+      obligationIdentityEstablishable: leakInstanceIdentityStatus().establishable,
+      identityRefusalDetail: LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL,
+      absorbedObservations: { checked: false },
+    }),
     provenRevenueReturnedMinor: ledger.amount === null ? null : ledger.amount.minor,
     provenLedgerUnavailableReason: ledger.reason,
     provenFromProofIds: ledger.proofIds,
