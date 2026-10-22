@@ -53,8 +53,8 @@ Plan: 10 units, 3 candidates, exposure **$3,100.00** (positives only).
   pseudonymised the *unit* and abandoned it: every read surface already calls a candidate an account, and a
   unit reference labelled "account pseudonym" would be a false statement on the page. The consequence is the
   product's existing, disclosed one: a later shortfall for a payer who already has a candidate is absorbed by
-  it. **Obligation-grained identity needs the primary-key migration and an optional contract field — not done,
-  needs its own approval.**
+  it. **Obligation grain for the assessment lane needs the primary-key migration; for this lane it is a governed
+  choice of what to pseudonymise, not a schema change. See `docs/architecture/RECONCILER_GOVERNANCE_PROPOSALS_V1.md` §B — not done.**
 * **First observation wins.** The store's `ON CONFLICT DO NOTHING` keeps the first figure. Tested on the
   in-memory store and, in `reconciliationWorker.postgres.test.ts`, on the production store.
 * **No payer, no candidate.** A unit whose contract side names zero or several payers is withheld and
@@ -76,11 +76,13 @@ Plan: 10 units, 3 candidates, exposure **$3,100.00** (positives only).
 
 ## Approvals needed
 
-1. **A billing-correction `RecoveryReason`** (vocabulary addition in `types.ts`, `reasons.ts`, the HTTP schema)
+Both are specified, not built, in `docs/architecture/RECONCILER_GOVERNANCE_PROPOSALS_V1.md`:
+
+1. **A billing-correction `RecoveryReason`** (`BillingCorrection`; three code sites, no database migration)
    so the proof stage can close honestly.
-2. **Obligation-grained identity** (migration plan already in `docs/architecture/`).
+2. **Obligation-grained identity** for the reconciler lane (constitution amendment first; no schema change).
 
 ## Verification status
 
-Unofficial local shim only until CI runs: observer 27/27, importer guard 18/18. The shim is not an official
-result. The journey (§14) and the Postgres test have **not** been run by me — no database or browser here.
+Official CI on the pushed branch is the only result that counts; see the run URL in the hand-off report. My
+local numbers (observer 27/27, importer guard 18/18) came from an unofficial stand-in and are not results.
