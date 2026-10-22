@@ -1759,8 +1759,10 @@ try {
       /^hmac-sha256:[a-f0-9]{64}$/.test(i.signal.sourceRef)) &&
       new Set(reconApi.items.map((i) => i.signal.sourceRef)).size === 3,
     reconApi.items.map((i) => i.signal.sourceRef.slice(0, 22)).join(" "));
-  check("the screen total is $3,100.00 and every figure is labelled Revenue Opportunity, not proven",
-    /\$3,100\.00/.test(reconText) &&
+  // The QUEUE formats whole units (`formatMoney` without `exact`), so its total reads "$3,100"; the case
+  // screen formats exactly and reads "$600.00". The API check above already pins the cents.
+  check("the screen total is $3,100 and every figure is labelled Revenue Opportunity, not proven",
+    /\$3,100(?![.\d])/.test(reconText) &&
       (reconText.match(/revenue opportunity · not proven/gi) ?? []).length === 3,
     reconText.slice(0, 220));
   check("no raw contract, payer or invoice reference from the extracts is shown anywhere",
