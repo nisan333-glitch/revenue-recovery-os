@@ -100,6 +100,17 @@ describe("case identity grain · the disclosure", () => {
     ).permitted).toBe(false);
   });
 
+  it("8b · BOTH headlines say the amount shown excludes any absorbed observation", () => {
+    // WHY: candidate creation is ON CONFLICT (dedupe_key) DO NOTHING, so the surviving candidate keeps the
+    // FIRST observation's amount and a later one adds nothing to any figure. Saying only "may represent
+    // more than one obligation" invites the opposite reading, that the figure includes them.
+    const potential = deriveCaseIdentityGrain(live());
+    const absorbed = deriveCaseIdentityGrain(live({ absorbedObservations: { checked: true, count: 2 } }));
+    expect(potential.headline).toMatch(/absorbed into this case later is not added/);
+    expect(absorbed.headline).toMatch(/not added to it and appears in no figure/);
+    expect(absorbed.headline).toMatch(/understated/);
+  });
+
   it("9 · no headline claims recovered revenue, and none renders a zero figure", () => {
     for (const d of [
       deriveCaseIdentityGrain(live()),

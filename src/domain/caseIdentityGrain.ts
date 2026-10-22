@@ -86,13 +86,16 @@ export interface CaseIdentityGrainDisclosure {
 export const ACCOUNT_GRAINED_HEADLINE =
   "ACCOUNT-LEVEL IDENTITY. This case is identified by the customer account, not by the obligation, so it " +
   "may represent more than one contractual obligation and the figure above may cover more than one. It is " +
-  "not a per-obligation claim.";
+  "not a per-obligation claim. The amount shown is what the first observation carried for the account: an " +
+  "observation absorbed into this case later is not added to it.";
 
 /** The same, where absorption is on the record rather than merely possible. */
 export const ABSORBED_HEADLINE =
   "ACCOUNT-LEVEL IDENTITY, AND A SECOND OBSERVATION WAS ABSORBED. More than one detector observation was " +
   "admitted against this account and folded into this single case. Whether those observations are " +
-  "different obligations or one obligation re-observed cannot be established from the recorded data.";
+  "different obligations or one obligation re-observed cannot be established from the recorded data. The " +
+  "amount shown is the first observation's only: the amount of each absorbed observation is not added to " +
+  "it and appears in no figure, so the exposure shown may be understated as well as combined.";
 
 /**
  * Derive the disclosure. PURE: no clock, no I/O, no randomness.

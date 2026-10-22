@@ -83,6 +83,9 @@ describe("grain safety · two obligations of one account", () => {
     expect(queue[0]!.identityGrain.grain).toBe("ACCOUNT_GRAINED_POTENTIAL");
     expect(queue[0]!.identityGrain.mayCoverMultipleObligations).toBe(true);
     expect(refusesObligationLevelGuarantee(queue[0]!.identityGrain).permitted).toBe(false);
+    // The $600.00 above reaches no figure, and the disclosure the operator reads must not imply otherwise:
+    // it states that an observation absorbed later is not added to the amount shown.
+    expect(queue[0]!.identityGrain.headline).toMatch(/absorbed into this case later is not added/);
   });
 
   it("RE-OBSERVING the same obligation makes no claim that a second one was absorbed", async () => {
