@@ -19,6 +19,11 @@ import { createPrivateKey, sign } from "node:crypto";
 import { sourceSigningPayload } from "../server/services/sourceVerification";
 
 const recoveryCaseId = process.argv[2];
+// NEGATIVE CONTROL MODE. `tampered` signs the claim for 9 000 and then SENDS 90 000, so the attestation
+// does not cover what was submitted. The verifier must refuse it; the journey asserts that it does. The
+// script exits 0 in this mode either way and reports the status, because the point is what the SERVER
+// answered — a non-zero exit would make a correct refusal indistinguishable from a harness failure.
+const tampered = process.argv[3] === "tampered";
 const privateKeyPem = process.env.JOURNEY_EVIDENCE_PRIVATE_KEY ?? "";
 const keyId = process.env.JOURNEY_EVIDENCE_KEY_ID ?? "";
 const apiPort = process.env.JOURNEY_API_PORT ?? "4000";
@@ -29,7 +34,7 @@ if (!recoveryCaseId || !privateKeyPem || !keyId) {
 }
 
 async function main(): Promise<void> {
-  const evidenceId = `EV-journey-${recoveryCaseId!.slice(3, 11)}`;
+  const evidenceId = `EV-journey-${tampered ? "tamper-" : ""}${recoveryCaseId!.slice(3, 11)}`;
   const claim = {
     evidenceId,
     sourceSystem: "billing",
@@ -53,13 +58,17 @@ async function main(): Promise<void> {
       "x-actor-id": "dana@company",
       "x-actor-role": "author",
     },
-    body: JSON.stringify({ ...claim, sourceAttestation: { keyId, issuedAt, signature } }),
+    body: JSON.stringify({
+      ...claim,
+      ...(tampered ? { amountMinor: claim.amountMinor * 10 } : {}),
+      sourceAttestation: { keyId, issuedAt, signature },
+    }),
   });
   const body = await res.text();
   // The journey asserts `ingested`; the status and body are printed so a failure names itself rather
   // than surfacing later as a case that never reaches EVIDENCED for no stated reason.
   console.log(JSON.stringify({ ingested: res.status === 201, status: res.status, evidenceId, body: body.slice(0, 300) }));
-  if (res.status !== 201) process.exitCode = 1;
+  if (res.status !== 201 && !tampered) process.exitCode = 1;
 }
 
 main().catch((error) => {

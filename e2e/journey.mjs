@@ -1713,11 +1713,11 @@ try {
   // liability, never a candidate and never netted), one is unpriced (an UNKNOWN, never a $0.00 finding).
   // The queue must show exactly the three, total $3,100.00, labelled Revenue Opportunity.
   //
-  // THE ARC STOPS AT EVIDENCE, DELIBERATELY. The proof's `recoveryReason` is a closed vocabulary of
-  // retention and activation plays; it has no value that truthfully names "a corrective invoice was
-  // raised". Attaching `UsageActivation` to a billing correction would write a false reason into an
-  // immutable proof. Adding the value is a vocabulary change with an owner, so it is asked for rather
-  // than made — and the section asserts the case is NOT proven, so the stop is visible, not silent.
+  // THE ARC RUNS TO PROVEN (14b). It first stopped at evidence, because the proof's `recoveryReason`
+  // vocabulary had no value that truthfully names "a corrective invoice was raised and collected" and
+  // `UsageActivation` would have written a false reason into an immutable proof. `BillingCorrection` was
+  // added as an approved, additive vocabulary value; the evidence-only assertions below stay, because
+  // evidence is still not money until an approver freezes a proof.
   const seededRecon = JSON.parse(
     execFileSync("npx", ["vite-node", "scripts/seed-journey-reconciliation-task.ts", BOUNDARY], {
       cwd: ROOT,
@@ -1869,6 +1869,143 @@ try {
       shownAmounts.length === 1 && reconView.view?.lifecycle?.exposure?.minor === shownAmounts[0] &&
       reconView.view?.provenRevenueReturnedMinor === null,
     JSON.stringify({ d: reconView.view?.root?.detectorVersion, e: reconView.view?.lifecycle?.exposure?.minor, p: reconView.view?.provenRevenueReturnedMinor }));
+
+  // ── 14b · NEGATIVE CONTROLS, then the proof ────────────────────────────────────────────────────
+  //
+  // Each control is a way a beneficiary — or a mistake — could turn this case into a counted number
+  // without the evidence for it. Every one must be REFUSED and the case must stay un-proven afterwards;
+  // only then is the genuine approval attempted. They run first on purpose: a control that wrongly
+  // succeeded would freeze a bad proof, and the failure message names which one did.
+  //
+  // THE REASON IS A LABEL. `BillingCorrection` says HOW the money came back. Raising a corrective
+  // invoice is not collection, so the figure below comes from signed outcome evidence and a locked
+  // baseline, exactly as for every other reason — and the controls prove the gate does not read the label.
+  const proofBody = (over = {}) => ({
+    proofId: `PF-journey-${reconCaseId.slice(3, 11)}`,
+    recoveryCaseId: reconCaseId,
+    currency: "USD",
+    collectedMinor: 9_000,
+    excludedRecoveryMinor: 0,
+    exclusionStatement: "journey · no exclusions asserted (synthetic)",
+    recoveryReason: "BillingCorrection",
+    attribution: "corrective invoice raised and collected (synthetic)",
+    evidenceIds: [reconEvidence.evidenceId],
+    baselineId: `BL-journey-${reconCaseId.slice(3, 11)}`,
+    confidenceUsed: 95,
+    ...over,
+  });
+  const postProof = (actorId, role, body) => page.evaluate(async ([a, r, b]) => {
+    const res = await fetch("/api/proofs", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-actor-id": a, "x-actor-role": r },
+      body: JSON.stringify(b),
+    });
+    return { status: res.status, body: (await res.text()).slice(0, 160) };
+  }, [actorId, role, body]);
+  const refused = (r) => r.status >= 400 && r.status < 500;
+  const readReconProven = async () => {
+    const v = await page.evaluate(async ([caseId]) => {
+      const res = await fetch(`/api/recovery-cases/${caseId}`, {
+        headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" },
+      });
+      return res.ok ? await res.json() : null;
+    }, [reconCaseId]);
+    return v?.provenRevenueReturnedMinor ?? null;
+  };
+
+  const ncOverClaim = await postProof("cfo@company", "approver",
+    proofBody({ proofId: `PF-nc1-${reconCaseId.slice(3, 11)}`, collectedMinor: 9_001 }));
+  check("NC · claiming more collected than the signed evidence substantiates is refused",
+    refused(ncOverClaim), `${ncOverClaim.status} ${ncOverClaim.body}`);
+
+  const ncNoEvidence = await postProof("cfo@company", "approver",
+    proofBody({ proofId: `PF-nc2-${reconCaseId.slice(3, 11)}`, evidenceIds: [] }));
+  check("NC · a proof that cites no evidence is refused, whatever its reason says",
+    refused(ncNoEvidence), `${ncNoEvidence.status} ${ncNoEvidence.body}`);
+
+  const ncAuthor = await postProof("dana@company", "author",
+    proofBody({ proofId: `PF-nc3-${reconCaseId.slice(3, 11)}` }));
+  const ncOperator = await postProof("pilot-operator@company", "operator",
+    proofBody({ proofId: `PF-nc4-${reconCaseId.slice(3, 11)}` }));
+  check("NC · the case's author and the operator who opened it cannot approve their own recovery",
+    refused(ncAuthor) && refused(ncOperator), `author=${ncAuthor.status} operator=${ncOperator.status}`);
+
+  const ncReason = await postProof("cfo@company", "approver",
+    proofBody({ proofId: `PF-nc5-${reconCaseId.slice(3, 11)}`, recoveryReason: "billing_correction" }));
+  check("NC · a reason outside the closed vocabulary is refused — the new value is exact, not a pattern",
+    refused(ncReason), `${ncReason.status} ${ncReason.body}`);
+
+  const tamperedEvidence = JSON.parse(
+    execFileSync("npx", ["vite-node", "scripts/seed-journey-case-evidence.ts", reconCaseId, "tampered"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        JOURNEY_API_PORT: String(API_PORT),
+        JOURNEY_EVIDENCE_KEY_ID: EVIDENCE_KEY_ID,
+        JOURNEY_EVIDENCE_PRIVATE_KEY: EVIDENCE_PRIVATE_KEY,
+      },
+    }),
+  );
+  check("NC · evidence whose amount was altered after it was signed is refused at ingestion",
+    tamperedEvidence.ingested === false && tamperedEvidence.status >= 400 && tamperedEvidence.status < 500,
+    `${tamperedEvidence.status} ${String(tamperedEvidence.body).slice(0, 120)}`);
+
+  checkEqual("and after every refusal the case still holds NO proven figure",
+    String(await readReconProven()), "null");
+  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
+  await page.getByRole("button", { name: "Read case" }).click();
+  await page.waitForTimeout(500);
+  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
+  check("and the screen still reads NOT COMPUTED, not PROVEN, not $0.00",
+    !(await stageReached("PROVEN")) && /NOT COMPUTED/.test(reconCaseText) && !/\$0\.00/.test(reconCaseText),
+    reconCaseText.slice(0, 200));
+
+  // THE GENUINE APPROVAL: a different identity, in the approver role, citing signed outcome evidence.
+  const proofId = `PF-journey-${reconCaseId.slice(3, 11)}`;
+  const reconApproval = await postProof("cfo@company", "approver", proofBody());
+  check("an approver — never the author — freezes the proof for the reconciler's case",
+    reconApproval.status === 201, `${reconApproval.status} ${reconApproval.body}`);
+  haltIf(reconApproval.status !== 201, "the reconciler case's genuine approval was refused, so PROVEN is unreachable");
+
+  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
+  await page.getByRole("button", { name: "Read case" }).click();
+  await page.waitForTimeout(500);
+  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
+  check("the reconciler's case reads PROVEN", await stageReached("PROVEN"), reconCaseText.slice(0, 200));
+  check("Revenue Returned is $70.00 — collected minus baseline — and names the proof it came from",
+    /\$70\.00/.test(reconCaseText) && reconCaseText.includes(proofId), reconCaseText.slice(0, 240));
+  check("the identified gap and the proven return are two DIFFERENT numbers on the same screen",
+    shownAmounts.length === 1 && reconCaseText.includes(fmtMoney(shownAmounts[0])) && /\$70\.00/.test(reconCaseText) &&
+      /not money returned/i.test(reconCaseText),
+    reconCaseText.slice(0, 240));
+
+  const frozen = await page.evaluate(async ([pid, caseId]) => {
+    const proof = await fetch(`/api/proofs/${pid}`, { headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" } });
+    const view = await fetch(`/api/recovery-cases/${caseId}`, { headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" } });
+    return { proofStatus: proof.status, proof: proof.ok ? await proof.json() : null, view: view.ok ? await view.json() : null };
+  }, [proofId, reconCaseId]);
+  check("the frozen proof records the reason, the signed collection and the locked baseline",
+    frozen.proofStatus === 200 &&
+      frozen.proof?.recoveryReason === "BillingCorrection" &&
+      frozen.proof?.collectedAmount?.minor === 9_000 &&
+      frozen.proof?.baselineAmount?.minor === 2_000 &&
+      frozen.proof?.revenueReturned?.minor === 7_000 &&
+      (frozen.proof?.evidenceRefs ?? []).includes(reconEvidence.evidenceId),
+    JSON.stringify({ r: frozen.proof?.recoveryReason, c: frozen.proof?.collectedAmount?.minor, b: frozen.proof?.baselineAmount?.minor }));
+  check("the case's governed record agrees, and the exposure is a separate figure from the proven one",
+    frozen.view?.provenRevenueReturnedMinor === 7_000 &&
+      frozen.view?.lifecycle?.exposure?.minor === shownAmounts[0] &&
+      frozen.view?.lifecycle?.exposureIsNotRecoveredRevenue === true,
+    JSON.stringify({ p: frozen.view?.provenRevenueReturnedMinor, e: frozen.view?.lifecycle?.exposure?.minor }));
+  const stillPending = await page.evaluate(async ([boundaryId]) => {
+    const res = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
+      headers: { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" },
+    });
+    return res.ok ? (await res.json()).length : -1;
+  }, [BOUNDARY]);
+  check("proving one case does not touch the other two shortfalls — they remain pending candidates, uncounted",
+    stillPending === 2, `pending=${stillPending}`);
 
   // ── 12 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));
