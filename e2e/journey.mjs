@@ -86,6 +86,7 @@ const EVIDENCE_PRIVATE_KEY = evidenceKeys.privateKey.export({ type: "pkcs8", for
 
 const results = [];
 let section14Start = -1;
+const uiStates = [];
 const EVIDENCE_DIR = process.env.JOURNEY_EVIDENCE_DIR ? resolve(process.env.JOURNEY_EVIDENCE_DIR) : null;
 if (EVIDENCE_DIR) mkdirSync(EVIDENCE_DIR, { recursive: true });
 let failures = 0;
@@ -1727,7 +1728,6 @@ try {
   // JOURNEY_EVIDENCE_DIR is set (CI uploads that directory as an artifact). Pure observation: a failure to
   // capture never changes a verdict. Everything on these screens is SYNTHETIC and already labelled so.
   section14Start = results.length;
-  const uiStates = [];
   const shot = async (name) => {
     // The visible text of the demo's two ledgers and its stage ribbon at the moment of the screenshot — a
     // textual record of what the picture shows, readable where the image artifact cannot be opened.
