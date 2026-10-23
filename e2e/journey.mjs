@@ -1727,7 +1727,15 @@ try {
   // JOURNEY_EVIDENCE_DIR is set (CI uploads that directory as an artifact). Pure observation: a failure to
   // capture never changes a verdict. Everything on these screens is SYNTHETIC and already labelled so.
   section14Start = results.length;
+  const uiStates = [];
   const shot = async (name) => {
+    // The visible text of the demo's two ledgers and its stage ribbon at the moment of the screenshot — a
+    // textual record of what the picture shows, readable where the image artifact cannot be opened.
+    try {
+      const text = async (testid) => (await page.locator(`[data-testid="${testid}"]`).first().innerText({ timeout: 1500 }).catch(() => "—")).replace(/\s+/g, " ").trim();
+      const stages = await page.locator('[data-testid^="demo-stage-"]').evaluateAll((els) => els.filter((e) => e.getAttribute("data-reached") === "yes").map((e) => e.textContent?.trim()));
+      uiStates.push(`${name}: exposure=[${await text("demo-exposure")}] returned=[${await text("demo-returned")}] stages=[${stages.join(",") || "none"}] proof=[${(await text("demo-proof")).slice(0, 160)}]`);
+    } catch { /* observation only */ }
     if (!EVIDENCE_DIR) return;
     try { await page.screenshot({ path: join(EVIDENCE_DIR, `${name}.png`), fullPage: true }); } catch { /* observation only */ }
   };
@@ -2030,11 +2038,23 @@ try {
 // output rather than a paraphrase of it. Also emitted as ONE notice annotation (readable from the check-run
 // record when job logs are not downloadable). Nothing here changes a verdict.
 if (section14Start >= 0) {
-  const lines = results.slice(section14Start).map((r) => `${r.ok ? "PASS" : "FAIL"} · ${r.name}${r.detail ? ` · ${r.detail}` : ""}`);
+  const lines = results.slice(section14Start).map((r) => `${r.ok ? "PASS" : "FAIL"} · ${r.name}${r.detail ? ` · ${String(r.detail).replace(/\s+/g, " ").slice(0, 150)}` : ""}`);
   const header = `Synthetic Demo Console · operator journey (journey section 14) · ${lines.filter((l) => l.startsWith("PASS")).length}/${lines.length} checks passed`;
-  if (EVIDENCE_DIR) writeFileSync(join(EVIDENCE_DIR, "section14-assertions.txt"), `${header}\n\n${lines.join("\n")}\n`);
-  const text = [header, ...lines].join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").slice(0, 60_000);
-  console.log(`::notice title=journey-section-14-assertions::${text}`);
+  if (EVIDENCE_DIR) writeFileSync(join(EVIDENCE_DIR, "section14-assertions.txt"), `${header}\n\n${lines.join("\n")}\n\nUI STATE AT EACH SCREENSHOT\n${uiStates.join("\n")}\n`);
+  // Annotation messages are capped near 4 KB, so the record goes out in numbered chunks (each its own notice).
+  const chunks = [];
+  let cur = [];
+  let size = 0;
+  for (const line of [header, ...lines, "UI STATE AT EACH SCREENSHOT", ...uiStates]) {
+    if (size + line.length > 3300 && cur.length) { chunks.push(cur); cur = []; size = 0; }
+    cur.push(line);
+    size += line.length + 1;
+  }
+  if (cur.length) chunks.push(cur);
+  chunks.slice(0, 9).forEach((chunk, i) => {
+    const text = chunk.join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+    console.log(`::notice title=journey-evidence ${i + 1}/${Math.min(chunks.length, 9)}::${text}`);
+  });
 }
 
 // The summary has to be unmistakable in a CI log. A harness error (a timeout, a missing element)
