@@ -76,8 +76,11 @@ export async function apiRequest<T>(
         : {};
     res = await fetch(`/api${path}`, {
       method,
+      // `content-type: application/json` only when there IS a body: Fastify rejects an empty body that
+      // claims to be JSON (400 FST_ERR_CTP_EMPTY_JSON_BODY), which silently broke every body-less POST
+      // (author, intervention, verify, synthetic launch/settle) when sent from the browser.
       headers: {
-        "content-type": "application/json",
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
         ...identityHeaders,
       },
       body: body === undefined ? undefined : JSON.stringify(body),

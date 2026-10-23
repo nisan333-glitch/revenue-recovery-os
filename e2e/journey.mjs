@@ -1769,7 +1769,7 @@ try {
   }
   consoleText = await bodyText();
   check("exactly the three under-billed payers reach the screen's review list", reconPending === 3,
-    `${reconPending} candidates · ${consoleText.slice(0, 160)}`);
+    `${reconPending} candidates · alert=${(await page.locator('[role="alert"]').allInnerTexts().catch(() => [])).join(" / ").slice(0, 200)} · notice=${(await page.locator('[role="status"]').allInnerTexts().catch(() => [])).join(" / ").slice(0, 200)}`);
   haltIf(reconPending !== 3, "the reconciler's candidates did not reach the screen, so the rest of section 14 is unreachable");
 
   const reconApi = await apiCall("GET", `/agent-candidates?boundaryId=${encodeURIComponent(BOUNDARY)}`, asOperator);
