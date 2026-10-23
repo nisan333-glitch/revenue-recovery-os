@@ -211,6 +211,11 @@ function startApi() {
     NH_RECONCILIATION_OBSERVER_ENABLED: "true",
     NH_RECONCILER_PSEUDONYM_KEY: RECONCILER_PSEUDONYM_KEY,
     NH_AGENT_ADMISSION_POLICIES: "ActivationMissed:5000,RevenueUnderBilled:10000",
+    // Section 14 · the PRIVATE synthetic demo, which is OFF unless asked for. It generates its own
+    // ephemeral signing key inside this process and registers only the public half with the verifier;
+    // this harness never holds that key. The boundary is the journey's own, so the worker serves it.
+    NH_SYNTHETIC_DEMO_ENABLED: "true",
+    NH_SYNTHETIC_DEMO_BOUNDARY: BOUNDARY,
     // Only the PUBLIC half. The API can verify an attestation and cannot produce one.
     NH_EVIDENCE_SOURCE_KEYS: EVIDENCE_PUBLIC_KEYS,
     NH_PILOT_INPUT_TERMINAL_GRACE_HOURS: "24",
@@ -1701,239 +1706,209 @@ try {
     !refusals.operator.body.includes("amountAtRisk") && !refusals.operator.body.includes("exposure"),
     refusals.operator.body.slice(0, 120));
 
-  // ── 14 · Reconciler-driven observations: expected obligations vs billed lines ───────────────────
+  // ── 14 · The OPERATOR journey: Identify → Fix → Prove, entirely through the Synthetic Demo screen ─────
   //
-  // The second detector, and the first whose observation comes from COMPARING two systems rather than
-  // from one system's own deadline. `seed-journey-reconciliation-task.ts` injects two raw extracts from
-  // a labelled SYNTHETIC demo book; the real validators, the real reconciliation core, the real worker,
-  // the real admission bar and the real review screen do everything else.
+  // NO SEED SCRIPT IS AN OPERATOR STEP. Everything an operator does here is a click on a screen that calls
+  // a governed route: the launch enqueues the LABELLED synthetic book through the demo module, the REAL
+  // reconciler and the REAL worker find the shortfalls, the REAL admission bar admits them, and the case is
+  // reviewed, opened, owned, baselined, acted on, settled by a SIGNED synthetic source, and approved by a
+  // DIFFERENT identity — each step enforced by the server, not by this page.
   //
   // WHAT THE BOOK CONTAINS, and therefore what must and must not reach the queue: three payers are
   // under-billed (candidates: $600.00, $1,500.00, $1,000.00), one is balanced, one is OVER-billed (a
   // liability, never a candidate and never netted), one is unpriced (an UNKNOWN, never a $0.00 finding).
-  // The queue must show exactly the three, total $3,100.00, labelled Revenue Opportunity.
   //
-  // THE ARC RUNS TO PROVEN (14b). It first stopped at evidence, because the proof's `recoveryReason`
-  // vocabulary had no value that truthfully names "a corrective invoice was raised and collected" and
-  // `UsageActivation` would have written a false reason into an immutable proof. `BillingCorrection` was
-  // added as an approved, additive vocabulary value; the evidence-only assertions below stay, because
-  // evidence is still not money until an approver freezes a proof.
-  const seededRecon = JSON.parse(
-    execFileSync("npx", ["vite-node", "scripts/seed-journey-reconciliation-task.ts", BOUNDARY], {
-      cwd: ROOT,
-      encoding: "utf8",
-      env: process.env,
-    }),
-  );
-  check("a synthetic reconciliation observation is queued for the real reconciler",
-    typeof seededRecon.taskId === "string" && /SYNTHETIC/.test(seededRecon.label),
-    `${seededRecon.taskId} · ${seededRecon.label}`);
+  // THE ONE REMAINING HARNESS SCRIPT is `seed-journey-case-evidence.ts ... tampered`, and it is a NEGATIVE
+  // CONTROL, not an operator step: it plays an attacker who signs one amount and submits another.
+  const fmtMoney = (minor) => `$${(minor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  const asOperator = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
+  const asApprover = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
+  const apiCall = (method, path, headers, body) => page.evaluate(async ([m, p, h, b]) => {
+    const init = { method: m, headers: { ...h } };
+    if (b !== undefined) { init.headers["content-type"] = "application/json"; init.body = JSON.stringify(b); }
+    const res = await fetch(`/api${p}`, init);
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch { json = null; }
+    return { status: res.status, body: text.slice(0, 200), json };
+  }, [method, path, headers, body]);
+  const bodyText = async () => (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  const stageNow = (stage) => page.waitForFunction(
+    (s) => document.querySelector(`[data-testid="demo-stage-${s}"]`)?.getAttribute("data-reached") === "yes",
+    stage, { timeout: 20_000 },
+  ).then(() => true, () => false);
+  const stageIs = async (stage) =>
+    (await page.locator(`[data-testid="demo-stage-${stage}"]`).getAttribute("data-reached").catch(() => null)) === "yes";
 
-  await page.getByRole("button", { name: "Candidate Review" }).click();
-  await page.locator('input[placeholder="Enter the exact customer/pilot boundary"]').fill(BOUNDARY);
-  const loadReconCandidates = page.getByRole("button", { name: "Load candidates" });
-  const pendingCount = () => page.getByText("pending review", { exact: true }).count();
+  await page.getByRole("button", { name: "Synthetic Demo (live API)" }).click();
+  await page.locator('[data-testid="synthetic-banner"]').waitFor({ timeout: 15_000 });
+  let consoleText = await bodyText();
+  check("the demo screen says SYNTHETIC before anything else, and denies real data, payments and money",
+    /SYNTHETIC DEMONSTRATION/.test(consoleText) && /No customer data, no payment rail, no real money/.test(consoleText),
+    consoleText.slice(0, 200));
+  check("before launch there is no candidate, no case, and Revenue Returned reads NOT COMPUTED",
+    (await page.locator('[data-testid="demo-candidate"]').count()) === 0 &&
+      /NOT COMPUTED/.test(await page.locator('[data-testid="demo-returned"]').innerText()),
+    consoleText.slice(0, 200));
+
+  // NC · only an operator may launch. The screen offers the button to the operator; the SERVER decides.
+  const launchRefusals = {};
+  for (const [name, headers] of [
+    ["author", { "x-actor-id": "dana@company", "x-actor-role": "author" }],
+    ["approver", asApprover],
+    ["steward", { "x-actor-id": "gov@company", "x-actor-role": "steward" }],
+  ]) launchRefusals[name] = (await apiCall("POST", "/synthetic-demo/launch", headers)).status;
+  check("NC · author, approver and steward are refused when they try to launch the synthetic reconciliation",
+    Object.values(launchRefusals).every((s) => s === 403), JSON.stringify(launchRefusals));
+
+  await page.getByRole("button", { name: "Launch synthetic reconciliation" }).click();
   let reconPending = 0;
-  for (let attempt = 0; attempt < 60 && reconPending < 3; attempt += 1) {
-    await loadReconCandidates.click();
+  for (let attempt = 0; attempt < 80 && reconPending < 3; attempt += 1) {
     await page.waitForTimeout(500);
-    reconPending = await pendingCount();
+    reconPending = await page.locator('[data-testid="demo-candidate"]').count();
   }
-  const reconText = (await page.locator("body").innerText()).replace(/\s+/g, " ");
-  check("exactly the three under-billed payers reach the review queue", reconPending === 3,
-    `${reconPending} pending · ${reconText.slice(0, 160)}`);
-  haltIf(reconPending !== 3, "the reconciler's candidates did not reach the queue, so the rest of section 14 is unreachable");
+  consoleText = await bodyText();
+  check("exactly the three under-billed payers reach the screen's review list", reconPending === 3,
+    `${reconPending} candidates · ${consoleText.slice(0, 160)}`);
+  haltIf(reconPending !== 3, "the reconciler's candidates did not reach the screen, so the rest of section 14 is unreachable");
 
-  const reconApi = await page.evaluate(async ([boundaryId]) => {
-    const res = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
-      headers: { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" },
-    });
-    return { status: res.status, items: res.ok ? await res.json() : [] };
-  }, [BOUNDARY]);
-  const reconAmounts = reconApi.items.map((i) => i.signal.amountAtRiskMinor).sort((a, b) => a - b);
+  const reconApi = await apiCall("GET", `/agent-candidates?boundaryId=${encodeURIComponent(BOUNDARY)}`, asOperator);
+  const reconItems = reconApi.json ?? [];
+  const reconAmounts = reconItems.map((i) => i.signal.amountAtRiskMinor).sort((a, b) => a - b);
   checkEqual("the queue holds the three shortfalls and nothing else — no balanced, over-billed or unpriced unit",
     JSON.stringify(reconAmounts), JSON.stringify([60_000, 100_000, 150_000]));
   check("each carries the reconciler's own type and detector, and an opaque pseudonymous reference",
-    reconApi.items.every((i) => i.signal.recoveryType === "RevenueUnderBilled" &&
+    reconItems.every((i) => i.signal.recoveryType === "RevenueUnderBilled" &&
       i.signal.detectorVersion === "reconciliation-observation-v1" &&
       /^hmac-sha256:[a-f0-9]{64}$/.test(i.signal.sourceRef)) &&
-      new Set(reconApi.items.map((i) => i.signal.sourceRef)).size === 3,
-    reconApi.items.map((i) => i.signal.sourceRef.slice(0, 22)).join(" "));
-  // The QUEUE formats whole units (`formatMoney` without `exact`), so its total reads "$3,100"; the case
-  // screen formats exactly and reads "$600.00". The API check above already pins the cents.
-  check("the screen total is $3,100 and every figure is labelled Revenue Opportunity, not proven",
-    /\$3,100(?![.\d])/.test(reconText) &&
-      (reconText.match(/revenue opportunity · not proven/gi) ?? []).length === 3,
-    reconText.slice(0, 220));
+      new Set(reconItems.map((i) => i.signal.sourceRef)).size === 3,
+    reconItems.map((i) => i.signal.sourceRef.slice(0, 22)).join(" "));
+  check("the screen total is $3,100.00 and every candidate is labelled Revenue Opportunity, not proven",
+    /\$3,100\.00/.test(await page.locator('[data-testid="demo-exposure"]').innerText()) &&
+      (consoleText.match(/revenue opportunity · not proven/gi) ?? []).length === 3,
+    consoleText.slice(0, 220));
+  check("the Returned panel is still NOT COMPUTED — an identified total is not money returned",
+    /NOT COMPUTED/.test(await page.locator('[data-testid="demo-returned"]').innerText()));
   check("no raw contract, payer or invoice reference from the extracts is shown anywhere",
-    !/(ENT|PAYER|SL|INV)-DEMO/.test(reconText));
+    !/(ENT|PAYER|SL|INV)-DEMO/.test(consoleText));
 
-  // Which candidate is "first" is the screen's order, which this harness does not assume matches the
-  // API's. The promoted case therefore has to show exactly ONE of the three known figures, and the
-  // governed record has to agree with the one the screen showed.
-  const fmtMoney = (minor) => `$${(minor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-  await page.locator('input[placeholder="Required immutable review reason"]').first().fill(
-    "journey · confirmed against the contract schedule (synthetic)",
-  );
-  await page.getByRole("button", { name: "Accept for case creation" }).first().click();
-  await page.waitForTimeout(400);
-  await page.getByRole("button", { name: "Create Recovery Case" }).first().click();
-  await page.waitForTimeout(600);
-  const reconPromoted = (await page.locator("body").innerText()).replace(/\s+/g, " ");
-  const reconCaseId = reconPromoted.match(/Recovery Case (RC-[0-9a-f-]+)/i)?.[1] ?? "";
-  check("promoting ONE candidate creates ONE Recovery Case", reconCaseId !== "" && reconCaseId !== recoveryCaseId,
-    reconPromoted.slice(0, 200));
-  haltIf(reconCaseId === "", "no Recovery Case id was reported for the reconciler candidate");
+  // IDENTIFY → accept → open. Two separate operator actions, as the review screen has always required.
+  await page.getByRole("button", { name: "Accept candidate" }).first().click();
+  await page.getByRole("button", { name: "Open Recovery Case" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Open Recovery Case" }).click();
+  await page.locator('[data-testid="demo-case-id"]').waitFor({ timeout: 15_000 });
+  const reconCaseId = (await page.locator('[data-testid="demo-case-id"]').innerText()).trim();
+  check("promoting ONE candidate creates ONE Recovery Case", /^RC-[0-9a-f-]+$/i.test(reconCaseId) && reconCaseId !== recoveryCaseId,
+    reconCaseId);
+  haltIf(!/^RC-/.test(reconCaseId), "no Recovery Case id was reported for the reconciler candidate");
 
-  const afterReconPromote = await page.evaluate(async ([boundaryId]) => {
-    const res = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
-      headers: { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" },
-    });
-    return res.ok ? (await res.json()).length : -1;
-  }, [BOUNDARY]);
+  const exposureText = await page.locator('[data-testid="demo-exposure"]').innerText();
+  const shownAmounts = [60_000, 100_000, 150_000].filter((a) => exposureText.includes(fmtMoney(a)));
+  check("the case shows exactly one identified exposure, from the promoted candidate",
+    shownAmounts.length === 1, exposureText);
+  const exposureMinor = shownAmounts[0];
+  const afterOpen = await apiCall("GET", `/agent-candidates?boundaryId=${encodeURIComponent(BOUNDARY)}`, asOperator);
   check("the other two shortfalls stay pending — one promotion promotes one candidate",
-    afterReconPromote === 2, `pending=${afterReconPromote}`);
+    (afterOpen.json ?? []).length === 2, `pending=${(afterOpen.json ?? []).length}`);
+  check("the case starts at OPENED and nothing further is claimed",
+    (await stageIs("OPENED")) && !(await stageIs("OWNED")) && !(await stageIs("PROVEN")));
 
-  await page.getByRole("button", { name: "Recovery Case", exact: true }).click();
-  // `readCase` closes over the §13 case id, so this section reads its own case explicitly.
-  let reconCaseText = "";
-  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
-  await page.getByRole("button", { name: "Read case" }).click();
-  await page.waitForTimeout(500);
-  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
-  const shownAmounts = [60_000, 100_000, 150_000].filter((a) => reconCaseText.includes(fmtMoney(a)));
-  check("the case shows exactly one identified exposure, from the promoted candidate, and states it is not money returned",
-    reconCaseText.includes(reconCaseId) && shownAmounts.length === 1 && /not money returned/i.test(reconCaseText),
-    `${shownAmounts.join(",")} · ${reconCaseText.slice(0, 200)}`);
-  check("Revenue Returned reads NOT COMPUTED and no $0.00 appears for any unit — an unknown is not a zero",
-    /NOT COMPUTED/.test(reconCaseText) && !/\$0\.00/.test(reconCaseText), reconCaseText.slice(0, 220));
+  // NC · the synthetic payer cannot pay before the fix exists — and not for a case that does not exist.
+  const earlySettle = await apiCall("POST", `/synthetic-demo/cases/${reconCaseId}/settle`, asOperator);
+  check("NC · the simulated payer is refused before the corrective action exists (the payment cannot precede the fix)",
+    earlySettle.status === 409, `${earlySettle.status} ${earlySettle.body}`);
+  const unknownSettle = await apiCall("POST", "/synthetic-demo/cases/RC-does-not-exist/settle", asOperator);
+  check("NC · the simulated payer is refused for a case that does not exist", unknownSettle.status === 404,
+    `${unknownSettle.status}`);
 
-  const reconDrive = await page.evaluate(async ([caseId]) => {
-    const call = async (method, path, actorId, role, body) => {
-      const headers = { "x-actor-id": actorId, "x-actor-role": role };
-      if (body !== undefined) headers["content-type"] = "application/json";
-      const res = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-      return { status: res.status, body: await res.text() };
-    };
-    return {
-      author: await call("POST", `/cases/${caseId}/author`, "dana@company", "author"),
-      baseline: await call("POST", `/cases/${caseId}/baseline`, "dana@company", "author", {
-        baselineId: `BL-journey-${caseId.slice(3, 11)}`,
-        calculatedMinor: 2_000,
-        currency: "USD",
-        method: "matched_historical_cohort",
-        methodVersion: 1,
-        sourceRefs: ["journey-recon-src-1"],
-        effectiveAt: "2026-07-01T00:00:00.000Z",
-      }),
-      intervention: await call("POST", `/cases/${caseId}/intervention`, "dana@company", "author"),
-    };
-  }, [reconCaseId]);
-  check("the reconciler's case is authored, baselined and intervened through the governed API",
-    reconDrive.author.status === 201 && reconDrive.baseline.status === 201 && reconDrive.intervention.status === 201,
-    `author=${reconDrive.author.status} baseline=${reconDrive.baseline.status} intervention=${reconDrive.intervention.status}`);
+  // FIX · each button is the operator's, and each lands on the governed route.
+  const buttonDisabled = (name) => page.getByRole("button", { name, exact: true }).isDisabled();
+  check("the later steps are not offered yet — Lock baseline, Record corrective action and Simulate synthetic payment are disabled",
+    (await buttonDisabled("Lock baseline")) && (await buttonDisabled("Record corrective action")) &&
+      (await buttonDisabled("Simulate synthetic payment")) && (await buttonDisabled("Approve proof as Finance")));
+  await page.getByRole("button", { name: "Record case owner" }).click();
+  check("the case is OWNED", await stageNow("OWNED"));
 
-  const reconEvidence = JSON.parse(
-    execFileSync("npx", ["vite-node", "scripts/seed-journey-case-evidence.ts", reconCaseId], {
-      cwd: ROOT,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        JOURNEY_API_PORT: String(API_PORT),
-        JOURNEY_EVIDENCE_KEY_ID: EVIDENCE_KEY_ID,
-        JOURNEY_EVIDENCE_PRIVATE_KEY: EVIDENCE_PRIVATE_KEY,
-      },
-    }),
-  );
-  check("outcome evidence is ingested against the reconciler's case", reconEvidence.ingested === true,
-    JSON.stringify(reconEvidence).slice(0, 200));
+  await page.getByLabel("Baseline amount").fill(fmtMoney(exposureMinor + 100).replace(/[$,]/g, ""));
+  check("NC · a baseline at or above the exposure is not accepted (it would leave no room for any recovery)",
+    await buttonDisabled("Lock baseline"), "button enabled");
+  await page.getByLabel("Baseline amount").fill("100.00");
+  await page.getByRole("button", { name: "Lock baseline" }).click();
+  check("the baseline is locked BEFORE any outcome exists — the case is BASELINED", await stageNow("BASELINED"));
+  await page.getByRole("button", { name: "Record corrective action" }).click();
+  check("the corrective action is recorded — the case is INTERVENED", await stageNow("INTERVENED"));
+  haltIf(!(await stageIs("INTERVENED")), "the operator could not reach INTERVENED through the screen");
 
-  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
-  await page.getByRole("button", { name: "Read case" }).click();
-  await page.waitForTimeout(500);
-  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
-  check("the case reads EVIDENCED, and is NOT proven — evidence is not money",
-    (await stageReached("EVIDENCED")) && !(await stageReached("PROVEN")) &&
-      /NOT COMPUTED/.test(reconCaseText) && !/\$0\.00/.test(reconCaseText),
-    reconCaseText.slice(0, 220));
+  // PROVE (1) · the synthetic payer settles. NC first: other roles may not trigger the source.
+  const settleRefusals = {};
+  for (const [name, headers] of [["approver", asApprover], ["steward", { "x-actor-id": "gov@company", "x-actor-role": "steward" }]]) {
+    settleRefusals[name] = (await apiCall("POST", `/synthetic-demo/cases/${reconCaseId}/settle`, headers)).status;
+  }
+  check("NC · the approver and the steward cannot trigger the synthetic payer",
+    Object.values(settleRefusals).every((s) => s === 403), JSON.stringify(settleRefusals));
+  const evidenceBefore = await apiCall("GET", `/cases/${reconCaseId}/evidence`, asApprover);
+  check("and no evidence exists yet — every refusal above left the case untouched",
+    evidenceBefore.status === 200 && (evidenceBefore.json ?? []).length === 0, `${evidenceBefore.status} ${evidenceBefore.body}`);
 
-  const reconView = await page.evaluate(async ([caseId]) => {
-    const res = await fetch(`/api/recovery-cases/${caseId}`, {
-      headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" },
-    });
-    return { status: res.status, view: res.ok ? await res.json() : null };
-  }, [reconCaseId]);
-  check("the governed record names the reconciler as the origin and holds no proven figure",
-    reconView.status === 200 &&
-      reconView.view?.root?.detectorVersion === "reconciliation-observation-v1" &&
-      shownAmounts.length === 1 && reconView.view?.lifecycle?.exposure?.minor === shownAmounts[0] &&
-      reconView.view?.provenRevenueReturnedMinor === null,
-    JSON.stringify({ d: reconView.view?.root?.detectorVersion, e: reconView.view?.lifecycle?.exposure?.minor, p: reconView.view?.provenRevenueReturnedMinor }));
+  await page.getByRole("button", { name: "Simulate synthetic payment" }).click();
+  check("the case reads EVIDENCED", await stageNow("EVIDENCED"));
+  consoleText = await bodyText();
+  check("EVIDENCED is NOT proven — evidence is not money: Returned still reads NOT COMPUTED, never $0.00",
+    !(await stageIs("PROVEN")) &&
+      /NOT COMPUTED/.test(await page.locator('[data-testid="demo-returned"]').innerText()) && !/\$0\.00/.test(consoleText),
+    consoleText.slice(0, 200));
 
-  // ── 14b · NEGATIVE CONTROLS, then the proof ────────────────────────────────────────────────────
+  const evidenceList = await apiCall("GET", `/cases/${reconCaseId}/evidence`, asApprover);
+  const settledEvidence = (evidenceList.json ?? [])[0];
+  check("the settlement is ONE signed, independent OUTCOME record for exactly the identified exposure, labelled SYNTHETIC",
+    (evidenceList.json ?? []).length === 1 &&
+      settledEvidence?.evidenceRole === "outcome" && settledEvidence?.trustClassification === "independent" &&
+      settledEvidence?.amountMinor === exposureMinor && settledEvidence?.currency === "USD" &&
+      /^SYNTHETIC-/.test(settledEvidence?.sourceRecordId ?? "") && settledEvidence?.evidenceId === `EV-SYNTHETIC-${reconCaseId}`,
+    JSON.stringify(settledEvidence ?? null).slice(0, 220));
+  const secondSettle = await apiCall("POST", `/synthetic-demo/cases/${reconCaseId}/settle`, asOperator);
+  check("NC · the synthetic payer settles a case at most once", secondSettle.status === 409,
+    `${secondSettle.status} ${secondSettle.body}`);
+
+  // ── 14b · NEGATIVE CONTROLS at approval, then the proof ─────────────────────────────────────────
   //
-  // Each control is a way a beneficiary — or a mistake — could turn this case into a counted number
-  // without the evidence for it. Every one must be REFUSED and the case must stay un-proven afterwards;
-  // only then is the genuine approval attempted. They run first on purpose: a control that wrongly
-  // succeeded would freeze a bad proof, and the failure message names which one did.
+  // Each control is a way a beneficiary — or a mistake — could turn this case into a counted number without
+  // the evidence for it. Every one must be REFUSED and the case must stay un-proven afterwards; only then
+  // does the screen's genuine approval run. They run first on purpose: a control that wrongly succeeded
+  // would freeze a bad proof, and the failure message names which one did.
   //
-  // THE REASON IS A LABEL. `BillingCorrection` says HOW the money came back. Raising a corrective
-  // invoice is not collection, so the figure below comes from signed outcome evidence and a locked
-  // baseline, exactly as for every other reason — and the controls prove the gate does not read the label.
+  // THE REASON IS A LABEL. `BillingCorrection` says HOW the money came back. The figure comes from signed
+  // outcome evidence and a locked baseline, exactly as for every other reason — and the controls prove the
+  // gate does not read the label.
+  const tag = reconCaseId.slice(3, 11);
+  const baselineId = `BL-SYNTHETIC-${tag}`;
   const proofBody = (over = {}) => ({
-    proofId: `PF-journey-${reconCaseId.slice(3, 11)}`,
+    proofId: `PF-SYNTHETIC-${tag}`,
     recoveryCaseId: reconCaseId,
     currency: "USD",
-    collectedMinor: 9_000,
+    collectedMinor: exposureMinor,
     excludedRecoveryMinor: 0,
     exclusionStatement: "journey · no exclusions asserted (synthetic)",
     recoveryReason: "BillingCorrection",
     attribution: "corrective invoice raised and collected (synthetic)",
-    evidenceIds: [reconEvidence.evidenceId],
-    baselineId: `BL-journey-${reconCaseId.slice(3, 11)}`,
+    evidenceIds: [settledEvidence?.evidenceId ?? "missing"],
+    baselineId,
     confidenceUsed: 95,
     ...over,
   });
-  const postProof = (actorId, role, body) => page.evaluate(async ([a, r, b]) => {
-    const res = await fetch("/api/proofs", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-actor-id": a, "x-actor-role": r },
-      body: JSON.stringify(b),
-    });
-    return { status: res.status, body: (await res.text()).slice(0, 160) };
-  }, [actorId, role, body]);
   const refused = (r) => r.status >= 400 && r.status < 500;
-  const readReconProven = async () => {
-    const v = await page.evaluate(async ([caseId]) => {
-      const res = await fetch(`/api/recovery-cases/${caseId}`, {
-        headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" },
-      });
-      return res.ok ? await res.json() : null;
-    }, [reconCaseId]);
-    return v?.provenRevenueReturnedMinor ?? null;
-  };
+  const readProven = async () => (await apiCall("GET", `/recovery-cases/${reconCaseId}`, asApprover)).json?.provenRevenueReturnedMinor ?? null;
 
-  const ncOverClaim = await postProof("cfo@company", "approver",
-    proofBody({ proofId: `PF-nc1-${reconCaseId.slice(3, 11)}`, collectedMinor: 9_001 }));
-  check("NC · claiming more collected than the signed evidence substantiates is refused",
-    refused(ncOverClaim), `${ncOverClaim.status} ${ncOverClaim.body}`);
-
-  const ncNoEvidence = await postProof("cfo@company", "approver",
-    proofBody({ proofId: `PF-nc2-${reconCaseId.slice(3, 11)}`, evidenceIds: [] }));
-  check("NC · a proof that cites no evidence is refused, whatever its reason says",
-    refused(ncNoEvidence), `${ncNoEvidence.status} ${ncNoEvidence.body}`);
-
-  const ncAuthor = await postProof("dana@company", "author",
-    proofBody({ proofId: `PF-nc3-${reconCaseId.slice(3, 11)}` }));
-  const ncOperator = await postProof("pilot-operator@company", "operator",
-    proofBody({ proofId: `PF-nc4-${reconCaseId.slice(3, 11)}` }));
+  const ncOverClaim = await apiCall("POST", "/proofs", asApprover, proofBody({ proofId: `PF-nc1-${tag}`, collectedMinor: exposureMinor + 1 }));
+  check("NC · claiming more collected than the signed evidence substantiates is refused", refused(ncOverClaim), `${ncOverClaim.status} ${ncOverClaim.body}`);
+  const ncNoEvidence = await apiCall("POST", "/proofs", asApprover, proofBody({ proofId: `PF-nc2-${tag}`, evidenceIds: [] }));
+  check("NC · a proof that cites no evidence is refused, whatever its reason says", refused(ncNoEvidence), `${ncNoEvidence.status} ${ncNoEvidence.body}`);
+  const ncAuthor = await apiCall("POST", "/proofs", { "x-actor-id": "dana@company", "x-actor-role": "author" }, proofBody({ proofId: `PF-nc3-${tag}` }));
+  const ncOperator = await apiCall("POST", "/proofs", asOperator, proofBody({ proofId: `PF-nc4-${tag}` }));
   check("NC · the case's author and the operator who opened it cannot approve their own recovery",
     refused(ncAuthor) && refused(ncOperator), `author=${ncAuthor.status} operator=${ncOperator.status}`);
-
-  const ncReason = await postProof("cfo@company", "approver",
-    proofBody({ proofId: `PF-nc5-${reconCaseId.slice(3, 11)}`, recoveryReason: "billing_correction" }));
-  check("NC · a reason outside the closed vocabulary is refused — the new value is exact, not a pattern",
-    refused(ncReason), `${ncReason.status} ${ncReason.body}`);
+  const ncReason = await apiCall("POST", "/proofs", asApprover, proofBody({ proofId: `PF-nc5-${tag}`, recoveryReason: "billing_correction" }));
+  check("NC · a reason outside the closed vocabulary is refused — the new value is exact, not a pattern", refused(ncReason), `${ncReason.status} ${ncReason.body}`);
 
   const tamperedEvidence = JSON.parse(
     execFileSync("npx", ["vite-node", "scripts/seed-journey-case-evidence.ts", reconCaseId, "tampered"], {
@@ -1951,61 +1926,65 @@ try {
     tamperedEvidence.ingested === false && tamperedEvidence.status >= 400 && tamperedEvidence.status < 500,
     `${tamperedEvidence.status} ${String(tamperedEvidence.body).slice(0, 120)}`);
 
-  checkEqual("and after every refusal the case still holds NO proven figure",
-    String(await readReconProven()), "null");
-  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
-  await page.getByRole("button", { name: "Read case" }).click();
-  await page.waitForTimeout(500);
-  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
+  checkEqual("and after every refusal the case still holds NO proven figure", String(await readProven()), "null");
   check("and the screen still reads NOT COMPUTED, not PROVEN, not $0.00",
-    !(await stageReached("PROVEN")) && /NOT COMPUTED/.test(reconCaseText) && !/\$0\.00/.test(reconCaseText),
-    reconCaseText.slice(0, 200));
+    !(await stageIs("PROVEN")) && /NOT COMPUTED/.test(await page.locator('[data-testid="demo-returned"]').innerText()) &&
+      !/\$0\.00/.test(await bodyText()));
 
-  // THE GENUINE APPROVAL: a different identity, in the approver role, citing signed outcome evidence.
-  const proofId = `PF-journey-${reconCaseId.slice(3, 11)}`;
-  const reconApproval = await postProof("cfo@company", "approver", proofBody());
-  check("an approver — never the author — freezes the proof for the reconciler's case",
-    reconApproval.status === 201, `${reconApproval.status} ${reconApproval.body}`);
-  haltIf(reconApproval.status !== 201, "the reconciler case's genuine approval was refused, so PROVEN is unreachable");
+  // THE GENUINE APPROVAL: the Finance approver, a different identity from the operator, through the screen.
+  await page.getByRole("button", { name: "Approve proof as Finance" }).click();
+  await page.locator('[data-testid="demo-proof"]').waitFor({ timeout: 20_000 }).catch(() => undefined);
+  const provenReached = await stageNow("PROVEN");
+  check("an approver — never the operator — freezes the proof, and the case reads PROVEN", provenReached,
+    (await bodyText()).slice(0, 200));
+  haltIf(!provenReached, "the screen's genuine approval did not reach PROVEN");
 
-  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
-  await page.getByRole("button", { name: "Read case" }).click();
-  await page.waitForTimeout(500);
-  reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
-  check("the reconciler's case reads PROVEN", await stageReached("PROVEN"), reconCaseText.slice(0, 200));
-  check("Revenue Returned is $70.00 — collected minus baseline — and names the proof it came from",
-    /\$70\.00/.test(reconCaseText) && reconCaseText.includes(proofId), reconCaseText.slice(0, 240));
+  const proofId = `PF-SYNTHETIC-${tag}`;
+  const returnedMinor = exposureMinor - 10_000;
+  const proofText = await page.locator('[data-testid="demo-proof"]').innerText();
+  const returnedText = await page.locator('[data-testid="demo-returned"]').innerText();
+  check("Revenue Returned is collected minus baseline, names the proof it came from, and is SYNTHETIC",
+    returnedText.includes(fmtMoney(returnedMinor)) && (await bodyText()).includes(proofId) && /SYNTHETIC/.test(proofText),
+    `${returnedText} · ${proofText.slice(0, 160)}`);
   check("the identified gap and the proven return are two DIFFERENT numbers on the same screen",
-    shownAmounts.length === 1 && reconCaseText.includes(fmtMoney(shownAmounts[0])) && /\$70\.00/.test(reconCaseText) &&
-      /not money returned/i.test(reconCaseText),
-    reconCaseText.slice(0, 240));
+    (await page.locator('[data-testid="demo-exposure"]').innerText()).includes(fmtMoney(exposureMinor)) &&
+      returnedText.includes(fmtMoney(returnedMinor)) && returnedMinor !== exposureMinor,
+    `exposure ${fmtMoney(exposureMinor)} · returned ${fmtMoney(returnedMinor)}`);
 
   const frozen = await page.evaluate(async ([pid, caseId]) => {
-    const proof = await fetch(`/api/proofs/${pid}`, { headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" } });
-    const view = await fetch(`/api/recovery-cases/${caseId}`, { headers: { "x-actor-id": "cfo@company", "x-actor-role": "approver" } });
+    const h = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
+    const proof = await fetch(`/api/proofs/${pid}`, { headers: h });
+    const view = await fetch(`/api/recovery-cases/${caseId}`, { headers: h });
     return { proofStatus: proof.status, proof: proof.ok ? await proof.json() : null, view: view.ok ? await view.json() : null };
   }, [proofId, reconCaseId]);
   check("the frozen proof records the reason, the signed collection and the locked baseline",
     frozen.proofStatus === 200 &&
       frozen.proof?.recoveryReason === "BillingCorrection" &&
-      frozen.proof?.collectedAmount?.minor === 9_000 &&
-      frozen.proof?.baselineAmount?.minor === 2_000 &&
-      frozen.proof?.revenueReturned?.minor === 7_000 &&
-      (frozen.proof?.evidenceRefs ?? []).includes(reconEvidence.evidenceId),
+      frozen.proof?.collectedAmount?.minor === exposureMinor &&
+      frozen.proof?.baselineAmount?.minor === 10_000 &&
+      frozen.proof?.revenueReturned?.minor === returnedMinor &&
+      (frozen.proof?.evidenceRefs ?? []).includes(settledEvidence?.evidenceId),
     JSON.stringify({ r: frozen.proof?.recoveryReason, c: frozen.proof?.collectedAmount?.minor, b: frozen.proof?.baselineAmount?.minor }));
   check("the case's governed record agrees, and the exposure is a separate figure from the proven one",
-    frozen.view?.provenRevenueReturnedMinor === 7_000 &&
-      frozen.view?.lifecycle?.exposure?.minor === shownAmounts[0] &&
+    frozen.view?.provenRevenueReturnedMinor === returnedMinor &&
+      frozen.view?.lifecycle?.exposure?.minor === exposureMinor &&
       frozen.view?.lifecycle?.exposureIsNotRecoveredRevenue === true,
     JSON.stringify({ p: frozen.view?.provenRevenueReturnedMinor, e: frozen.view?.lifecycle?.exposure?.minor }));
-  const stillPending = await page.evaluate(async ([boundaryId]) => {
-    const res = await fetch(`/api/agent-candidates?boundaryId=${encodeURIComponent(boundaryId)}`, {
-      headers: { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" },
-    });
-    return res.ok ? (await res.json()).length : -1;
-  }, [BOUNDARY]);
+
+  // The same case on the READ-ONLY governed screen, which shares no code with the demo console.
+  await page.getByRole("button", { name: "Recovery Case", exact: true }).click();
+  await page.getByLabel("Recovery Case ID").fill(reconCaseId);
+  await page.getByRole("button", { name: "Read case" }).click();
+  await page.waitForTimeout(600);
+  const reconCaseText = (await page.locator('[data-testid="recovery-case-body"]').innerText().catch(() => "")).replace(/\s+/g, " ");
+  check("the independent Recovery Case screen reads the same case as PROVEN with the same two numbers",
+    (await stageReached("PROVEN")) && reconCaseText.includes(fmtMoney(returnedMinor)) &&
+      reconCaseText.includes(fmtMoney(exposureMinor)) && /not money returned/i.test(reconCaseText),
+    reconCaseText.slice(0, 240));
+
+  const stillPending = await apiCall("GET", `/agent-candidates?boundaryId=${encodeURIComponent(BOUNDARY)}`, asOperator);
   check("proving one case does not touch the other two shortfalls — they remain pending candidates, uncounted",
-    stillPending === 2, `pending=${stillPending}`);
+    (stillPending.json ?? []).length === 2, `pending=${(stillPending.json ?? []).length}`);
 
   // ── 12 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));

@@ -19,6 +19,7 @@ import { PilotPolicyGovernance } from "./modules/governance/PilotPolicyGovernanc
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
 import { CandidateReviewQueue } from "./modules/CandidateReviewQueue";
+import { SyntheticDemoConsole } from "./modules/SyntheticDemoConsole";
 import { RecoveryCaseCenter } from "./modules/RecoveryCaseCenter";
 
 // The single case used by the Guided Demo navigation mode. Only an identifier — no business values here.
@@ -39,6 +40,7 @@ type ModuleKey =
   | "assessment"
   | "reassessment"
   | "synthetic-pilot"
+  | "synthetic-demo"
   | "candidate-review"
   | "recovery-case"
   | "policy-governance";
@@ -46,6 +48,8 @@ type ModuleKey =
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "demo", label: `Guided Demo — ${DEMO_CASE_ID}`, group: "Demo" },
   { key: "synthetic-pilot", label: "Synthetic Pilot v2", group: "Demo" },
+  // The LIVE-API walkthrough (private, server-flagged). "Synthetic Pilot v2" above is a client-side simulation.
+  { key: "synthetic-demo", label: "Synthetic Demo (live API)", group: "Demo" },
   { key: "loop", label: "Recovery Loop", group: "Recover" },
   { key: "dashboard", label: "Executive Dashboard", group: "Prove" },
   { key: "cfo", label: "CFO Proof View", group: "Prove" },
@@ -198,6 +202,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
               </section>
             ))}
           {active === "synthetic-pilot" && <SyntheticPilotV2 />}
+          {active === "synthetic-demo" && <SyntheticDemoConsole />}
           {active === "loop" && <RecoveryLoop onOpen={setActive} />}
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}

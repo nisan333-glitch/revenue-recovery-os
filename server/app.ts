@@ -59,7 +59,9 @@ import type { AgentWorkerReadiness } from "./agents/worker";
 import { CandidateReviewService, type CandidateReviewDecision } from "./agents/candidateReview";
 import { CandidatePromotionService } from "./agents/recoveryCase";
 import { PostgresCandidateReviewStore } from "./agents/postgresCandidateReviewStore";
-import { sourceVerifierFromEnvironment, type SourceVerifier } from "./services/sourceVerification";
+import { SourceVerifier, sourceTrustKeysFromEnvironment } from "./services/sourceVerification";
+import { syntheticDemoFromEnvironment, type SyntheticDemo } from "./demo/syntheticDemo";
+import { postgresSyntheticDemoPorts } from "./demo/syntheticDemoPorts";
 
 // EP-10 · Requests that arrived with a leading "/api" and were rewritten below — kept so
 // the production server's SPA-fallback handler can tell "an unmatched /api/* call" (must
@@ -70,6 +72,8 @@ export const apiPrefixedRequests = new WeakSet<object>();
 
 export interface BuildAppOptions {
   readonly sourceVerifier?: SourceVerifier;
+  /** Private synthetic demo. `undefined` reads the environment (off unless NH_SYNTHETIC_DEMO_ENABLED=true); `null` forces it off. */
+  readonly syntheticDemo?: SyntheticDemo | null;
   readonly agentReadiness?: () => AgentWorkerReadiness;
   readonly candidateReviewService?: CandidateReviewService;
   readonly candidatePromotionService?: CandidatePromotionService;
@@ -77,7 +81,15 @@ export interface BuildAppOptions {
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
-  const sourceVerifier = options.sourceVerifier ?? sourceVerifierFromEnvironment(process.env);
+  const syntheticDemo = options.syntheticDemo !== undefined
+    ? options.syntheticDemo
+    : process.env.NH_SYNTHETIC_DEMO_ENABLED === "true"
+      ? syntheticDemoFromEnvironment(process.env, postgresSyntheticDemoPorts())
+      : null;
+  // The demo's EPHEMERAL public key joins the trust registry only while the demo is enabled. It is bound to
+  // the `billing` source system and its private half never leaves the demo object.
+  const sourceVerifier = options.sourceVerifier
+    ?? new SourceVerifier([...sourceTrustKeysFromEnvironment(process.env), ...(syntheticDemo ? [syntheticDemo.trustKey] : [])]);
   assertProductionDatabaseConfiguration(process.env);
   if (process.env.NODE_ENV === "production" && !options.identityResolver) {
     throw new Error("a verified production identity resolver is required");
@@ -120,6 +132,34 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   // Public health probes — no authentication.
   app.get("/health", async () => ({ status: "ok" }));
+
+  // Synthetic demo (private, off by default). The status route is ALWAYS registered so the UI can say
+  // "not enabled" instead of guessing; the launch/settle routes exist ONLY when the demo is enabled, so a
+  // disabled process answers 404 to them — there is no handler to coax into running.
+  app.get("/synthetic-demo/status", async (req, reply) => {
+    await resolveActor(req, options.identityResolver);
+    return reply.send(syntheticDemo ? syntheticDemo.status() : { enabled: false });
+  });
+  if (syntheticDemo) {
+    app.post("/synthetic-demo/launch", async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      const launched = await syntheticDemo.launch(actor);
+      return reply.code(launched.launched ? 201 : 200).send(launched);
+    });
+    // NO BODY IS READ. The caller names a case and nothing else: amount, currency, date, source and evidence
+    // id are fixed by the demo's own rule (server/demo/syntheticDemo.ts), so an injected `amountMinor` is
+    // ignored rather than honoured — a test pins that.
+    app.post<{ Params: { caseId: string } }>(
+      "/synthetic-demo/cases/:caseId/settle",
+      { schema: caseParamsSchema },
+      async (req, reply) => {
+        const actor = await resolveActor(req, options.identityResolver);
+        const evidence = await syntheticDemo.settle(actor, req.params.caseId, (claim) =>
+          proofService.ingestCaseEvidence(actor, req.params.caseId, claim, sourceVerifier));
+        return reply.code(201).send(evidence);
+      },
+    );
+  }
   app.get("/ready", async (_req, reply) => {
     const up = await isDbReady();
     const agents = options.agentReadiness?.() ?? {

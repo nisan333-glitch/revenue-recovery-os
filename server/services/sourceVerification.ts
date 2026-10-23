@@ -51,8 +51,12 @@ export class SourceVerifier {
   }
 }
 
-export function sourceVerifierFromEnvironment(env: Readonly<Record<string, string | undefined>>): SourceVerifier {
+export function sourceTrustKeysFromEnvironment(env: Readonly<Record<string, string | undefined>>): SourceTrustKey[] {
   const keys: unknown = JSON.parse(env.NH_EVIDENCE_SOURCE_KEYS ?? "[]");
   if (!Array.isArray(keys)) throw new Error("NH_EVIDENCE_SOURCE_KEYS must be an array");
-  return new SourceVerifier(keys);
+  return keys;
+}
+
+export function sourceVerifierFromEnvironment(env: Readonly<Record<string, string | undefined>>): SourceVerifier {
+  return new SourceVerifier(sourceTrustKeysFromEnvironment(env));
 }

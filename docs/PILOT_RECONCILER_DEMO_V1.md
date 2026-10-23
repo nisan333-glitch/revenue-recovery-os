@@ -18,19 +18,65 @@ Everything it emits is **Revenue Opportunity** (observed exposure). It constitut
 (`claimBoundary` is typed `constitutesProof: false`), and Revenue Returned is still computed only from signed
 evidence under a locked baseline.
 
-## Demo run steps
+## Operator demo — Identify → Fix → Prove from the UI (private, synthetic, off by default)
 
-Needs Postgres (`DATABASE_URL`) and the usual dev install.
+**No seed script is an operator step.** The screen is **Synthetic Demo (live API)** in the *Demo* nav group. (The
+neighbouring *Synthetic Pilot v2* is a client-side simulation; this one calls the real governed API.)
+
+Needs Postgres (`DATABASE_URL`) and the usual dev install. Start the API with the demo explicitly enabled — it is
+off unless asked for, refuses `NODE_ENV=production`, and **refuses to boot** if the process could not actually
+run the reconciler for its boundary:
 
 ```
-npm run test:journey        # CI runs this; §14 is the reconciler arc
+NH_AGENTS_ENABLED=true  NH_AGENT_BOUNDARIES=SYNTHETIC-DEMO
+NH_RECONCILIATION_OBSERVER_ENABLED=true  NH_RECONCILER_PSEUDONYM_KEY=<≥32 chars>
+NH_AGENT_ADMISSION_POLICIES=RevenueUnderBilled:10000
+NH_SYNTHETIC_DEMO_ENABLED=true            # NH_SYNTHETIC_DEMO_BOUNDARY overrides the boundary name
 ```
 
-To run it by hand against a local API: start the API with
-`NH_AGENTS_ENABLED=true NH_AGENT_BOUNDARIES=<boundary> NH_RECONCILIATION_OBSERVER_ENABLED=true
-NH_RECONCILER_PSEUDONYM_KEY=<≥32 chars> NH_AGENT_ADMISSION_POLICIES=RevenueUnderBilled:10000`, then
-`npx vite-node scripts/seed-journey-reconciliation-task.ts <boundary>`, and use **Candidate Review** →
-*Load candidates* → *Accept for case creation* → *Create Recovery Case* → **Recovery Case**.
+Then, in the browser (dev server — dev identity headers), as the operator `pilot-operator@company`:
+
+| # | Click | What the server does | What you see |
+|---|---|---|---|
+| 1 | **Launch synthetic reconciliation** | enqueues the labelled book; the real reconciler + worker + admission bar run | 3 candidates, **$3,100.00 Revenue Opportunity · not proven**; Returned = **NOT COMPUTED** |
+| 2 | **Accept candidate** → **Open Recovery Case** | review (immutable) then promotion (separate action) | one case, its exposure; stage OPENED |
+| 3 | **Record case owner** | authority row | OWNED |
+| 4 | **Lock baseline** (default 100.00) | baseline locked, server-stamped | BASELINED |
+| 5 | **Record corrective action** | `Intervene` authority row | INTERVENED |
+| 6 | **Simulate synthetic payment** | the demo's *synthetic billing source* signs an `invoice_paid` record for **the server-fixed amount (= the exposure)**; the real verifier, role gate and halt gate ingest it | EVIDENCED — still **NOT COMPUTED** (evidence is not money) |
+| 7 | **Approve proof as Finance** | a *different* identity (`cfo@company`, approver) freezes the proof as `BillingCorrection`, collected read from the signed record | **PROVEN** — Returned = collected − baseline (e.g. $600.00 − $100.00 = **$500.00**), Opportunity unchanged at $600.00 |
+
+### How the "payment" stays honest
+* The operator **cannot type** the amount, currency, date, source or evidence id. `POST /synthetic-demo/cases/:id/settle`
+  reads no body; the claim is built from the case's own frozen root by a rule fixed in `server/demo/syntheticDemo.ts`.
+* The signing key is generated **inside the API process at start-up**, never written, never serialised, never held by a
+  harness; only its public half joins the verifier's registry (bound to the `billing` source system).
+* `settle` refuses a case that is not from this demo's book on this demo's boundary, refuses until the corrective action
+  and a locked baseline already exist (the payment cannot precede the fix), and settles a case at most once.
+* Approval is **not** a demo shortcut: it is the normal gate (distinct approver, separation of duties, signed
+  independent outcome evidence ≥ collected, closed reason vocabulary, baseline ordering).
+* Every screen and record says **SYNTHETIC**: banner, panel labels, evidence `sourceRecordId` and `note`, proof text.
+
+### Known limits / decisions I did NOT take
+* The evidence uses the existing allowlisted source system **`billing`** (its role map is what makes a record an
+  *outcome*). A dedicated `synthetic-billing-source` would need a new `ROLE_MAP_VERSION` — a governance object — so it
+  is **not done**. Consequence: the only thing distinguishing demo evidence from real billing evidence is the key id
+  (`SYNTHETIC-DEMO-billing-…`, recorded in the verifier receipt), the `SYNTHETIC-` record id and the note — and the
+  demo cannot run in production.
+* Dev identity headers only; no production identity or boundary grant model is exercised by this screen.
+* One launch per boundary per database (idempotent); to run the book again, use a fresh boundary or database.
+* Baseline is operator-entered (existing semantics: it must be locked before any outcome).
+
+### Automated coverage
+* `server/demo/syntheticDemo.test.ts` — the rules, DB-free (roles, boundary, ordering, once-only, key never exposed, verifier accepts only the exact claim).
+* `server/demo/syntheticDemo.postgres.test.ts` — the real routes, worker and Postgres, to PROVEN, with negative controls.
+* `src/modules/syntheticDemoConsole.test.ts` — structural guard (no seed context, no fetch, operator never approves, no amount parameter).
+* `e2e/journey.mjs` §14 — a real browser driving the screen above, plus negative controls.
+
+## Earlier arc (kept for reference)
+
+`npm run test:journey` is what CI runs. Before the operator screen existed, §14 queued the book with a harness seed
+script (`seed-journey-reconciliation-task.ts`) — that script has been **removed**; the launch is now the screen's button.
 
 ## What the labelled demo book contains
 
