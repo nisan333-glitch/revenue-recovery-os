@@ -36,7 +36,7 @@
 // run cannot see them.
 import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
@@ -85,10 +85,13 @@ const EVIDENCE_PUBLIC_KEYS = JSON.stringify([
 const EVIDENCE_PRIVATE_KEY = evidenceKeys.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 
 const results = [];
+let section14Start = -1;
+const EVIDENCE_DIR = process.env.JOURNEY_EVIDENCE_DIR ? resolve(process.env.JOURNEY_EVIDENCE_DIR) : null;
+if (EVIDENCE_DIR) mkdirSync(EVIDENCE_DIR, { recursive: true });
 let failures = 0;
 let halted = null;
 function check(name, ok, detail = "") {
-  results.push({ name, ok });
+  results.push({ name, ok, detail });
   if (!ok) failures += 1;
   console.log(`${ok ? "PASS" : "FAIL"} · ${name}${detail ? ` · ${detail}` : ""}`);
   if (!ok) annotate(`FAIL · ${name}${detail ? ` · ${detail}` : ""}`);
@@ -1720,6 +1723,14 @@ try {
   //
   // THE ONE REMAINING HARNESS SCRIPT is `seed-journey-case-evidence.ts ... tampered`, and it is a NEGATIVE
   // CONTROL, not an operator step: it plays an attacker who signs one amount and submits another.
+  // EVIDENCE CAPTURE · screenshots of the real screen at named moments, written only when
+  // JOURNEY_EVIDENCE_DIR is set (CI uploads that directory as an artifact). Pure observation: a failure to
+  // capture never changes a verdict. Everything on these screens is SYNTHETIC and already labelled so.
+  section14Start = results.length;
+  const shot = async (name) => {
+    if (!EVIDENCE_DIR) return;
+    try { await page.screenshot({ path: join(EVIDENCE_DIR, `${name}.png`), fullPage: true }); } catch { /* observation only */ }
+  };
   const fmtMoney = (minor) => `$${(minor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
   const asOperator = { "x-actor-id": "pilot-operator@company", "x-actor-role": "operator" };
   const asApprover = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
@@ -1750,6 +1761,7 @@ try {
     (await page.locator('[data-testid="demo-candidate"]').count()) === 0 &&
       /NOT COMPUTED/.test(await page.locator('[data-testid="demo-returned"]').innerText()),
     consoleText.slice(0, 200));
+  await shot("01-before-launch");
 
   // NC · only an operator may launch. The screen offers the button to the operator; the SERVER decides.
   const launchRefusals = {};
@@ -1791,6 +1803,7 @@ try {
     /NOT COMPUTED/.test(await page.locator('[data-testid="demo-returned"]').innerText()));
   check("no raw contract, payer or invoice reference from the extracts is shown anywhere",
     !/(ENT|PAYER|SL|INV)-DEMO/.test(consoleText));
+  await shot("02-after-launch-3-candidates");
 
   // IDENTIFY → accept → open. Two separate operator actions, as the review screen has always required.
   await page.getByRole("button", { name: "Accept candidate" }).first().click();
@@ -1812,6 +1825,7 @@ try {
     (afterOpen.json ?? []).length === 2, `pending=${(afterOpen.json ?? []).length}`);
   check("the case starts at OPENED and nothing further is claimed",
     (await stageIs("OPENED")) && !(await stageIs("OWNED")) && !(await stageIs("PROVEN")));
+  await shot("03-case-opened-exposure-only");
 
   // NC · the synthetic payer cannot pay before the fix exists — and not for a case that does not exist.
   const earlySettle = await apiCall("POST", `/synthetic-demo/cases/${reconCaseId}/settle`, asOperator);
@@ -1838,6 +1852,7 @@ try {
   await page.getByRole("button", { name: "Record corrective action" }).click();
   check("the corrective action is recorded — the case is INTERVENED", await stageNow("INTERVENED"));
   haltIf(!(await stageIs("INTERVENED")), "the operator could not reach INTERVENED through the screen");
+  await shot("04-owner-baseline-corrective-action-done");
 
   // PROVE (1) · the synthetic payer settles. NC first: other roles may not trigger the source.
   const settleRefusals = {};
@@ -1857,6 +1872,7 @@ try {
     !(await stageIs("PROVEN")) &&
       /NOT COMPUTED/.test(await page.locator('[data-testid="demo-returned"]').innerText()) && !/\$0\.00/.test(consoleText),
     consoleText.slice(0, 200));
+  await shot("05-evidenced-still-not-computed");
 
   const evidenceList = await apiCall("GET", `/cases/${reconCaseId}/evidence`, asApprover);
   const settledEvidence = (evidenceList.json ?? [])[0];
@@ -1950,6 +1966,7 @@ try {
     (await page.locator('[data-testid="demo-exposure"]').innerText()).includes(fmtMoney(exposureMinor)) &&
       returnedText.includes(fmtMoney(returnedMinor)) && returnedMinor !== exposureMinor,
     `exposure ${fmtMoney(exposureMinor)} · returned ${fmtMoney(returnedMinor)}`);
+  await shot("06-after-proven-returned-vs-exposure");
 
   const frozen = await page.evaluate(async ([pid, caseId]) => {
     const h = { "x-actor-id": "cfo@company", "x-actor-role": "approver" };
@@ -1981,6 +1998,7 @@ try {
     (await stageReached("PROVEN")) && reconCaseText.includes(fmtMoney(returnedMinor)) &&
       reconCaseText.includes(fmtMoney(exposureMinor)) && /not money returned/i.test(reconCaseText),
     reconCaseText.slice(0, 240));
+  await shot("07-independent-case-screen-proven");
 
   const stillPending = await apiCall("GET", `/agent-candidates?boundaryId=${encodeURIComponent(BOUNDARY)}`, asOperator);
   check("proving one case does not touch the other two shortfalls — they remain pending candidates, uncounted",
@@ -2006,6 +2024,17 @@ try {
   if (browser) await browser.close().catch(() => undefined);
   stop(ui);
   stop(api);
+}
+
+// EVIDENCE FILE · every recorded check from §14 onward, verbatim, so the acceptance record is the run's own
+// output rather than a paraphrase of it. Also emitted as ONE notice annotation (readable from the check-run
+// record when job logs are not downloadable). Nothing here changes a verdict.
+if (section14Start >= 0) {
+  const lines = results.slice(section14Start).map((r) => `${r.ok ? "PASS" : "FAIL"} · ${r.name}${r.detail ? ` · ${r.detail}` : ""}`);
+  const header = `Synthetic Demo Console · operator journey (journey section 14) · ${lines.filter((l) => l.startsWith("PASS")).length}/${lines.length} checks passed`;
+  if (EVIDENCE_DIR) writeFileSync(join(EVIDENCE_DIR, "section14-assertions.txt"), `${header}\n\n${lines.join("\n")}\n`);
+  const text = [header, ...lines].join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").slice(0, 60_000);
+  console.log(`::notice title=journey-section-14-assertions::${text}`);
 }
 
 // The summary has to be unmistakable in a CI log. A harness error (a timeout, a missing element)

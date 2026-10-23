@@ -244,6 +244,19 @@ jobs:
 
       - name: EP-19 governed pilot journey (real browser, real API, real worker)
         run: npm run test:journey
+        env:
+          # Observation only: where the journey writes screenshots of the SYNTHETIC demo screens and the
+          # verbatim text of its section-14 assertions. Changes no verdict.
+          JOURNEY_EVIDENCE_DIR: ${{ runner.temp }}/journey-evidence
+
+      - name: Upload synthetic-demo evidence (screenshots + assertions)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-demo-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/journey-evidence
+          if-no-files-found: warn
+          retention-days: 30
 
       # Read-only integrity sweep over both governed registers, AFTER the journey.
       #
