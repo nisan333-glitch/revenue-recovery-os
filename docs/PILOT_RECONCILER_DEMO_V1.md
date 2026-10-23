@@ -66,21 +66,34 @@ Plan: 10 units, 3 candidates, exposure **$3,100.00** (positives only).
 * **Importer guard.** `expectationExtract.test.ts` now names `reconciliationObserver.ts` as an allowed
   importer and bans it from importing the ledger, proof, assessment or case modules.
 
+## The arc, end to end (journey §14 / §14b)
+
+Injected observation → reconciler → pending candidate → human accept → promotion → **Recovery Case** →
+author / baseline / intervention → **signed outcome evidence** → approver freezes the proof with reason
+**`BillingCorrection`** → **PROVEN**. On the screen: the identified exposure (e.g. $600.00) and the proven
+return ($70.00 = collected $90.00 − baseline $20.00, synthetic) as two different numbers.
+
+`BillingCorrection` was added as an approved, additive vocabulary value (type, reasons table, HTTP enum). No
+migration: the proof column is plain text. It is a **label**: the reason is absent from `Collected − Baseline`,
+and a billing correction with nothing collected above baseline returns $0 (tests in
+`src/domain/billingCorrection.test.ts`).
+
+**Negative controls, each of which must be refused while the case stays un-proven:** claiming more collected
+than the signed evidence substantiates; citing no evidence; the author or the operator who opened the case
+approving; a reason outside the closed vocabulary; signed evidence whose amount was altered after signing.
+
 ## What it does NOT do
 
-* The arc stops at **EVIDENCED**. A proof needs a `recoveryReason`, and that vocabulary (retention and
-  activation plays) has no truthful value for a corrective invoice. Using `UsageActivation` would write a false
-  reason into an immutable proof. §14 asserts the case is *not* proven.
 * The observation is injected by the harness. NH has no screen that creates a detector task, deliberately.
-* Nothing here reads a customer file in production, and no figure is Revenue Returned.
+* Nothing here reads a customer file in production, and no figure is Revenue Returned of a real customer.
+* The CFO proof screen still renders seed data, with a banner saying so.
 
-## Approvals needed
+## Still blocked on approval
 
-Both are specified, not built, in `docs/architecture/RECONCILER_GOVERNANCE_PROPOSALS_V1.md`:
-
-1. **A billing-correction `RecoveryReason`** (`BillingCorrection`; three code sites, no database migration)
-   so the proof stage can close honestly.
-2. **Obligation-grained identity** for the reconciler lane (constitution amendment first; no schema change).
+Obligation-grained identity. Designs, not implementations:
+`docs/architecture/RECONCILER_GOVERNANCE_PROPOSALS_V1.md` §B (reconciler lane: constitution amendment, no
+schema change) and `docs/architecture/OBLIGATION_GRAIN_SCHEMA_MIGRATION_DESIGN_V1.md` (assessment lane:
+additive sibling table, invariants, collisions, rollback, tests).
 
 ## Verification status
 

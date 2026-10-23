@@ -1,12 +1,15 @@
 # Reconciler lane · two proposals awaiting separate approval
 
-**Status: PROPOSAL ONLY. Nothing here is implemented.** No enum value added, no migration written, no contract
+**Status: §A is implemented (see its note). §B is PROPOSAL ONLY and is not implemented.** No enum value added, no migration written, no contract
 bumped, no schema edited. Written on `claude/pilot-reconciler-demo-v1` after the reconciler demo reached the
 case (`docs/PILOT_RECONCILER_DEMO_V1.md`). Everything referred to is synthetic.
 
 ---
 
-## A · A recovery reason for a billing correction
+## A · A recovery reason for a billing correction — **IMPLEMENTED** (approved 2026-10-23)
+
+> Status update: built as proposed (type, reasons table, HTTP enum; no migration), with tests and journey §14b.
+> The text below is kept as the proposal it was; it is no longer pending.
 
 ### The gap, measured
 The proof endpoint requires `recoveryReason`, validated against a closed list of seven values
