@@ -38,6 +38,7 @@ export type RecoveryReason =
   | "ExecBusinessReview"
   | "RenewalOutreach"
   | "UsageActivation"
+  | "BillingCorrection"
   | null;
 
 export interface AuditEntry {

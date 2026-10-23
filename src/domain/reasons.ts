@@ -55,6 +55,14 @@ export const RECOVERY_REASONS: ReasonDef[] = [
     description: "Targeted in-product flow that triggered the activation event.",
     appliesTo: "ActivationMissed, LowAdoption",
   },
+  {
+    key: "BillingCorrection",
+    label: "Billing Correction",
+    description:
+      "A corrective invoice or credit-note reversal was raised by billing and the shortfall was collected. " +
+      "A classification of HOW the money came back — the raising of the invoice is not itself a recovery.",
+    appliesTo: "RevenueUnderBilled",
+  },
 ];
 
 export function reasonLabel(reason: RecoveryReason): string {

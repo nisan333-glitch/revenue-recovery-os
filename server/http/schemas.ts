@@ -15,6 +15,7 @@ const RECOVERY_REASONS = [
   "ExecBusinessReview",
   "RenewalOutreach",
   "UsageActivation",
+  "BillingCorrection",
 ] as const;
 
 const SUPPORTED_CURRENCY_CODES = ["USD", "EUR", "GBP", "ILS", "JPY"] as const;
