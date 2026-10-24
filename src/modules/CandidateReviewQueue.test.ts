@@ -64,7 +64,10 @@ describe("CandidateReviewQueue", () => {
     expect(host.textContent).toContain("ActivationMissed");
     expect(host.textContent).toContain("Loaded boundary: pilot-a");
     expect(host.textContent).toContain("Revenue Opportunity · not proven");
-    expect(host.textContent).toContain("Revenue Returned$0.00");
+    // NOT COMPUTED, never a hardcoded $0.00: this screen reads no proof, so asserting a zero would claim a
+    // proof was found and established nothing (the rule the Synthetic Demo Console already follows).
+    expect(host.textContent).toContain("Revenue ReturnedNOT COMPUTED");
+    expect(host.textContent).not.toContain("Revenue Returned$0.00");
     await act(async () => root.unmount());
   });
 

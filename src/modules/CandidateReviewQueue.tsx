@@ -172,7 +172,7 @@ export function CandidateReviewQueue() {
               </div>
               {opportunityByCurrency.length > 1 && <div className="mt-1 text-[10px] text-slate-500">currencies never aggregated</div>}
             </Panel>
-            <Panel className="p-4"><div className="text-xs uppercase text-slate-500">Revenue Returned</div><div className="mt-2 text-2xl font-semibold text-proof-500">$0.00</div><div className="mt-1 text-xs text-slate-500">review never counts money</div></Panel>
+            <Panel className="p-4"><div className="text-xs uppercase text-slate-500">Revenue Returned</div><div className="mt-2 text-2xl font-semibold text-slate-500">NOT COMPUTED</div><div className="mt-1 text-xs text-slate-500">review never counts money — no proof is read on this screen, so no figure is claimed</div></Panel>
           </div>
         </div>
       )}
