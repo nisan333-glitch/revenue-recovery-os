@@ -243,3 +243,93 @@ never an acknowledgement.
   gets quietly withdrawn.
 - **Nothing is checked is a failure** (exit 2), matching `verify:registers`: a verifier that passes having
   looked at nothing is worse than none.
+
+## Phase 5 · messages actually move, and there are now TWO receivers (2026-10-24)
+
+**Step 3 above is done.** That entry said *"End-to-end proof, NOT done"*; it was accurate when written and
+is left as written. Two OS processes now exchange messages through issue #13 with no manual copying.
+
+**Step 2 has two implementations, from two independent workstreams, and they are not duplicates.** Both
+are kept. They solve the same problem by different mechanisms with **different blockers**, which is the
+useful part:
+
+| | mechanism | blocker | status |
+|---|---|---|---|
+| `receiver.ts` + `nh-receiver.yml` | GitHub **Actions**, `issue_comment` | must sit on the **default branch** (`claude/revenue-recovery-os-806cgo`) before the event can start it | built, dormant |
+| `webhookReceiver.ts` | **HTTP** server, `X-Hub-Signature-256` verified | needs a **publicly reachable URL**, which nothing in this repository can provide | built, tested on a real socket |
+| `endpoint.ts` | **conditional polling** via `gh api` | **none** | built, and it is what moves messages today |
+
+The polling endpoint is why step 3 could close now: it needs no new permission, no placement on a default
+branch and no inbound networking.
+
+### A PROTOCOL CONFLICT THAT NEEDS AN OWNER DECISION
+
+The two receivers **disagree about where a message's body lives**, so each refuses the other's messages:
+
+* `receiver.ts` — the body is **the comment text** with the `nh-msg` block removed, normalised and trimmed.
+* `wire.ts` (polling endpoint + webhook receiver) — the body is a **second fenced block**, ` ```nh-body `.
+
+`body_sha256` is computed over different text, so this is not a style difference. It is **proved both
+ways** in `wireFormatConflict.test.ts`, which also demonstrates each option's cost rather than arguing it:
+the Actions format cannot round-trip a body with meaningful leading whitespace or one containing its own
+fence (the trim and the strip destroy it); the fenced format puts human-readable text inside a code block,
+which reads worse in a thread a person follows.
+
+**It is deliberately not resolved here.** The wire format is the contract *between* two agents, and
+choosing mine because I wrote it second is exactly the move this repository refuses elsewhere — the party
+who benefits from a choice does not get to make it alone.
+
+**Nothing is broken today**, and the reason is worth stating so the conflict is not mistaken for an
+outage: the two formats are used by **disjoint paths**. The polling endpoint writes and reads `nh-body` on
+both sides of its own exchange, which is why the end-to-end run passes, and the Actions receiver is
+dormant. The conflict becomes live the moment both run against one issue.
+
+### What the end-to-end run proves, and what it does not
+
+**Proved** by two processes sharing nothing but the issue, asserted from GitHub's own comments *and* from
+each process's durable ledger file: a message published by A was detected by B, acknowledged by B with a
+receipt carrying the message's own body hash, and answered by B; the answer was detected and acknowledged
+by A; **both directions reach `delivered`**. A re-posted message produced **no second receipt**. An
+unanswered message was retried on the schedule and then reached a recorded `failed` state. A message
+addressed to a third party was acknowledged by nobody.
+
+**Not proved and not claimable.** That any human or any model read anything. The `chatgpt` endpoint in
+that run is a service we operated. **GitHub cannot wake an inactive ChatGPT conversation**, so `delivered`
+to that party means delivered to a service acting on its behalf — never to a conversation.
+
+### Design notes
+
+**Why the body is a separate block in `wire.ts`.** `Message` holds `body_sha256` and deliberately not the
+body, so an envelope alone cannot be delivered — the recipient would receive a hash of something it never
+got. The parser recomputes the hash and refuses the pair when they disagree, which is what makes the split
+safe: that hash is what every receipt is matched against.
+
+**Ambiguity is refused, never resolved.** A comment carrying two envelopes is an error, not a first-wins
+pick: first-wins would let anyone with write access prepend a block and change which message a later
+receipt appears to acknowledge.
+
+**Polling is conditional and floored.** `If-None-Match` makes an unchanged channel a 304, which GitHub
+does not count against the primary rate limit. The interval floors at **5 seconds** and says when it
+floored — a one-second poll is both rude and pointless against a limit of 1.4 requests per second.
+
+**No credential is handled.** The transport shells out to `gh`, so there is no token in scope to leak. The
+webhook receiver's secret enters in exactly one place and is never printed, not even its length.
+
+### The e2e is NOT run by CI, deliberately
+
+It posts real comments, so it is gated on `NH_BRIDGE_E2E=1`. A bridge test firing on every push would fill
+the channel with traffic from commits nobody is coordinating about. All seven required behaviours are
+therefore **each covered at unit level too**, and the e2e is the integration proof on top — *a test CI
+never runs is not a guard*.
+
+### Two defects the real run caught that a fake transport could not
+
+1. **The commands never ran.** `endpoint.ts` ended with `main()` behind a guard testing `process.argv[1]`.
+   Under `vite-node` that is the vite-node binary and the script path never appears in argv, so the guard
+   never fired: two endpoints started, did nothing and exited 0 in silence. The commands now live in their
+   own files, the shape `ciStatus.ts`/`ci-status.ts` had already settled.
+2. **Auto-respond discarded the message it was answering.** `runCycle` persisted after its loop while the
+   response path calls `send`, which loads the ledger from disk and saves it — so the reload dropped
+   everything accepted in that cycle. Two symptoms, one cause: the recipient's ledger had no record of the
+   inbound message, and a re-post was therefore acknowledged a **second** time, defeating duplicate
+   suppression. Both are pinned at unit level and both were verified to fail when the fix is reverted.
