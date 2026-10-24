@@ -34,6 +34,9 @@ import { resolveActor, type IdentityResolver } from "./auth/actorContext";
 import { readPublicAuthConfig, type PublicAuthConfig } from "./auth/publicAuthConfig";
 import { assertProductionDatabaseConfiguration } from "./persistence/databaseConfig";
 import {
+  assertTransportContract, registerTransportGuard, transportModeFromEnvironment, type TransportMode,
+} from "./http/transportGuard";
+import {
   approveProofSchema,
   reviseProofSchema,
   proofIdParamsSchema,
@@ -81,6 +84,8 @@ export interface BuildAppOptions {
   readonly identityResolver?: IdentityResolver;
   /** Test seam: what `GET /auth/config` reports. Defaults to the process environment. */
   readonly publicAuthConfig?: PublicAuthConfig;
+  /** Test seam: the transport posture. Defaults to NH_TLS_TERMINATION; production start-up is checked separately. */
+  readonly transport?: TransportMode;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -94,6 +99,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const sourceVerifier = options.sourceVerifier
     ?? new SourceVerifier([...sourceTrustKeysFromEnvironment(process.env), ...(syntheticDemo ? [syntheticDemo.trustKey] : [])]);
   assertProductionDatabaseConfiguration(process.env);
+  assertTransportContract(process.env);
   if (process.env.NODE_ENV === "production" && !options.identityResolver) {
     throw new Error("a verified production identity resolver is required");
   }
@@ -121,6 +127,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     },
   });
   registerErrorHandler(app);
+  registerTransportGuard(app, options.transport ?? transportModeFromEnvironment(process.env));
   app.addHook("onSend", async (_request, reply, payload) => {
     reply.header("x-content-type-options", "nosniff");
     reply.header("x-frame-options", "DENY");

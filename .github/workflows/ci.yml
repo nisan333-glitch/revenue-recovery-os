@@ -11,16 +11,25 @@ on:
     branches: ["**"]
   pull_request:
 
+# LEAST PRIVILEGE. No job here pushes, comments, releases or reads a secret, so the workflow token is read-only
+# for the whole file; a job that ever needs more must say so itself, visibly, in its own `permissions:`.
+# Third-party actions are pinned to a full commit SHA (the tag is in the trailing comment): a moved or
+# re-pointed tag cannot change what runs. Checkout does not persist the token into the working copy.
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Invariants + strict build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: npm
@@ -70,10 +79,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: npm
@@ -159,10 +170,12 @@ jobs:
       DATABASE_URL: postgresql://ep9_test:ep9_test_only@localhost:5432/ep9_test?schema=public
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: npm
@@ -222,10 +235,12 @@ jobs:
       DATABASE_URL: postgresql://ep19_test:ep19_test_only@localhost:5432/ep19_test?schema=public
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: npm
@@ -251,7 +266,7 @@ jobs:
 
       - name: Upload synthetic-demo evidence (screenshots + assertions)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: synthetic-demo-evidence-${{ github.sha }}
           path: ${{ runner.temp }}/journey-evidence
@@ -306,12 +321,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Build and start the pilot stack
         # --wait blocks (up to --wait-timeout) on docker-compose.yml's own dependency graph —
         # db's health check and migrate's service_completed_successfully — before returning.
-        # The app container has no Docker-level health check (EP-10 deliberately didn't add
+        # The app image now declares a Docker HEALTHCHECK on /health, so --wait also gates on it (EP-10 originally didn't add
         # one to the Dockerfile/compose; this workflow is the smallest addition asked for), so
         # the next step separately polls its real HTTP endpoint before any check runs.
         run: docker compose up --build -d --wait --wait-timeout 180

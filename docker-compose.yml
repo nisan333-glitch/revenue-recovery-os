@@ -2,9 +2,10 @@
 #
 # The credentials below are fixed, non-secret, local-only placeholders for exactly one
 # supervised pilot deployment. Do NOT reuse this file, or these values, for any
-# internet-facing, multi-tenant, or production environment: there is no authentication in
-# front of the app (EP-10 explicitly does not add one — see server/auth/actorContext.ts),
-# and Postgres here has no TLS and a placeholder password. See the README "Private pilot
+# internet-facing, multi-tenant, or production environment: the app uses dev-header identity
+# here (honoured only for loopback / private-network clients — server/auth/loopbackGuard.ts), and
+# Postgres has no TLS and a placeholder password. The process itself REFUSES both outside this private
+# case (public database host, public bind, OIDC mode without TLS termination, placeholder credentials). See the README "Private pilot
 # runtime" section before deploying this anywhere reachable by untrusted users.
 #
 # Network posture: Postgres is never exposed to the host (no `ports:` on `db` — only other
@@ -30,6 +31,9 @@ services:
   # only starts once this completes successfully — never against an unmigrated database.
   migrate:
     build: .
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       db:
         condition: service_healthy
@@ -40,6 +44,11 @@ services:
 
   app:
     build: .
+    # Runs as the image's non-root `node` user; additionally drop every Linux capability and forbid gaining
+    # new privileges. The app binds 4000 (> 1024) and writes nothing outside its own directory.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       db:
         condition: service_healthy
