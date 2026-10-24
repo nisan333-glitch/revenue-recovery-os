@@ -1824,9 +1824,13 @@ try {
   const LOCKED_BASELINE_MINOR = 10_000;
   const EXPECTED_RETURNED_MINOR = 50_000;
   const OTHER_PENDING_MINOR = [100_000, 150_000];
-  const targetCard = page.locator('[data-testid="demo-candidate"]').filter({ hasText: new RegExp(`(^|[^\\d,.])\\${fmtMoney(TARGET_EXPOSURE_MINOR)}(?!\\d)`) });
+  const targetCard = page.locator('[data-testid="demo-candidate"]').filter({ hasText: new RegExp(`\\${fmtMoney(TARGET_EXPOSURE_MINOR)}(?!\\d)`) });
+  // No left-hand guard: card text is matched as textContent, where the pseudonymous reference is glued to the
+  // amount with no space (a trailing hex digit sits right before "$"). "$600.00" cannot occur inside
+  // "$1,600.00", so the right-hand guard alone is exact for this book.
+  const cardTexts = (await page.locator('[data-testid="demo-candidate"]').allTextContents()).map((t) => t.replace(/\s+/g, " ").slice(0, 90));
   check("exactly one candidate card shows the $600.00 shortfall, and the operator selects it", (await targetCard.count()) === 1,
-    `${await targetCard.count()} cards match`);
+    `${await targetCard.count()} cards match · ${JSON.stringify(cardTexts)}`);
   haltIf((await targetCard.count()) !== 1, "the $600.00 candidate could not be selected on the screen");
   await targetCard.getByRole("button", { name: "Accept candidate" }).click();
   await page.getByRole("button", { name: "Open Recovery Case" }).waitFor({ timeout: 15_000 });
