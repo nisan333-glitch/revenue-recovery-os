@@ -2,6 +2,7 @@ import { createPublicKey, verify as verifySignature, type KeyObject } from "node
 import type { FastifyRequest } from "fastify";
 import { UnauthorizedError } from "../http/errors";
 import { assertPrivatePilotHost } from "../persistence/databaseConfig";
+import { assertDevHeadersBindSafe } from "./loopbackGuard";
 import { actorFromRequest, type IdentityResolver } from "./actorContext";
 import { isBackendRole, type ActorContext } from "./identity";
 
@@ -24,19 +25,29 @@ interface JwtHeader { alg?: unknown; kid?: unknown; typ?: unknown }
 interface JwtClaims { iss?: unknown; aud?: unknown; sub?: unknown; exp?: unknown; nbf?: unknown; [key: string]: unknown }
 interface Jwk { kty?: unknown; kid?: unknown; alg?: unknown; use?: unknown; key_ops?: unknown; [key: string]: unknown }
 
+export type AuthMode = "oidc" | "dev-headers";
+
+/** The one place the authentication mode is decided; production defaults to OIDC, never to headers. */
+export function authModeFromEnvironment(env: Readonly<Record<string, string | undefined>> = process.env): AuthMode {
+  const mode = env.NH_AUTH_MODE?.trim() || (env.NODE_ENV === "production" ? "oidc" : "dev-headers");
+  if (mode !== "oidc" && mode !== "dev-headers") throw new Error("NH_AUTH_MODE must be 'oidc' or 'dev-headers'");
+  return mode;
+}
+
 export function createIdentityResolverFromEnvironment(
   env: Readonly<Record<string, string | undefined>> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): IdentityResolver {
-  const mode = env.NH_AUTH_MODE?.trim() || (env.NODE_ENV === "production" ? "oidc" : "dev-headers");
+  const mode = authModeFromEnvironment(env);
   if (mode === "dev-headers") {
     if (env.NODE_ENV === "production") {
       if (env.NH_PRIVATE_PILOT !== "true") throw new Error("dev-header identity is forbidden in production");
       assertPrivatePilotHost(env);
     }
+    // Independent of NODE_ENV and of NH_PRIVATE_PILOT: header identity never binds beyond loopback.
+    assertDevHeadersBindSafe(env);
     return async (request) => actorFromRequest(request);
   }
-  if (mode !== "oidc") throw new Error("NH_AUTH_MODE must be 'oidc' or 'dev-headers'");
   return createOidcIdentityResolver(readOidcConfig(env), fetchImpl);
 }
 

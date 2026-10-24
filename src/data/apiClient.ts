@@ -9,6 +9,7 @@
 // text is never constructed server-side for these paths, and this client does not trust that to
 // remain true forever: it refuses to render anything outside the safe set, on principle.
 import type { DevActor } from "./devActor";
+import { AUTH_EXPIRED_EVENT, isDevBuild, signOut, validStoredToken } from "../auth/oidc";
 
 export type ApiErrorCode =
   | "invalid_request"
@@ -67,11 +68,12 @@ export async function apiRequest<T>(
 ): Promise<T> {
   let res: Response;
   try {
-    let bearer: string | null = null;
-    try { bearer = sessionStorage.getItem("nh_access_token"); } catch { bearer = null; }
+    // A verified-identity bearer token (obtained by src/auth/oidc.ts) always wins. The dev-header identity
+    // exists ONLY in a Vite dev build and is additionally refused by the server for any non-loopback request.
+    const bearer = validStoredToken();
     const identityHeaders: Record<string, string> = bearer
       ? { authorization: `Bearer ${bearer}` }
-      : Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)
+      : isDevBuild()
         ? { "x-actor-id": actor.actorId, "x-actor-role": actor.role }
         : {};
     res = await fetch(`/api${path}`, {
@@ -94,6 +96,13 @@ export async function apiRequest<T>(
     parsed = await res.json();
   } catch {
     parsed = null;
+  }
+
+  if (res.status === 401) {
+    // The server no longer accepts this identity: drop it and let the gate ask for a fresh sign-in.
+    // The 401 is still thrown below so the caller never renders a result.
+    signOut();
+    try { window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT)); } catch { /* non-browser context */ }
   }
 
   if (!res.ok) {

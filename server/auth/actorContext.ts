@@ -8,10 +8,13 @@
 import type { FastifyRequest } from "fastify";
 import { UnauthorizedError } from "../http/errors";
 import { type ActorContext, isBackendRole } from "./identity";
+import { assertLoopbackOnlyRequest } from "./loopbackGuard";
 
 export type IdentityResolver = (request: FastifyRequest) => Promise<ActorContext>;
 
 export function actorFromRequest(req: FastifyRequest): ActorContext {
+  // Fail closed BEFORE reading a single header: header identity is honoured only for a local client.
+  assertLoopbackOnlyRequest(req);
   const id = req.headers["x-actor-id"];
   const role = req.headers["x-actor-role"];
   if (typeof id !== "string" || !id.trim() || !isBackendRole(role)) {

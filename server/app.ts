@@ -31,6 +31,7 @@ import { INTAKE_LIMITS } from "../src/contract/pilotDataContract";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
 import { resolveActor, type IdentityResolver } from "./auth/actorContext";
+import { readPublicAuthConfig, type PublicAuthConfig } from "./auth/publicAuthConfig";
 import { assertProductionDatabaseConfiguration } from "./persistence/databaseConfig";
 import {
   approveProofSchema,
@@ -78,6 +79,8 @@ export interface BuildAppOptions {
   readonly candidateReviewService?: CandidateReviewService;
   readonly candidatePromotionService?: CandidatePromotionService;
   readonly identityResolver?: IdentityResolver;
+  /** Test seam: what `GET /auth/config` reports. Defaults to the process environment. */
+  readonly publicAuthConfig?: PublicAuthConfig;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -132,6 +135,17 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   // Public health probes — no authentication.
   app.get("/health", async () => ({ status: "ok" }));
+
+  // Where a browser goes to sign in. UNAUTHENTICATED by necessity (it is what you read BEFORE you have a
+  // token) and therefore carries nothing but public client metadata — see server/auth/publicAuthConfig.ts.
+  app.get("/auth/config", async () => options.publicAuthConfig ?? readPublicAuthConfig(process.env));
+
+  // Who the server believes the caller is — the SERVER's reading of the verified identity, never an echo of
+  // what the caller sent. Used by the SPA to show the signed-in identity and by the negative tests.
+  app.get("/auth/whoami", async (req) => {
+    const actor = await resolveActor(req, options.identityResolver);
+    return { actorId: actor.actorId, role: actor.role, boundaryIds: actor.boundaryIds };
+  });
 
   // Synthetic demo (private, off by default). The status route is ALWAYS registered so the UI can say
   // "not enabled" instead of guessing; the launch/settle routes exist ONLY when the demo is enabled, so a
