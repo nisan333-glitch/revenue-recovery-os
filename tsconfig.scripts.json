@@ -24,6 +24,7 @@
     "scripts/freeze/**/*.ts",
     "scripts/audit/**/*.ts",
     "scripts/exposure/**/*.ts",
+    "scripts/coordination/**/*.ts",
     "src"
   ]
 }
