@@ -1814,7 +1814,21 @@ try {
   await shot("02-after-launch-3-candidates");
 
   // IDENTIFY → accept → open. Two separate operator actions, as the review screen has always required.
-  await page.getByRole("button", { name: "Accept candidate" }).first().click();
+  //
+  // THE OPERATOR CHOOSES THE CASE. The journey no longer takes whichever card happens to be first: it selects
+  // the $600.00 shortfall by the amount the CARD ITSELF shows, asserts that exactly one card matches, and
+  // accepts that card's own button. Everything below is then pinned to the three numbers of the acceptance
+  // scenario — $600.00 identified, $100.00 locked baseline, $500.00 proven — so a different candidate being
+  // promoted would fail loudly here instead of passing with different figures.
+  const TARGET_EXPOSURE_MINOR = 60_000;
+  const LOCKED_BASELINE_MINOR = 10_000;
+  const EXPECTED_RETURNED_MINOR = 50_000;
+  const OTHER_PENDING_MINOR = [100_000, 150_000];
+  const targetCard = page.locator('[data-testid="demo-candidate"]').filter({ hasText: new RegExp(`(^|[^\\d,.])\\${fmtMoney(TARGET_EXPOSURE_MINOR)}(?!\\d)`) });
+  check("exactly one candidate card shows the $600.00 shortfall, and the operator selects it", (await targetCard.count()) === 1,
+    `${await targetCard.count()} cards match`);
+  haltIf((await targetCard.count()) !== 1, "the $600.00 candidate could not be selected on the screen");
+  await targetCard.getByRole("button", { name: "Accept candidate" }).click();
   await page.getByRole("button", { name: "Open Recovery Case" }).waitFor({ timeout: 15_000 });
   await page.getByRole("button", { name: "Open Recovery Case" }).click();
   await page.locator('[data-testid="demo-case-id"]').waitFor({ timeout: 15_000 });
@@ -1825,12 +1839,22 @@ try {
 
   const exposureText = await page.locator('[data-testid="demo-exposure"]').innerText();
   const shownAmounts = [60_000, 100_000, 150_000].filter((a) => exposureText.includes(fmtMoney(a)));
-  check("the case shows exactly one identified exposure, from the promoted candidate",
-    shownAmounts.length === 1, exposureText);
-  const exposureMinor = shownAmounts[0];
+  checkEqual("the case shows exactly one identified exposure, and it is the selected $600.00 — not $1,000.00, not $1,500.00",
+    JSON.stringify(shownAmounts), JSON.stringify([TARGET_EXPOSURE_MINOR]));
+  const exposureMinor = TARGET_EXPOSURE_MINOR;
+  const openedView = await apiCall("GET", `/recovery-cases/${reconCaseId}`, asApprover);
+  checkEqual("the case's governed record holds the same $600.00 exposure and no proven figure yet",
+    JSON.stringify({ e: openedView.json?.lifecycle?.exposure?.minor, p: openedView.json?.provenRevenueReturnedMinor ?? null }),
+    JSON.stringify({ e: TARGET_EXPOSURE_MINOR, p: null }));
   const afterOpen = await apiCall("GET", `/agent-candidates?boundaryId=${encodeURIComponent(BOUNDARY)}`, asOperator);
-  check("the other two shortfalls stay pending — one promotion promotes one candidate",
-    (afterOpen.json ?? []).length === 2, `pending=${(afterOpen.json ?? []).length}`);
+  const pendingAmounts = (afterOpen.json ?? []).map((i) => i.signal.amountAtRiskMinor).sort((a, b) => a - b);
+  checkEqual("the other two shortfalls ($1,000.00 and $1,500.00) stay pending — one promotion promotes one candidate",
+    JSON.stringify(pendingAmounts), JSON.stringify(OTHER_PENDING_MINOR));
+  // NC · a pending candidate is not a case: the synthetic payer cannot settle it, whatever its id.
+  const pendingIds = (afterOpen.json ?? []).map((i) => i.candidateId);
+  const settlePending = await Promise.all(pendingIds.map((id) => apiCall("POST", `/synthetic-demo/cases/${id}/settle`, asOperator)));
+  check("NC · the synthetic payer cannot settle the two pending candidates — they are not cases and nothing is paid for them",
+    settlePending.length === 2 && settlePending.every((r) => r.status === 404), JSON.stringify(settlePending.map((r) => r.status)));
   check("the case starts at OPENED and nothing further is claimed",
     (await stageIs("OPENED")) && !(await stageIs("OWNED")) && !(await stageIs("PROVEN")));
   await shot("03-case-opened-exposure-only");
@@ -1854,7 +1878,7 @@ try {
   await page.getByLabel("Baseline amount").fill(fmtMoney(exposureMinor + 100).replace(/[$,]/g, ""));
   check("NC · a baseline at or above the exposure is not accepted (it would leave no room for any recovery)",
     await buttonDisabled("Lock baseline"), "button enabled");
-  await page.getByLabel("Baseline amount").fill("100.00");
+  await page.getByLabel("Baseline amount").fill((LOCKED_BASELINE_MINOR / 100).toFixed(2));
   await page.getByRole("button", { name: "Lock baseline" }).click();
   check("the baseline is locked BEFORE any outcome exists — the case is BASELINED", await stageNow("BASELINED"));
   await page.getByRole("button", { name: "Record corrective action" }).click();
@@ -1887,7 +1911,8 @@ try {
   check("the settlement is ONE signed, independent OUTCOME record for exactly the identified exposure, labelled SYNTHETIC",
     (evidenceList.json ?? []).length === 1 &&
       settledEvidence?.evidenceRole === "outcome" && settledEvidence?.trustClassification === "independent" &&
-      settledEvidence?.amountMinor === exposureMinor && settledEvidence?.currency === "USD" &&
+      settledEvidence?.amountMinor === exposureMinor && settledEvidence?.amountMinor === TARGET_EXPOSURE_MINOR &&
+      settledEvidence?.currency === "USD" &&
       /^SYNTHETIC-/.test(settledEvidence?.sourceRecordId ?? "") && settledEvidence?.evidenceId === `EV-SYNTHETIC-${reconCaseId}`,
     JSON.stringify(settledEvidence ?? null).slice(0, 220));
   const secondSettle = await apiCall("POST", `/synthetic-demo/cases/${reconCaseId}/settle`, asOperator);
@@ -1964,7 +1989,9 @@ try {
   haltIf(!provenReached, "the screen's genuine approval did not reach PROVEN");
 
   const proofId = `PF-SYNTHETIC-${tag}`;
-  const returnedMinor = exposureMinor - 10_000;
+  const returnedMinor = exposureMinor - LOCKED_BASELINE_MINOR;
+  checkEqual("the scenario's arithmetic: $600.00 collected − $100.00 baseline = $500.00 returned",
+    String(returnedMinor), String(EXPECTED_RETURNED_MINOR));
   const proofText = await page.locator('[data-testid="demo-proof"]').innerText();
   const returnedText = await page.locator('[data-testid="demo-returned"]').innerText();
   check("Revenue Returned is collected minus baseline, names the proof it came from, and is SYNTHETIC",
@@ -1974,6 +2001,15 @@ try {
     (await page.locator('[data-testid="demo-exposure"]').innerText()).includes(fmtMoney(exposureMinor)) &&
       returnedText.includes(fmtMoney(returnedMinor)) && returnedMinor !== exposureMinor,
     `exposure ${fmtMoney(exposureMinor)} · returned ${fmtMoney(returnedMinor)}`);
+  // On the demo screen itself, at the moment of PROVEN: Returned is exactly $500.00, Exposure exactly $600.00,
+  // and neither the pending $2,500.00 nor the $3,100.00 opportunity total has leaked into the proven panel.
+  const screenReturned = returnedText.replace(/\s+/g, " ");
+  const screenExposure = (await page.locator('[data-testid="demo-exposure"]').innerText()).replace(/\s+/g, " ");
+  check("on the demo screen Returned reads $500.00 and Exposure $600.00 — the pending $2,500.00 and the $3,100.00 total are not in Returned",
+    screenReturned.includes(fmtMoney(EXPECTED_RETURNED_MINOR)) && screenExposure.includes(fmtMoney(TARGET_EXPOSURE_MINOR)) &&
+      !screenReturned.includes(fmtMoney(250_000)) && !screenReturned.includes(fmtMoney(310_000)) &&
+      !screenReturned.includes(fmtMoney(TARGET_EXPOSURE_MINOR)),
+    `exposure=[${screenExposure.slice(0, 80)}] returned=[${screenReturned.slice(0, 80)}]`);
   await shot("06-after-proven-returned-vs-exposure");
 
   const frozen = await page.evaluate(async ([pid, caseId]) => {
@@ -1986,7 +2022,7 @@ try {
     frozen.proofStatus === 200 &&
       frozen.proof?.recoveryReason === "BillingCorrection" &&
       frozen.proof?.collectedAmount?.minor === exposureMinor &&
-      frozen.proof?.baselineAmount?.minor === 10_000 &&
+      frozen.proof?.baselineAmount?.minor === LOCKED_BASELINE_MINOR &&
       frozen.proof?.revenueReturned?.minor === returnedMinor &&
       (frozen.proof?.evidenceRefs ?? []).includes(settledEvidence?.evidenceId),
     JSON.stringify({ r: frozen.proof?.recoveryReason, c: frozen.proof?.collectedAmount?.minor, b: frozen.proof?.baselineAmount?.minor }));
@@ -2009,8 +2045,16 @@ try {
   await shot("07-independent-case-screen-proven");
 
   const stillPending = await apiCall("GET", `/agent-candidates?boundaryId=${encodeURIComponent(BOUNDARY)}`, asOperator);
-  check("proving one case does not touch the other two shortfalls — they remain pending candidates, uncounted",
-    (stillPending.json ?? []).length === 2, `pending=${(stillPending.json ?? []).length}`);
+  const stillPendingAmounts = (stillPending.json ?? []).map((i) => i.signal.amountAtRiskMinor).sort((a, b) => a - b);
+  checkEqual("proving one case does not touch the other two shortfalls — $1,000.00 and $1,500.00 remain pending candidates",
+    JSON.stringify(stillPendingAmounts), JSON.stringify(OTHER_PENDING_MINOR));
+  // UNCOUNTED: the only proven figure in the book is the one frozen proof. The two pending shortfalls
+  // ($2,500.00 of Revenue Opportunity) contribute nothing to Returned, and the panel still says $500.00.
+  const finalView = await apiCall("GET", `/recovery-cases/${reconCaseId}`, asApprover);
+  check("the two pending shortfalls ($2,500.00) are uncounted: the book's only proven figure is the single $500.00 proof",
+    finalView.json?.provenRevenueReturnedMinor === EXPECTED_RETURNED_MINOR &&
+      stillPendingAmounts.reduce((a, b) => a + b, 0) === 250_000,
+    `proven=${finalView.json?.provenRevenueReturnedMinor} pending=${JSON.stringify(stillPendingAmounts)}`);
 
   // ── 12 · Egress and page health ──────────────────────────────────────────────────────────────────
   const external = requested.filter((u) => !u.startsWith(UI_BASE) && !u.startsWith("data:") && !u.startsWith("blob:"));

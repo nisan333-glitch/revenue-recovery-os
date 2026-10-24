@@ -114,10 +114,13 @@ Plan: 10 units, 3 candidates, exposure **$3,100.00** (positives only).
 
 ## The arc, end to end (journey §14 / §14b)
 
-Injected observation → reconciler → pending candidate → human accept → promotion → **Recovery Case** →
-author / baseline / intervention → **signed outcome evidence** → approver freezes the proof with reason
-**`BillingCorrection`** → **PROVEN**. On the screen: the identified exposure (e.g. $600.00) and the proven
-return ($70.00 = collected $90.00 − baseline $20.00, synthetic) as two different numbers.
+Operator clicks **Launch** → reconciler → three pending candidates ($600.00, $1,000.00, $1,500.00 = $3,100.00
+Opportunity, Returned NOT COMPUTED) → the operator **selects the $600.00 shortfall by the amount its card shows**
+and accepts it → promotion → **Recovery Case** → author / $100.00 baseline / intervention → **server-signed
+synthetic settlement** → a different identity (Finance) freezes the proof with reason **`BillingCorrection`** →
+**PROVEN**. On the screen: the identified exposure **$600.00** and the proven return **$500.00** (collected
+$600.00 − baseline $100.00, synthetic) as two different numbers, with the other two shortfalls ($2,500.00)
+still pending and uncounted. The journey pins these three figures, so promoting any other candidate fails it.
 
 `BillingCorrection` was added as an approved, additive vocabulary value (type, reasons table, HTTP enum). No
 migration: the proof column is plain text. It is a **label**: the reason is absent from `Collected − Baseline`,
@@ -130,7 +133,8 @@ approving; a reason outside the closed vocabulary; signed evidence whose amount 
 
 ## What it does NOT do
 
-* The observation is injected by the harness. NH has no screen that creates a detector task, deliberately.
+* The only thing the Launch button can queue is the labelled synthetic book. NH has no screen that lets an
+  operator author a detector task or a finding, deliberately.
 * Nothing here reads a customer file in production, and no figure is Revenue Returned of a real customer.
 * The CFO proof screen still renders seed data, with a banner saying so.
 
