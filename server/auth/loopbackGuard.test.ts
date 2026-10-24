@@ -3,8 +3,8 @@ import {
   assertDevHeadersBindSafe, assertLoopbackOnlyRequest, hostWithoutPort, isLoopbackHostHeader, isPrivateOrLoopbackAddress,
 } from "./loopbackGuard";
 
-const req = (headers: Record<string, string>, remoteAddress: string | undefined = "127.0.0.1") =>
-  ({ headers, socket: { remoteAddress } }) as unknown as Parameters<typeof assertLoopbackOnlyRequest>[0];
+const req = (headers: Record<string, string>, remoteAddress: string | null = "127.0.0.1") =>
+  ({ headers, socket: { remoteAddress: remoteAddress ?? undefined } }) as unknown as Parameters<typeof assertLoopbackOnlyRequest>[0];
 
 describe("dev-header identity — per-request loopback rule", () => {
   it("accepts a local client", () => {
@@ -31,7 +31,7 @@ describe("dev-header identity — per-request loopback rule", () => {
   it("refuses a public peer address even when Host claims localhost", () => {
     expect(() => assertLoopbackOnlyRequest(req({ host: "localhost:4000" }, "203.0.113.9"))).toThrow(/local private-pilot/);
     expect(() => assertLoopbackOnlyRequest(req({ host: "localhost:4000" }, "2001:db8::1"))).toThrow(/local private-pilot/);
-    expect(() => assertLoopbackOnlyRequest(req({ host: "localhost:4000" }, undefined))).toThrow(/local private-pilot/);
+    expect(() => assertLoopbackOnlyRequest(req({ host: "localhost:4000" }, null))).toThrow(/local private-pilot/);
   });
 
   it("classifies addresses", () => {
