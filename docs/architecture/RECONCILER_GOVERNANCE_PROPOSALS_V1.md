@@ -42,6 +42,14 @@ the shortfall was collected."* `appliesTo: "RevenueUnderBilled"`.
 1. **Nothing ties a reason to a recovery type today.** An approver may attach `BillingCorrection` to an
    activation case, or the reverse. That is the existing behaviour for all seven values; adding an
    association check would be a *new* governance rule and is deliberately **not** part of this proposal.
+> **Update 2026-10-24 · risk 1 is closed for THIS value only.** `proofService.approve` now refuses
+> `BillingCorrection` unless the case's governed root records `recoveryType = RevenueUnderBilled` (403; a case
+> with no root has no recorded type and is refused). The type comes from `RecoveryCaseRecord`, never from the
+> request. The other seven reasons are unchanged — a rule on them, or the reverse direction (a
+> `RevenueUnderBilled` case must use `BillingCorrection`), is a new governance rule and remains an open
+> decision for the proof-vocabulary owner. Rule: `reasonScopeViolation` in `src/domain/reasons.ts`; tests:
+> `src/domain/reasonScope.test.ts`, `server/services/proofReasonScope.test.ts`.
+
 2. `EventDetail` offers `RECOVERY_REASONS` for the seed-backed screen, so the new value becomes selectable
    there too. Harmless, but visible.
 3. **Is a label enough?** The honest proof of a corrective invoice is the billing evidence, which the evidence

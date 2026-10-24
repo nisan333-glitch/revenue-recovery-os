@@ -23,6 +23,8 @@ import {
 import { getBaselineSnapshot, establishAndLockBaseline } from "../persistence/baselineStore";
 import { getEvidenceByIds, ingestEvidence, type IngestedEvidence } from "../persistence/evidenceStore";
 import { money } from "../../src/domain/money";
+import { ENFORCED_REASON_SCOPE, reasonScopeViolation } from "../../src/domain/reasons";
+import { prisma } from "../db";
 import type { Proof, ProofApprovalInput } from "../../src/domain/proof";
 import { baselineTemporallyValid, type Baseline } from "../../src/domain/baseline";
 import { hasIndependentEvidence, type Evidence } from "../../src/domain/evidence";
@@ -196,6 +198,19 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
   }
 
   await enforceSeparation(req.recoveryCaseId, actor, "Approve", req.collectedMinor);
+
+  // Reason scope · a proof is immutable, so a reason that names a mechanism the case never had cannot be
+  // corrected afterwards. Only reasons in ENFORCED_REASON_SCOPE are checked (today: BillingCorrection); the
+  // case's recovery type is read from its governed root, never from the request, and a case with no root
+  // has no recorded type, which fails closed for an enforced reason. Other reasons skip the lookup entirely.
+  if (Object.prototype.hasOwnProperty.call(ENFORCED_REASON_SCOPE, req.recoveryReason)) {
+    const root = await prisma.recoveryCaseRecord.findUnique({
+      where: { recoveryCaseId: req.recoveryCaseId },
+      select: { recoveryType: true },
+    });
+    const violation = reasonScopeViolation(req.recoveryReason, root?.recoveryType ?? null);
+    if (violation !== null) throw new ForbiddenError(violation);
+  }
 
   // Duplicate-count prevention: one counted proof-chain root per atomic claim (frozen rule).
   if (await chainRootExists(req.recoveryCaseId)) {

@@ -71,3 +71,37 @@ export function reasonLabel(reason: RecoveryReason): string {
 }
 
 export const ALL_REASON_KEYS = RECOVERY_REASONS.map((r) => r.key);
+
+// ── ENFORCED REASON SCOPE ───────────────────────────────────────────────────────────────────────────
+//
+// `appliesTo` above is GUIDANCE for the screen. It has never been enforced, which is harmless for a label
+// that is merely suggestive and wrong for one whose truth is part of an IMMUTABLE proof: a proof frozen
+// with a reason that names a mechanism the case never had is a false statement that cannot be corrected,
+// only superseded.
+//
+// So the scope of ONE reason is enforced, and deliberately only that one. `BillingCorrection` was added
+// (2026-10-23) with its scope stated as `RevenueUnderBilled`; enforcing what its own definition says
+// changes no existing combination. The other seven reasons keep their historical behaviour — applying a
+// rule to them would be a NEW governance rule on existing values, which has an owner and is not taken here.
+//
+// Fail-closed in both directions: a case whose recovery type is unknown cannot carry an enforced reason
+// (absent is not "any"), and matching is exact — no case folding, no trimming.
+export const ENFORCED_REASON_SCOPE: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  BillingCorrection: Object.freeze(["RevenueUnderBilled"]),
+});
+
+/**
+ * Returns `null` when the reason may be attached to a case of `recoveryType`, otherwise a refusal message.
+ * The message names the reason and the types — never any amount, identifier or case content.
+ */
+export function reasonScopeViolation(reason: string, recoveryType: string | null): string | null {
+  const allowed = Object.prototype.hasOwnProperty.call(ENFORCED_REASON_SCOPE, reason) ? ENFORCED_REASON_SCOPE[reason] : undefined;
+  if (allowed === undefined) return null; // not an enforced reason: historical behaviour, unchanged
+  if (recoveryType === null) {
+    return `reason '${reason}' applies only to ${allowed.join(", ")} cases, and this case has no recorded recovery type`;
+  }
+  if (!allowed.includes(recoveryType)) {
+    return `reason '${reason}' applies only to ${allowed.join(", ")} cases; this case is '${recoveryType}'`;
+  }
+  return null;
+}
