@@ -1,0 +1,56 @@
+name: NH coordination receiver
+
+# Records `nh-msg` / `nh-receipt` comments on a short allow-list of issues and answers with a ledger comment.
+# Owner approved the scoped receiver correction on 2026-10-25; default-branch activation remains gated by review.
+#
+# LEAST PRIVILEGE. The workflow token is empty; the single job gets `contents: read` (checkout) and
+# `issues: write` (post the reply) and nothing else. It never runs on a pull request, never checks out a ref
+# taken from the event, and never puts comment text into a shell: the comment is fetched by id inside the
+# script and treated as data. Third-party actions are pinned to a full commit SHA.
+#
+# `issue_comment` workflows run the version on the DEFAULT branch, so this file only takes effect once it is on
+# the default branch. Until then it is dormant.
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+# One run per issue at a time, in arrival order, so replay never races itself.
+concurrency:
+  group: nh-receiver-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  receive:
+    name: Record nh-msg and nh-receipt comments
+    if: >-
+      ${{ github.event.issue.pull_request == null
+      && github.event.comment.author_association == 'OWNER'
+      && github.event.comment.user.type != 'Bot'
+      && (contains(github.event.comment.body, '```nh-msg') || contains(github.event.comment.body, '```nh-receipt')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout (default branch, no credentials kept)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Record the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NH_REPO: ${{ github.repository }}
+          NH_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          NH_COMMENT_ID: ${{ github.event.comment.id }}
+          # Narrow on purpose: changing this list needs a reviewed change to this file.
+          NH_ALLOWED_ISSUES: "13"
+        run: node --experimental-strip-types scripts/coordination/receive-comment.ts
