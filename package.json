@@ -33,6 +33,7 @@
     "test:auth-journey": "vite build && node e2e/auth-journey.mjs",
     "verify:registers": "vite-node scripts/verify-register-integrity.ts",
     "coordination:validate": "vite-node scripts/coordination/validate.ts",
+    "coordination:ci-status": "vite-node scripts/coordination/ci-status.ts",
     "exposure:absorbed": "vite-node scripts/exposure/absorbed-observations.ts",
     "recon:generate": "node scripts/reconciliation-synthetic/generate.mjs",
     "recon:run": "vite-node scripts/reconciliation-synthetic/run.ts",

@@ -460,3 +460,47 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  # COORDINATION STATUS (GitHub-only, read-only). The last job of the run. It records HOW EACH JOB ENDED, from
+  # `needs.*.result` as GitHub hands it over, so a reader (the owner, Claude Code, or ChatGPT through the GitHub
+  # API) has one machine-readable object that nobody typed. `if: always()` is deliberate: a red run needs a record
+  # too. It holds no secret, posts nothing, calls no network and has no write scope; the token stays read-only.
+  # Limits are stated in docs/NH_COORDINATION_PROTOCOL_V1.md: it is only as independent as this file.
+  ci-status:
+    name: Coordination status (from needs.*.result)
+    runs-on: ubuntu-latest
+    needs: [verify, frozen-verifiers, postgres-integration, browser-journey, docker-pilot-smoke]
+    if: ${{ always() }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Emit the CI status record
+        env:
+          NH_NEEDS_JSON: ${{ toJSON(needs) }}
+          NH_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          NH_RUN_ID: ${{ github.run_id }}
+          NH_RUN_ATTEMPT: ${{ github.run_attempt }}
+          NH_REPO: ${{ github.repository }}
+          NH_REF: ${{ github.head_ref || github.ref_name }}
+          NH_EVENT: ${{ github.event_name }}
+        run: npm run coordination:ci-status
+
+      - name: Keep the record with the run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nh-ci-status
+          path: ci-status.json
+          if-no-files-found: error
+          retention-days: 30
