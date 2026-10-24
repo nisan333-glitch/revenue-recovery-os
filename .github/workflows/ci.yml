@@ -264,6 +264,14 @@ jobs:
           # verbatim text of its section-14 assertions. Changes no verdict.
           JOURNEY_EVIDENCE_DIR: ${{ runner.temp }}/journey-evidence
 
+      # EP-20 · Browser sign-in against the PRODUCTION bundle (no Vite dev server, so no dev-header identity can exist
+      # in the page), the real Fastify app and the real OIDC verifier. Only the identity provider is scripted: no
+      # provider, key or credential is real, and a live sign-in is NOT claimed. Negative scenarios: unauthenticated,
+      # forged state, provider error, refused code, expired / stranger-signed / unknown-role / wildcard tokens,
+      # wrong role, forged and escalating dev headers, replayed callback, CSP.
+      - name: EP-20 browser sign-in journey (production bundle, scripted identity provider)
+        run: npm run test:auth-journey
+
       - name: Upload synthetic-demo evidence (screenshots + assertions)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

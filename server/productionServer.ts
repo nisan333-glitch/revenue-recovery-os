@@ -17,6 +17,7 @@ import { createAgentProcessFromEnvironment } from "./agents/bootstrap";
 import { configuredAgentHandlers } from "./agents/activationDetector";
 import { closeInOrder, installGracefulShutdown } from "./processLifecycle";
 import { createIdentityResolverFromEnvironment } from "./auth/verifiedIdentity";
+import { assertBrowserSignInConfigured } from "./auth/publicAuthConfig";
 
 // Resolved from the process's working directory, not `__dirname` — the compiled artifact
 // (dist-server/server/productionServer.js) and the raw TS source (as Vitest runs it,
@@ -64,6 +65,9 @@ if (require.main === module) {
   const handlers = configuredAgentHandlers(process.env);
   const agents = createAgentProcessFromEnvironment(process.env, handlers);
   const identityResolver = createIdentityResolverFromEnvironment(process.env);
+  // This process serves the browser app: an OIDC deployment whose browser sign-in is unconfigured would be a
+  // screen nobody can sign in to. Refuse to start rather than come up looking healthy.
+  assertBrowserSignInConfigured(process.env);
   const app = buildProductionApp({ agentReadiness: () => agents.readiness(), identityResolver });
   const removeShutdownHandlers = installGracefulShutdown(app, agents);
 

@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   AUTH_EXPIRED_EVENT, beginAuthorization, completeAuthorization, isDevBuild, parseCallback,
-  rememberFlow, signOut, validStoredToken, type AuthConfigDTO, type OidcClientConfig,
+  SignInError, rememberFlow, signOut, validStoredToken, type AuthConfigDTO, type OidcClientConfig,
 } from "./oidc";
 
 type State =
@@ -36,8 +36,16 @@ async function whoami(token: string): Promise<{ actorId: string; role: string } 
   return typeof body.actorId === "string" && typeof body.role === "string" ? { actorId: body.actorId, role: body.role } : null;
 }
 
-export function AuthGate({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<State>(isDevBuild() ? { kind: "open" } : { kind: "loading" });
+export interface AuthGateProps {
+  readonly children?: ReactNode;
+  /** Test seam. Defaults to the build flag; only a Vite dev build ever bypasses the gate by itself. */
+  readonly devBuild?: boolean;
+  /** Test seam for the redirect to the identity provider. Defaults to `window.location.assign`. */
+  readonly navigate?: (url: string) => void;
+}
+
+export function AuthGate({ children, devBuild = isDevBuild(), navigate = (url) => window.location.assign(url) }: AuthGateProps) {
+  const [state, setState] = useState<State>(devBuild ? { kind: "open" } : { kind: "loading" });
 
   const resolve = useCallback(async () => {
     try {
@@ -59,22 +67,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (!who) { signOut(); setState({ kind: "signed-out", config: client, notice: "Your session was not accepted. Please sign in again." }); return; }
       setState({ kind: "signed-in", config: client, ...who });
     } catch (error) {
-      setState({ kind: "failed", message: error instanceof Error && error.name !== "TypeError" ? error.message : "Sign-in is unavailable. Nothing was loaded." });
+      setState({ kind: "failed", message: error instanceof SignInError ? error.message : "Sign-in is unavailable. Nothing was loaded." });
     }
   }, []);
 
   useEffect(() => {
-    if (isDevBuild()) return;
+    if (devBuild) return;
     void resolve();
     const onExpired = () => { void resolve(); };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
-  }, [resolve]);
+  }, [resolve, devBuild]);
 
   const startSignIn = async (config: OidcClientConfig) => {
     const request = await beginAuthorization(config, redirectUri());
     rememberFlow(request);
-    window.location.assign(request.url);
+    navigate(request.url);
   };
 
   if (state.kind === "open" || state.kind === "signed-in") {
@@ -101,7 +109,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
           <p className="text-sm text-slate-600">The deployment owner must set: {state.missing.join(", ")}.</p>
         </div>
       )}
-      {state.kind === "failed" && <p role="alert">{state.message}</p>}
+      {state.kind === "failed" && (
+        <div className="space-y-3">
+          <p role="alert">{state.message}</p>
+          <button type="button" className="underline" onClick={() => { setState({ kind: "loading" }); void resolve(); }}>Try again</button>
+        </div>
+      )}
       {state.kind === "signed-out" && (
         <div className="space-y-3">
           {state.notice && <p role="alert" className="text-sm text-amber-700">{state.notice}</p>}

@@ -69,3 +69,28 @@ export function readPublicAuthConfig(env: Readonly<Record<string, string | undef
     scope, tokenUse: tokenUse as "access_token" | "id_token",
   };
 }
+
+/**
+ * The page's Content-Security-Policy. `connect-src` is `'self'` plus, ONLY when browser sign-in is fully
+ * configured, the single origin of the identity provider's token endpoint. Scripts stay `'self'`-only.
+ */
+export function buildContentSecurityPolicy(config: PublicAuthConfig): string {
+  const connect = ["'self'"];
+  if (config.mode === "oidc" && config.configured) connect.push(new URL(config.tokenEndpoint).origin);
+  return [
+    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", `connect-src ${connect.join(" ")}`,
+    "img-src 'self' data:", "frame-ancestors 'none'", "base-uri 'self'", "object-src 'none'",
+  ].join("; ");
+}
+
+/**
+ * Start-up rule for the process that SERVES THE BROWSER APP in OIDC mode: if the verifier is configured but the
+ * browser sign-in values are not, the deployment would come up as a screen that can never sign anyone in. Refuse
+ * to start instead, naming the variables (never values). Dev-headers deployments are unaffected.
+ */
+export function assertBrowserSignInConfigured(env: Readonly<Record<string, string | undefined>> = process.env): void {
+  const config = readPublicAuthConfig(env);
+  if (config.mode === "oidc" && !config.configured) {
+    throw new Error(`browser sign-in is not configured; set: ${config.missing.join(", ")}`);
+  }
+}

@@ -29,7 +29,8 @@ describe("sign-in gate wiring", () => {
 
   it("the gate is bypassed only by the dev-build flag or the server's own dev-headers mode", () => {
     const gate = code("src/auth/AuthGate.tsx");
-    expect(gate).toMatch(/isDevBuild\(\) \? \{ kind: "open" \}/);
+    expect(gate).toMatch(/devBuild = isDevBuild\(\)/);
+    expect(gate).toMatch(/devBuild \? \{ kind: "open" \}/);
     expect(gate).toMatch(/config\.mode === "dev-headers"/);
     // The type declaration, the dev-build initial state, and the server's dev-headers answer — nothing else.
     expect(gate.match(/kind: "open"/g)).toHaveLength(3);

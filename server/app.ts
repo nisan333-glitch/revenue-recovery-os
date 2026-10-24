@@ -31,7 +31,7 @@ import { INTAKE_LIMITS } from "../src/contract/pilotDataContract";
 import { registerErrorHandler } from "./http/errors";
 import { isDbReady } from "./health";
 import { resolveActor, type IdentityResolver } from "./auth/actorContext";
-import { readPublicAuthConfig, type PublicAuthConfig } from "./auth/publicAuthConfig";
+import { buildContentSecurityPolicy, readPublicAuthConfig, type PublicAuthConfig } from "./auth/publicAuthConfig";
 import { assertProductionDatabaseConfiguration } from "./persistence/databaseConfig";
 import {
   assertTransportContract, registerTransportGuard, transportModeFromEnvironment, type TransportMode,
@@ -127,15 +127,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     },
   });
   registerErrorHandler(app);
+  // The browser exchanges the authorization code at the identity provider's token endpoint, so exactly THAT origin
+  // (and no other) is added to connect-src — without it the sign-in cannot complete in a real browser. Nothing is
+  // added while sign-in is unconfigured or in dev-headers mode.
+  const contentSecurityPolicy = buildContentSecurityPolicy(options.publicAuthConfig ?? readPublicAuthConfig(process.env));
   registerTransportGuard(app, options.transport ?? transportModeFromEnvironment(process.env));
   app.addHook("onSend", async (_request, reply, payload) => {
     reply.header("x-content-type-options", "nosniff");
     reply.header("x-frame-options", "DENY");
     reply.header("referrer-policy", "no-referrer");
-    reply.header(
-      "content-security-policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
-    );
+    reply.header("content-security-policy", contentSecurityPolicy);
     reply.header("cache-control", "no-store");
     return payload;
   });

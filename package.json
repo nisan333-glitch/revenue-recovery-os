@@ -30,6 +30,7 @@
     "screenshots": "node scripts/screenshots.mjs",
     "fixture:journey": "vite-node scripts/write-journey-fixture.ts",
     "test:journey": "npm run fixture:journey && node e2e/journey.mjs",
+    "test:auth-journey": "vite build && node e2e/auth-journey.mjs",
     "verify:registers": "vite-node scripts/verify-register-integrity.ts",
     "exposure:absorbed": "vite-node scripts/exposure/absorbed-observations.ts",
     "recon:generate": "node scripts/reconciliation-synthetic/generate.mjs",

@@ -56,3 +56,34 @@ describe("public auth configuration", () => {
     expect(readPublicAuthConfig({ NODE_ENV: "production", NH_AUTH_MODE: "dev-headers" })).toEqual({ mode: "dev-headers" });
   });
 });
+
+import { assertBrowserSignInConfigured, buildContentSecurityPolicy } from "./publicAuthConfig";
+
+describe("content-security-policy for browser sign-in", () => {
+  it("allows only the token endpoint's origin, and only when sign-in is configured", () => {
+    const configured = readPublicAuthConfig(full);
+    const csp = buildContentSecurityPolicy(configured);
+    expect(csp).toContain("connect-src 'self' https://idp.example.test;");
+    expect(csp).toContain("script-src 'self';");
+    expect(csp).not.toMatch(/unsafe-eval|script-src[^;]*unsafe-inline|\*/);
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(buildContentSecurityPolicy(readPublicAuthConfig({ NODE_ENV: "production" }))).toContain("connect-src 'self';");
+    expect(buildContentSecurityPolicy({ mode: "dev-headers" })).toContain("connect-src 'self';");
+  });
+});
+
+describe("production start-up requires browser sign-in configuration", () => {
+  it("OIDC without the browser values refuses to start and names variables only", () => {
+    expect(() => assertBrowserSignInConfigured({ NODE_ENV: "production" })).toThrow(/NH_OIDC_CLIENT_ID/);
+    expect(() => assertBrowserSignInConfigured({ ...full, NH_OIDC_TOKEN_ENDPOINT: "http://leak.example/token?s=SECRET" }))
+      .toThrow(/NH_OIDC_TOKEN_ENDPOINT/);
+    try { assertBrowserSignInConfigured({ ...full, NH_OIDC_TOKEN_ENDPOINT: "http://leak.example/token?s=SECRET" }); } catch (e) {
+      expect(String(e)).not.toContain("SECRET");
+    }
+  });
+  it("a complete configuration, and the dev-header private pilot, start", () => {
+    expect(() => assertBrowserSignInConfigured(full)).not.toThrow();
+    expect(() => assertBrowserSignInConfigured({ NODE_ENV: "production", NH_AUTH_MODE: "dev-headers" })).not.toThrow();
+  });
+});
