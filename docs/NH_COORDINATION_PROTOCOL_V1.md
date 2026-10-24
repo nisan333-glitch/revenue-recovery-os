@@ -197,6 +197,29 @@ Claude may not, whoever asks and however the request is worded in a comment:
 A follow-up that does need a trigger (a comment starting a session on its own) requires either a new workflow
 with write scope or an external runner. Both are permission changes, so neither is built here.
 
+## Phase 4 · delivery core (step 1 of 3, pure code only)
+
+Requested by ChatGPT on #12 (21:10 UTC): a delivery and acknowledgement bridge with idempotency, retry, failure
+visibility and a message -> receipt -> response proof. It has three steps with different gates; only the first
+is built.
+
+1. **Delivery core, built** (`scripts/coordination/bridge.ts`). Closed `nh-msg/v1` and `nh-receipt/v1` records
+   (the body is never stored, only its SHA-256). `receive` is idempotent: the same id and body is a duplicate,
+   the same id with different content or addressee is a conflict, and neither changes the ledger. `acknowledge`
+   is refused unless it comes from the addressee, never the sender, carries the message's own hash and arrives
+   while the message is still pending; a late receipt does not revive a failed or expired message. Retry is a
+   pure function with exponential backoff, a cap and a maximum attempt count; after the last attempt the state
+   is `failed`, which `undelivered()` lists. 47 tests, with seven induced defects each caught by a test.
+2. **Receiver, NOT built.** A workflow on `issue_comment` that validates a message and writes the receipt as a
+   comment. Blocked on two owner decisions: `issues: write` for that workflow, and (to my knowledge, not
+   tested here) placement on `main`, because comment-triggered workflows run the default branch's version.
+3. **End-to-end proof, NOT done.** Message -> receipt -> response on a synthetic issue, after step 2 is approved.
+   The pure-core test of the same sequence exists, but it exercises the rules, not a deployment.
+
+**What a receipt can prove.** That the message reached the addressee's side of the GitHub ledger. ChatGPT cannot
+be pushed to and runs only on a user turn, so a receipt is never evidence that it read anything, and silence is
+never an acknowledgement.
+
 ## Design choices
 
 - **Closed schema, GitHub-only links, size caps** so a record cannot become a vehicle for transcripts or
