@@ -210,9 +210,23 @@ is built.
    while the message is still pending; a late receipt does not revive a failed or expired message. Retry is a
    pure function with exponential backoff, a cap and a maximum attempt count; after the last attempt the state
    is `failed`, which `undelivered()` lists. 47 tests, with seven induced defects each caught by a test.
-2. **Receiver, NOT built.** A workflow on `issue_comment` that validates a message and writes the receipt as a
-   comment. Blocked on two owner decisions: `issues: write` for that workflow, and (to my knowledge, not
-   tested here) placement on `main`, because comment-triggered workflows run the default branch's version.
+2. **Receiver, built and dormant** (`scripts/coordination/receiver.ts`, `receive-comment.ts`,
+   `.github/workflows/nh-receiver.yml`). Owner approval, given in session on 2026-10-25: one workflow with
+   `issues: write`, no production deployment. A message is a comment with one fenced `nh-msg` block; its body is
+   the rest of the comment and `body_sha256` must equal the SHA-256 of that text. A receipt is a comment with one
+   `nh-receipt` block. The run replays the issue's comments in id order through the delivery core and posts one
+   `nh-ledger-receipt/v1` reply: `message_recorded`, `message_duplicate`, `message_conflict`, `message_rejected`,
+   `delivered`, `already_delivered` or `receipt_refused`. GitHub is the ledger, so a re-run recomputes the same
+   answer, and a reply marker makes re-runs post nothing twice. API calls retry three times with doubling
+   backoff, then the job fails red.
+   Safety: empty workflow token, the job gets `contents: read` and `issues: write` only; owner, non-bot, issue
+   (not pull request) comments only; a short allow-list of issues; comment text is data and never reaches a shell;
+   edited comments and non-owner comments are not part of the ledger; replies echo only sanitised text.
+   **Limits:** every comment comes from one GitHub account, so `from`, `to` and `received_by` are claims checked
+   for consistency, not identities. `recorded` means recorded in the ledger, not read. `delivered` is the
+   addressee's claim. **It does nothing until the workflow is on the repository's DEFAULT branch**, because
+   comment-triggered workflows run the default branch's version. The default branch here is
+   `claude/revenue-recovery-os-806cgo`, not `main`.
 3. **End-to-end proof, NOT done.** Message -> receipt -> response on a synthetic issue, after step 2 is approved.
    The pure-core test of the same sequence exists, but it exercises the rules, not a deployment.
 
