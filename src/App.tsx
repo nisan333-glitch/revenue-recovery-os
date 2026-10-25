@@ -21,11 +21,13 @@ import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
 import { CandidateReviewQueue } from "./modules/CandidateReviewQueue";
 import { SyntheticDemoConsole } from "./modules/SyntheticDemoConsole";
 import { RecoveryCaseCenter } from "./modules/RecoveryCaseCenter";
+import { DayTradingCenter } from "./modules/DayTradingCenter";
 
 // The single case used by the Guided Demo navigation mode. Only an identifier — no business values here.
 const DEMO_CASE_ID = "RE-1014";
 
 type ModuleKey =
+  | "day-trading"
   | "demo"
   | "loop"
   | "dashboard"
@@ -46,6 +48,7 @@ type ModuleKey =
   | "policy-governance";
 
 const NAV: { key: ModuleKey; label: string; group: string }[] = [
+  { key: "day-trading", label: "מסחר יומי · דוחות ומחקר", group: "Trading Research" },
   { key: "demo", label: `Guided Demo — ${DEMO_CASE_ID}`, group: "Demo" },
   { key: "synthetic-pilot", label: "Synthetic Pilot v2", group: "Demo" },
   // The LIVE-API walkthrough (private, server-flagged). "Synthetic Pilot v2" above is a client-side simulation.
@@ -145,6 +148,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-8 py-8">
+          {active === "day-trading" && <DayTradingCenter />}
           {active === "demo" &&
             (demoEvent ? (
               <section>
