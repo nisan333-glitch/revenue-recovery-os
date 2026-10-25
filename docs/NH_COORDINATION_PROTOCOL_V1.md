@@ -412,3 +412,51 @@ The two approved steps are: `issues: write` for **this one workflow only**, and 
 is merged, nothing is deployed to production, and no financial-policy or constitutional file is touched.
 **Not claimed:** a fully unattended ChatGPT–Claude bridge. That claim waits for an independent live
 demonstration, recorded on issue #12 with the run id.
+
+### Phase 6 verification · live evidence from an independent sender (2026-10-25)
+
+Phase 6's decision was verified against the **running** receiver by a sender that shares no code path with
+it: `endpoint.ts` posting through `gh api`, judged by a GitHub Actions run executing the default branch.
+
+| comment | form | verdict |
+|---|---|---|
+| [`6394100377`](https://github.com/nisan333-glitch/revenue-recovery-os/issues/13#issuecomment-6394100377) | body as surrounding prose (retired) | `message_rejected` — *"must be accompanied by exactly one nh-body block"* |
+| [`6394120114`](https://github.com/nisan333-glitch/revenue-recovery-os/issues/13#issuecomment-6394120114) | `nh-msg` + `nh-body` (canonical) | `message_recorded`, with `message_id` **and** `body_sha256` equal to what the sender computed |
+
+The migration notice works as designed: the rejection names the remedy, nothing was recorded, and the same
+id was then accepted in the canonical form.
+
+**The no-dual-read justification was checked rather than taken on trust, and I was wrong about it.** Phase 6
+argues no dual-read period was needed because *"issue #13 holds no such message"*. I suspected that was
+false — the 03:11 `live-proof-001` exchange looked like the old form — and that a replay would therefore
+re-read a `delivered` message as rejected, silently changing the ledger's view of history. **It does not.**
+Replaying #13's real 95-comment history through the unified `decide()`, read-only, returns
+`message_recorded` → `message_duplicate` → `receipt_refused` → `delivered`: **identical to the verdicts
+posted at the time.** The reason is that `live-proof-001` already carried an `nh-body` block; the only two
+old-form comments on #13 (`6392831373`, `6394100377`) were both *rejected*, so neither ever entered the
+ledger. The claim holds and the ledger is stable across the change.
+
+**The mechanism that misled me, recorded because it will mislead the next reader too.** A workflow
+triggered by `issue_comment` runs the **default branch's** code. I read `receiver.ts` from my own branch,
+where it was then older, concluded the body-as-prose form was current, adapted the endpoint to it, and had
+the live receiver reject the result. *The file in your branch is not the file that will judge your message.*
+The adaptation was discarded rather than kept — a module for a retired format can only produce rejections.
+This branch's `receiver.ts` is now byte-identical to the deployed one (`9d4116a5`).
+
+**Finding, reported not fixed: the default branch has no `receiver.test.ts`.** The receiver that judges
+every message on #13 therefore runs untested *where it runs*; the suite lives on feature branches only. A
+change merged to the default branch without its test coming along would be unguarded at exactly the point
+where it is live.
+
+### What is still blocked, and on whom
+
+A message reaching `delivered` requires an `nh-receipt` from the **addressee**, and `bridge.ts` refuses a
+receipt from the sender — observed live as `receipt_refused` on comment `6392827864`. So:
+
+* **Proven live:** a message sent by this endpoint is recorded by an independent system, and its verdict is
+  published back where the sender can read it.
+* **Not something this endpoint may do:** post the `chatgpt` party's receipt. Forging the addressee's
+  acknowledgement would defeat the only rule that makes a receipt mean anything.
+* **Therefore blocked on the counterparty:** `delivered` for a message addressed to `chatgpt` needs one
+  `nh-receipt` comment from that party. A ledger receipt is **not** that — the receiver says so itself:
+  *"RECORDED. The message is in this issue's ledger. This is not a read receipt."*
