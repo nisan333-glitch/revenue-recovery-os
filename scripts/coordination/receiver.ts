@@ -4,9 +4,11 @@
 // delivery core (`bridge.ts`) and answers with a ledger record. GitHub is the ledger and the transport; this
 // holds no state of its own, so a re-run recomputes the same answer.
 //
-// WHAT A COMMENT IS. A message is a comment carrying one fenced `nh-msg` JSON block; its BODY is the rest of the
-// comment text, and the block's `body_sha256` must equal the SHA-256 of that text. A receipt is a comment
-// carrying one fenced `nh-receipt` block. Anything else is ignored.
+// WHAT A COMMENT IS. The one wire format is `wire.ts`: a message is a comment carrying one fenced `nh-msg`
+// envelope (JSON) AND one fenced `nh-body` block holding the content verbatim; the envelope's `body_sha256`
+// must equal the SHA-256 of that body. A receipt is a comment carrying one fenced `nh-receipt` block. Anything
+// else is ignored. The earlier "body = the surrounding comment text" form is RETIRED: a comment in it is
+// rejected with an explicit hint rather than guessed at, so the two formats can never disagree about a hash.
 //
 // WHAT IT CAN AND CANNOT PROVE.
 //   · It proves the message was RECORDED in the issue's ledger, and that its content, hash, expiry, duplicate
@@ -26,6 +28,7 @@ import {
   type Ledger,
   type ReceiveOutcome,
 } from "./bridge.ts";
+import { BODY_FENCE, MSG_FENCE, RECEIPT_FENCE, parseComment } from "./wire.ts";
 
 export const LEDGER_SCHEMA = "nh-ledger-receipt/v1";
 export const MAX_COMMENT_CHARS = 20_000;
@@ -64,22 +67,16 @@ export interface LedgerReceipt {
 
 /** Fence markers are built from parts so this source file never contains a literal fence that a parser might read. */
 const TICKS = "`".repeat(3);
-const FENCE_RE = (tag: string) => new RegExp(`${TICKS}${tag}[ \\t]*\\r?\\n([\\s\\S]*?)\\r?\\n${TICKS}`, "g");
 
-export interface Blocks {
-  msg: string[];
-  receipt: string[];
-}
+/** GitHub may store a comment typed in the web UI with CRLF line endings; the canonical body uses LF. */
+const normalise = (text: string): string => text.replace(/\r\n/g, "\n");
 
-export function extractBlocks(body: string): Blocks {
-  const grab = (tag: string) => [...body.matchAll(FENCE_RE(tag))].map((m) => m[1] ?? "");
-  return { msg: grab("nh-msg"), receipt: grab("nh-receipt") };
-}
+/** Does the text contain a line that opens a protocol fence? Used only to decide whether silence would hide a message. */
+const opensProtocolFence = (text: string): boolean =>
+  new RegExp(`^\\x60{3,}(?:${MSG_FENCE}|${BODY_FENCE}|${RECEIPT_FENCE})[ \\t]*$`, "m").test(normalise(text));
 
-/** The message body: the comment text with the nh-msg block removed, line endings normalised, trimmed. */
-export function messageBody(body: string): string {
-  return body.replace(FENCE_RE("nh-msg"), "").replace(/\r\n/g, "\n").trim();
-}
+const LEGACY_HINT =
+  "the text-as-body form is retired; put the message content in a separate nh-body block";
 
 export type Sha256 = (text: string) => string;
 
@@ -97,15 +94,6 @@ interface Applied {
   messageId: string | null;
   bodySha: string | null;
   errors: string[];
-}
-
-function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
-  if (text.length > MAX_BLOCK_CHARS) return { ok: false };
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch {
-    return { ok: false };
-  }
 }
 
 const rec = (x: unknown): Record<string, unknown> | null =>
@@ -127,8 +115,8 @@ const ACK_KIND: Record<AckOutcome, Kind> = {
 export function applyComment(ledger: Ledger, c: Comment, sha256: Sha256): Applied {
   const none: Applied = { ledger, kind: null, messageId: null, bodySha: null, errors: [] };
   if (c.body.length > MAX_COMMENT_CHARS) return none;
-  const blocks = extractBlocks(c.body);
-  if (blocks.msg.length === 0 && blocks.receipt.length === 0) return none;
+  const parsed = parseComment(normalise(c.body));
+  if (parsed.message === null && parsed.receipt === null && parsed.errors.length === 0) return none;
   const now = new Date(c.created_at);
   const reject = (errors: string[], messageId: string | null = null, bodySha: string | null = null): Applied => ({
     ledger,
@@ -137,29 +125,34 @@ export function applyComment(ledger: Ledger, c: Comment, sha256: Sha256): Applie
     bodySha,
     errors,
   });
-  if (blocks.msg.length + blocks.receipt.length !== 1) {
-    return reject(["a comment may carry exactly one nh-msg or nh-receipt block"]);
+
+  if (parsed.errors.length > 0) {
+    const errors = [...parsed.errors];
+    // A legacy comment has an envelope and no nh-body block: say what to do instead of only what is wrong.
+    if (errors.some((e) => e.includes("must be accompanied by exactly one"))) errors.push(LEGACY_HINT);
+    return reject(errors);
   }
 
-  if (blocks.msg.length === 1) {
-    const parsed = parseJson(blocks.msg[0] ?? "");
-    if (!parsed.ok) return reject(["the nh-msg block is not valid JSON within the size cap"]);
-    const r = rec(parsed.value);
+  if (parsed.message !== null) {
+    const r = rec(parsed.message);
     const id = typeof r?.id === "string" ? r.id : null;
+    const body = parsed.body ?? "";
     const declared = typeof r?.body_sha256 === "string" ? r.body_sha256 : null;
-    const actual = sha256(messageBody(c.body));
+    const actual = sha256(body);
     if (declared !== actual) {
-      return reject(["body_sha256 does not match the SHA-256 of the message text"], id, actual);
+      return reject(["body_sha256 does not match the SHA-256 of the nh-body block"], id, actual);
     }
-    const out = receive(ledger, parsed.value, now);
+    if (JSON.stringify(parsed.message).length > MAX_BLOCK_CHARS) {
+      return reject(["the nh-msg envelope exceeds the size cap"], id, actual);
+    }
+    const out = receive(ledger, parsed.message, now);
     return { ledger: out.ledger, kind: MSG_KIND[out.outcome], messageId: id, bodySha: actual, errors: out.errors };
   }
 
-  const parsed = parseJson(blocks.receipt[0] ?? "");
   const mk = (errors: string[]): Applied => ({ ledger, kind: "receipt_refused", messageId: null, bodySha: null, errors });
-  if (!parsed.ok) return mk(["the nh-receipt block is not valid JSON within the size cap"]);
-  const r = rec(parsed.value);
-  const out = acknowledge(ledger, parsed.value, now);
+  if (JSON.stringify(parsed.receipt).length > MAX_BLOCK_CHARS) return mk(["the nh-receipt block exceeds the size cap"]);
+  const r = rec(parsed.receipt);
+  const out = acknowledge(ledger, parsed.receipt, now);
   return {
     ledger: out.ledger,
     kind: ACK_KIND[out.outcome],
@@ -185,8 +178,13 @@ export function decide(all: Comment[], triggerId: number, sha256: Sha256): Decis
   const trigger = ordered.find((c) => c.id === triggerId);
   if (trigger === undefined) throw new Error("triggering comment is not among the issue's comments");
   if (trigger.author_association !== "OWNER") return { receipt: null };
-  const trig = extractBlocks(trigger.body);
-  if (trig.msg.length + trig.receipt.length === 0) return { receipt: null };
+  // An oversized trigger that opens a protocol fence is REJECTED VISIBLY: silence would look like "not yet processed".
+  if (trigger.body.length > MAX_COMMENT_CHARS) {
+    if (!opensProtocolFence(trigger.body.slice(0, MAX_COMMENT_CHARS * 4))) return { receipt: null };
+    return { receipt: ledgerReceipt(trigger, "message_rejected", null, null, [`the comment exceeds ${MAX_COMMENT_CHARS} characters and was not processed`]) };
+  }
+  const trig = parseComment(normalise(trigger.body));
+  if (trig.message === null && trig.receipt === null && trig.errors.length === 0) return { receipt: null };
   if (trigger.created_at !== trigger.updated_at) {
     return { receipt: ledgerReceipt(trigger, "message_rejected", null, null, ["the comment was edited; edited comments are not part of the ledger"]) };
   }

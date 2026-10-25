@@ -6,17 +6,17 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   MAX_API_ATTEMPTS,
-  extractBlocks,
   decide,
   handle,
   marker,
-  messageBody,
   renderReply,
   sanitize,
   withRetry,
   type Comment,
   type Deps,
+  MAX_COMMENT_CHARS,
 } from "./receiver.ts";
+import { formatMessageComment } from "./wire.ts";
 
 const T = "`".repeat(3);
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
@@ -29,13 +29,17 @@ function comment(over: Partial<Comment> & { body: string }, min = 0): Comment {
   return { id: nextId++, created_at: t, updated_at: t, author_association: "OWNER", user_type: "User", ...over };
 }
 
-/** A message comment: block + body text, with a correct hash unless overridden. */
+/** The unified wire format: an nh-msg envelope and a separate nh-body block (plain text bodies only). */
+const wireBody = (record: unknown, text: string) =>
+  `${T}nh-msg\n${JSON.stringify(record, null, 2)}\n${T}\n\n${T}nh-body\n${text}\n${T}`;
+
+/** A message comment: envelope + body block, with a correct hash unless overridden. */
 function msgComment(id: string, text: string, over: Record<string, unknown> = {}, min = 0, c: Partial<Comment> = {}): Comment {
   const record = {
     schema: "nh-msg/v1", id, from: "claude-code", to: "chatgpt", in_reply_to: null, body_sha256: sha(text),
     created_at: iso(min - 1), expires_at: iso(min + 600), ...over,
   };
-  return comment({ body: `${T}nh-msg\n${JSON.stringify(record, null, 2)}\n${T}\n${text}`, ...c }, min);
+  return comment({ body: wireBody(record, text), ...c }, min);
 }
 
 function receiptComment(id: string, text: string, by = "chatgpt", over: Record<string, unknown> = {}, min = 1): Comment {
@@ -45,19 +49,72 @@ function receiptComment(id: string, text: string, by = "chatgpt", over: Record<s
 
 const kindOf = (all: Comment[], trigger: Comment) => decide(all, trigger.id, sha).receipt?.kind ?? null;
 
-describe("blocks and message body", () => {
-  it("extracts one block of each tag and leaves the rest as the body", () => {
-    const c = msgComment("msg-001", "hello there");
-    expect(extractBlocks(c.body).msg).toHaveLength(1);
-    expect(extractBlocks(c.body).receipt).toHaveLength(0);
-    expect(messageBody(c.body)).toBe("hello there");
+describe("the one wire format · envelope + separate nh-body", () => {
+  it("reads the body from the nh-body block, verbatim", () => {
+    const m = msgComment("msg-001", "hello there");
+    const r = decide([m], m.id, sha).receipt;
+    expect(r?.kind).toBe("message_recorded");
+    expect(r?.body_sha256).toBe(sha("hello there"));
   });
-  it("normalises CRLF so a hash computed on LF text still matches", () => {
-    const c = msgComment("msg-001", "line one\nline two");
-    expect(messageBody(c.body.replace(/\n/g, "\r\n"))).toBe("line one\nline two");
+
+  it("accepts exactly what wire.ts formats, including a body with its own fence, edge whitespace and blank lines", () => {
+    const awkward = `  leading space matters\n${T}json\n{"a":1}\n${T}\n\ntrailing  `;
+    const msg = {
+      schema: "nh-msg/v1", id: "msg-009", from: "claude-code", to: "chatgpt", in_reply_to: null,
+      body_sha256: sha(awkward), created_at: iso(-1), expires_at: iso(600),
+    };
+    const c = comment({ body: formatMessageComment(msg as never, awkward) });
+    const r = decide([c], c.id, sha).receipt;
+    expect(r?.kind).toBe("message_recorded");
+    expect(r?.body_sha256).toBe(sha(awkward));
   });
-  it("a comment with no block has nothing to extract", () => {
-    expect(extractBlocks("just talking")).toEqual({ msg: [], receipt: [] });
+
+  it("normalises CRLF, so a comment re-saved with CRLF line endings still matches an LF hash", () => {
+    const m = msgComment("msg-001", "line one\nline two");
+    const crlf = { ...m, body: m.body.replace(/\n/g, "\r\n") };
+    expect(decide([crlf], crlf.id, sha).receipt?.kind).toBe("message_recorded");
+  });
+
+  it("the receiver re-checks the hash with its own injected function, so the two can never silently disagree", () => {
+    const m = msgComment("msg-001", "hello");
+    const r = decide([m], m.id, () => "0".repeat(64)).receipt;
+    expect(r?.kind).toBe("message_rejected");
+    expect(r?.errors.join()).toMatch(/does not match/);
+  });
+
+  it("a body that differs by one character is rejected, not recorded", () => {
+    const m = msgComment("msg-001", "hello", { body_sha256: sha("hellp") });
+    expect(decide([m], m.id, sha).receipt?.kind).toBe("message_rejected");
+  });
+
+  it("THE RETIRED TEXT-AS-BODY FORM IS REJECTED WITH A HINT, never guessed at", () => {
+    const record = {
+      schema: "nh-msg/v1", id: "msg-001", from: "claude-code", to: "chatgpt", in_reply_to: null,
+      body_sha256: sha("hello"), created_at: iso(-1), expires_at: iso(600),
+    };
+    const legacy = comment({ body: `hello\n\n${T}nh-msg\n${JSON.stringify(record)}\n${T}` });
+    const r = decide([legacy], legacy.id, sha).receipt;
+    expect(r?.kind).toBe("message_rejected");
+    expect(r?.errors.join()).toMatch(/nh-body/);
+    expect(r?.errors.join()).toMatch(/retired/);
+    // and it did not become a message: the same id can be sent properly afterwards
+    const good = msgComment("msg-001", "hello", {}, 3);
+    expect(kindOf([legacy, good], good)).toBe("message_recorded");
+  });
+
+  it("two nh-body blocks are refused, never resolved by taking the first", () => {
+    const m = msgComment("msg-001", "hello");
+    const dup = { ...m, body: `${m.body}\n\n${T}nh-body\nsomething else\n${T}` };
+    const r = decide([dup], dup.id, sha).receipt;
+    expect(r?.kind).toBe("message_rejected");
+    expect(r?.errors.join()).toMatch(/exactly one/);
+  });
+
+  it("an nh-body block with no envelope is rejected visibly; a comment with no protocol fence is not", () => {
+    const orphan = comment({ body: `${T}nh-body\nhello\n${T}` });
+    expect(decide([orphan], orphan.id, sha).receipt?.kind).toBe("message_rejected");
+    const prose = comment({ body: "I mentioned nh-msg and nh-body in passing" });
+    expect(decide([prose], prose.id, sha).receipt).toBeNull();
   });
 });
 
@@ -103,7 +160,7 @@ describe("decide · what the ledger says about a comment", () => {
     const m = msgComment("msg-001", "hello", { body_sha256: sha("something else") });
     const r = decide([m], m.id, sha).receipt;
     expect(r?.kind).toBe("message_rejected");
-    expect(r?.errors.join()).toMatch(/does not match/);
+    expect(r?.errors.join()).toMatch(/does not hash/);
   });
 
   it("a rejected message does not count: the same id can be sent properly afterwards", () => {
@@ -113,17 +170,28 @@ describe("decide · what the ledger says about a comment", () => {
   });
 
   it("invalid JSON, two blocks and an oversized block are rejected", () => {
-    const badJson = comment({ body: `${T}nh-msg\n{not json\n${T}\ntext` });
+    const badJson = comment({ body: `${T}nh-msg\n{not json\n${T}\n${T}nh-body\ntext\n${T}` });
     expect(kindOf([badJson], badJson)).toBe("message_rejected");
     const two = comment({ body: `${T}nh-msg\n{}\n${T}\n${T}nh-receipt\n{}\n${T}` });
-    expect(decide([two], two.id, sha).receipt?.errors.join()).toMatch(/exactly one/);
-    const big = comment({ body: `${T}nh-msg\n${JSON.stringify({ pad: "x".repeat(5000) })}\n${T}\ntext` });
+    expect(decide([two], two.id, sha).receipt?.errors.join()).toMatch(/separate comments/);
+    const big = msgComment("msg-001", "text", { pad: "x".repeat(5000) });
     expect(kindOf([big], big)).toBe("message_rejected");
+    expect(decide([big], big.id, sha).receipt?.errors.join()).toMatch(/size cap/);
   });
 
-  it("an oversized comment is not processed at all", () => {
-    const huge = comment({ body: `${T}nh-msg\n{}\n${T}\n${"x".repeat(25_000)}` });
-    expect(decide([huge], huge.id, sha).receipt).toBeNull();
+  it("an oversized comment that opens a protocol fence is REJECTED VISIBLY, not silently ignored", () => {
+    const huge = comment({ body: `${T}nh-msg\n{}\n${T}\n${"x".repeat(MAX_COMMENT_CHARS + 5_000)}` });
+    const r = decide([huge], huge.id, sha).receipt;
+    expect(r?.kind).toBe("message_rejected");
+    expect(r?.errors.join()).toMatch(/exceeds/);
+  });
+
+  it("an oversized comment with no protocol fence stays silent, and an oversized HISTORY comment is not replayed", () => {
+    const prose = comment({ body: "x".repeat(MAX_COMMENT_CHARS + 5_000) });
+    expect(decide([prose], prose.id, sha).receipt).toBeNull();
+    const m = msgComment("msg-001", "x".repeat(MAX_COMMENT_CHARS + 1), {}, 0);
+    const again = msgComment("msg-001", "hello", {}, 2);
+    expect(kindOf([m, again], again)).toBe("message_recorded");
   });
 
   it("an expired message is rejected, judged at the comment's own time", () => {
@@ -221,7 +289,7 @@ describe("the reply cannot be turned against its readers", () => {
       schema: "nh-msg/v1", id: "@octocat-and-[x](http://e.example)", from: "claude-code", to: "chatgpt", in_reply_to: null,
       body_sha256: sha(text), created_at: iso(-1), expires_at: iso(600), "@evil <b>": 1,
     };
-    const c = comment({ body: `${T}nh-msg\n${JSON.stringify(record)}\n${T}\n${text}` });
+    const c = comment({ body: wireBody(record, text) });
     const r = decide([c], c.id, sha).receipt!;
     const out = renderReply(r);
     expect(r.message_id).toBeNull();

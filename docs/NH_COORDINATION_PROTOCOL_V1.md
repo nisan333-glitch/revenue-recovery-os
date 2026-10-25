@@ -264,6 +264,10 @@ branch and no inbound networking.
 
 ### A PROTOCOL CONFLICT THAT NEEDS AN OWNER DECISION
 
+> **RESOLVED 2026-10-25 — see "Phase 6 · one wire format" below.** The section is kept as written: it
+> records what was true and why the decision was the owner's. `wireFormatConflict.test.ts` was replaced by
+> `wireFormatUnification.test.ts`; `receiver.ts` no longer defines `messageBody` or `extractBlocks`.
+
 The two receivers **disagree about where a message's body lives**, so each refuses the other's messages:
 
 * `receiver.ts` — the body is **the comment text** with the `nh-msg` block removed, normalised and trimmed.
@@ -333,3 +337,78 @@ never runs is not a guard*.
    everything accepted in that cycle. Two symptoms, one cause: the recipient's ledger had no record of the
    inbound message, and a re-post was therefore acknowledged a **second** time, defeating duplicate
    suppression. Both are pinned at unit level and both were verified to fail when the fix is reverted.
+
+## Phase 6 · one wire format (2026-10-25)
+
+**Decision (owner, 2026-10-25):** the *envelope* and the *content* of a message are separate, and
+`wire.ts` is the only reader. The Actions receiver (`receiver.ts`) no longer has a body parser of its own.
+
+### Canonical schema
+
+A message is ONE comment carrying, each at the start of a line:
+
+````
+```nh-msg            ← envelope: nh-msg/v1 JSON (id, from, to, in_reply_to, body_sha256, created_at, expires_at)
+{ ... }
+```
+
+```nh-body           ← content, verbatim, exactly the bytes whose SHA-256 is body_sha256
+the message text
+```
+````
+
+A receipt is a separate comment carrying one ` ```nh-receipt ` block (`nh-receipt/v1`). A comment carrying a
+message *and* a receipt is refused. The fence is at least three backticks and **longer than any run inside
+its content**, so a body may contain code fences. `body_sha256` is the SHA-256 of the body as UTF-8 with
+**LF** line endings; the receiver normalises CRLF first because GitHub's web editor may re-save a comment
+with CRLF. Edge whitespace is part of the body and is never trimmed.
+
+### Migration
+
+| form | status |
+|---|---|
+| `nh-msg` + `nh-body` | **canonical** — written by `wire.ts`, read by every receiver |
+| `nh-msg` with the body as surrounding prose (the old Actions form) | **retired** — rejected with `message_rejected` and an error telling the sender to move the content into an `nh-body` block; nothing is recorded, so the same id may be re-sent correctly |
+
+No dual-read period was built: nothing outside this repository's own tests had produced the old form
+(issue #13 holds no such message), and reading two formats is exactly how the two receivers disagreed on a
+hash. A `message_rejected` reply is the migration notice.
+
+### Idempotency, receipts, and what each proves
+
+* **Same id, same content** → `message_duplicate`, ledger unchanged. **Same id, other content** →
+  `message_conflict`, the original stands.
+* **One reply per triggering comment.** The reply carries `<!-- nh-ledger-receipt:comment:ID -->`; a re-run
+  finds the marker in a comment authored by a **Bot** and posts nothing (`already_answered`). A human quoting
+  the marker cannot suppress the reply.
+* **`nh-ledger-receipt/v1`** (posted by Actions) proves only that the message was **recorded in the issue's
+  ledger** with a consistent hash, expiry and duplicate status. It is not a read receipt.
+* **`nh-receipt/v1`** (posted by the addressee) is the addressee's *claim* to have read it; the sender cannot
+  acknowledge its own message; a receipt for an unknown id, a wrong hash or an expired message is refused;
+  `delivered` / `failed` / `expired` are terminal.
+* Sender and addressee are **claims**: every comment on the issue comes from one GitHub account. ChatGPT is
+  never pushed to, and GitHub cannot wake an inactive ChatGPT conversation.
+
+### Security checks (each pinned by a test)
+
+1. Only `author_association == OWNER`, non-bot, on an allow-listed issue, never a PR (workflow `if` + env).
+2. **Edited comments are not ledger entries** — an edited trigger is rejected, an edited history comment is
+   skipped.
+3. Comments beyond `MAX_COMMENT_CHARS` are never replayed; an **oversized trigger that opens a protocol
+   fence is rejected visibly** rather than ignored, because silence reads as "not yet processed". An
+   oversized comment with no protocol fence stays silent.
+4. Two `nh-msg`, two `nh-body`, two receipts, or a message plus a receipt in one comment are **refused,
+   never resolved first-wins**.
+5. The envelope is size-capped, parsed as JSON, and never reaches a shell, `uses:` or `eval`.
+6. Text echoed into a reply is restricted to a safe character set: no mention, link, fence or markup.
+7. `permissions: {}` at workflow level; the single job holds `contents: read` + `issues: write`; actions
+   pinned to SHAs; per-issue concurrency without cancellation; 5-minute timeout.
+8. A replay uses each comment's own `created_at` as "now", so the same history always gives the same answer.
+
+### Activation (owner-approved 2026-10-25, limited)
+
+The two approved steps are: `issues: write` for **this one workflow only**, and placing
+`.github/workflows/nh-receiver.yml` on the **default branch** so `issue_comment` can start it. Nothing else
+is merged, nothing is deployed to production, and no financial-policy or constitutional file is touched.
+**Not claimed:** a fully unattended ChatGPT–Claude bridge. That claim waits for an independent live
+demonstration, recorded on issue #12 with the run id.

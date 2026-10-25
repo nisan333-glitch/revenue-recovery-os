@@ -10,9 +10,9 @@
 //   · this one needs a PUBLICLY REACHABLE URL, which nothing in this repository can provide;
 //   · the polling endpoint (`endpoint.ts`) needs neither, which is why it is what moves messages today.
 //
-// THEY ALSO READ DIFFERENT WIRE FORMATS, which is a protocol conflict an owner must settle and which is
-// proved rather than asserted in `wireFormatConflict.test.ts`. Do not assume one can read the other's
-// messages: it cannot.
+// THEY NOW READ ONE WIRE FORMAT (owner decision 2026-10-25): an `nh-msg` envelope plus a separate `nh-body`
+// block, read only through `wire.ts`. The earlier disagreement is recorded in docs/NH_COORDINATION_PROTOCOL_V1.md
+// and pinned shut by `wireFormatUnification.test.ts`.
 //
 // WHAT IT IS. An HTTP server that accepts GitHub `issue_comment` webhook deliveries, verifies that each
 // one really came from GitHub, and appends the coordination records it carries to a durable inbox file an
