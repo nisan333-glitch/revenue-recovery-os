@@ -25,6 +25,7 @@ import { getEvidenceByIds, ingestEvidence, type IngestedEvidence } from "../pers
 import { money } from "../../src/domain/money";
 import { ENFORCED_REASON_SCOPE, reasonScopeViolation } from "../../src/domain/reasons";
 import { prisma } from "../db";
+import { caseProvenEligibility } from "./caseProvenGate";
 import type { Proof, ProofApprovalInput } from "../../src/domain/proof";
 import { baselineTemporallyValid, type Baseline } from "../../src/domain/baseline";
 import { hasIndependentEvidence, type Evidence } from "../../src/domain/evidence";
@@ -210,6 +211,28 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
     });
     const violation = reasonScopeViolation(req.recoveryReason, root?.recoveryType ?? null);
     if (violation !== null) throw new ForbiddenError(violation);
+  }
+
+  // OBLIGATION-IDENTITY ELIGIBILITY · the approved mandatory rule:
+  //
+  //   > PROVEN must never be assigned at account level when the identity of the specific underlying
+  //   > obligation has not been established with sufficient evidence.
+  //
+  // Placed HERE, before the duplicate-chain check and before any write, because an ineligible claim must
+  // be refused rather than merely left uncounted — a case that reached the write transaction and was
+  // rolled back would still have consumed the one chain root its claim is allowed.
+  //
+  // EVERY INPUT IS READ FROM THE RECORD. `caseProvenEligibility` takes the case id and nothing else: the
+  // coverage comes from the candidate signal the detector wrote, the absorption from the append-only
+  // event log. The request cannot assert either, so a beneficiary cannot widen their own eligibility.
+  //
+  // THE REFUSAL NAMES ITS CODE, because "ambiguous cases must remain unproven with an explicit reason"
+  // is half the rule, and a generic 403 would satisfy the gate while failing the requirement.
+  const eligibility = await caseProvenEligibility(req.recoveryCaseId);
+  if (!eligibility.eligible) {
+    throw new ForbiddenError(
+      `PROVEN is not available for this case — ${eligibility.code}: ${eligibility.reason}`,
+    );
   }
 
   // Duplicate-count prevention: one counted proof-chain root per atomic claim (frozen rule).

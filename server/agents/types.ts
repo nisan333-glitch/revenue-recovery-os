@@ -1,3 +1,4 @@
+import type { ObligationCoverage } from "../../src/domain/provenEligibility";
 // Agent Runtime Foundation v0.1.
 // Agents may observe and emit CandidateSignals only. They cannot create proofs,
 // move money, assign owners, or call governed services through this contract.
@@ -21,6 +22,24 @@ export interface CandidateSignal {
   readonly currency: string;
   readonly actionAvailable: boolean;
   readonly expectedProofEvent: string;
+  /**
+   * WHAT THIS CLAIM COVERS — one reconciliation unit, or an account-level aggregate of several.
+   *
+   * OPTIONAL, AND ITS ABSENCE IS A REFUSAL RATHER THAN A DEFAULT. A detector that does not know what its
+   * signal covers must not be forced to claim; `provenEligibility` reads an absent coverage as
+   * OBLIGATION_COVERAGE_NOT_STATED and refuses PROVEN. Making it required would also rewrite the shape
+   * every historical candidate row was written under, for a fact those rows cannot supply.
+   *
+   * STATED BY THE SERVER, NEVER BY A REQUEST. It is derived from the reconciliation the server itself
+   * performed; no HTTP body reaches this field, and `assertCandidateSignal` rejects any key it does not
+   * declare, so an injected one is a hard error rather than a silent strip.
+   *
+   * IT IS NOT A CROSS-SYSTEM OBLIGATION IDENTITY. `OBLIGATION_IDENTITY_FIELDS` is still empty and this
+   * does not change it: the reference below identifies one unit WITHIN ONE READING of the customer's two
+   * extracts, which is what a claim needs to name its own subject, and is not a stable identifier that
+   * survives a re-key or a migration.
+   */
+  readonly obligationCoverage?: ObligationCoverage;
 }
 
 export interface AgentTask {

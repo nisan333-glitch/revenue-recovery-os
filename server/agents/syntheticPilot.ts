@@ -111,6 +111,14 @@ export async function runSyntheticPilot(
       amountAtRiskMinor: 10_000,
       currency: "USD",
       actionAvailable: true,
+      // THE OBLIGATION THIS SYNTHETIC OBSERVATION CONCERNS, stated by the harness because the harness IS
+      // the source here — this data is ours and nothing about a customer is being asserted. Without it
+      // the claim would be account-level and the approved rule would refuse PROVEN, which is the correct
+      // answer for an account-level claim and would make this pilot unable to demonstrate the loop.
+      obligationRef: `hmac-sha256:${createHmac("sha256", randomUUID())
+        .update(`SYNTHETIC-obligation-${runId}`).digest("hex")}`,
+      expectedMinor: 10_000,
+      billedMinor: 0,
     });
     const queued = await createPostgresAgentTaskStore().enqueueIfAbsent({
       taskId,

@@ -42,6 +42,15 @@ async function main(): Promise<void> {
     amountAtRiskMinor: AMOUNT_AT_RISK_MINOR,
     currency: "USD",
     actionAvailable: true,
+    // THE OBLIGATION THIS OBSERVATION CONCERNS. Stated here because this script IS the source for the
+    // journey — the data is synthetic and ours, and nothing about a customer is asserted. Without it the
+    // claim is account-level and the approved rule refuses PROVEN, which is the right answer for an
+    // account-level claim: the journey would then demonstrate the loop stopping at EVIDENCED rather than
+    // a proof. The detector RELAYS this statement; it never infers one.
+    obligationRef: `hmac-sha256:${createHmac("sha256", randomUUID())
+      .update(`JOURNEY-obligation-${runId}`).digest("hex")}`,
+    expectedMinor: AMOUNT_AT_RISK_MINOR,
+    billedMinor: 0,
   });
   const taskId = `JOURNEY-activation-${runId}`;
   const queued = await createPostgresAgentTaskStore().enqueueIfAbsent({

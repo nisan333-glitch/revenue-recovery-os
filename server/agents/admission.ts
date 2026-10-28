@@ -18,7 +18,14 @@ const CANDIDATE_SIGNAL_KEYS = new Set<keyof CandidateSignal>([
   "currency",
   "actionAvailable",
   "expectedProofEvent",
+  "obligationCoverage",
 ]);
+
+/** Keys permitted inside `obligationCoverage`, per variant. An extra key is a hard error, not a strip. */
+const COVERAGE_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  SINGLE_OBLIGATION: ["kind", "obligationRef", "expectedMinor", "billedMinor", "residualMinor", "currency"],
+  ACCOUNT_AGGREGATE: ["kind", "unitCount"],
+});
 
 export interface RecoveryTypeAdmissionPolicy {
   readonly recoveryType: string;
@@ -82,6 +89,49 @@ export function assertCandidateSignal(value: unknown): asserts value is Candidat
   }
   if (typeof candidate.actionAvailable !== "boolean") {
     throw new Error("CandidateSignal.actionAvailable must be boolean");
+  }
+
+  // OBLIGATION COVERAGE. Absent is permitted and means "not stated", which `provenEligibility` refuses.
+  // Present is validated STRICTLY, because this is the field a monetary gate reads: a malformed one must
+  // never arrive at that gate looking like a well-formed single-obligation claim.
+  if (candidate.obligationCoverage !== undefined) {
+    const c = candidate.obligationCoverage;
+    if (!c || typeof c !== "object" || Array.isArray(c)) {
+      throw new Error("CandidateSignal.obligationCoverage must be an object when present");
+    }
+    const cov = c as Record<string, unknown>;
+    const permitted = typeof cov.kind === "string" ? COVERAGE_KEYS[cov.kind] : undefined;
+    if (!permitted) {
+      throw new Error("CandidateSignal.obligationCoverage.kind must be SINGLE_OBLIGATION or ACCOUNT_AGGREGATE");
+    }
+    const extra = Object.keys(cov).filter((k) => !permitted.includes(k));
+    if (extra.length > 0) {
+      throw new Error(`CandidateSignal.obligationCoverage contains forbidden fields: ${extra.sort().join(", ")}`);
+    }
+    const missing = permitted.filter((k) => !(k in cov));
+    if (missing.length > 0) {
+      throw new Error(`CandidateSignal.obligationCoverage is missing: ${missing.sort().join(", ")}`);
+    }
+    if (cov.kind === "SINGLE_OBLIGATION") {
+      if (typeof cov.obligationRef !== "string" || !/^hmac-sha256:[a-f0-9]{64}$/.test(cov.obligationRef)) {
+        throw new Error("obligationCoverage.obligationRef must be an hmac-sha256 pseudonym, never a raw identifier");
+      }
+      if (typeof cov.currency !== "string" || !isSupportedCurrency(cov.currency)) {
+        throw new Error("obligationCoverage.currency must be a supported currency code");
+      }
+      for (const field of ["expectedMinor", "billedMinor", "residualMinor"] as const) {
+        if (!Number.isSafeInteger(cov[field])) {
+          throw new Error(`obligationCoverage.${field} must be a safe integer in minor units`);
+        }
+      }
+      // DERIVED HERE TOO, at the boundary. The monetary gate re-derives it as well; two independent
+      // checks of one arithmetic fact is the cheapest insurance against a stamped figure nobody can trace.
+      if ((cov.residualMinor as number) !== (cov.expectedMinor as number) - (cov.billedMinor as number)) {
+        throw new Error("obligationCoverage.residualMinor must equal expectedMinor - billedMinor");
+      }
+    } else if (!Number.isSafeInteger(cov.unitCount) || (cov.unitCount as number) < 1) {
+      throw new Error("obligationCoverage.unitCount must be a positive safe integer");
+    }
   }
 }
 

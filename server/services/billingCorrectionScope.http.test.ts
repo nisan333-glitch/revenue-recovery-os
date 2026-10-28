@@ -97,11 +97,17 @@ describe.skipIf(!process.env.DATABASE_URL)("proof approval · BillingCorrection 
     expect(others).toHaveLength(7);
     for (const reason of others) {
       const res = await call("POST", "/proofs", APPROVER, proofBody(caseId, reason));
-      // Past the scope check they reach the NEXT gate, which has nothing to find: no locked baseline. A 404 about
-      // the baseline is the proof that the scope check did not fire; a 403 mentioning a scope would be the failure.
-      expect(res.statusCode, `${reason}: ${res.body}`).toBe(404);
-      expect(res.json().message).toMatch(/baseline .* is not an established, locked snapshot/);
+      // Past the scope check they reach the NEXT gate — which is now the OBLIGATION-IDENTITY gate, not
+      // the baseline one. This case's candidate is an ACTIVATION signal and states no obligation
+      // coverage, so every reason is refused there, before any baseline or evidence id is looked up.
+      //
+      // THE SUBJECT OF THIS TEST IS UNCHANGED and is still what the last two assertions check: the
+      // refusal must not be the SCOPE rule. A different gate refusing afterwards does not weaken that;
+      // it is why the message is asserted and not only the status.
+      expect(res.statusCode, `${reason}: ${res.body}`).toBe(403);
+      expect(res.json().message).toContain("OBLIGATION_COVERAGE_NOT_STATED");
       expect(res.body).not.toContain("applies only to");
+      expect(res.body).not.toContain("no recorded recovery type");
     }
     await nothingPersisted(caseId);
   });
@@ -134,9 +140,13 @@ describe.skipIf(!process.env.DATABASE_URL)("proof approval · BillingCorrection 
     expect(res.json().message).toContain("no recorded recovery type");
     await nothingPersisted(caseId);
 
-    // Control: the same unrooted case with an unenforced reason is NOT refused by the scope rule.
+    // Control: the same unrooted case with an unenforced reason is NOT refused by the scope rule. It is
+    // refused by the obligation-identity gate instead — a case with no governed root has no recorded
+    // subject — and the point of the control is WHICH rule answered, asserted on the message below.
     const control = await call("POST", "/proofs", APPROVER, proofBody(caseId, "UsageActivation"));
-    expect(control.statusCode).toBe(404);
+    expect(control.statusCode).toBe(403);
+    expect(control.json().message).toContain("OBLIGATION_COVERAGE_NOT_STATED");
+    expect(control.json().message).not.toContain("no recorded recovery type");
     expect(control.body).not.toContain("applies only to");
     await nothingPersisted(caseId);
   });

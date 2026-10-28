@@ -7,7 +7,31 @@ import { prisma } from "../db";
 import { AUTHOR, APPROVER, STEWARD, hdr, seedBaseline, seedIntervention, seedEvidence, approveBody } from "../test/fixtures";
 import { ingestSecureCsv } from "./secureCsvIngestion";
 import { PostgresCaseCandidateStore } from "./postgresCaseCandidateStore";
-import { SYNTHETIC_OPTIONS, syntheticCsv, syntheticRecords } from "./fixtures/activation.synthetic";
+import { SYNTHETIC_FIELDS, SYNTHETIC_OPTIONS, syntheticRecords } from "./fixtures/activation.synthetic";
+
+/**
+ * The same single synthetic row, PLUS the three optional obligation columns.
+ *
+ * WHY LOCAL AND NOT IN THE SHARED FIXTURE. `syntheticCsv` feeds a snapshot comparison
+ * (`measureSyntheticRows`), and the obligation columns change the canonical digest by design — widening
+ * the shared fixture would move that snapshot for every row, for a fact only this test needs.
+ *
+ * WHY THE COLUMNS AT ALL. The approved rule refuses PROVEN where the obligation is not identified, and
+ * the ordinary activation row identifies an ACCOUNT. Declaring the obligation facts here is what makes
+ * this a single-obligation claim rather than an account-level one, so the governed loop below is a loop
+ * the rule permits — and the figures reconcile: 10000 owed, 0 billed, 10000 at risk, matching the
+ * row's own `amountAtRiskMinor`.
+ */
+function csvWithObligation(): string {
+  const record = syntheticRecords()[0]!;
+  const quote = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const cols = [...SYNTHETIC_FIELDS, "obligationIdentity", "expectedMinor", "billedMinor"];
+  const cells = [
+    ...SYNTHETIC_FIELDS.map((f) => record[f]),
+    "synthetic-obligation-0001", record.amountAtRiskMinor, "0",
+  ];
+  return `${cols.join(",")}\n${cells.map(quote).join(",")}\n`;
+}
 
 describe.skipIf(!process.env.DATABASE_URL)("SYNTHETIC CSV to governed proof", () => {
   const app = buildApp({ sourceVerifier: fixtureVerifier });
@@ -16,7 +40,7 @@ describe.skipIf(!process.env.DATABASE_URL)("SYNTHETIC CSV to governed proof", ()
   it("links ingestion, human review, promotion, action and immutable proof without counting opportunity", async () => {
     const boundaryId = `SYNTHETIC-loop-${randomUUID()}`;
     const operator = hdr("SYNTHETIC-reviewer", "operator");
-    const input = syntheticCsv([syntheticRecords()[0]!]);
+    const input = csvWithObligation();
     await expect(ingestSecureCsv(input, new PostgresCaseCandidateStore(), { ...SYNTHETIC_OPTIONS, boundaryId }))
       .resolves.toMatchObject({ created: 1 });
     const queue = await app.inject({ method: "GET", url: `/agent-candidates?boundaryId=${boundaryId}`, headers: operator });

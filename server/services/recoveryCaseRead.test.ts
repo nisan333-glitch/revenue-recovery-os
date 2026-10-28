@@ -41,7 +41,31 @@ const actor = (actorId: string, role: ActorContext["role"], boundaryIds: readonl
  * Deliberately not an INSERT into `recovery_cases`. A fixture that writes the row directly would let
  * every assertion below pass against a case the product could never have produced.
  */
-async function promoteCase(boundaryId: string, operator: ActorContext) {
+async function promoteCase(
+  boundaryId: string,
+  operator: ActorContext,
+  /**
+   * OPTIONAL OBLIGATION COVERAGE, for the two tests whose subject is the PROVEN ledger.
+   *
+   * The default signal is an ACTIVATION signal and states none, which is honest: an account-level
+   * activation observation does not establish which obligation it is about, and the approved rule
+   * refuses PROVEN for exactly that. Tests 5 and 7 are about lifecycle progression and the proven
+   * ledger, not about activation, so they pass a single-obligation reconciliation claim — the kind the
+   * rule permits — rather than having a coverage invented for an activation signal that cannot support
+   * one. Tests 1-4, 6 and 8-10 are untouched and still use the account-level default.
+   */
+  coverage?: { readonly expectedMinor: number; readonly billedMinor: number },
+) {
+  const obligationCoverage = coverage
+    ? {
+        kind: "SINGLE_OBLIGATION" as const,
+        obligationRef: `hmac-sha256:${createHash("sha256").update(randomUUID()).digest("hex")}`,
+        expectedMinor: coverage.expectedMinor,
+        billedMinor: coverage.billedMinor,
+        residualMinor: coverage.expectedMinor - coverage.billedMinor,
+        currency: "USD",
+      }
+    : undefined;
   const signal = {
     signalId: `ACT-${createHash("sha256").update(randomUUID()).digest("hex").slice(0, 32)}`,
     boundaryId,
@@ -54,6 +78,7 @@ async function promoteCase(boundaryId: string, operator: ActorContext) {
     currency: "USD",
     actionAvailable: true,
     expectedProofEvent: "activation followed by next invoice paid",
+    ...(obligationCoverage ? { obligationCoverage } : {}),
   };
   const dedupeKey = caseCandidateDedupeKey(signal);
   const candidateId = caseCandidateId(dedupeKey);
@@ -157,7 +182,9 @@ describe.skipIf(!HAS_DB)("the governed Recovery Case read surface", () => {
 
   it("5 · progress advances with the history, and exposure NEVER becomes the proven figure", async () => {
     const b = boundary();
-    const { recoveryCase } = await promoteCase(b, operatorIn(b));
+    const { recoveryCase } = await promoteCase(b, operatorIn(b), {
+      expectedMinor: AMOUNT_AT_RISK_MINOR, billedMinor: 0,
+    });
     const caseId = recoveryCase.recoveryCaseId;
     const read = () => readRecoveryCase(approverIn(b), caseId);
 
@@ -226,7 +253,9 @@ describe.skipIf(!HAS_DB)("the governed Recovery Case read surface", () => {
 
   it("7 · NO MONETARY PROMOTION WITHOUT AN EFFECTIVE PROOF · a reversal returns the ledger to NOT COMPUTED", async () => {
     const b = boundary();
-    const { recoveryCase } = await promoteCase(b, operatorIn(b));
+    const { recoveryCase } = await promoteCase(b, operatorIn(b), {
+      expectedMinor: AMOUNT_AT_RISK_MINOR, billedMinor: 0,
+    });
     const caseId = recoveryCase.recoveryCaseId;
     await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR });
     const baselineId = await seedBaseline(app, caseId, { calculatedMinor: 2_000 });

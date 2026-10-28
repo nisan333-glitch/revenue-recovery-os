@@ -10,6 +10,21 @@ const FIELDS = [
 ] as const;
 type Field = typeof FIELDS[number];
 
+/**
+ * OPTIONAL obligation facts. Present together, they let a row state that its claim covers ONE
+ * obligation, which is what the approved PROVEN rule requires; absent, the signal states no coverage and
+ * a proof is refused. They are OPTIONAL and never required, because a file that does not carry them is
+ * still a valid ingestion for detection — capability gating per claim, never global file rejection.
+ *
+ * NOT ADDED TO `FIELDS`. The canonical form that produces `signalId` and `sourcePayloadHash` is built
+ * from `FIELDS`, so widening it would change the digest of every file ever ingested, including files
+ * that carry none of these columns. Instead the optional values enter the canonical form ONLY when the
+ * header declares them: a file without the columns digests exactly as it does today, and a file with
+ * them digests differently — which is correct, because the obligation facts change what is claimed.
+ */
+const OBLIGATION_FIELDS = ["obligationIdentity", "expectedMinor", "billedMinor"] as const;
+type ObligationField = typeof OBLIGATION_FIELDS[number];
+
 export interface SecureCsvIngestionOptions {
   readonly boundaryId: string;
   readonly agentId: string;
@@ -48,6 +63,10 @@ export async function ingestSecureCsv(
   }
   const headerMap = resolveHeaderMap(headers, options);
   const indexes = new Map(FIELDS.map((field) => [field, headers.indexOf(headerMap[field])]));
+  // Declared only if the header carries ALL THREE. Two of three is a half-stated claim, and a
+  // half-stated claim must not be completed by us — it reads as no claim at all.
+  const obligationIndexes = new Map(OBLIGATION_FIELDS.map((f) => [f, headers.indexOf(f)]));
+  const obligationDeclared = OBLIGATION_FIELDS.every((f) => obligationIndexes.get(f)! >= 0);
   const admission = new CaseAdmissionService(store, options.now ?? (() => new Date()));
   const prepared: { signal: CandidateSignal; policy: RecoveryTypeAdmissionPolicy }[] = [];
 
@@ -68,13 +87,47 @@ export async function ingestSecureCsv(
     const identity = value("sourceIdentity");
     if (!identity) throw new Error(`CSV row ${rowNumber + 1} sourceIdentity is required`);
     const sourceRef = `hmac-sha256:${createHmac("sha256", options.sourceRefKey).update(`${options.boundaryId}\0${identity}`).digest("hex")}`;
-    const canonical = JSON.stringify(Object.fromEntries(FIELDS.map((field) => [field, value(field)])));
+    const obligationValue = (field: ObligationField) => row[obligationIndexes.get(field)!]!.trim();
+    let obligationCoverage: CandidateSignal["obligationCoverage"];
+    if (obligationDeclared) {
+      const identityText = obligationValue("obligationIdentity");
+      const expectedText = obligationValue("expectedMinor");
+      const billedText = obligationValue("billedMinor");
+      // ALL THREE BLANK is a row that states nothing, which is permitted and simply leaves the claim
+      // without coverage. A PARTIALLY filled triple is a defect in the row, not an invitation to guess.
+      const anyPresent = identityText !== "" || expectedText !== "" || billedText !== "";
+      if (anyPresent) {
+        if (!identityText || !/^\d+$/.test(expectedText) || !/^\d+$/.test(billedText)) {
+          throw new Error(`CSV row ${rowNumber + 1} obligation facts are incomplete or invalid`);
+        }
+        const expectedMinor = Number(expectedText);
+        const billedMinor = Number(billedText);
+        obligationCoverage = {
+          kind: "SINGLE_OBLIGATION",
+          // PSEUDONYMISED UNDER THE SAME KEY AS `sourceRef`, in its own namespace so an obligation
+          // reference can never collide with an account reference. The raw identity never leaves here.
+          obligationRef: `hmac-sha256:${createHmac("sha256", options.sourceRefKey)
+            .update(`${options.boundaryId}\0obligation\0${identityText}`).digest("hex")}`,
+          expectedMinor,
+          billedMinor,
+          residualMinor: expectedMinor - billedMinor,
+          currency: value("currency"),
+        };
+      }
+    }
+    const canonical = JSON.stringify({
+      ...Object.fromEntries(FIELDS.map((field) => [field, value(field)])),
+      ...(obligationDeclared
+        ? Object.fromEntries(OBLIGATION_FIELDS.map((f) => [f, obligationValue(f)]))
+        : {}),
+    });
     const digest = createHash("sha256").update(canonical).digest("hex");
     const signal: CandidateSignal = {
       signalId: `CSV-${digest.slice(0, 32)}`, boundaryId: options.boundaryId, recoveryType, sourceRef,
       sourcePayloadHash: digest, detectorVersion: options.detectorVersion, observedAt: value("observedAt"),
       amountAtRiskMinor, currency: value("currency"), actionAvailable: actionText === "true",
       expectedProofEvent: value("expectedProofEvent"),
+      ...(obligationCoverage ? { obligationCoverage } : {}),
     };
     assertCandidateSignal(signal);
     prepared.push({ signal, policy });

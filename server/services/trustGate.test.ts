@@ -24,6 +24,7 @@ import {
   STEWARD,
   seedAuditableCase,
   seedBaseline,
+  seedGovernedRoot,
   seedIntervention,
   seedEvidence,
   approveBody,
@@ -184,6 +185,9 @@ describe.skipIf(!HAS_DB)("EP-8.1 · trust gate hardening (adversarial regression
 
   it("9 · a nonexistent/foreign baseline id is rejected, never invented", async () => {
     const caseId = `RC-${uid()}`;
+    // A GOVERNED ROOT, so the request REACHES the baseline check. Without one the obligation-identity
+    // gate refuses first with OBLIGATION_COVERAGE_NOT_STATED — correct, and not what this test is about.
+    await seedGovernedRoot(caseId);
     await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR });
     const res = await app.inject({
       method: "POST",

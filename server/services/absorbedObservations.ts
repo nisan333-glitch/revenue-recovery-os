@@ -136,7 +136,16 @@ export interface AbsorptionReport {
  *
  * A test holds this against the real `caseCandidateDedupeKey`, so the two cannot drift apart.
  */
-export function accountGrainedGroup(boundaryId: string, signal: AbsorbedSignalFacts): string {
+/**
+ * The parameter is NARROWED to the two fields this function reads, rather than taking the whole
+ * `AbsorbedSignalFacts`. It never needed `sourcePayloadHash` — the grouping is the dedupe key's own
+ * preimage — and requiring it forced a caller holding only a case root to invent a placeholder digest.
+ * A fake value passed to satisfy a type is worse than a narrower type: a reviewer believes it.
+ */
+export function accountGrainedGroup(
+  boundaryId: string,
+  signal: Pick<AbsorbedSignalFacts, "recoveryType" | "sourceRef">,
+): string {
   return JSON.stringify([boundaryId, signal.recoveryType, signal.sourceRef]);
 }
 

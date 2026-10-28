@@ -53,6 +53,7 @@
 // or a future governed ingestion supplies; nothing in this file is real data.
 import { createHash, createHmac } from "node:crypto";
 import { assertCandidateSignal } from "./admission";
+import type { ObligationCoverage } from "../../src/domain/provenEligibility";
 import type { AgentHandler, CandidateSignal } from "./types";
 import {
   validateExpectationExtract,
@@ -306,6 +307,41 @@ export function accountSourceRef(key: string, accountRef: string): string {
     .digest("hex")}`;
 }
 
+/**
+ * The pseudonymous reference for ONE reconciliation unit, beside `accountSourceRef` and under the same
+ * key. The namespace string differs so a unit reference can never collide with an account reference —
+ * two different things must not hash to one value just because they share a key.
+ */
+export function unitObligationRef(key: string, unit: PlannedUnit): string {
+  return `hmac-sha256:${createHmac("sha256", key)
+    .update(JSON.stringify(["reconciliation-obligation", unit.entitlementRef, unit.periodStart, unit.periodEnd]))
+    .digest("hex")}`;
+}
+
+/**
+ * What a candidate covers, stated from the plan the server itself produced.
+ *
+ * ONE UNIT IS A SINGLE OBLIGATION; TWO OR MORE IS AN AGGREGATE. The aggregate variant deliberately
+ * carries NO per-obligation figures, because there are none: the candidate's amount is a sum, and
+ * attaching an expected/billed pair to it would invent a per-obligation claim the data does not support.
+ */
+export function coverageForCandidate(c: PlannedCandidate, currency: string, key: string): ObligationCoverage {
+  if (c.units.length === 1) {
+    const u = c.units[0]!;
+    return Object.freeze({
+      kind: "SINGLE_OBLIGATION" as const,
+      obligationRef: unitObligationRef(key, u),
+      expectedMinor: u.expectedMinor,
+      billedMinor: u.observedMinor,
+      // DERIVED from the two figures beside it rather than copied from `u.residualMinor`, so a plan that
+      // ever disagreed with its own arithmetic produces a refusal at the gate instead of a stamped lie.
+      residualMinor: u.expectedMinor - u.observedMinor,
+      currency,
+    });
+  }
+  return Object.freeze({ kind: "ACCOUNT_AGGREGATE" as const, unitCount: c.units.length });
+}
+
 function isRawExtract(value: unknown): value is RawExtract {
   if (typeof value !== "object" || value === null) return false;
   const v = value as { columns?: unknown; rows?: unknown };
@@ -346,6 +382,10 @@ export function signalsForPlan(
       currency: plan.currency,
       actionAvailable: context.actionAvailable,
       expectedProofEvent: RECONCILIATION_EXPECTED_PROOF_EVENT,
+      // NOT IN `digest` ABOVE, deliberately. That preimage already carries every unit's identity and
+      // figures, so the coverage is a function of it: adding the field would change `signalId` and
+      // `sourcePayloadHash` for every signal while expressing nothing the digest did not already fix.
+      obligationCoverage: coverageForCandidate(c, plan.currency, context.pseudonymKey),
     };
     assertCandidateSignal(signal);
     return signal;

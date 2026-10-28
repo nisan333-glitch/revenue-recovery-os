@@ -64,7 +64,7 @@ function harness(tag: string) {
   const worker = createAgentProcessFromEnvironment(env, configuredAgentHandlers(env));
   const store = createPostgresAgentTaskStore();
   const taskIds: string[] = [];
-  const enqueue = async (p: unknown) => {
+  const enqueue = async (p: Readonly<Record<string, unknown>>) => {
     const taskId = randomUUID();
     taskIds.push(taskId);
     await store.enqueueIfAbsent({
@@ -200,7 +200,9 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
       // AND THE EMITTED SIGNAL IS THE SHARPER FINDING: run 2's signal carries amountAtRiskMinor 70000
       // while the stored candidate stayed at 30000. The task result therefore records an amount that
       // reached no figure, and nothing reconciles the two.
-      const emitted = (await h.tasks()).flatMap((t) => (t.result as readonly { amountAtRiskMinor: number }[]) ?? []);
+      const emitted = (await h.tasks()).flatMap(
+        (t) => (t.result as unknown as readonly { amountAtRiskMinor: number }[] | null) ?? [],
+      );
       expect(emitted.map((e) => e.amountAtRiskMinor).sort((a, b) => a - b)).toEqual([30_000, 70_000]);
 
       const rows = await readSucceededRows((sql) => prisma.$queryRawUnsafe<RawSucceededRow[]>(sql));
@@ -322,10 +324,15 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
   // what licenses attributing the suppression to the dangling reference rather than to the extra line's
   // existence or its amount. Run on the pure planner: no database, no worker, no network.
   it("S-ID-1 control · the suppression is caused by the dangling reference, not by a second line", () => {
+    // ONLY THE THREE FIELDS `ReconciliationObservationInput` DECLARES. An earlier form of this control
+    // also passed `observedAt` and `actionAvailable`, which the type does not declare and nothing reads —
+    // the same inert-excess-property defect already recorded against `control.ts`, where a field that
+    // looked like a governed term was passed to a validator that never reads one. Caught here only
+    // because these test files were typechecked explicitly; no project includes them.
     const plan = (rows: typeof ID_BILLING) => planReconciliation({
       expectation: { columns: [...EXPECTATION_COLUMNS], rows: ID_EXPECTATION },
       billing: { columns: [...BILLING_COLUMNS], rows },
-      currency: SCENARIO_CURRENCY, observedAt: new Date().toISOString(), actionAvailable: true,
+      currency: SCENARIO_CURRENCY,
     });
 
     const withGhost = plan(ID_BILLING);

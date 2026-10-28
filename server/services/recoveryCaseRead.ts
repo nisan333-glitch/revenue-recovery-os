@@ -14,6 +14,7 @@
 // WHAT IT DOES NOT DO. It computes no money. The proven figure is taken from the same effective-proof rule
 // `cfoAuditExport` already applies, and the at-risk figure is read from the frozen promotion row. Nothing
 // here recomputes a counted number, and nothing here writes.
+import { prisma } from "../db";
 import {
   getRecoveryCase,
   type RecoveryCaseRoot,
@@ -157,12 +158,23 @@ export async function readRecoveryCase(
   if (root === null) throw new NotFoundError(`recovery case ${recoveryCaseId} has no authoritative root`);
   requireBoundaryAccess(actor, root.boundaryId);
 
-  const [authority, baselines, evidence, proofs] = await Promise.all([
+  const [authority, baselines, evidence, proofs, candidate] = await Promise.all([
     authorityFor(recoveryCaseId),
     getBaselinesForCase(recoveryCaseId),
     getEvidenceForCase(recoveryCaseId),
     getCaseProofs(recoveryCaseId),
+    // The candidate the case was promoted from, for the one fact the disclosure needs: whether the
+    // detector recorded that this claim covers a single obligation. Nothing else is read from it, and
+    // the obligation reference itself is NOT rendered — it is a pseudonym, and a screen does not need it
+    // to say what the claim covers.
+    prisma.agentCaseCandidateRecord.findUnique({
+      where: { candidateId: root.sourceCandidateId }, select: { signal: true },
+    }),
   ]);
+  const signal = candidate?.signal as { obligationCoverage?: { kind?: unknown } } | null | undefined;
+  // SHAPE-CHECKED, and absence is NOT a single obligation. A row written before coverage existed, or by
+  // a detector that states none, must render the account-level disclosure rather than the narrower one.
+  const claimStatesOneObligation = signal?.obligationCoverage?.kind === "SINGLE_OBLIGATION";
 
   const ledger = provenLedger(root, proofs);
   const authorityEntries = authority.map((a) => ({
@@ -193,6 +205,10 @@ export async function readRecoveryCase(
       obligationIdentityEstablishable: leakInstanceIdentityStatus().establishable,
       identityRefusalDetail: LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL,
       absorbedObservations: { checked: false },
+      // READ FROM THE RECORD the detector wrote, so the screen states what the claim actually covers.
+      // Without this, a case that reached PROVEN — which only a single-obligation claim can — rendered
+      // "the figure above may cover more than one", true of the identity and false of the claim.
+      claimStatesSingleObligation: claimStatesOneObligation,
     }),
     provenRevenueReturnedMinor: ledger.amount === null ? null : ledger.amount.minor,
     provenLedgerUnavailableReason: ledger.reason,
