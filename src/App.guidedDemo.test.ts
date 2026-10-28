@@ -176,6 +176,13 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
     // (author → baseline pre-registered → intervention → evidence → approve), now through the
     // real governed API instead of a local domain-kernel call.
     if (!alreadySeeded) {
+      // A GOVERNED ROOT FIRST. `approve()` refuses a case whose obligation coverage is not stated —
+      // the approved rule — and this seed previously approved a proof for a case id with no governed
+      // root at all. The demo case models ONE obligation, so the root now says so explicitly rather
+      // than leaving the subject of the claim unrecorded. Found by CI on a FRESH database: locally,
+      // residual rows surfaced a 409 on reused evidence and masked the real 403.
+      const { seedGovernedRoot } = await import("../server/test/fixtures");
+      await seedGovernedRoot(CASE_ID, { expectedMinor: 1_320_000, billedMinor: 0 });
       await app.inject({ method: "POST", url: `/cases/${CASE_ID}/author`, headers: authorHeaders });
       await app.inject({
         method: "POST",
