@@ -40,6 +40,7 @@
 /** How far an identity claim about a case can go. Ordered from weakest to strongest. */
 export type CaseIdentityGrain =
   | "ACCOUNT_GRAINED_POTENTIAL"
+  | "CLAIM_STATES_SINGLE_OBLIGATION"
   | "ABSORBED_OBSERVATIONS_RECORDED"
   | "OBLIGATION_UNIQUENESS_GUARANTEED";
 
@@ -64,6 +65,22 @@ export interface CaseIdentityGrainInput {
   /** `LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL`, passed through verbatim. */
   readonly identityRefusalDetail: string;
   readonly absorbedObservations: AbsorbedObservations;
+  /**
+   * Whether the detector RECORDED that this claim covers exactly one obligation.
+   *
+   * A FOURTH STATE WAS NECESSARY AND THE EXISTING THREE COULD NOT CARRY IT. Since PROVEN became
+   * available only to single-obligation claims, every proven case rendered the ACCOUNT-GRAINED headline
+   * — *"the figure above may cover more than one"* — which is TRUE OF THE IDENTITY and FALSE OF THE
+   * CLAIM. Two different subjects, and a screen that states only the first makes a false statement about
+   * the second.
+   *
+   * It is NOT `OBLIGATION_UNIQUENESS_GUARANTEED`, and the distinction is the same one this repository
+   * keeps having to make. That state means the DATA CONTRACT declares a stable obligation identifier, so
+   * the identity itself cannot merge; it stays unreachable. This one means the claim NAMES its obligation
+   * within one reading of the customer's extracts, while the case's dedupe key remains account-grained —
+   * so a later observation can still be absorbed, and `mayCoverMultipleObligations` stays TRUE.
+   */
+  readonly claimStatesSingleObligation?: boolean;
 }
 
 export interface CaseIdentityGrainDisclosure {
@@ -88,6 +105,14 @@ export const ACCOUNT_GRAINED_HEADLINE =
   "may represent more than one contractual obligation and the figure above may cover more than one. It is " +
   "not a per-obligation claim. The amount shown is what the first observation carried for the account: an " +
   "observation absorbed into this case later is not added to it.";
+
+/** Where the claim names ONE obligation but the case identity is still account-grained. */
+export const CLAIM_SINGLE_OBLIGATION_HEADLINE =
+  "THIS CLAIM NAMES ONE OBLIGATION. The detector recorded which single obligation this claim covers, " +
+  "together with what was expected and what was billed on it, so the figure above is a per-obligation " +
+  "figure and not a sum across obligations. The case's own identity is still the customer ACCOUNT, " +
+  "which means a later observation for the same account could be absorbed into this case; if that " +
+  "happens it is stated separately and the absorbed amount appears in no figure.";
 
 /** The same, where absorption is on the record rather than merely possible. */
 export const ABSORBED_HEADLINE =
@@ -119,13 +144,27 @@ export function deriveCaseIdentityGrain(input: CaseIdentityGrainInput): CaseIden
   }
 
   const absorbed = input.absorbedObservations.checked && input.absorbedObservations.count > 0;
+  // ABSORPTION OUTRANKS A STATED CLAIM, deliberately. A recorded absorption is evidence that something
+  // was folded in; a stated claim is what the detector believed when it wrote the signal. Where the two
+  // disagree the evidence wins, because the alternative is a screen reassuring a reader about a merge
+  // that is on the record.
+  const grain: CaseIdentityGrain = absorbed
+    ? "ABSORBED_OBSERVATIONS_RECORDED"
+    : input.claimStatesSingleObligation === true
+      ? "CLAIM_STATES_SINGLE_OBLIGATION"
+      : "ACCOUNT_GRAINED_POTENTIAL";
   return Object.freeze({
-    grain: absorbed ? "ABSORBED_OBSERVATIONS_RECORDED" : "ACCOUNT_GRAINED_POTENTIAL",
+    grain,
+    // STILL TRUE, even for a stated single-obligation claim: the dedupe key is the account, so the
+    // IDENTITY can still cover more than one obligation however precise the claim is.
     mayCoverMultipleObligations: true,
     obligationUniquenessGuaranteed: false,
     reason: input.identityRefusalDetail,
     absorbedObservations: input.absorbedObservations,
-    headline: absorbed ? ABSORBED_HEADLINE : ACCOUNT_GRAINED_HEADLINE,
+    headline:
+      grain === "ABSORBED_OBSERVATIONS_RECORDED" ? ABSORBED_HEADLINE
+        : grain === "CLAIM_STATES_SINGLE_OBLIGATION" ? CLAIM_SINGLE_OBLIGATION_HEADLINE
+          : ACCOUNT_GRAINED_HEADLINE,
   });
 }
 
