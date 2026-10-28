@@ -1,0 +1,11 @@
+{
+  "schema": "nh-scenario-expectation-freeze-v1",
+  "purpose": "Pre-registration lock for the five new reconciliation scenario families. Hashed BEFORE the first run so an expectation cannot be adjusted to match a result already seen.",
+  "frozenAt": "2026-10-28",
+  "frozenAtRevision": "0acdc6dbfaf6dd410361b92f05c35fe164d4ddbb",
+  "notSelfHealing": "This lock is NOT written by any generator. It is tracked, and scenariosFreeze.test.ts recomputes the digest and fails on any drift. A freeze record a generator rewrites cannot detect the one thing it exists to detect.",
+  "covered": [
+    { "path": "server/agents/fixtures/reconciliation.scenarios.expectations.ts", "bytes": 20479, "sha256": "bf89df953507cc196844470111da4d617de4f9121d1db9c6344d9723bf1e9307" }
+  ],
+  "revisionRule": "If the product is found defective against these expectations, fix the PRODUCT and re-run against this same lock. If an expectation is later proven objectively wrong, that is a governed revision with explicit evidence and a NEW lock - never a silent edit, and never one that improves a result."
+}
