@@ -18,7 +18,14 @@ import { PROVEN_GRAIN_AUTHORIZATION, SCENARIOS } from "./reconciliation.scenario
 const HERE = resolve(__dirname);
 const LOCK = JSON.parse(readFileSync(resolve(HERE, "SCENARIOS.FREEZE.lock.json"), "utf8")) as {
   readonly covered: readonly { readonly path: string; readonly bytes: number; readonly sha256: string }[];
+  readonly semantic: { readonly scenarios: string; readonly provenGrainAuthorization: string };
+  readonly revisions: readonly {
+    readonly revision: number; readonly sha256: string; readonly semanticsMoved: boolean;
+    readonly reason: string; readonly proof: string;
+  }[];
 };
+
+const semantic = (x: unknown) => createHash("sha256").update(JSON.stringify(x)).digest("hex");
 
 describe("scenario expectation freeze", () => {
   it("every covered file matches the lock byte for byte", () => {
@@ -27,6 +34,30 @@ describe("scenario expectation freeze", () => {
       const bytes = readFileSync(resolve(HERE, "../../..", entry.path));
       expect(bytes.byteLength, `${entry.path} byte count`).toBe(entry.bytes);
       expect(createHash("sha256").update(bytes).digest("hex"), `${entry.path} digest`).toBe(entry.sha256);
+    }
+  });
+
+  // TWO DIGESTS, AND THE SECOND IS THE ONE THAT MATTERS FOR A REWORD. The file digest above catches any
+  // byte change, including a comment. This one catches a change of MEANING, and nothing else — so a
+  // revision that leaves every expectation intact is provable rather than asserted, and a revision that
+  // quietly moves one cannot hide behind "it was only a comment". Separate, for the same reason the
+  // unavailable states stay distinguishable: one hash cannot tell the two events apart.
+  it("the scenario semantics match the lock, independently of the bytes", () => {
+    expect(semantic(SCENARIOS)).toBe(LOCK.semantic.scenarios);
+    expect(semantic(PROVEN_GRAIN_AUTHORIZATION)).toBe(LOCK.semantic.provenGrainAuthorization);
+  });
+
+  // A SUPERSEDED REVISION IS PRESERVED, NEVER DELETED. Each entry keeps the digest it was judged under,
+  // why it moved, and whether the meaning moved with it — so no figure can be quoted without the ruler
+  // it was measured against still being on the record.
+  it("every superseded revision keeps its digest, its reason and its proof", () => {
+    for (const r of LOCK.revisions) {
+      expect(/^[a-f0-9]{64}$/.test(r.sha256), `revision ${r.revision} digest`).toBe(true);
+      expect(r.reason.trim().length, `revision ${r.revision} reason`).toBeGreaterThan(0);
+      expect(r.proof.trim().length, `revision ${r.revision} proof`).toBeGreaterThan(0);
+      // A revision claiming the meaning did not move must not reuse the CURRENT file digest, which
+      // would mean nothing was superseded at all.
+      if (!r.semanticsMoved) expect(r.sha256).not.toBe(LOCK.covered[0]!.sha256);
     }
   });
 

@@ -376,7 +376,11 @@ export const PROVEN_GRAIN_AUTHORIZATION = Object.freeze({
  *
  * The 100.00% recall / 98.28% precision / 53.25%-unrepresentable figures quoted while planning this
  * slice are measurements over ONE FROZEN SYNTHETIC PACKAGE (V3 and its obligation_ref variant), where
- * the money is `planted-register.json` — a register this project authored. They license no claim about
+ * the money is the benchmark's PLANTED REGISTER — an artefact this project authored. (The file is named
+ * in the harness and deliberately not here: scripts/reconciliation-synthetic/verify.mjs forbids any
+ * module under src/ or server/ from carrying that literal, and its first run reported this file as
+ * one that "reads the ground truth" for a prose mention alone. The guard is conservative in the safe
+ * direction and was NOT weakened to let this file pass.) They license no claim about
  * a real book, and specifically they do NOT establish that better detectors would find no more money:
  * "unrepresentable" there means unrepresentable under CONTRACT 2.0.0 AS IT STANDS, which an extended
  * schema or mapping could change. That alternative was dismissed without evidence and is reinstated as
@@ -384,7 +388,7 @@ export const PROVEN_GRAIN_AUTHORIZATION = Object.freeze({
  */
 export const BENCHMARK_DENOMINATOR = Object.freeze({
   dataset: "frozen synthetic V3 + obligation_ref variant",
-  moneySource: "planted-register.json — authored by this project",
+  moneySource: "the benchmark's planted register — authored by this project",
   synthetic: true,
   unrepresentableIsRelativeTo: "pilot data contract 2.0.0 as it stands",
   licensesSaturationClaim: false,

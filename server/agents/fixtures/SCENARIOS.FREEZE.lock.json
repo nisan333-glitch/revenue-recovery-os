@@ -1,11 +1,30 @@
 {
   "schema": "nh-scenario-expectation-freeze-v1",
+  "revision": 2,
   "purpose": "Pre-registration lock for the five new reconciliation scenario families. Hashed BEFORE the first run so an expectation cannot be adjusted to match a result already seen.",
   "frozenAt": "2026-10-28",
   "frozenAtRevision": "0acdc6dbfaf6dd410361b92f05c35fe164d4ddbb",
-  "notSelfHealing": "This lock is NOT written by any generator. It is tracked, and scenariosFreeze.test.ts recomputes the digest and fails on any drift. A freeze record a generator rewrites cannot detect the one thing it exists to detect.",
+  "notSelfHealing": "This lock is NOT written by any generator. It is tracked, and scenariosFreeze.test.ts recomputes BOTH digests and fails on any drift. A freeze record a generator rewrites cannot detect the one thing it exists to detect.",
+  "twoDigests": "The FILE digest protects the bytes. The SEMANTIC digest protects the meaning: sha256 over JSON.stringify of SCENARIOS and of PROVEN_GRAIN_AUTHORIZATION. They are separate because a reword that leaves every expectation intact and a change to an expectation are different events, and one hash cannot tell them apart.",
   "covered": [
-    { "path": "server/agents/fixtures/reconciliation.scenarios.expectations.ts", "bytes": 20479, "sha256": "bf89df953507cc196844470111da4d617de4f9121d1db9c6344d9723bf1e9307" }
+    { "path": "server/agents/fixtures/reconciliation.scenarios.expectations.ts", "bytes": 20880, "sha256": "06d63e596faa16a842ce1571d0146d7401dcaa7a581204fb1e8f6ba11113f5c3" }
+  ],
+  "semantic": {
+    "scenarios": "cd1dca6fa921e5825a45a41ed97ab2fc8cd6886bd5f21092f77390b783564ddc",
+    "provenGrainAuthorization": "a4a3134045891320817fac8d62f0c914adb60d96a45d6fa58d4b7d02062527f8"
+  },
+  "revisions": [
+    {
+      "revision": 1,
+      "sha256": "bf89df953507cc196844470111da4d617de4f9121d1db9c6344d9723bf1e9307",
+      "bytes": 20479,
+      "committedAs": "0c3e770",
+      "supersededBy": 2,
+      "reason": "scripts/reconciliation-synthetic/verify.mjs scans raw text under src/ and server/ for the literal 'planted-register.json' and reported this file as one that 'reads the ground truth' for a PROSE MENTION alone. The frozen harness guard was NOT weakened; this file's comment and one descriptive string were reworded instead.",
+      "semanticsMoved": false,
+      "proof": "SCENARIOS digest cd1dca6f... and PROVEN_GRAIN_AUTHORIZATION digest a4a31340... are IDENTICAL across revisions 1 and 2, measured by serialising both versions side by side. The only semantic field that moved is BENCHMARK_DENOMINATOR.moneySource, which names the artefact and states no expectation. No scenario, required outcome, basis, known gap, acceptance item or outcome class changed.",
+      "measurementsAffected": "NONE. The run recorded in b0236c6 was judged against revision 1 and every figure it reports stands unchanged."
+    }
   ],
   "revisionRule": "If the product is found defective against these expectations, fix the PRODUCT and re-run against this same lock. If an expectation is later proven objectively wrong, that is a governed revision with explicit evidence and a NEW lock - never a silent edit, and never one that improves a result."
 }
