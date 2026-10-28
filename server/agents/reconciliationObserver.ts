@@ -130,6 +130,54 @@ export interface ReconciliationPlanCounts {
   readonly billingRowsRejected: number;
 }
 
+/**
+ * WHAT A REFUSAL COSTS, stated rather than left as a count beside a zero (S-ID-1).
+ *
+ * THE DEFECT THIS ANSWERS. A dangling obligation reference refuses its unit — correctly: the billing
+ * side cannot be trusted for it. But `observedExposureMinor` then reads 0 with only `counts.refused`
+ * beside it, so a surface reading the money cannot tell "nothing was owed" from "we refused to say".
+ * Measured on synthetic data: 450.00 of establishable shortfall left the figure while the same payer's
+ * contract side plainly stated 1,200.00 owed.
+ *
+ * `UNDETERMINED`, NEVER ZERO AND NEVER A RESIDUAL. The expected figure is reported because the
+ * CONTRACT side stated it and that statement is not in doubt. The residual is NOT reported, because the
+ * residual is exactly what the refusal is about: publishing one would be the authored figure the
+ * refusal exists to prevent. Two facts, neither standing in for the other.
+ */
+export interface RefusedExposure {
+  /**
+   * THREE STATES, AND THEY STAY DISTINGUISHABLE. `NOT_EXAMINED` is an unreadable extract — nobody
+   * looked, so "no refusals" would claim work that never happened, the same reason this module already
+   * refuses to report zero candidates from a file it could not read. `NONE_REFUSED` means the units
+   * were examined and none was refused.
+   */
+  readonly state: "NOT_EXAMINED" | "NONE_REFUSED" | "UNDETERMINED";
+  readonly refusedUnits: number;
+  /** Sum of expected amounts on refused units, from the contract side. NOT exposure, never summed into it. */
+  readonly refusedExpectedMinor: number;
+  /**
+   * Refused units whose expected amount the contract side did not state either. Reported SEPARATELY so
+   * `refusedExpectedMinor` is never mistaken for a complete figure: where this is above zero, the
+   * expected total is a lower bound and the report says so by carrying the count.
+   */
+  readonly refusedWithoutExpected: number;
+  readonly currency: string;
+  /** One wording, one place. A screen must not author its own, and must not render a monetary zero. */
+  readonly headline: string | null;
+}
+
+/** The sentence a surface shows where units were refused. */
+/** The sentence where the extract could not be read at all. */
+export const NOT_EXAMINED_HEADLINE =
+  "NOT EXAMINED. The extracts could not be read, so no reconciliation unit was evaluated and nothing " +
+  "is reported about refusals or exposure. This is not a finding of nothing owed.";
+
+export const REFUSED_EXPOSURE_HEADLINE =
+  "EXPOSURE UNDETERMINED ON REFUSED UNITS. One or more reconciliation units were refused, so no " +
+  "residual could be established for them and NONE is reported. The expected amount beside this is " +
+  "what the contract side stated was owed on those units; it is not exposure and is never added to it. " +
+  "A refusal is not a finding of nothing owed.";
+
 export interface ReconciliationPlan {
   readonly usable: boolean;
   readonly currency: string;
@@ -137,6 +185,11 @@ export interface ReconciliationPlan {
   readonly counts: ReconciliationPlanCounts;
   /** Σ candidate residuals. OBSERVED exposure for display next to — never inside — any proven figure. */
   readonly observedExposureMinor: number;
+  /**
+   * What the refusals withhold. ADDITIVE: no digest, signal id or candidate identity reads this object —
+   * `signalsForPlan` digests the units and the account — so adding it moves nothing.
+   */
+  readonly refusedExposure: RefusedExposure;
   readonly claimBoundary: {
     readonly observationOnly: true;
     readonly constitutesProof: false;
@@ -184,7 +237,14 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
   if (!e.usable || !b.usable) {
     return Object.freeze({
       usable: false, currency, candidates: Object.freeze([]), counts: Object.freeze(emptyCounts),
-      observedExposureMinor: 0, claimBoundary: boundary,
+      observedExposureMinor: 0,
+      // NOT `NONE_REFUSED`. No unit was examined, so stating that none was refused would assert a
+      // population was checked and found clean.
+      refusedExposure: Object.freeze({
+        state: "NOT_EXAMINED" as const, refusedUnits: 0, refusedExpectedMinor: 0,
+        refusedWithoutExpected: 0, currency, headline: NOT_EXAMINED_HEADLINE,
+      }),
+      claimBoundary: boundary,
     });
   }
 
@@ -243,6 +303,8 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
   }
   const units: { readonly accountRef: string; readonly unit: PlannedUnit }[] = [];
   let balanced = 0, over = 0, held = 0, withheld = 0, noAccount = 0, unpriced = 0, refused = 0, notExpected = 0;
+  let refusedExpected = 0;
+  let refusedWithoutExpected = 0;
   for (const u of result.units) {
     switch (u.state) {
       case "UNDER_BILLED":
@@ -264,7 +326,15 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
       case "OVER_BILLED": over += 1; break;
       case "NO_RESIDUAL_UNPRICED": unpriced += 1; break;
       case "NOT_EXPECTED": notExpected += 1; break;
-      default: refused += 1; // every REFUSED_* state, counted and never zeroed
+      default:
+        refused += 1; // every REFUSED_* state, counted and never zeroed
+        // AND ITS EXPECTED FIGURE KEPT. What the contract side said was owed is not in doubt; only the
+        // residual is. Discarding it is what made a refusal indistinguishable from "nothing was owed".
+        // `expectedMinor` is `number | null` on the core unit: a refused unit may carry no expected
+        // figure at all. A null is COUNTED rather than added as zero, so the reported total cannot be
+        // read as complete when part of it was never stated.
+        if (u.expectedMinor === null || !Number.isSafeInteger(u.expectedMinor)) refusedWithoutExpected += 1;
+        else refusedExpected += u.expectedMinor;
     }
   }
   // Group by payer. Order is by identity, never by input position: reordering the files must not change
@@ -296,6 +366,14 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
       expectationRowsRejected: e.rejections.length, billingRowsRejected: b.rejections.length,
     }),
     observedExposureMinor: candidates.reduce((n, c) => n + c.residualMinor, 0),
+    refusedExposure: Object.freeze({
+      state: refused === 0 ? ("NONE_REFUSED" as const) : ("UNDETERMINED" as const),
+      refusedUnits: refused,
+      refusedExpectedMinor: refusedExpected,
+      refusedWithoutExpected,
+      currency,
+      headline: refused === 0 ? null : REFUSED_EXPOSURE_HEADLINE,
+    }),
     claimBoundary: boundary,
   });
 }

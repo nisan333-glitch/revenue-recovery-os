@@ -153,13 +153,21 @@ export const SCENARIOS: readonly ScenarioExpectation[] = Object.freeze([
     title: "two DIFFERENT obligations of one account, in DIFFERENT runs",
     currentBehaviour: Object.freeze({
       statement:
-        "The later run's shortfall is absorbed by the existing candidate and ITS MONEY REACHES NO " +
-        "FIGURE. The module states this in its own header; it is not inferred.",
+        "FIXED 2026-10-28. The candidate identity now carries the obligation when the signal states one, " +
+        "so the later run's shortfall becomes its OWN candidate and its money is preserved. Measured on " +
+        "this package: 30,000 minor after run 1 and 100,000 after run 2, two candidates sharing one " +
+        "account reference and holding 30,000 and 70,000. Amount lost from treatment: 0.",
       evidence: Object.freeze([
-        "server/agents/reconciliationObserver.ts:44-46 — 'a LATER run that finds a new shortfall for " +
-          "the same payer is absorbed by the first candidate and its money reaches no figure'",
-        "server/agents/reconciliationObserver.ts:48-50 — 'FIRST OBSERVATION WINS'",
-        "server/agents/caseAdmission.ts:70-72 — the store returns the existing candidate unchanged",
+        "server/agents/caseAdmission.ts:110 — caseCandidateDedupeKey takes the v2 obligation-grained " +
+          "preimage when obligationCoverage.kind is SINGLE_OBLIGATION, and the unchanged v1 preimage " +
+          "otherwise; CANDIDATE_DEDUPE_SCHEME_V2 at :96 names the derivation",
+        "server/agents/reconciliationScenarios.postgres.test.ts:167 — S-DUP-3 asserts 100,000, two " +
+          "candidate ids, one shared sourceRef, and a lost amount of exactly 0",
+        "server/services/absorbedObservations.ts:254 — the production reader now answers " +
+          "NO_ABSORPTION_RECORDED for this boundary, where it previously answered ABSORPTION_RECORDED",
+        "SUPERSEDED, PRESERVED: reconciliationObserver.ts's header described the old behaviour — 'a " +
+          "LATER run ... is absorbed by the first candidate and its money reaches no figure' — which " +
+          "was accurate when written and is corrected in place rather than deleted",
       ]),
     }),
     requiredOutcome: Object.freeze({
@@ -174,15 +182,16 @@ export const SCENARIOS: readonly ScenarioExpectation[] = Object.freeze([
           "is neither reported nor excluded.",
       }),
     }),
-    knownGap:
-      "REQUIRED OUTCOME NOT MET. A valid amount disappears from treatment and from every reported " +
-      "figure. The event metadata records THAT an observation was absorbed and carries NO AMOUNT, so " +
-      "the untreated money is not even quantifiable from the record.",
+    knownGap: null,
     acceptance: Object.freeze([
       "run 1 then run 2 with a different obligation for the same payer",
       "measure: candidate count, candidate residual, observed exposure after each run",
       "assert the loss is REAL and MEASURED here rather than assumed — record the exact amount lost",
       "assert the absorption IS recorded (admittedCount>=1, createdCount=0) — recorded is not treated",
+      "AFTER THE FIX, read the same acceptance items as a closed gap: the measured loss is 0, there are " +
+        "two candidates, and the absorption verdict is NO_ABSORPTION_RECORDED because there is nothing " +
+        "to fold. The items are APPENDED rather than rewritten, so what was originally required to be " +
+        "measured stays on the record beside what was found.",
     ]),
     expectedClass: "DETECTED" as const,
   }),

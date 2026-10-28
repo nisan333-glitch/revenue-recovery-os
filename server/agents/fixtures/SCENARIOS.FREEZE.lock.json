@@ -1,16 +1,21 @@
 {
   "schema": "nh-scenario-expectation-freeze-v1",
-  "revision": 2,
+  "revision": 3,
   "purpose": "Pre-registration lock for the five new reconciliation scenario families. Hashed BEFORE the first run so an expectation cannot be adjusted to match a result already seen.",
   "frozenAt": "2026-10-28",
   "frozenAtRevision": "0acdc6dbfaf6dd410361b92f05c35fe164d4ddbb",
-  "notSelfHealing": "This lock is NOT written by any generator. It is tracked, and scenariosFreeze.test.ts recomputes BOTH digests and fails on any drift. A freeze record a generator rewrites cannot detect the one thing it exists to detect.",
-  "twoDigests": "The FILE digest protects the bytes. The SEMANTIC digest protects the meaning: sha256 over JSON.stringify of SCENARIOS and of PROVEN_GRAIN_AUTHORIZATION. They are separate because a reword that leaves every expectation intact and a change to an expectation are different events, and one hash cannot tell them apart.",
+  "notSelfHealing": "This lock is NOT written by any generator. It is tracked, and scenariosFreeze.test.ts recomputes all three digests and fails on any drift. A freeze record a generator rewrites cannot detect the one thing it exists to detect.",
+  "threeDigests": "The FILE digest protects the bytes. The SCENARIOS digest protects the whole meaning. The REQUIRED_OUTCOMES digest protects only the REQUIREMENTS - and that separation is what makes a product fix distinguishable from a tuned ruler. A product fix legitimately moves the description of current behaviour and the known gap; it must NEVER move a required outcome. Revision 3 is exactly that case and proves it: requiredOutcomes is byte-identical across revisions 2 and 3.",
   "covered": [
-    { "path": "server/agents/fixtures/reconciliation.scenarios.expectations.ts", "bytes": 20880, "sha256": "06d63e596faa16a842ce1571d0146d7401dcaa7a581204fb1e8f6ba11113f5c3" }
+    {
+      "path": "server/agents/fixtures/reconciliation.scenarios.expectations.ts",
+      "bytes": 21803,
+      "sha256": "0737fbb011d5b530da52cf78987ca3db5769cdd899a774f4ad129ed91b902ef6"
+    }
   ],
   "semantic": {
-    "scenarios": "cd1dca6fa921e5825a45a41ed97ab2fc8cd6886bd5f21092f77390b783564ddc",
+    "requiredOutcomes": "11e49eecf138b99c6d731e4ab9978ff434d10cc57638d75e4299a15982c40f5d",
+    "scenarios": "e2e4961492210090284d039df2f4265870134675cd969c9b9d876ef64fa28f44",
     "provenGrainAuthorization": "a4a3134045891320817fac8d62f0c914adb60d96a45d6fa58d4b7d02062527f8"
   },
   "revisions": [
@@ -24,7 +29,19 @@
       "semanticsMoved": false,
       "proof": "SCENARIOS digest cd1dca6f... and PROVEN_GRAIN_AUTHORIZATION digest a4a31340... are IDENTICAL across revisions 1 and 2, measured by serialising both versions side by side. The only semantic field that moved is BENCHMARK_DENOMINATOR.moneySource, which names the artefact and states no expectation. No scenario, required outcome, basis, known gap, acceptance item or outcome class changed.",
       "measurementsAffected": "NONE. The run recorded in b0236c6 was judged against revision 1 and every figure it reports stands unchanged."
+    },
+    {
+      "revision": 2,
+      "sha256": "06d63e596faa16a842ce1571d0146d7401dcaa7a581204fb1e8f6ba11113f5c3",
+      "bytes": 20786,
+      "committedAs": "e4bf2d3",
+      "supersededBy": 3,
+      "reason": "A PRODUCT FIX closed S-DUP-3. The candidate identity now carries the obligation when the signal states one (caseCandidateDedupeKey v2), so two obligations of one account in different runs become two candidates and the second obligation's 700.00 is preserved instead of absorbed. This is the freeze control working as designed: the defect was found against the frozen package, the PRODUCT was fixed, and the SAME package was re-run.",
+      "semanticsMoved": true,
+      "semanticsMovedScope": "S-DUP-3's currentBehaviour, knownGap (now null) and acceptance only. Acceptance items were APPENDED, never rewritten, so what was originally required to be measured stays on the record beside what was found.",
+      "proof": "REQUIRED_OUTCOMES digest 11e49eec... is BYTE-IDENTICAL across revisions 2 and 3, measured by serialising every scenario's requiredOutcome before and after the edit. No requirement, basis, source citation or outcome class moved. The SCENARIOS digest moved cd1dca6f... -> e2e49614... because the description of current behaviour legitimately follows the code.",
+      "measurementsAffected": "S-DUP-3 ONLY, and in the direction a fix moves it: observed exposure after run 2 30,000 -> 100,000 minor, candidates 1 -> 2, amount lost from treatment 70,000 -> 0, absorption verdict ABSORPTION_RECORDED -> NO_ABSORPTION_RECORDED. Every other scenario's figures are unchanged, asserted by the suite."
     }
   ],
-  "revisionRule": "If the product is found defective against these expectations, fix the PRODUCT and re-run against this same lock. If an expectation is later proven objectively wrong, that is a governed revision with explicit evidence and a NEW lock - never a silent edit, and never one that improves a result."
+  "revisionRule": "If the product is found defective against these expectations, fix the PRODUCT and re-run against this same lock. If an expectation is later proven objectively wrong, that is a governed revision with explicit evidence and a NEW lock - never a silent edit, and never one that improves a result. A revision may move currentBehaviour and knownGap; a revision that moves a REQUIRED OUTCOME must say so and must not be justified by a measurement."
 }

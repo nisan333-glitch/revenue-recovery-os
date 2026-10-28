@@ -164,7 +164,7 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
   }, 40_000);
 
   // ── S-DUP-3 · two obligations, one payer, DIFFERENT runs ──────────────────────────────────────────
-  it("S-DUP-3 · the second run's obligation is absorbed and its money reaches no figure", async () => {
+  it("S-DUP-3 · the second run's obligation is SEPARATELY IDENTIFIED and its $700 is preserved", async () => {
     const h = harness("dup3");
     await h.enqueue(payload(DUP3_RUN1_EXPECTATION, DUP3_RUN1_BILLING));
     h.worker.start();
@@ -184,13 +184,20 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
         amountLostFromTreatmentMinor: 70_000 - (observedRun2 - observedRun1),
       };
 
-      // MEASURED, and the loss is quantified here rather than assumed. Run 1's shortfall is 300.00 and
-      // run 2's is 700.00 on a DIFFERENT obligation of the same payer.
+      // MEASURED. Run 1's shortfall is 300.00 and run 2's is 700.00 on a DIFFERENT obligation of the
+      // same payer. Both are now keyed on their own obligation, so both survive.
       expect(observedRun1).toBe(30_000);
-      // The product's own header says the later shortfall "reaches no figure". If that is what happens,
-      // the figure does not move and 700.00 is the amount lost from treatment.
-      expect(observedRun2).toBe(30_000);
-      expect(afterRun2).toHaveLength(1);
+      expect(observedRun2).toBe(100_000);
+      expect(afterRun2).toHaveLength(2);
+      expect(afterRun2.map((c) => c.amountAtRiskMinor).sort((a, b) => a - b)).toEqual([30_000, 70_000]);
+      // THE ACCOUNT IS THE SAME AND THE CANDIDATES ARE NOT. That pair of facts is the whole fix: the
+      // pseudonymous account reference is shared, the identity is not, so one customer's two obligations
+      // are two separately reviewable claims rather than one merged figure.
+      expect(new Set(afterRun2.map((c) => c.sourceRef)).size).toBe(1);
+      expect(new Set(afterRun2.map((c) => c.candidateId)).size).toBe(2);
+      // AND NOTHING WAS LOST. Stated as the arithmetic rather than as a sentence, so a future regression
+      // reports the exact amount it dropped.
+      expect(70_000 - (observedRun2 - observedRun1)).toBe(0);
       // RECORDED IS NOT TREATED, read through the PRODUCTION reader rather than by grepping the task
       // result. The first form of this assertion looked for /admitted/i in `agentTaskRecord.result`,
       // which holds the EMITTED SIGNAL ARRAY and no admission counts at all — so it failed while the
@@ -205,19 +212,23 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
       );
       expect(emitted.map((e) => e.amountAtRiskMinor).sort((a, b) => a - b)).toEqual([30_000, 70_000]);
 
+      // NO ABSORPTION IS RECORDED ANY MORE, and that is the proof read from the other side. The
+      // absorption diagnostic exists to find a second observation folded into an existing candidate;
+      // with obligation-grained identity there is nothing to fold, so the verdict flips. Asserting the
+      // ABSENCE through the same production reader that previously reported the presence is stronger
+      // than asserting the new candidate count alone.
       const rows = await readSucceededRows((sql) => prisma.$queryRawUnsafe<RawSucceededRow[]>(sql));
       const report = summariseAbsorption(rows.filter((r) => r.boundaryId === h.boundaryId));
-      expect(report.verdict).toBe("ABSORPTION_RECORDED");
+      expect(report.verdict).toBe("NO_ABSORPTION_RECORDED");
       const b = report.boundaries.find((x) => x.boundaryId === h.boundaryId)!;
-      expect(b.eventsWithAbsorption).toBe(1);
-      // Two DISTINCT observation digests on one account identity: the strongest evidence the stored
-      // data can offer that a second, genuinely different observation was folded in — not a replay.
-      expect(b.accountIdentitiesWithDifferingObservations).toBe(1);
+      expect(b.eventsWithAbsorption).toBe(0);
+      expect(b.eventsWithoutAdmissionCounts).toBe(0);
       (MEASURED["S-DUP-3"] as Record<string, unknown>).absorption = {
         verdict: report.verdict, eventsWithAbsorption: b.eventsWithAbsorption,
         distinctObservationDigests: b.distinctObservationDigests,
         emittedAmountsMinor: emitted.map((e) => e.amountAtRiskMinor),
         storedTotalMinor: observedRun2,
+        amountLostFromTreatmentMinor: 70_000 - (observedRun2 - observedRun1),
       };
     } finally { await h.worker.stop(); }
   }, 40_000);
@@ -346,6 +357,11 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
       withGhost: { exposure: withGhost.observedExposureMinor, counts: withGhost.counts },
       withoutGhost: { exposure: withoutGhost.observedExposureMinor, counts: withoutGhost.counts },
       ghostResolved: { exposure: ghostResolved.observedExposureMinor, counts: ghostResolved.counts },
+      refusedExposure: {
+        withGhost: withGhost.refusedExposure,
+        withoutGhost: withoutGhost.refusedExposure,
+        ghostResolved: ghostResolved.refusedExposure,
+      },
     };
 
     // ARM 1 — the real shortfall is findable: 1200.00 owed, 750.00 billed.
@@ -366,6 +382,28 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
     expect(ghostResolved.counts.refused).toBe(0);
     // A liability is never exposure and is never netted into a smaller leakage figure.
     expect(ghostResolved.observedExposureMinor).toBe(0);
+
+    // ── THE S-ID-1 FIX · THE REFUSAL NO LONGER LEAVES ONLY A ZERO ─────────────────────────────────
+    // The frozen acceptance item this scenario falsified was "other units in the same dataset still
+    // produce their candidates". That remains falsified and is NOT re-written. What is fixed is the
+    // reporting: a reader of the refused arm can now tell "we refused to say" from "nothing was owed".
+    expect(withGhost.refusedExposure.state).toBe("UNDETERMINED");
+    expect(withGhost.refusedExposure.refusedUnits).toBe(1);
+    // 1,200.00 is what the CONTRACT side stated was owed on the refused unit. It is reported as an
+    // expected figure and is NOT exposure: the residual stays unreported, because the residual is
+    // exactly what the refusal is about.
+    expect(withGhost.refusedExposure.refusedExpectedMinor).toBe(120_000);
+    expect(withGhost.refusedExposure.refusedWithoutExpected).toBe(0);
+    expect(withGhost.refusedExposure.headline).toContain("EXPOSURE UNDETERMINED");
+    expect(withGhost.observedExposureMinor).toBe(0);
+    // AND THE TWO FIGURES ARE NOT THE SAME NUMBER. 120,000 expected beside 0 exposure, which is the
+    // pair a surface must render; collapsing them would be the defect in the other direction.
+    expect(withGhost.refusedExposure.refusedExpectedMinor).not.toBe(withGhost.observedExposureMinor);
+
+    // THE CONTROL ARMS REPORT NO REFUSAL, so the state is not a constant.
+    expect(withoutGhost.refusedExposure.state).toBe("NONE_REFUSED");
+    expect(withoutGhost.refusedExposure.headline).toBeNull();
+    expect(ghostResolved.refusedExposure.state).toBe("NONE_REFUSED");
   });
 
   // ── S-CRD-1 · a credit after a billed line, as sequential stages ──────────────────────────────────

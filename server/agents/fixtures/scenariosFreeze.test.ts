@@ -18,7 +18,11 @@ import { PROVEN_GRAIN_AUTHORIZATION, SCENARIOS } from "./reconciliation.scenario
 const HERE = resolve(__dirname);
 const LOCK = JSON.parse(readFileSync(resolve(HERE, "SCENARIOS.FREEZE.lock.json"), "utf8")) as {
   readonly covered: readonly { readonly path: string; readonly bytes: number; readonly sha256: string }[];
-  readonly semantic: { readonly scenarios: string; readonly provenGrainAuthorization: string };
+  readonly semantic: {
+    readonly requiredOutcomes: string;
+    readonly scenarios: string;
+    readonly provenGrainAuthorization: string;
+  };
   readonly revisions: readonly {
     readonly revision: number; readonly sha256: string; readonly semanticsMoved: boolean;
     readonly reason: string; readonly proof: string;
@@ -45,6 +49,26 @@ describe("scenario expectation freeze", () => {
   it("the scenario semantics match the lock, independently of the bytes", () => {
     expect(semantic(SCENARIOS)).toBe(LOCK.semantic.scenarios);
     expect(semantic(PROVEN_GRAIN_AUTHORIZATION)).toBe(LOCK.semantic.provenGrainAuthorization);
+  });
+
+  // THE THIRD DIGEST, AND THE ONLY ONE A PRODUCT FIX MUST NEVER MOVE. The file digest moves on a
+  // comment; the scenarios digest moves when the description of current behaviour follows the code; this
+  // one moves ONLY if a REQUIREMENT changed. That is the separation that makes "we fixed the product"
+  // distinguishable from "we adjusted the ruler", which no single hash can tell apart.
+  it("the REQUIREMENTS match the lock — the one digest a product fix may never move", () => {
+    expect(semantic(SCENARIOS.map((s) => [s.id, s.requiredOutcome]))).toBe(LOCK.semantic.requiredOutcomes);
+  });
+
+  it("every revision that moved the meaning says what it moved, and a requirement-moving one would stand out", () => {
+    for (const r of LOCK.revisions) {
+      if (r.semanticsMoved) {
+        // A revision claiming the meaning moved must name the SCOPE of the move, so a reader can see
+        // whether a requirement was among it without re-deriving anything.
+        expect((r as { semanticsMovedScope?: string }).semanticsMovedScope?.trim().length ?? 0,
+          `revision ${r.revision} scope`).toBeGreaterThan(0);
+        expect(r.proof, `revision ${r.revision} proof`).toMatch(/REQUIRED_OUTCOMES/);
+      }
+    }
   });
 
   // A SUPERSEDED REVISION IS PRESERVED, NEVER DELETED. Each entry keeps the digest it was judged under,
@@ -106,10 +130,21 @@ describe("the three statements stay separate", () => {
   it("the duplication family is split, because one scenario cannot carry opposite required outcomes", () => {
     const dup = SCENARIOS.filter((s) => s.id.startsWith("S-DUP-"));
     expect(dup.map((s) => s.id)).toEqual(["S-DUP-1", "S-DUP-2", "S-DUP-3", "S-DUP-4"]);
-    // The load-bearing contrast: suppressing a repeat is correct and has no gap; absorbing a second
-    // obligation across runs loses money and must carry one.
+    // THE LOAD-BEARING CONTRAST MOVED TO THE REQUIREMENTS, and that is the right place for it.
+    //
+    // Its first form contrasted the GAPS: S-DUP-1 had none and S-DUP-3 carried "REQUIRED OUTCOME NOT
+    // MET". That held only while the product was defective — once the obligation-grained key closed
+    // S-DUP-3 both gaps were null and the guard failed, having pinned the DEFECT rather than the
+    // distinction it existed to protect. The distinction is between the two REQUIREMENTS, which differ
+    // whether or not either is currently met, so it is now asserted there and survives the fix.
+    const req = (id: string) => dup.find((s) => s.id === id)!.requiredOutcome.statement;
+    expect(req("S-DUP-1")).toContain("No additional case");
+    expect(req("S-DUP-3")).toContain("must not be silently lost");
+    expect(req("S-DUP-1")).not.toBe(req("S-DUP-3"));
+    // And a closed gap is null rather than a sentence saying it is closed, so "no gap" has exactly one
+    // representation and a reader cannot mistake prose for a state.
     expect(dup.find((s) => s.id === "S-DUP-1")!.knownGap).toBeNull();
-    expect(dup.find((s) => s.id === "S-DUP-3")!.knownGap).toContain("NOT MET");
+    expect(dup.find((s) => s.id === "S-DUP-3")!.knownGap).toBeNull();
   });
 
   it("no expectation class is ZERO where the real answer is blocked, unsupported or unknown", () => {
