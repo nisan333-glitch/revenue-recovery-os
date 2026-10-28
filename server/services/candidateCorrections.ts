@@ -208,6 +208,15 @@ export function observationsFromRows(rows: readonly RawCorrectionRow[]): readonl
   const out: SucceededObservationRow[] = [];
   for (const row of rows) {
     if (!Array.isArray(row.result)) continue;
+    // The append-only sequence is the authority for correction order. Converting a bigint beyond
+    // Number.MAX_SAFE_INTEGER silently rounds it and can reverse or tie distinct observations.
+    // Refuse an unrepresentable order rather than reporting a potentially false monetary delta.
+    const sequence = row.event_sequence;
+    if ((typeof sequence !== "bigint" && typeof sequence !== "number") ||
+        (typeof sequence === "bigint" && (sequence < 1n || sequence > BigInt(Number.MAX_SAFE_INTEGER))) ||
+        (typeof sequence === "number" && (!Number.isSafeInteger(sequence) || sequence < 1))) {
+      throw new Error("candidate corrections: event sequence cannot be ordered safely");
+    }
     for (const raw of row.result) {
       if (!raw || typeof raw !== "object") continue;
       const s = raw as {
