@@ -11,8 +11,7 @@
 // own database, migrates it with `prisma migrate deploy`, applies the proposal, and drops it afterwards.
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -30,12 +29,19 @@ type Db = {
   /** One parameterised write. Prisma prepares it, so it must be a SINGLE statement. */
   write: (sql: string, ...params: unknown[]) => Promise<void>;
   /**
-   * A whole SQL SCRIPT, through `psql`, the way an operator would apply it.
+   * A whole SQL SCRIPT, statement by statement, inside one transaction.
    *
-   * NOT through Prisma, and the reason is a measured one: `$executeRawUnsafe` prepares the statement,
-   * so a multi-statement migration raises "cannot insert multiple commands into a prepared statement"
-   * and a `DO $$ ... $$` block cannot be split on semicolons without corrupting it. Running the real
-   * file through the real client is also the more faithful rehearsal.
+   * WHY NOT ONE CALL: `$executeRawUnsafe` prepares the statement, so a multi-statement script raises
+   * "cannot insert multiple commands into a prepared statement" — measured.
+   *
+   * WHY NOT `psql`: an earlier form shelled out to it, which passed locally and failed the EP-9 CI job
+   * with `psql: error: invalid URI query parameter: "schema"`. `psql` WAS installed on the runner — the
+   * URL was the problem, because CI's `DATABASE_URL` carries `?schema=public`, which is PRISMA's
+   * parameter and not libpq's. **A Prisma connection URL is not a libpq URL**, and a test that hands one
+   * to a different client is relying on the two happening to agree. The guess I would otherwise have
+   * shipped — "the runner has no psql" — was wrong, and the CI annotations API said so where the log
+   * blob was unreachable. The splitter below is dollar-quote aware so a `DO $$ ... $$` block survives,
+   * and `splitSqlStatements` is exported and tested directly rather than trusted.
    */
   script: (sql: string) => Promise<void>;
   end: () => Promise<void>;
@@ -44,6 +50,47 @@ type Db = {
 const ROOT = resolve(__dirname, "../..");
 const UP = readFileSync(resolve(ROOT, "scripts/migration-design/obligation-attribution-up.sql"), "utf8");
 const DOWN = readFileSync(resolve(ROOT, "scripts/migration-design/obligation-attribution-down.sql"), "utf8");
+
+/**
+ * Split a SQL script into statements, respecting dollar-quoted bodies.
+ *
+ * `BEGIN;` and `COMMIT;` are DROPPED: the statements run inside one Prisma transaction, and a nested
+ * BEGIN would be a warning at best. Everything else is preserved verbatim, including the `DO $$ ... $$`
+ * block whose internal semicolons must not split it.
+ *
+ * Exported so it is tested on its own rather than only through a migration that would fail confusingly.
+ */
+export function splitSqlStatements(sql: string): readonly string[] {
+  const out: string[] = [];
+  let buf = "";
+  let tag: string | null = null;
+  for (let i = 0; i < sql.length; i += 1) {
+    if (tag === null) {
+      // A dollar-quote opens with $tag$ where tag is empty or an identifier.
+      const m = /^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/.exec(sql.slice(i));
+      if (m) { tag = m[0]; buf += tag; i += tag.length - 1; continue; }
+      if (sql[i] === ";") {
+        const one = buf.trim();
+        if (one && !/^(BEGIN|COMMIT)$/i.test(one)) out.push(one);
+        buf = "";
+        continue;
+      }
+      // Line comments would otherwise contribute their semicolons.
+      if (sql.startsWith("--", i)) {
+        const nl = sql.indexOf("\n", i);
+        i = nl === -1 ? sql.length : nl;
+        continue;
+      }
+      buf += sql[i];
+      continue;
+    }
+    if (sql.startsWith(tag, i)) { buf += tag; i += tag.length - 1; tag = null; continue; }
+    buf += sql[i];
+  }
+  const last = buf.trim();
+  if (last && !/^(BEGIN|COMMIT)$/i.test(last)) out.push(last);
+  return out;
+}
 
 /** The base URL is reused only for its connection parameters; the DATABASE is this test's own. */
 const BASE = process.env.DATABASE_URL ?? "";
@@ -65,20 +112,16 @@ const connect = async (db: string): Promise<Db> => {
       c.$queryRawUnsafe<T[]>(sql, ...params),
     write: async (sql: string, ...params: unknown[]) => { await c.$executeRawUnsafe(sql, ...params); },
     script: async (sql: string) => {
-      const file = resolve(tmpdir(), `nh-mig-${randomUUID()}.sql`);
-      writeFileSync(file, sql);
-      try {
-        execFileSync("psql", ["-v", "ON_ERROR_STOP=1", "-q", "-f", file, urlFor(db)], {
-          stdio: "pipe", encoding: "utf8",
-        });
-      } catch (err) {
-        const e = err as { stderr?: string; stdout?: string; message?: string };
-        // psql's own message is what the assertions read, so a refusal raised by the script's own
-        // `RAISE EXCEPTION` arrives verbatim instead of wrapped by a driver.
-        throw new Error(`${e.stderr ?? ""}${e.stdout ?? ""}${e.message ?? ""}`);
-      } finally {
-        rmSync(file, { force: true });
+      const statements = splitSqlStatements(sql);
+      // ONE TRANSACTION, so a script that raises part-way leaves NOTHING applied — which is the
+      // property the rollback's own refusal depends on: a refused rollback must not be a partial one.
+      // `CREATE DATABASE` cannot run inside a transaction, so those scripts carry a single statement
+      // and take the ungrouped path.
+      if (statements.length === 1) {
+        await c.$executeRawUnsafe(statements[0]!);
+        return;
       }
+      await c.$transaction(statements.map((one) => c.$executeRawUnsafe(one)));
     },
     end: () => c.$disconnect(),
   };
@@ -382,4 +425,55 @@ describe.skipIf(!HAS_DB)("Gate B · UP then DOWN inside the reversible window is
       `UPDATE pilot_assessment_entity_attributions SET currency = 'EUR' WHERE execution_id = $1`, EXEC,
     )).rejects.toThrow(/append-only: UPDATE on pilot_assessment_entity_attributions is rejected/);
   }, 120_000);
+});
+
+// ── THE SPLITTER, TESTED ON ITS OWN ──────────────────────────────────────────────────────────────────
+//
+// It runs with no database, because its defect mode is silent: a splitter that cuts a `DO $$ ... $$`
+// block in half produces statements that each fail for a reason unrelated to the migration, and the
+// migration then looks broken when the instrument is. The first version of this file avoided the problem
+// by shelling out to `psql`, which passed locally and failed the EP-9 CI job — a test that depends on
+// which client binary a runner happens to have is a test about the runner.
+describe("splitSqlStatements", () => {
+  it("keeps a dollar-quoted block whole, semicolons and all", () => {
+    const parts = splitSqlStatements(`BEGIN;
+DO $$
+BEGIN
+  RAISE NOTICE 'one; two';
+  IF true THEN RAISE EXCEPTION 'three; four'; END IF;
+END $$;
+ALTER TABLE t ADD COLUMN c TEXT;
+COMMIT;`);
+    expect(parts).toHaveLength(2);
+    // THE PROPERTY IS THAT THE BLOCK IS WHOLE, asserted on its contents. A semicolon COUNT was the
+    // first form of this and it was simply miscounted — five, not two — which would have made the
+    // instrument look broken while the splitter was right.
+    expect(parts[0]).toContain("RAISE NOTICE 'one; two'");
+    expect(parts[0]).toContain("RAISE EXCEPTION 'three; four'");
+    expect(parts[0]).toContain("END IF");
+    expect(parts[0]!.startsWith("DO $$")).toBe(true);
+    expect(parts[0]!.endsWith("END $$")).toBe(true);
+    expect(parts[1]).toBe("ALTER TABLE t ADD COLUMN c TEXT");
+  });
+
+  it("drops BEGIN and COMMIT, because the statements run inside one transaction already", () => {
+    expect(splitSqlStatements("BEGIN;\nSELECT 1;\nCOMMIT;")).toEqual(["SELECT 1"]);
+  });
+
+  it("ignores a semicolon inside a line comment", () => {
+    expect(splitSqlStatements("-- a; b; c\nSELECT 1;")).toEqual(["SELECT 1"]);
+  });
+
+  it("splits the real migration and its rollback into plausible statement counts", () => {
+    const up = splitSqlStatements(UP);
+    const down = splitSqlStatements(DOWN);
+    // Every statement must start with a DDL or DO keyword: a fragment would not.
+    for (const one of [...up, ...down]) {
+      expect(one, one.slice(0, 40)).toMatch(/^(ALTER TABLE|DO)\b/);
+    }
+    // The rollback's guard survived as ONE statement containing both of its RAISEs.
+    const guard = down.find((x) => x.startsWith("DO"))!;
+    expect(guard).toContain("rollback refused");
+    expect(guard).toContain("rollback proceeding");
+  });
 });
