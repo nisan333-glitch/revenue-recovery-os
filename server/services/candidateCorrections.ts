@@ -18,9 +18,23 @@
 // change, reaching every row ever written with no backfill.
 //
 // ORDER IS THE DATABASE'S, NEVER A CLOCK'S. `agent_task_events.event_sequence` is NOT NULL with a
-// Postgres sequence default, so the append order is a fact the database allocated. This module does not
-// order by `created_at`, which is a timestamp and can tie, and it has no legacy nulls to label — unlike
-// `executionEvents`, whose ordering needed exactly that treatment.
+// Postgres sequence default, so the append order between EVENTS is a fact the database allocated. This
+// module does not order by `created_at`, which is a timestamp and can tie, and it has no legacy nulls to
+// label — unlike `executionEvents`, whose ordering needed exactly that treatment.
+//
+// AND TIES ARE **NOT** IMPOSSIBLE — an earlier version of this comment said they were, which was true of
+// two EVENTS and false of two SIGNALS. One task result may carry several signals, and they all inherit
+// that one event's sequence. Measured: two signals for one obligation in one row tie at sequence 7, and
+// the reported DIRECTION of the monetary correction then flips with their position in the array —
+// `[60000, 80000]` reads UPWARD and `[80000, 60000]` reads DOWNWARD for the same facts. That is the
+// pairing-order defect this repository has already recorded, in a new place: a conclusion that depends
+// on an order nothing authoritative established.
+//
+// SO A TIE IS A REFUSAL, NOT A CHOICE. `ORDER_NOT_ESTABLISHABLE` reports every amount observed and NO
+// stored figure, latest figure, delta, direction or magnitude — all null rather than zero, because zero
+// would assert there was no correction when the truth is that we cannot tell which statement came
+// first. The amounts are presented in numeric order purely so the report is stable; that ordering is a
+// presentation and makes no claim about chronology.
 //
 // IT REPORTS NO CORRECTED EXPOSURE. There is deliberately no "the real amount is X" field: that number
 // is the precedence decision wearing a different name.
@@ -55,7 +69,12 @@ export type CorrectionState =
    * Several observations with different amounts. DETECTED, PRESERVED, REPORTED — and the authoritative
    * amount is UNDECIDED, because no approved rule says which statement wins.
    */
-  | "CORRECTION_OBSERVED_PRECEDENCE_UNDECIDED";
+  | "CORRECTION_OBSERVED_PRECEDENCE_UNDECIDED"
+  /**
+   * Two or more observations of ONE identity share an append sequence, so which statement came first is
+   * not establishable. Every monetary field is null: see the header.
+   */
+  | "ORDER_NOT_ESTABLISHABLE";
 
 export interface CorrectionRecord {
   readonly identity: string;
@@ -67,14 +86,24 @@ export interface CorrectionRecord {
   readonly obligationGrained: boolean;
   readonly state: CorrectionState;
   readonly observationCount: number;
-  /** In append order. Every amount ever observed for this identity, none discarded. */
+  /**
+   * Every amount ever observed for this identity, none discarded. In APPEND order where the order is
+   * establishable, and in numeric order where it is not — `orderCertain` says which, so a reader never
+   * has to guess whether the sequence it is looking at is chronological.
+   */
   readonly observedAmountsMinor: readonly number[];
-  /** What the governed store holds: the first observation's figure. */
-  readonly storedMinor: number;
-  /** The most recent statement. NOT an assertion that it is correct. */
-  readonly latestObservedMinor: number;
-  /** `latestObservedMinor - storedMinor`. Zero where there is nothing to decide. */
-  readonly deltaMinor: number;
+  /** False exactly when two observations of this identity share an append sequence. */
+  readonly orderCertain: boolean;
+  /**
+   * What the governed store holds: the first observation's figure.
+   *
+   * NULL, NOT ZERO, where the order is not establishable. A zero would assert the store holds nothing.
+   */
+  readonly storedMinor: number | null;
+  /** The most recent statement. NOT an assertion that it is correct. Null where order is uncertain. */
+  readonly latestObservedMinor: number | null;
+  /** `latestObservedMinor - storedMinor`. Zero where there is nothing to decide, null where unknowable. */
+  readonly deltaMinor: number | null;
   readonly direction: CorrectionDirection | null;
   readonly currency: string;
   /**
@@ -82,7 +111,7 @@ export interface CorrectionRecord {
    * direction — never netted into a single signed total across identities, because an understatement
    * and an overstatement are two problems and their sum is zero problems.
    */
-  readonly undecidedMagnitudeMinor: number;
+  readonly undecidedMagnitudeMinor: number | null;
 }
 
 export interface CorrectionReport {
@@ -93,6 +122,11 @@ export interface CorrectionReport {
     readonly identities: number;
     readonly withCorrections: number;
     readonly repeatedIdentical: number;
+    /**
+     * Identities whose observation order is not establishable. Counted on its own and EXCLUDED from the
+     * two monetary sums below, because an unknowable direction cannot be added to either of them.
+     */
+    readonly orderNotEstablishable: number;
     /** Σ magnitudes where the latest statement EXCEEDS the stored one: money not currently reported. */
     readonly upwardUndecidedMinor: number;
     /** Σ magnitudes where the latest statement is BELOW the stored one: exposure currently overstated. */
@@ -132,15 +166,26 @@ export function summariseCorrections(rows: readonly SucceededObservationRow[]): 
     // APPEND ORDER, from the sequence the database allocated. Ties are impossible: the column is NOT
     // NULL with a sequence default, so two rows cannot share a value.
     const ordered = [...group].sort((x, y) => x.observed.eventSequence - y.observed.eventSequence);
-    const amounts = ordered.map((r) => r.observed.amountAtRiskMinor);
-    const storedMinor = amounts[0]!;
-    const latestObservedMinor = amounts[amounts.length - 1]!;
-    const distinct = new Set(amounts).size;
+    const sequences = ordered.map((r) => r.observed.eventSequence);
+    // A TIE IS CHECKED BEFORE ANYTHING IS DERIVED FROM THE ORDER. One task result may carry several
+    // signals, and they all inherit that event's sequence, so two observations of one identity can tie.
+    const orderCertain = new Set(sequences).size === sequences.length;
+    const distinct = new Set(ordered.map((r) => r.observed.amountAtRiskMinor)).size;
     const state: CorrectionState =
-      amounts.length === 1 ? "SINGLE_OBSERVATION"
+      ordered.length === 1 ? "SINGLE_OBSERVATION"
         : distinct === 1 ? "REPEATED_IDENTICAL_OBSERVATION"
-          : "CORRECTION_OBSERVED_PRECEDENCE_UNDECIDED";
-    const deltaMinor = state === "CORRECTION_OBSERVED_PRECEDENCE_UNDECIDED" ? latestObservedMinor - storedMinor : 0;
+          : !orderCertain ? "ORDER_NOT_ESTABLISHABLE"
+            : "CORRECTION_OBSERVED_PRECEDENCE_UNDECIDED";
+    // Numeric order where chronology is unknowable, so the report is stable without implying a sequence.
+    const amounts = orderCertain
+      ? ordered.map((r) => r.observed.amountAtRiskMinor)
+      : [...ordered.map((r) => r.observed.amountAtRiskMinor)].sort((a, b) => a - b);
+    const unknowable = state === "ORDER_NOT_ESTABLISHABLE";
+    const storedMinor = unknowable ? null : amounts[0]!;
+    const latestObservedMinor = unknowable ? null : amounts[amounts.length - 1]!;
+    const deltaMinor = unknowable
+      ? null
+      : state === "CORRECTION_OBSERVED_PRECEDENCE_UNDECIDED" ? latestObservedMinor! - storedMinor! : 0;
     const first = ordered[0]!;
     records.push(Object.freeze({
       identity,
@@ -150,14 +195,15 @@ export function summariseCorrections(rows: readonly SucceededObservationRow[]): 
       obligationRef: first.observed.obligationRef,
       obligationGrained: first.observed.obligationGrained,
       state,
-      observationCount: amounts.length,
+      observationCount: ordered.length,
       observedAmountsMinor: Object.freeze([...amounts]),
+      orderCertain,
       storedMinor,
       latestObservedMinor,
       deltaMinor,
-      direction: deltaMinor > 0 ? "UPWARD" : deltaMinor < 0 ? "DOWNWARD" : null,
+      direction: deltaMinor === null ? null : deltaMinor > 0 ? "UPWARD" : deltaMinor < 0 ? "DOWNWARD" : null,
       currency: first.observed.currency,
-      undecidedMagnitudeMinor: Math.abs(deltaMinor),
+      undecidedMagnitudeMinor: deltaMinor === null ? null : Math.abs(deltaMinor),
     }));
   }
 
@@ -169,10 +215,11 @@ export function summariseCorrections(rows: readonly SucceededObservationRow[]): 
       identities: records.length,
       withCorrections: corrections.length,
       repeatedIdentical: records.filter((r) => r.state === "REPEATED_IDENTICAL_OBSERVATION").length,
+      orderNotEstablishable: records.filter((r) => r.state === "ORDER_NOT_ESTABLISHABLE").length,
       upwardUndecidedMinor: corrections.filter((r) => r.direction === "UPWARD")
-        .reduce((n, r) => n + r.undecidedMagnitudeMinor, 0),
+        .reduce((n, r) => n + (r.undecidedMagnitudeMinor ?? 0), 0),
       downwardUndecidedMinor: corrections.filter((r) => r.direction === "DOWNWARD")
-        .reduce((n, r) => n + r.undecidedMagnitudeMinor, 0),
+        .reduce((n, r) => n + (r.undecidedMagnitudeMinor ?? 0), 0),
     }),
     netIsDeliberatelyAbsent: true,
   });

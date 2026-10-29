@@ -14,6 +14,7 @@ import type {
 } from "./services/proofService";
 import * as auditService from "./audit/auditService";
 import * as recoveryCaseRead from "./services/recoveryCaseRead";
+import * as candidateCorrectionsRead from "./services/candidateCorrectionsRead";
 import * as pilotIntakeService from "./services/pilotIntakeService";
 import * as pilotAssessmentService from "./services/pilotAssessmentService";
 import type { SchedulePilotAssessmentRequest } from "./services/pilotAssessmentService";
@@ -197,6 +198,24 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     "/agent-candidates",
     { schema: candidateQueueSchema },
     async (req, reply) => reply.send(await candidateReview.list(await resolveActor(req, options.identityResolver), req.query.boundaryId)),
+  );
+
+  // The CORRECTION LEDGER for one boundary · governed read, `AuditRead` only.
+  //
+  // Reuses `candidateQueueSchema`: the same single required `boundaryId` with `additionalProperties:
+  // false`, so an injected parameter is a 400 rather than a silent strip. A separate schema with the
+  // same shape would be a second thing to drift.
+  //
+  // DELIBERATELY NOT AVAILABLE TO author OR operator. The ledger names an amount the governed store is
+  // not reporting, and the actor who benefits from a larger figure must not be the one reading it. See
+  // services/candidateCorrectionsRead.ts for the full reasoning.
+  app.get<{ Querystring: { boundaryId: string } }>(
+    "/candidate-corrections",
+    { schema: candidateQueueSchema },
+    async (req, reply) => reply.send(await candidateCorrectionsRead.readCandidateCorrections(
+      await resolveActor(req, options.identityResolver),
+      req.query.boundaryId,
+    )),
   );
 
   app.post<{
