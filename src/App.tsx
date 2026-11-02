@@ -19,6 +19,7 @@ import { PilotPolicyGovernance } from "./modules/governance/PilotPolicyGovernanc
 import { AssessmentErrorBoundary } from "./modules/assessment/ErrorBoundary";
 import { SyntheticPilotV2 } from "./modules/SyntheticPilotV2";
 import { CandidateReviewQueue } from "./modules/CandidateReviewQueue";
+import { CorrectionLedger } from "./modules/CorrectionLedger";
 import { SyntheticDemoConsole } from "./modules/SyntheticDemoConsole";
 import { RecoveryCaseCenter } from "./modules/RecoveryCaseCenter";
 
@@ -42,6 +43,7 @@ type ModuleKey =
   | "synthetic-pilot"
   | "synthetic-demo"
   | "candidate-review"
+  | "correction-ledger"
   | "recovery-case"
   | "policy-governance";
 
@@ -57,6 +59,8 @@ const NAV: { key: ModuleKey; label: string; group: string }[] = [
   { key: "attribution", label: "Attribution Engine", group: "Prove" },
   { key: "queue", label: "Recovery Queue", group: "Operate" },
   { key: "candidate-review", label: "Candidate Review", group: "Operate" },
+  // AuditRead-gated: a reviewer, never the operator who benefits from a larger figure.
+  { key: "correction-ledger", label: "Correction Ledger", group: "Prove" },
   { key: "recovery-case", label: "Recovery Case", group: "Operate" },
   { key: "events", label: "Recovery Events", group: "Operate" },
   { key: "reasons", label: "Recovery Reasons", group: "Operate" },
@@ -207,6 +211,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
           {active === "dashboard" && <ExecutiveDashboard onOpenCfo={() => setActive("cfo")} />}
           {active === "queue" && <RecoveryQueue />}
           {active === "candidate-review" && <CandidateReviewQueue />}
+          {active === "correction-ledger" && <CorrectionLedger />}
           {active === "recovery-case" && <RecoveryCaseCenter />}
           {active === "events" && <RecoveryEventsTable />}
           {active === "cfo" && <CFOProofView focusCaseId={focusCaseId} />}
