@@ -109,7 +109,9 @@ export function provenEligibility(input: ProvenEligibilityInput): ProvenEligibil
 
   // The four facts, each required and each checked individually. A missing one is not a zero.
   if (
+    typeof coverage.obligationRef !== "string" ||
     coverage.obligationRef.trim() === "" ||
+    typeof coverage.currency !== "string" ||
     coverage.currency.trim() === "" ||
     !Number.isSafeInteger(coverage.expectedMinor) ||
     !Number.isSafeInteger(coverage.billedMinor) ||
@@ -124,7 +126,8 @@ export function provenEligibility(input: ProvenEligibilityInput): ProvenEligibil
 
   // DERIVED, NEVER NARRATED. A stamped discrepancy that does not equal expected − billed is a figure
   // nobody can trace, whichever of the three is wrong.
-  if (coverage.residualMinor !== coverage.expectedMinor - coverage.billedMinor) {
+  const derivedResidualMinor = coverage.expectedMinor - coverage.billedMinor;
+  if (!Number.isSafeInteger(derivedResidualMinor) || coverage.residualMinor !== derivedResidualMinor) {
     return deny(
       "OBLIGATION_FACTS_INCONSISTENT",
       `the stated discrepancy ${coverage.residualMinor} does not equal expected ${coverage.expectedMinor} ` +
