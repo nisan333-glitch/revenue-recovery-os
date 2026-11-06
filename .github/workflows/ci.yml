@@ -264,6 +264,14 @@ jobs:
           # verbatim text of its section-14 assertions. Changes no verdict.
           JOURNEY_EVIDENCE_DIR: ${{ runner.temp }}/journey-evidence
 
+      # ISSUE #18 · The Correction Ledger in a real browser: AuditRead authorization (operator and author
+      # refused, unauthenticated 401, injected parameter 400), `null` rendered NOT ESTABLISHABLE rather
+      # than $0.00, the upward and downward magnitudes never netted, exact cents, and no recovered-money
+      # claim. Its own script rather than a section of the EP-19 journey, so it cannot collide with the
+      # proof arc. Reuses this job's Chromium and Postgres; adds no service.
+      - name: Correction Ledger journey (real browser, real API, AuditRead gate)
+        run: npm run test:ledger-journey
+
       # EP-20 · Browser sign-in against the PRODUCTION bundle (no Vite dev server, so no dev-header identity can exist
       # in the page), the real Fastify app and the real OIDC verifier. Only the identity provider is scripted: no
       # provider, key or credential is real, and a live sign-in is NOT claimed. Negative scenarios: unauthenticated,
