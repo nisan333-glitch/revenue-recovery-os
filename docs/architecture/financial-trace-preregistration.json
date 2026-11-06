@@ -1,0 +1,53 @@
+{
+  "artefact": "nh.financial-trace",
+  "version": "1.0.0",
+  "scheme": "nh-financial-trace-v1",
+  "preRegisteredAt": "2026-11-06",
+  "baselineCommit": "99d091c",
+  "writtenBefore": "any line of the implementation, and before the first run",
+  "whyThisFileExists": "The owner's acceptance criterion: expected results are recorded and hashed BEFORE the tests run, so a result cannot be produced and then described as what was expected. Prose would not do: these expectations are IMPORTED by the tests, so an expectation and an assertion cannot drift apart.",
+
+  "stages": [
+    { "stage": "SOURCE_OBLIGATION",   "mustReport": "what the detector recorded this claim covers: obligation reference, expected, billed, residual, currency", "recordSource": "agent_case_candidates.signal.obligationCoverage", "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "DETECTION",           "mustReport": "the succeeded detection task and its append sequence",                                                      "recordSource": "agent_tasks + agent_task_events",            "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "CANDIDATE",           "mustReport": "the candidate row, its dedupe grain, and that it was not a duplicate",                                      "recordSource": "agent_case_candidates",                      "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "REVIEW",              "mustReport": "the immutable operator review, its decision and that a reason was given",                                   "recordSource": "agent_case_candidate_reviews",               "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "RECOVERY_CASE",       "mustReport": "the governed root, its boundary, and the at-risk figure frozen at promotion",                               "recordSource": "recovery_cases",                             "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "BASELINE",            "mustReport": "the locked baseline, its method and version",                                                               "recordSource": "baseline_snapshots",                         "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "PROPOSED_CORRECTION", "mustReport": "that NH has no billing-correction execution mechanism at all",                                              "recordSource": "none — no table exists",                     "expectedExecutionClass": "NOT_IMPLEMENTED", "expectedInputClass": "NOT_ESTABLISHABLE" },
+    { "stage": "CORRECTION_RECORD",   "mustReport": "every amount ever observed for this identity and the precedence state, with no corrected figure offered",    "recordSource": "agent_tasks.result + agent_task_events",     "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "SETTLEMENT_EVIDENCE", "mustReport": "the evidence rows, their trust classification, and whether a signature was verified",                        "recordSource": "evidence_records",                           "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" },
+    { "stage": "PROOF",               "mustReport": "the proof chain and the obligation-identity gate's verdict",                                                "recordSource": "proofs + caseProvenEligibility",             "expectedExecutionClass": "EXECUTED", "expectedInputClass": "SIMULATED" }
+  ],
+
+  "evidenceClasses": {
+    "executionClass": { "EXECUTED": "real production code ran and wrote the real record", "NOT_IMPLEMENTED": "no code path exists" },
+    "inputClass": { "SIMULATED": "NH or its harness produced the input or the event", "OBSERVED": "NH read a fact out of supplied data", "ATTESTED": "an independent external party, not party to the claim, asserted it", "NOT_ESTABLISHABLE": "the record carries no fact by which this could be decided" },
+    "whyTwoFieldsAndNotOne": "A stage can be EXECUTED and SIMULATED at once, and saying only the first half is how a demo gets mistaken for a pilot. Collapsing them would make the stronger word wear the weaker one's guarantee."
+  },
+
+  "globalProperties": [
+    { "id": "G1", "property": "revenueReturned.established is FALSE for every case in this build", "expectedCode": "REVENUE_RETURNED_NOT_INDEPENDENTLY_ATTESTED", "derivedFrom": "the evidence receipt and the trust registry carry no field recording WHO HOLDS the signing key, so an NH-held key and a customer-held key are indistinguishable in the record", "notDerivedFrom": "a string match on the keyId — a naming convention is not a mechanism" },
+    { "id": "G2", "property": "no monetary field is ever 0 to mean 'not established'", "expectedBehaviour": "null, with a named reason beside it" },
+    { "id": "G3", "property": "figures from different ledgers are never summed", "expectedBehaviour": "every figure carries its ledger tag; totals are per ledger and no grand total exists" },
+    { "id": "G4", "property": "the trace digest is reproducible", "expectedBehaviour": "the same records yield the same digest; clock values (verifiedAt, ingestedAt) are excluded from the preimage" },
+    { "id": "G5", "property": "no raw customer identifier reaches the trace", "expectedBehaviour": "pseudonymous references only, and no validator detail strings" },
+    { "id": "G6", "property": "the trace reads AuditRead-gated, root-then-boundary, like every other provenance-bearing read", "expectedBehaviour": "operator 403, author 403, unauthenticated 401, approver 200, unknown case 404 only after authorization" }
+  ],
+
+  "failureScenarios": [
+    { "id": "F1", "name": "negative residual — a disputed, company-unfavourable figure", "setup": "coverage states billed > expected, so residual is negative", "expectedStageStatus": "REFUSED", "expectedRefusalCode": "NEGATIVE_RESIDUAL_NOT_EXPOSURE", "expectedExposure": null, "rule": "negative is a liability signal — never exposure and never recovered revenue; money the company may owe back is not money it found" },
+    { "id": "F2", "name": "duplicate / replay — the same observation twice", "setup": "two succeeded observations of one identity carrying the identical amount", "expectedCorrectionState": "REPEATED_IDENTICAL_OBSERVATION", "expectedExposureCountedOnce": true, "rule": "a replay is not a correction and must not double count" },
+    { "id": "F3", "name": "account aggregate", "setup": "coverage kind ACCOUNT_AGGREGATE", "expectedProofVerdict": "NOT_ELIGIBLE", "expectedRefusalCode": "OBLIGATION_COVERAGE_IS_AGGREGATE", "rule": "PROVEN may not be assigned at account level" },
+    { "id": "F4", "name": "unresolved obligation reference", "setup": "coverage states SINGLE_OBLIGATION with a blank obligationRef", "expectedProofVerdict": "NOT_ELIGIBLE", "expectedRefusalCode": "OBLIGATION_FACTS_INCOMPLETE", "rule": "a proof may not be minted for a claim whose subject is unknown" },
+    { "id": "F5", "name": "mismatched identity arithmetic", "setup": "residual does not equal expected minus billed", "expectedProofVerdict": "NOT_ELIGIBLE", "expectedRefusalCode": "OBLIGATION_FACTS_INCONSISTENT", "rule": "a stamped discrepancy nobody can re-derive is a figure nobody can trace" },
+    { "id": "F6", "name": "no double counting across ledgers", "setup": "a case carrying an observed exposure, an undecided correction magnitude and a proven figure at once", "expectedBehaviour": "three separate figures, each ledger-tagged; no field holds their sum; the trace exposes no grand total", "rule": "an understatement and an overstatement are two problems and their sum is zero problems" }
+  ],
+
+  "whatThisSliceDoesNotClaim": [
+    "that a billing correction was issued — no mechanism exists and none is built here",
+    "that money was collected — no independent settlement source has ever signed anything",
+    "that any observed amount became Revenue Returned",
+    "that a customer can supply these facts — every figure is synthetic"
+  ]
+}
