@@ -32,6 +32,7 @@ export default defineConfig({
       "scripts/data-readiness/**/*.test.ts",
       "scripts/audit/**/*.test.ts",
       "scripts/coordination/**/*.test.ts",
+      "scripts/trace/**/*.test.ts",
     ],
   },
 });

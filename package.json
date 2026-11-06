@@ -53,7 +53,9 @@
     "verify:baselines": "vite-node scripts/freeze/verify-baselines.ts",
     "verify:evidence": "vite-node scripts/freeze/verify-evidence.ts",
     "verify:registers": "vite-node scripts/verify-register-integrity.ts",
-    "test:ledger-journey": "node e2e/correction-ledger-journey.mjs"
+    "test:ledger-journey": "node e2e/correction-ledger-journey.mjs",
+    "trace:case": "vite-node scripts/trace/financial-trace.ts",
+    "trace:seed": "vite-node scripts/trace/seed-trace-demo.ts"
   },
   "dependencies": {
     "@fastify/static": "^8.3.0",

@@ -191,11 +191,26 @@ describe.skipIf(!HAS_DB)("GET /candidate-corrections · the governed correction 
     // THE SEQUENCE IS WRITTEN OUT OF RANGE AT INSERT, not patched afterwards: `agent_task_events` is
     // append-only by database trigger — "UPDATE on agent_task_events is rejected" — which is another
     // control confirmed by being refused, and the reason this fixture had to be built this way.
+    //
+    // AND IT IS DERIVED RATHER THAN HARDCODED, because the first form of this test could only pass ONCE
+    // PER DATABASE. `event_sequence` is UNIQUE, so a literal `MAX_SAFE_INTEGER + 10` collided with the
+    // row left by the previous run — "Key (event_sequence)=(9007199254741001) already exists" — and the
+    // test failed on every re-run against the same database. CI never saw it, because CI gets a fresh
+    // database; a test that has only ever run against a pristine database is not a guard against a real
+    // one. Computing the value from the table's state is justified HERE and was not in the seeder that
+    // taught this lesson: the value must be above a fixed threshold to be unsafe at all, and unique
+    // because the column says so, and those two requirements together force a derived value. The floor
+    // is explicit, so the result is unsafe whatever the table holds.
+    const unsafeSequence = await prisma.$queryRawUnsafe<{ next: bigint }[]>(
+      `SELECT (GREATEST(COALESCE(max(event_sequence), 0), ${Number.MAX_SAFE_INTEGER}) + 1)::bigint AS next
+         FROM agent_task_events`,
+    );
+    expect(unsafeSequence[0]!.next > BigInt(Number.MAX_SAFE_INTEGER)).toBe(true);
     await prisma.$executeRawUnsafe(
       `INSERT INTO agent_task_events (event_id, event_sequence, task_id, boundary_id, agent_id,
          fencing_epoch, attempt, kind, metadata, created_at)
        VALUES ($1, $2, $3, $4, 'corr-read-test', 1, 1, 'task.succeeded', '{}'::jsonb, now())`,
-      randomUUID(), BigInt(Number.MAX_SAFE_INTEGER) + 10n, taskId, unsafe,
+      randomUUID(), unsafeSequence[0]!.next, taskId, unsafe,
     );
     const view = await readCandidateCorrections(actor("cfo@test", "approver", [unsafe]), unsafe);
     expect(view.result.outcome).toBe("REFUSED_ORDER_UNSAFE");

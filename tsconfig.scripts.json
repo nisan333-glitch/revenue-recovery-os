@@ -19,7 +19,11 @@
   "compilerOptions": {
     "types": ["vitest/globals", "node"]
   },
+  //
+  // `scripts/trace` joined with the financial trace, probed the same way: both files and their tests
+  // typecheck clean, so the slice's own command is held to the bar its tests are.
   "include": [
+    "scripts/trace/**/*.ts",
     "scripts/data-readiness/**/*.ts",
     "scripts/freeze/**/*.ts",
     "scripts/audit/**/*.ts",
