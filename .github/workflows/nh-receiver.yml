@@ -52,5 +52,5 @@ jobs:
           NH_ISSUE_NUMBER: ${{ github.event.issue.number }}
           NH_COMMENT_ID: ${{ github.event.comment.id }}
           # Narrow on purpose: changing this list needs a reviewed change to this file.
-          NH_ALLOWED_ISSUES: "13"
+          NH_ALLOWED_ISSUES: "13,18"
         run: node --experimental-strip-types scripts/coordination/receive-comment.ts
