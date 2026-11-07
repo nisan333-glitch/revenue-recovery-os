@@ -1,0 +1,39 @@
+{
+  "artefact": "nh.cfo-proof-report.coverage",
+  "version": "1.1.0",
+  "extends": "nh.cfo-proof-report@1.0.0",
+  "preRegisteredAt": "2026-11-07",
+  "baselineCommit": "cdd3cbd",
+  "issue": "#18 issue-body item 3 (S-DUP-2, S-ID-1) and item 5 (what the UI actually exposes)",
+  "writtenBefore": "any line of the implementation, and before the first run",
+
+  "theGap": "The CFO Proof report enumerates GOVERNED ROOTS. So it structurally cannot see an obligation that never became a case: one the detector refused, one still awaiting review, one rejected at review, or an aggregate nobody promoted. A reader seeing 'detected $1,400.00 / open $1,400.00' would reasonably take that for the book. The report's own completeness is therefore overstated by omission, which is the same family as 'an empty report is the same shape whether the book is clean or was never read'.",
+
+  "measuredFindings": [
+    { "id": "C1", "claim": "reconciliationObserver computes refusedExposure and it reaches NO record, API or screen", "evidence": "AgentHandler.run returns Promise<readonly CandidateSignal[]>, and the observer's run() returns signalsForPlan(plan, ...) — the plan carrying refusedExposure is discarded at the handler boundary. 16 occurrences of refusedExposure repository-wide: 3 in the observer, the rest in its own two test files. Zero in src/modules, src/components, server/app.ts or server/http.", "status": "MEASURED on 2026-11-07 against cdd3cbd", "correctionOfMyOwnEarlierClaim": "I recorded 'the reporting is fixed' for S-ID-1 and marked that work complete. What shipped was the plan FIELD and its tests, with no consumer — exactly the half the obligation_ref revert rule forbids: no field is declared until the production code that reads it ships in the same slice." },
+    { "id": "C2", "claim": "making refused exposure visible requires either an AgentHandler contract change or input retention for this detector, so it is NOT doable inside this slice", "whyNotDoneHere": "widening run()'s return type touches every handler and the runtime's event writer; that is a design decision with an owner, proposed rather than taken." }
+  ],
+
+  "properties": [
+    { "id": "Q1", "property": "the report states the POPULATION its totals cover", "expectedBehaviour": "a coverage block naming 'governed roots in this boundary' and the count, carried on the artefact rather than left to a renderer" },
+    { "id": "Q2", "property": "candidates in the boundary that have NOT become cases are counted", "expectedBehaviour": "a count derived from agent_case_candidates minus recovery_cases, reported with their stated amount TOTAL SEPARATELY and labelled as candidate-stated, never added to detected exposure", "rule": "a candidate's stated amount and a case's frozen exposure are different ledgers and their sum is a figure no record asserts" },
+    { "id": "Q3", "property": "refused upstream exposure is NOT ESTABLISHABLE, never zero", "expectedBehaviour": "{ establishable: false, reason } naming the handler boundary as the cause, so a reader learns the figure exists and cannot be read rather than that it is nil" },
+    { "id": "Q4", "property": "no coverage figure is added to any monetary total of the report", "expectedBehaviour": "a source scan finds no sum of a coverage count or candidate amount into detectedExposureMinor, disputed or openBalanceMinor; the canonical form keeps them in separate objects" },
+    { "id": "Q5", "property": "the coverage block is in the canonical form, because a completeness claim is a decision", "expectedBehaviour": "the report digest moves when the covered population changes, and does not move when only our prose changes" },
+    { "id": "Q6", "property": "an empty boundary reports coverage too", "expectedBehaviour": "zero roots, zero unpromoted candidates, refused exposure still NOT ESTABLISHABLE, and the existing empty-boundary notice unchanged" }
+  ],
+
+  "adversarialCases": [
+    { "id": "B1", "name": "a candidate pending review", "expected": "counted as unpromoted, its stated amount in the separate candidate total, and NOT in detected exposure" },
+    { "id": "B2", "name": "a candidate rejected at review", "expected": "counted as unpromoted and distinguished from pending, because a rejected claim and an unread one are different positions" },
+    { "id": "B3", "name": "an aggregate candidate never promoted", "expected": "counted as unpromoted; its coverage kind is reported so a reader can see an aggregate was refused promotion rather than lost" },
+    { "id": "B4", "name": "a boundary where every candidate became a case", "expected": "unpromoted count 0 — and that zero IS correct, because the population was examined; distinguished in the type from the NOT ESTABLISHABLE refused figure" }
+  ],
+
+  "whatThisSliceWillNotDo": [
+    "change what the detector refuses — no beneficiary-favourable lever, and S-ID-1's Option A stands",
+    "split an aggregate into per-unit candidates — S-DUP-2's Option B remains an owner decision",
+    "widen the AgentHandler contract",
+    "claim any amount was collected, or turn any observed amount into Revenue Returned"
+  ]
+}
