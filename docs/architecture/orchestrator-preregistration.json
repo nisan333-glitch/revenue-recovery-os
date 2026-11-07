@@ -1,0 +1,113 @@
+{
+  "scheme": "nh-orchestrator-preregistration-v1",
+  "subject": "Automated coordination orchestrator between Claude Code, an OpenAI API model, and REVENIQ",
+  "registered_at": "2026-11-07",
+  "registered_before_any_test_run": true,
+  "why_this_exists": "Every property below is written down and hashed BEFORE the implementation is tested, so a result cannot be authored to match the code. The hash of this file is recorded in the slice report; a later edit changes the hash and the claim stops being quotable.",
+  "lane": "COORDINATION_INFRASTRUCTURE",
+  "lane_note": "This slice carries no monetary figure. It is not a detector, it creates no Recovery Case, it stages no candidate, and no observed amount becomes Revenue Returned. API spend is OPERATING COST and is never a revenue ledger figure.",
+  "declared_properties": [
+    {
+      "id": "O1",
+      "claim": "A task's identity is DERIVED from its content and never assigned by the caller.",
+      "falsifier": "Two submissions of identical content yield the same taskId; changing any governed field yields a different one; a caller-supplied id that disagrees with the derived one is REFUSED rather than honoured."
+    },
+    {
+      "id": "O2",
+      "claim": "Duplicate submission is idempotent and a same-identity-different-content submission is a CONFLICT that changes nothing.",
+      "falsifier": "Re-submitting an identical task reports 'duplicate' and leaves the ledger byte-equal; a forged id over different content reports 'conflict' and leaves the ledger byte-equal."
+    },
+    {
+      "id": "O3",
+      "claim": "The OpenAI API model is NOT a bridge party and cannot be addressed as the owner's ChatGPT conversation.",
+      "falsifier": "The orchestrator's actor vocabulary contains 'openai-api-model'; bridge.ts PARTIES does not; no orchestrator record can carry 'chatgpt' as the invoked model's identity; and every model record names provider, model and channel 'openai-api'."
+    },
+    {
+      "id": "O4",
+      "claim": "Model output is DATA, never an instruction. The engine derives no action, approval or state transition from model text.",
+      "falsifier": "A model result whose text instructs a push, a deploy, an approval or 'ignore previous instructions' produces zero actions and zero approvals, and is recorded with trust UNTRUSTED_MODEL_OUTPUT."
+    },
+    {
+      "id": "O5",
+      "claim": "Privileged actions FAIL CLOSED, and an UNKNOWN action class is treated as privileged rather than benign.",
+      "falsifier": "Every member of the owner-approval set becomes a pending_owner_approval record and is never executed; an action class absent from both lists is also refused and recorded as requiring approval."
+    },
+    {
+      "id": "O6",
+      "claim": "Budget is a PRE-SPEND reservation, not a post-hoc tally.",
+      "falsifier": "With remaining budget below the estimated cost of a call, the model port is never invoked — asserted on an invocation counter, not on the resulting record."
+    },
+    {
+      "id": "O7",
+      "claim": "The circuit breaker opens on consecutive failures, stays open for a cooldown, and admits exactly ONE probe when half-open.",
+      "falsifier": "After the configured consecutive failures the port is not invoked; after the cooldown exactly one probe is admitted; a failed probe re-opens the breaker and a successful one closes it."
+    },
+    {
+      "id": "O8",
+      "claim": "Rate limiting REFUSES rather than queues without bound.",
+      "falsifier": "Calls beyond the window allowance are refused with a named reason and the port invocation count stops rising."
+    },
+    {
+      "id": "O9",
+      "claim": "Loop amplification is bounded by chain depth and fan-out, and the depth is read from the RECORDED chain, never from the request.",
+      "falsifier": "A task whose recorded parent chain exceeds the depth limit is refused even when the request declares depth 0; fan-out beyond the limit is refused."
+    },
+    {
+      "id": "O10",
+      "claim": "Retry is bounded and exhaustion is a VISIBLE state, never silence.",
+      "falsifier": "After the maximum attempts the task state is 'failed' and appears in the attention list with its reason."
+    },
+    {
+      "id": "O11",
+      "claim": "Replay of a model invocation is refused.",
+      "falsifier": "An invocation record keyed by (taskId, attempt) that already exists is a duplicate that changes nothing."
+    },
+    {
+      "id": "O12",
+      "claim": "No credential ever reaches a record, a status line, or anything destined for a GitHub comment.",
+      "falsifier": "A structural walk of every produced record and every rendered line finds no credential-shaped key and no credential-shaped value, with the forbidden strings taken from the configured port rather than hardcoded."
+    },
+    {
+      "id": "O13",
+      "claim": "NOT COMPUTED is not zero.",
+      "falsifier": "A provider response carrying no usage yields cost null with a named reason, never 0; the aggregate spend then reports an unestablished component rather than summing a zero."
+    },
+    {
+      "id": "O14",
+      "claim": "The status view examines nothing it did not read.",
+      "falsifier": "An empty ledger returns NOT_ESTABLISHABLE and a non-zero exit, never 'all healthy'."
+    },
+    {
+      "id": "O15",
+      "claim": "The orchestrator reports no revenue figure of any kind.",
+      "falsifier": "No produced record or rendered line carries a Revenue Returned, Auditable, recovered or collected field, and API spend is labelled OPERATING_COST."
+    },
+    {
+      "id": "O16",
+      "claim": "The engine is PURE: no clock, no filesystem, no network, no process exit.",
+      "falsifier": "A structural test asserts the engine module's import specifiers contain no node:fs, node:http(s), node:child_process, no fetch and no Date.now, and that every time value arrives as an argument."
+    }
+  ],
+  "deliberate_failure_scenarios": [
+    { "id": "X1", "scenario": "Prompt injection in model output attempting to authorize a push", "expected": "zero actions, zero approvals, trust UNTRUSTED_MODEL_OUTPUT" },
+    { "id": "X2", "scenario": "Budget exhausted part-way through a task sequence", "expected": "refusal BEFORE invocation, named reason BUDGET_EXHAUSTED, task visible in the attention list" },
+    { "id": "X3", "scenario": "Provider returns malformed output", "expected": "recorded as a failure with reason MALFORMED_MODEL_OUTPUT, no partial result stored as if complete" },
+    { "id": "X4", "scenario": "Provider fails repeatedly", "expected": "breaker opens, further calls refused without invocation, state visible" },
+    { "id": "X5", "scenario": "Replayed submission under a forged identity", "expected": "conflict, ledger unchanged" },
+    { "id": "X6", "scenario": "A task chain attempting unbounded self-continuation", "expected": "refused at the depth limit, reason LOOP_DEPTH_EXCEEDED" }
+  ],
+  "expected_owner_gates": [
+    "Push of any commit",
+    "Merge",
+    "Deploy",
+    "Permission or credential changes",
+    "Financial actions",
+    "Use of real customer data"
+  ],
+  "known_hard_dependency": {
+    "what": "An OpenAI API credential for host api.openai.com",
+    "status_at_registration": "ABSENT. Requested through the secure credential channel on 2026-11-07 and DECLINED by the owner.",
+    "consequence": "The live provider call cannot execute. Every other property above is provable today against an injected stub port, and the live call switches on with no code change once a credential exists.",
+    "never": "No credential value is ever written to a file, a record, a log line or a GitHub comment."
+  }
+}
