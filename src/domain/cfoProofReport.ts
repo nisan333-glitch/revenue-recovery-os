@@ -1,0 +1,270 @@
+// THE CFO PROOF REPORT · one row per obligation: detected, disputed, evidenced, open.
+//
+// WHAT A CFO IS ACTUALLY ASKING. Not "what does the system think it recovered" — that question invites
+// the answer the constitution forbids. The four questions are: what did you find, what is in dispute,
+// what of it is independently evidenced as collected, and what is still open. This report answers those
+// four and refuses to blend them.
+//
+// THE CLAIMED COLLECTED FIGURE IS THE LITERAL `0`, AND THE TYPE CANNOT EXPRESS ANYTHING ELSE. That is the
+// same treatment `constitutesProof: false as const` gets, for the same reason: the one number that must
+// never become quotable as a positive is the one a reader will quote. A build that can genuinely claim
+// collected money adds a new type rather than widening this field, and that is a reviewed change rather
+// than an accident.
+//
+// AND THAT ZERO IS AN ASSERTION, NOT AN ABSENCE. `claimedCollectedIsAsserted` says so on every row. "We
+// claim nothing" and "nobody computed it" are different statements: the first is a position NH takes and
+// stands behind, the second is a gap. Everywhere else in this repository a monetary zero is suspect and
+// `null` means not established — here the zero is the honest answer and the field beside it is what keeps
+// the two readings apart.
+//
+// IT COMPUTES NO MONEY AND DERIVES FROM THE FINANCIAL TRACE. Every figure arrives from a record by way of
+// `financialTrace`; the only arithmetic here is the open balance, and it is derived rather than passed so
+// a caller cannot state a balance the two figures beside it do not support.
+//
+// PURE. No clock, no I/O, no randomness, no crypto.
+import { addMoney, money, type Money } from "./money";
+
+export const CFO_PROOF_REPORT_SCHEME = "nh-cfo-proof-report-v1";
+export const CFO_PROOF_REPORT_VERSION = "1.0.0";
+
+export type ObligationCoverageStated = "SINGLE_OBLIGATION" | "ACCOUNT_AGGREGATE" | "NOT_STATED";
+
+/** The direction of a disputed magnitude. Magnitudes of opposite direction are NEVER netted. */
+export type DisputeDirection = "UPWARD" | "DOWNWARD";
+
+export interface CfoEvidenceSource {
+  /** The source system as the evidence record states it. Our own column, not a customer identifier. */
+  readonly sourceSystem: string;
+  readonly trustClassification: string;
+  /** Whether a source signature verified. NOT whether the signer is independent — see `attestationCode`. */
+  readonly signatureVerified: boolean;
+}
+
+export interface CfoProofRowInput {
+  readonly recoveryCaseId: string;
+  readonly currency: string;
+  readonly obligationCoverage: ObligationCoverageStated;
+  /** `null` is NOT ESTABLISHED. Never zero. */
+  readonly detectedExposureMinor: number | null;
+  /** `null` where the observation order is not establishable, so the magnitude is unknowable. */
+  readonly disputedAmountMinor: number | null;
+  readonly disputedDirection: DisputeDirection | null;
+  readonly disputedState: string;
+  /** What the frozen proof chain computed. Carried FOR AUDIT and never as collected money. */
+  readonly proofChainFigureMinor: number | null;
+  readonly evidenceSources: readonly CfoEvidenceSource[];
+  readonly attestationCode: string;
+  readonly gateVerdict: string;
+  readonly revenueReturnedWithheldCodes: readonly string[];
+}
+
+export interface CfoProofRow extends CfoProofRowInput {
+  /**
+   * WHAT NH CLAIMS IS INDEPENDENTLY EVIDENCED AS COLLECTED. The literal `0`, always, on this build.
+   *
+   * No evidence anywhere in this system is independently attested — the stored source receipt records no
+   * holder, so a key NH generated and a key a customer's system holds are indistinguishable once
+   * verification has succeeded. So the claim is nothing, and nothing is what this says.
+   */
+  readonly claimedIndependentlyEvidencedCollectedMinor: 0;
+  /** The zero above is a POSITION NH TAKES, not a figure nobody computed. */
+  readonly claimedCollectedIsAsserted: true;
+  /**
+   * `detectedExposureMinor − claimedIndependentlyEvidencedCollectedMinor`, derived here.
+   *
+   * Which on this build is the whole of the detected exposure: **every dollar identified is still open**.
+   * `null` when exposure is not established — a zero balance would assert the account is settled.
+   */
+  readonly openBalanceMinor: number | null;
+}
+
+export type TotalsUnavailableReason = "currency_disagreement" | "no_rows";
+
+export interface CfoProofTotals {
+  readonly rowCount: number;
+  /** `null` when nothing was established — never a clean zero over an empty or unestablished set. */
+  readonly detectedExposureMinor: number | null;
+  readonly exposureNotEstablishedCount: number;
+  /**
+   * The two dispute magnitudes, APART. An understatement and an overstatement are two problems and
+   * their sum is zero problems, so there is no net dispute figure and no function returns one.
+   */
+  readonly disputedUpwardMinor: number | null;
+  readonly disputedDownwardMinor: number | null;
+  readonly disputedNotEstablishableCount: number;
+  readonly claimedIndependentlyEvidencedCollectedMinor: 0;
+  readonly openBalanceMinor: number | null;
+  readonly unavailableReason: TotalsUnavailableReason | null;
+}
+
+export interface CfoProofReport {
+  readonly scheme: typeof CFO_PROOF_REPORT_SCHEME;
+  readonly version: typeof CFO_PROOF_REPORT_VERSION;
+  readonly boundaryId: string;
+  /** `null` when the rows disagree on currency, or there are none. */
+  readonly currency: string | null;
+  readonly rows: readonly CfoProofRow[];
+  readonly totals: CfoProofTotals;
+  /** Non-null EXACTLY when there are no rows, and it says what that does and does not mean. */
+  readonly emptyBoundaryNotice: string | null;
+  readonly claimStatement: string;
+  readonly disclosure: string;
+}
+
+const CLAIM_STATEMENT =
+  "INDEPENDENTLY EVIDENCED AS COLLECTED: $0.00, and that zero is an assertion rather than a gap. No " +
+  "evidence in this system is independently attested — the stored source receipt records no key holder, " +
+  "so a key NH generated and a key a customer's system of record holds are indistinguishable once " +
+  "verification has succeeded. Every dollar in the detected column is therefore still OPEN. The proof " +
+  "chain's own figures are shown for audit and are not collected money.";
+
+const DISCLOSURE =
+  "SYNTHETIC. Every figure in this report was produced by NH or its harness. No billing system was " +
+  "contacted, no charge was raised, no independent party asserted any settlement, and no amount here " +
+  "was collected. Nothing in this report is Revenue Returned or Auditable Revenue.";
+
+const EMPTY_NOTICE =
+  "NO RECOVERY CASE WAS FOUND for this boundary. That is a statement about what this system holds, NOT " +
+  "a finding that nothing is owed: an obligation nobody detected produces no row, and an empty report " +
+  "is the same shape whether the book is clean or was never read.";
+
+/**
+ * Assemble one row. The open balance is DERIVED, and the claim is stamped rather than accepted.
+ *
+ * A caller cannot supply either: that is what stops a row stating a balance its own two figures do not
+ * support, and what stops a positive collected claim arriving from outside.
+ */
+export function cfoProofRow(input: CfoProofRowInput): CfoProofRow {
+  if (input.disputedAmountMinor !== null && input.disputedAmountMinor !== 0 && input.disputedDirection === null) {
+    throw new Error("a disputed magnitude must carry its direction; an undirected magnitude cannot be reported");
+  }
+  return Object.freeze({
+    ...input,
+    evidenceSources: Object.freeze([...input.evidenceSources]),
+    revenueReturnedWithheldCodes: Object.freeze([...input.revenueReturnedWithheldCodes]),
+    claimedIndependentlyEvidencedCollectedMinor: 0 as const,
+    claimedCollectedIsAsserted: true as const,
+    // Derived, never passed. Nothing is subtracted but the claim, and the claim is zero — so the open
+    // balance IS the exposure. The subtraction is written out rather than elided, because the day the
+    // claim can be non-zero this line must already be the one that computes the balance.
+    openBalanceMinor: input.detectedExposureMinor === null ? null : input.detectedExposureMinor - 0,
+  });
+}
+
+/**
+ * Sum a column, with the accumulator starting at the FIRST ESTABLISHED FIGURE rather than at a zero.
+ *
+ * A column with nothing established totals `null`, not `$0.00`: a zero would assert the column summed
+ * cleanly to nothing. This is the same correction the financial trace's ledger totals needed, and it is
+ * shared rather than re-written because two implementations of one rule are two things that can drift.
+ */
+function sumEstablished(values: readonly (number | null)[], currency: string): Money | null {
+  let total: Money | null = null;
+  for (const v of values) {
+    if (v === null) continue;
+    total = total === null ? money(v, currency) : addMoney(total, money(v, currency));
+  }
+  return total;
+}
+
+export function cfoProofTotals(rows: readonly CfoProofRow[], currency: string | null): CfoProofTotals {
+  const empty = {
+    rowCount: rows.length,
+    detectedExposureMinor: null,
+    exposureNotEstablishedCount: rows.filter((r) => r.detectedExposureMinor === null).length,
+    disputedUpwardMinor: null,
+    disputedDownwardMinor: null,
+    disputedNotEstablishableCount: rows.filter((r) => r.disputedAmountMinor === null).length,
+    claimedIndependentlyEvidencedCollectedMinor: 0 as const,
+    openBalanceMinor: null,
+  };
+  if (rows.length === 0) return Object.freeze({ ...empty, unavailableReason: "no_rows" as const });
+  // A BOUNDARY MAY HOLD MORE THAN ONE CURRENCY, and a sum across them is a figure no record asserts.
+  // Refused rather than converted: NH holds no governed rate, and inventing one here would make the
+  // report's headline a function of a number nobody blessed.
+  if (currency === null) {
+    return Object.freeze({ ...empty, unavailableReason: "currency_disagreement" as const });
+  }
+  const up = sumEstablished(
+    rows.map((r) => (r.disputedDirection === "UPWARD" ? r.disputedAmountMinor : null)), currency,
+  );
+  const down = sumEstablished(
+    rows.map((r) => (r.disputedDirection === "DOWNWARD" ? r.disputedAmountMinor : null)), currency,
+  );
+  return Object.freeze({
+    ...empty,
+    detectedExposureMinor: sumEstablished(rows.map((r) => r.detectedExposureMinor), currency)?.minor ?? null,
+    disputedUpwardMinor: up?.minor ?? null,
+    disputedDownwardMinor: down?.minor ?? null,
+    openBalanceMinor: sumEstablished(rows.map((r) => r.openBalanceMinor), currency)?.minor ?? null,
+    unavailableReason: null,
+  });
+}
+
+export function buildCfoProofReport(input: {
+  readonly boundaryId: string;
+  readonly rows: readonly CfoProofRow[];
+}): CfoProofReport {
+  const currencies = new Set(input.rows.map((r) => r.currency));
+  const currency = currencies.size === 1 ? [...currencies][0]! : null;
+  return Object.freeze({
+    scheme: CFO_PROOF_REPORT_SCHEME,
+    version: CFO_PROOF_REPORT_VERSION,
+    boundaryId: input.boundaryId,
+    currency,
+    rows: Object.freeze([...input.rows]),
+    totals: cfoProofTotals(input.rows, currency),
+    emptyBoundaryNotice: input.rows.length === 0 ? EMPTY_NOTICE : null,
+    claimStatement: CLAIM_STATEMENT,
+    disclosure: DISCLOSURE,
+  });
+}
+
+/**
+ * The canonical form — the reproducibility claim, as a string. Clock values are excluded by
+ * construction, because nothing here reads one; our prose is excluded so a clearer sentence cannot
+ * re-identify a report, and the CODES are in, because a code is a decision.
+ */
+export function canonicalCfoProofReport(report: CfoProofReport): string {
+  return JSON.stringify({
+    scheme: report.scheme,
+    version: report.version,
+    boundaryId: report.boundaryId,
+    currency: report.currency,
+    rows: [...report.rows]
+      .map((r) => ({
+        recoveryCaseId: r.recoveryCaseId,
+        currency: r.currency,
+        obligationCoverage: r.obligationCoverage,
+        detectedExposureMinor: r.detectedExposureMinor,
+        disputedAmountMinor: r.disputedAmountMinor,
+        disputedDirection: r.disputedDirection,
+        disputedState: r.disputedState,
+        claimedIndependentlyEvidencedCollectedMinor: r.claimedIndependentlyEvidencedCollectedMinor,
+        proofChainFigureMinor: r.proofChainFigureMinor,
+        openBalanceMinor: r.openBalanceMinor,
+        evidenceSources: [...r.evidenceSources]
+          .map((e) => ({
+            sourceSystem: e.sourceSystem,
+            trustClassification: e.trustClassification,
+            signatureVerified: e.signatureVerified,
+          }))
+          .sort((a, b) => (a.sourceSystem + a.trustClassification).localeCompare(b.sourceSystem + b.trustClassification)),
+        attestationCode: r.attestationCode,
+        gateVerdict: r.gateVerdict,
+        revenueReturnedWithheldCodes: [...r.revenueReturnedWithheldCodes].sort(),
+      }))
+      .sort((a, b) => a.recoveryCaseId.localeCompare(b.recoveryCaseId)),
+    totals: {
+      rowCount: report.totals.rowCount,
+      detectedExposureMinor: report.totals.detectedExposureMinor,
+      exposureNotEstablishedCount: report.totals.exposureNotEstablishedCount,
+      disputedUpwardMinor: report.totals.disputedUpwardMinor,
+      disputedDownwardMinor: report.totals.disputedDownwardMinor,
+      disputedNotEstablishableCount: report.totals.disputedNotEstablishableCount,
+      claimedIndependentlyEvidencedCollectedMinor: report.totals.claimedIndependentlyEvidencedCollectedMinor,
+      openBalanceMinor: report.totals.openBalanceMinor,
+      unavailableReason: report.totals.unavailableReason,
+    },
+  });
+}

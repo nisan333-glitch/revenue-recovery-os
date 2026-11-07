@@ -39,6 +39,8 @@ import {
   type SucceededObservationRow,
 } from "./candidateCorrections";
 import { identityDigest } from "./candidateCorrectionsRead";
+import type { ProvenIneligibilityCode } from "../../src/domain/provenEligibility";
+import type { ObligationCoverageStated } from "../../src/domain/cfoProofReport";
 import {
   attestationVerdict,
   buildFinancialTrace,
@@ -50,6 +52,44 @@ import {
 
 export const FINANCIAL_TRACE_READ_SCHEME = "nh-financial-trace-read-v1";
 
+/**
+ * The correction facts a downstream report needs, PROJECTED.
+ *
+ * `CorrectionRecord` itself carries `identity`, `sourceRef` and `obligationRef` — pseudonyms, and still
+ * not things a report publishes. Only the decision and its magnitude travel; the redaction test on this
+ * surface is what would catch a widening here, and it is the reason this is a projection rather than the
+ * record.
+ */
+export interface CorrectionSummary {
+  readonly state: CorrectionRecord["state"];
+  readonly observationCount: number;
+  readonly orderCertain: boolean;
+  /** `null` where the observation order is not establishable, so the magnitude is unknowable. */
+  readonly undecidedMagnitudeMinor: number | null;
+  readonly direction: CorrectionRecord["direction"];
+}
+
+/**
+ * The evidence facts a downstream report needs, PROJECTED from the real rows.
+ *
+ * `sourceSystem` is a system name — billing, crm, product, external — and not a customer identifier;
+ * `recoveryCaseRead` already publishes `trustClassification` and a `sourceVerification` boolean on a
+ * governed surface, so this is the same disclosure in the same shape rather than a new one.
+ *
+ * `signatureVerified` says a signature VERIFIED and deliberately NOT that the signer is independent.
+ * That question is answered once, by `trace.attestation`, and collapsing the two would let the weaker
+ * fact wear the stronger one's guarantee.
+ */
+export interface EvidenceSourceSummary {
+  readonly evidenceId: string;
+  readonly sourceSystem: string;
+  readonly evidenceType: string;
+  readonly evidenceRole: string;
+  readonly trustClassification: string;
+  readonly beneficiaryControl: boolean;
+  readonly signatureVerified: boolean;
+}
+
 export interface FinancialTraceView {
   readonly scheme: typeof FINANCIAL_TRACE_READ_SCHEME;
   readonly trace: FinancialTrace;
@@ -58,6 +98,17 @@ export interface FinancialTraceView {
   readonly traceDigest: string;
   /** The correction ledger's digest for this identity, so the two surfaces line up. */
   readonly correctionIdentityDigest: string;
+  /**
+   * STRUCTURED FACTS FOR A DOWNSTREAM REPORT, so no consumer has to parse a note.
+   *
+   * These are deliberately OUTSIDE the canonical form: they restate decisions the trace already made,
+   * so including them would let a presentation detail re-identify a trace. A report built on these
+   * cannot disagree with the trace, because there is only one place each decision is taken.
+   */
+  readonly correctionSummary: CorrectionSummary | null;
+  readonly gateVerdict: "ELIGIBLE" | ProvenIneligibilityCode;
+  readonly obligationCoverageStated: ObligationCoverageStated;
+  readonly evidenceSources: readonly EvidenceSourceSummary[];
 }
 
 const figure = (
@@ -517,6 +568,38 @@ export async function readFinancialTrace(
     canonical,
     traceDigest: await sha256Hex(canonical),
     correctionIdentityDigest: identityDigest(caseIdentity),
+    correctionSummary:
+      correctionRecord === null
+        ? null
+        : Object.freeze({
+            state: correctionRecord.state,
+            observationCount: correctionRecord.observationCount,
+            orderCertain: correctionRecord.orderCertain,
+            undecidedMagnitudeMinor: correctionRecord.undecidedMagnitudeMinor,
+            direction: correctionRecord.direction,
+          }),
+    gateVerdict: gate.eligible ? ("ELIGIBLE" as const) : gate.code,
+    evidenceSources: Object.freeze(
+      [...evidence]
+        .sort((a, b) => a.evidenceId.localeCompare(b.evidenceId))
+        .map((e) =>
+          Object.freeze({
+            evidenceId: e.evidenceId,
+            sourceSystem: e.sourceSystem,
+            evidenceType: e.evidenceType,
+            evidenceRole: e.evidenceRole,
+            trustClassification: e.trustClassification,
+            beneficiaryControl: e.beneficiaryControl,
+            signatureVerified: Boolean(e.sourceVerification),
+          }),
+        ),
+    ),
+    obligationCoverageStated:
+      coverage === null
+        ? ("NOT_STATED" as const)
+        : coverage.kind === "ACCOUNT_AGGREGATE"
+          ? ("ACCOUNT_AGGREGATE" as const)
+          : ("SINGLE_OBLIGATION" as const),
   });
 }
 
