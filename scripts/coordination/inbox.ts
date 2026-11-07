@@ -15,6 +15,8 @@
 // find. `unusable` is a comment the wire format rejected, which is a sender fault and not a delivery
 // failure, so it is counted apart rather than folded into the other two.
 
+import { parseComment } from "./wire.ts";
+
 export const INBOX_SCHEME = "nh-inbox/v1";
 
 /** One comment, reduced to the delivery facts. The body is deliberately absent. */
@@ -180,3 +182,72 @@ export function renderInboxReport(report: InboxReport): string {
   );
   return lines.join("\n");
 }
+
+// ── Classifying one GitHub comment ──────────────────────────────────────────────────
+//
+// THIS LIVES HERE AND NOT IN THE CLI, and the reason is a CI failure I caused. The first form put
+// `toInboxComment` in `coordination-inbox.ts`, whose `main()` runs at module scope — so the test that
+// imported it executed the command, which called `process.exit(3)`, and vitest failed the whole run with
+// "process.exit unexpectedly called" even though all 1705 tests passed. I had already split the trace CLI
+// exactly this way and did not apply the same rule here: THE ENTRY POINT MUST NOT RUN ON IMPORT, which is
+// the other half of "a command whose claims cannot be imported cannot be falsified".
+
+const LEDGER_FENCE = "nh-ledger-receipt";
+
+/**
+ * The receiver's own reply format. It posts an `nh-ledger-receipt` block — NOT an `nh-receipt` — which is
+ * why a checker looking only for the wire receipt finds nothing and would wrongly report every message
+ * unhandled. Read from the receiver's actual output rather than from what the protocol doc calls a receipt.
+ */
+function ledgerReceipt(body: string): { messageId: string | null; bodySha256: string | null } {
+  const m = body.match(/```nh-ledger-receipt\s*\n([\s\S]*?)\n```/);
+  if (!m) return { messageId: null, bodySha256: null };
+  try {
+    const parsed = JSON.parse(m[1]!) as { message_id?: unknown; body_sha256?: unknown };
+    return {
+      messageId: typeof parsed.message_id === "string" ? parsed.message_id : null,
+      bodySha256: typeof parsed.body_sha256 === "string" ? parsed.body_sha256 : null,
+    };
+  } catch {
+    return { messageId: null, bodySha256: null };
+  }
+}
+
+export function toInboxComment(row: {
+  id: number; created_at: string; user: { login: string } | null; body: string | null;
+}): InboxComment {
+  const body = row.body ?? "";
+  const ledger = ledgerReceipt(body);
+  // A ledger receipt is the receiver's own artefact and is never also a message, so it is not re-parsed
+  // as one: `parseComment` would report "a body block without an envelope" and inflate `unusable`.
+  if (ledger.messageId !== null) {
+    return {
+      commentId: row.id, createdAt: row.created_at, author: row.user?.login ?? "unknown",
+      messageId: null, bodySha256: null,
+      receiptForMessageId: ledger.messageId, receiptBodySha256: ledger.bodySha256,
+      errors: [],
+    };
+  }
+  // A comment carrying no fence at all is ordinary prose, not a wire error. Only a comment that TRIED to
+  // carry an envelope and failed is unusable — otherwise every human sentence would read as a fault.
+  const attempted = /```nh-(msg|body|receipt)\s/.test(body) || body.includes(`\`\`\`${LEDGER_FENCE}`);
+  if (!attempted) {
+    return {
+      commentId: row.id, createdAt: row.created_at, author: row.user?.login ?? "unknown",
+      messageId: null, bodySha256: null, receiptForMessageId: null, receiptBodySha256: null, errors: [],
+    };
+  }
+  const parsed = parseComment(body);
+  const envelope = parsed.message as { id?: unknown; body_sha256?: unknown } | null;
+  return {
+    commentId: row.id,
+    createdAt: row.created_at,
+    author: row.user?.login ?? "unknown",
+    messageId: envelope && typeof envelope.id === "string" ? envelope.id : null,
+    bodySha256: envelope && typeof envelope.body_sha256 === "string" ? envelope.body_sha256 : null,
+    receiptForMessageId: null,
+    receiptBodySha256: null,
+    errors: parsed.errors,
+  };
+}
+

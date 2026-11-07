@@ -1,7 +1,6 @@
 // Falsifiers for the bridge delivery check. Pure: no network, no clock, no disk.
 import { describe, expect, it } from "vitest";
-import { buildInboxReport, inboxExitCode, renderInboxReport, type InboxComment } from "./inbox";
-import { toInboxComment } from "./coordination-inbox";
+import { buildInboxReport, inboxExitCode, renderInboxReport, toInboxComment, type InboxComment } from "./inbox";
 
 const msg = (id: number, messageId: string, hash = "a".repeat(64)): InboxComment => ({
   commentId: id, createdAt: "2026-11-07T22:00:00Z", author: "nisan333-glitch",
