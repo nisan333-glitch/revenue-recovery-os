@@ -1,0 +1,57 @@
+{
+  "artefact": "nh.cfo-proof-report",
+  "version": "1.0.0",
+  "scheme": "nh-cfo-proof-report-v1",
+  "preRegisteredAt": "2026-11-07",
+  "baselineCommit": "fb09308",
+  "issue": "#18 Priority 4",
+  "writtenBefore": "any line of the implementation, and before the first run",
+
+  "whatItIs": "One row per obligation across a boundary: what was detected, what is disputed, what is independently evidenced as collected, what is still open, where the evidence came from, and the gate's verdict. It is the CFO-facing view of the financial trace and computes no new money.",
+
+  "columns": [
+    { "field": "recoveryCaseId", "means": "the governed root this row is about" },
+    { "field": "obligationCoverage", "means": "SINGLE_OBLIGATION, ACCOUNT_AGGREGATE or NOT_STATED, as the detector recorded it", "whyItLeads": "a figure whose subject is an aggregate is not a per-obligation figure, and the column saying so must come before any amount" },
+    { "field": "detectedExposureMinor", "means": "OBSERVED_EXPOSURE, read from the frozen promotion row", "nullMeans": "not established — never zero" },
+    { "field": "disputedAmountMinor", "means": "the magnitude that is unreported or overstated BECAUSE precedence is undecided", "nullMeans": "the observation order is not establishable, so the magnitude is unknowable" },
+    { "field": "disputedState", "means": "the correction ledger's own state, or NOT_OBSERVED" },
+    { "field": "claimedIndependentlyEvidencedCollectedMinor", "means": "what NH CLAIMS is independently evidenced as collected", "expected": 0, "zeroIsAnAssertion": true },
+    { "field": "proofChainFigureMinor", "means": "what the frozen proof chain computed, carried FOR AUDIT ONLY and never as collected", "nullMeans": "no effective recovery proof exists" },
+    { "field": "openBalanceMinor", "means": "detectedExposure minus claimedIndependentlyEvidencedCollected", "nullMeans": "exposure is not established, so no balance can be stated" },
+    { "field": "evidenceSources", "means": "per evidence row: source system, trust classification, and whether a source signature verified" },
+    { "field": "attestationCode", "means": "the financial trace's attestation verdict for this case" },
+    { "field": "gateVerdict", "means": "ELIGIBLE, or the obligation-identity gate's own refusal code" },
+    { "field": "revenueReturnedWithheldCodes", "means": "every reason Revenue Returned is withheld for this row" }
+  ],
+
+  "properties": [
+    { "id": "P1", "property": "claimedIndependentlyEvidencedCollectedMinor is 0 on every row, and that zero is an ASSERTION rather than an absence", "expectedBehaviour": "the value is 0 and a sibling field states it is asserted; it is never null, and a reader can tell this apart from a figure that was not computed", "rule": "'we claim nothing' and 'nobody computed it' are different statements, and the CFO column that matters most must not conflate them" },
+    { "id": "P2", "property": "openBalanceMinor equals detectedExposureMinor on this build", "expectedBehaviour": "because the claimed collected figure is 0, every detected dollar is still open; null exposure yields null balance, never 0" },
+    { "id": "P3", "property": "the disputed amount is NEVER subtracted from exposure, and never added to it", "rule": "netting a disputed magnitude into exposure would be the S-DUP-4 precedence decision wearing a different name" },
+    { "id": "P4", "property": "no row and no total presents a positive collected or returned figure as money the business got back", "expectedBehaviour": "a source scan finds no field named corrected/authoritative/effective/resolved, and the report asserts no collected amount above zero" },
+    { "id": "P5", "property": "totals exist only for additive columns, and there is no grand total across columns", "expectedBehaviour": "per-column totals for exposure, disputed and open balance; SOURCE-stated statements are not summed; no field holds a cross-column sum" },
+    { "id": "P6", "property": "the report is reproducible", "expectedBehaviour": "a digest over a canonical form that excludes clock values; two runs over the same records agree" },
+    { "id": "P7", "property": "AuditRead first, then boundary access", "expectedBehaviour": "operator 403, author 403, unauthenticated 401, approver 200, another tenant's approver refused" },
+    { "id": "P8", "property": "an empty boundary yields a report with zero rows, and that is NOT a finding that nothing is owed", "expectedBehaviour": "rows empty, every total null rather than 0, and an explicit statement that no case was found rather than that no money is outstanding" }
+  ],
+
+  "measuredPredictionsAboutTHEEXISTINGSURFACE": [
+    { "id": "M1", "claim": "cfoAuditExport reports provenRevenueReturnedMinor 0 and auditableRevenueMinor 0 for a case id that does not exist at all, with currency null and excluded false", "status": "ALREADY MEASURED on 2026-11-07 against commit fb09308 and found TRUE", "whyItMatters": "a case with no proof, a case whose proofs were all reversed, and a case that was never opened all read as a clean 0/0 on the most financially consequential surface in the product", "whatThisSliceDoesAboutIt": "NOTHING to that surface. It has three production consumers — the UI trust client, the synthetic pilot harness and the HTTP route — so changing it is a separate decision with an owner. The new report is an ADDITIVE SIBLING that fails closed, exactly as recoveryCaseRead is a sibling of the deliberately root-tolerant caseAuditTrail." }
+  ],
+
+  "adversarialCases": [
+    { "id": "A1", "name": "account aggregate", "expected": "obligationCoverage ACCOUNT_AGGREGATE, gateVerdict OBLIGATION_COVERAGE_IS_AGGREGATE, and the row is still reported rather than hidden" },
+    { "id": "A2", "name": "disputed correction", "expected": "disputedAmountMinor carries the magnitude, exposure unchanged, open balance unchanged" },
+    { "id": "A3", "name": "unorderable observations", "expected": "disputedAmountMinor null with disputedState ORDER_NOT_ESTABLISHABLE, never 0" },
+    { "id": "A4", "name": "no evidence at all", "expected": "evidenceSources empty, attestationCode NO_EVIDENCE, proofChainFigureMinor null" },
+    { "id": "A5", "name": "a case that does not exist", "expected": "the report FAILS CLOSED — it is not listed with zeros" },
+    { "id": "A6", "name": "an empty boundary", "expected": "zero rows, null totals, and the explicit statement that nothing was found rather than that nothing is owed" }
+  ],
+
+  "whatThisSliceWillNotClaim": [
+    "that any amount was collected — the claimed independently evidenced figure is 0 by construction on this build",
+    "that a billing correction was issued",
+    "that any observed amount became Revenue Returned or Auditable Revenue",
+    "that an empty or zero column means no money is outstanding"
+  ]
+}
