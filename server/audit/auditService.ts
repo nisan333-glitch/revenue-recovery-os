@@ -19,7 +19,6 @@ import { effectiveProofs, isEffectiveRecovery } from "../../src/domain/proof";
 import { proofIsAuditable } from "../../src/domain/provenLedger";
 import {
   type Money,
-  zeroMoney,
   addMoney,
   subMoney,
   clampNonNegative,
@@ -163,14 +162,45 @@ export async function caseAuditTrail(actor: ActorContext, recoveryCaseId: string
   };
 }
 
+/** Why a monetary field is `null`. NAMED, never collapsed into a zero. */
+export type CfoMonetaryUnavailableReason =
+  /** No effective recovery proof exists for this case — there was no population to sum. */
+  | "no_effective_recovery_proof"
+  /** No proof of any kind exists under this id, and no governed root does either. */
+  | "no_governed_root_and_no_proof";
+
 export interface CfoAuditExport {
   recoveryCaseId: string;
   generatedAt: string;
   excluded: boolean;
   currency: string | null;
   // Two SEPARATE ledgers — forecast never appears here.
-  provenRevenueReturnedMinor: number;
-  auditableRevenueMinor: number;
+  /**
+   * `null` MEANS NOT COMPUTED, and the reason is stated beside it. It used to be `0` for a case with no
+   * proof AND for a case id that never existed, which made three different situations — no proof, all
+   * proofs reversed, never opened — read identically on the most consequential financial read here.
+   *
+   * A renderer must NEVER coalesce this to `0`: `?? 0` would reinstate the defect at the last moment.
+   */
+  provenRevenueReturnedMinor: number | null;
+  /**
+   * `null` only where there was NO EFFECTIVE PROOF AT ALL to sum.
+   *
+   * WHERE PROOFS EXIST AND NONE IS AUDITABLE THIS STAYS `0`, because that zero is a FINDING: an
+   * exclusion or a provenance gap removes an amount from the CFO-grade ledger while the proven history
+   * is preserved, and `trustGate`/`auditService` already assert exactly that pair. Nullifying it would
+   * have destroyed a governed meaning in order to fix a different one.
+   */
+  auditableRevenueMinor: number | null;
+  /** `null` exactly when both figures are numbers. */
+  monetaryUnavailableReason: CfoMonetaryUnavailableReason | null;
+  /**
+   * Whether a governed root exists under this id. Reported, NOT enforced: this route is deliberately
+   * root-tolerant because `EventDetail` calls it with seed event ids through `loadCaseTrust`'s
+   * `Promise.all`, so failing closed here would break that screen for every seed event. The flag is
+   * what lets a reader tell "never opened" from "opened and unproven" without the route refusing.
+   */
+  governedRootExists: boolean;
   authorityTrail: AuthorityRecord[];
   chain: ProofReconstruction[];
 }
@@ -187,23 +217,46 @@ export async function cfoAuditExport(actor: ActorContext, recoveryCaseId: string
   const effective = effectiveProofs(proofs);
   const currency = effective[0]?.currency ?? proofs[0]?.currency ?? null;
 
-  let proven: Money = currency ? zeroMoney(currency) : zeroMoney("USD");
-  let auditable: Money = currency ? zeroMoney(currency) : zeroMoney("USD");
+  // THE ACCUMULATORS START AT null, NOT AT ZERO, and that single change is the fix. Starting at zero
+  // meant "nothing to sum" and "summed to nothing" produced the same figure, and the second is a
+  // finding while the first is an absence. The same correction `ledgerTotals` needed.
+  let proven: Money | null = null;
+  let auditable: Money | null = null;
+  // Counted so the auditable branch can tell "no proofs at all" from "proofs, none auditable". The
+  // second must stay 0 — see the field's own comment and trustGate's assertion.
+  let effectiveInCurrency = 0;
   for (const p of effective) {
     if (p.currency !== (currency ?? p.currency)) continue;
-    if (isEffectiveRecovery(p)) proven = addMoney(proven, p.revenueReturned);
+    effectiveInCurrency += 1;
+    if (isEffectiveRecovery(p)) {
+      proven = proven === null ? p.revenueReturned : addMoney(proven, p.revenueReturned);
+    }
     if (proofIsAuditable(p) && !excluded && (await allProvenanceGaps(p)).length === 0) {
-      auditable = addMoney(auditable, p.revenueReturned);
+      auditable = auditable === null ? p.revenueReturned : addMoney(auditable, p.revenueReturned);
     }
   }
+  // PROOFS EXISTED AND NONE WAS AUDITABLE ⇒ 0, a finding over a real population. UNCHANGED behaviour.
+  const auditableMinor =
+    auditable !== null ? auditable.minor : effectiveInCurrency > 0 && currency !== null ? 0 : null;
+
+  const governedRootExists =
+    (await prisma.recoveryCaseRecord.count({ where: { recoveryCaseId } })) > 0;
+  const reason: CfoMonetaryUnavailableReason | null =
+    proven !== null && auditableMinor !== null
+      ? null
+      : proofs.length === 0 && !governedRootExists
+        ? "no_governed_root_and_no_proof"
+        : "no_effective_recovery_proof";
 
   return {
     recoveryCaseId,
     generatedAt: new Date().toISOString(),
     excluded,
     currency,
-    provenRevenueReturnedMinor: proven.minor,
-    auditableRevenueMinor: auditable.minor,
+    provenRevenueReturnedMinor: proven === null ? null : proven.minor,
+    auditableRevenueMinor: auditableMinor,
+    monetaryUnavailableReason: reason,
+    governedRootExists,
     authorityTrail: await authorityFor(recoveryCaseId),
     chain: await Promise.all(proofs.map((p) => reconstruct(p, excluded))),
   };

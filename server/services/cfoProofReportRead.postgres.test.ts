@@ -286,15 +286,28 @@ describe.skipIf(!HAS_DB)("the CFO Proof report", () => {
   });
 
   // ── M1 · the measured prediction about the EXISTING surface ─────────────────────────────────────
-  it("M1 · cfoAuditExport reports a clean zero for a case that never existed, and this one fails closed", async () => {
+  /**
+   * M1 · THIS TEST PINNED THE DEFECT, AND THE DEFECT IS NOW FIXED — so the assertion was inverted
+   * rather than deleted.
+   *
+   * When this slice ran, `cfoAuditExport` answered for a case id that never existed with
+   * `provenRevenueReturnedMinor: 0` and `auditableRevenueMinor: 0`, and the pre-registration recorded
+   * that measurement as `found TRUE`. The owner then approved the repair, and the accumulators now
+   * start at `null`. The pre-registered FINDING is unchanged and still accurate about the build it was
+   * measured on; what changed is the build. Keeping the old assertion would have meant asserting a
+   * defect we had just repaired, and deleting the test would have thrown away the record that it
+   * caught the fix.
+   */
+  it("M1 · the defect this slice recorded is FIXED — no proof now reads as null, not a clean zero", async () => {
     const m1 = PREREG.measuredPredictionsAboutTHEEXISTINGSURFACE.find((m) => m.id === "M1")!;
     expect(m1.status).toContain("found TRUE");
 
-    // Reproduced here so the finding is evidence in the suite rather than an anecdote in a report.
     const nobody = actor("cfo@test", "approver", ["TEST-cfo-nothing"]);
     const legacy = await cfoAuditExport(nobody, `RC-never-existed-${uid()}`);
-    expect(legacy.provenRevenueReturnedMinor).toBe(0);
-    expect(legacy.auditableRevenueMinor).toBe(0);
+    expect(legacy.provenRevenueReturnedMinor).toBeNull();
+    expect(legacy.auditableRevenueMinor).toBeNull();
+    expect(legacy.monetaryUnavailableReason).toBe("no_governed_root_and_no_proof");
+    expect(legacy.governedRootExists).toBe(false);
     expect(legacy.currency).toBeNull();
     expect(legacy.excluded).toBe(false);
     expect(legacy.chain).toEqual([]);

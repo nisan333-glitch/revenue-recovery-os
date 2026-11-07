@@ -115,8 +115,26 @@ export interface CfoExportDTO {
   generatedAt: string;
   excluded: boolean;
   currency: string | null;
-  provenRevenueReturnedMinor: number;
-  auditableRevenueMinor: number;
+  /**
+   * `null` IS THE ANSWER and means NOT COMPUTED — `monetaryUnavailableReason` says why.
+   *
+   * It must never be coalesced to `0`. The server used to report `0` both for a case with no proof and
+   * for a case id that never existed; `?? 0` here would put that defect straight back, at the last
+   * moment and in the place a CFO actually reads.
+   */
+  provenRevenueReturnedMinor: number | null;
+  /**
+   * `null` only where there was no effective proof to sum. Where proofs exist and none is auditable
+   * this is `0`, and that zero is a FINDING — an exclusion or provenance gap removed the amount from
+   * the CFO-grade ledger while the proven history stands.
+   */
+  auditableRevenueMinor: number | null;
+  monetaryUnavailableReason:
+    | "no_effective_recovery_proof"
+    | "no_governed_root_and_no_proof"
+    | null;
+  /** Whether a governed root exists. Reported, not enforced — this route stays root-tolerant. */
+  governedRootExists: boolean;
   authorityTrail: AuthorityRecordDTO[];
   chain: ProofReconstructionDTO[];
 }
