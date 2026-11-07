@@ -32,6 +32,8 @@ import {
   cfoProofRow,
   type CfoProofReport,
   type CfoProofRow,
+  type ObligationCoverageStated,
+  type UnpromotedCandidateFacts,
 } from "../../src/domain/cfoProofReport";
 
 export const CFO_PROOF_REPORT_READ_SCHEME = "nh-cfo-proof-report-read-v1";
@@ -89,7 +91,7 @@ export async function readCfoProofReport(
     traceDigests.push({ recoveryCaseId: root.recoveryCaseId, traceDigest: view.traceDigest });
   }
 
-  const report = buildCfoProofReport({ boundaryId, rows });
+  const report = buildCfoProofReport({ boundaryId, rows, unpromoted: await unpromotedIn(boundaryId) });
   const canonical = canonicalCfoProofReport(report);
   return Object.freeze({
     scheme: CFO_PROOF_REPORT_READ_SCHEME,
@@ -98,6 +100,69 @@ export async function readCfoProofReport(
     reportDigest: await sha256Hex(canonical),
     traceDigests: Object.freeze(traceDigests),
   });
+}
+
+
+/**
+ * The candidates in this boundary that never became a case, split by what actually happened to them.
+ *
+ * THE STATE IS DERIVED FROM THE REVIEW ROW AND THE ROOT, NEVER FROM `agent_case_candidates.status`:
+ * the constraint `agent_case_candidates_status_valid` pins that column to `'pending_review'` for EVERY
+ * row, so it is inert by construction and reading it would report every candidate as unreviewed —
+ * including ones long since promoted. A column that can only hold one value is not a state machine.
+ *
+ * `pendingReview`, `rejected` and `acceptedNotPromoted` are kept apart because they are three different
+ * positions: nobody has looked, somebody looked and said no, and somebody said yes and the promotion
+ * has not happened. Collapsing them would hide which one a reader can act on.
+ *
+ * The stated amounts are summed starting at the FIRST ESTABLISHED FIGURE, so a set with no readable
+ * amount totals `null` rather than a clean zero.
+ */
+async function unpromotedIn(boundaryId: string): Promise<UnpromotedCandidateFacts> {
+  const candidates = await prisma.agentCaseCandidateRecord.findMany({
+    where: { boundaryId },
+    select: { candidateId: true, signal: true },
+  });
+  if (candidates.length === 0) {
+    return { pendingReview: 0, rejected: 0, acceptedNotPromoted: 0, statedAmountMinor: null, coverageKinds: [] };
+  }
+  const ids = candidates.map((c) => c.candidateId);
+  const [reviews, promoted] = await Promise.all([
+    prisma.agentCaseCandidateReviewRecord.findMany({
+      where: { candidateId: { in: ids } }, select: { candidateId: true, decision: true },
+    }),
+    prisma.recoveryCaseRecord.findMany({
+      where: { sourceCandidateId: { in: ids } }, select: { sourceCandidateId: true },
+    }),
+  ]);
+  const decisionOf = new Map(reviews.map((r) => [r.candidateId, r.decision]));
+  const hasRoot = new Set(promoted.map((r) => r.sourceCandidateId));
+
+  let pendingReview = 0;
+  let rejected = 0;
+  let acceptedNotPromoted = 0;
+  let statedAmountMinor: number | null = null;
+  const kinds = new Set<ObligationCoverageStated>();
+  for (const c of candidates) {
+    if (hasRoot.has(c.candidateId)) continue;
+    const decision = decisionOf.get(c.candidateId);
+    if (decision === undefined) pendingReview += 1;
+    else if (decision === "rejected") rejected += 1;
+    else acceptedNotPromoted += 1;
+    const signal = c.signal as { amountAtRiskMinor?: unknown; obligationCoverage?: { kind?: unknown } } | null;
+    const amount = signal?.amountAtRiskMinor;
+    if (Number.isSafeInteger(amount)) {
+      statedAmountMinor = (statedAmountMinor ?? 0) + (amount as number);
+    }
+    const kind = signal?.obligationCoverage?.kind;
+    kinds.add(
+      kind === "SINGLE_OBLIGATION" ? "SINGLE_OBLIGATION" : kind === "ACCOUNT_AGGREGATE" ? "ACCOUNT_AGGREGATE" : "NOT_STATED",
+    );
+  }
+  return {
+    pendingReview, rejected, acceptedNotPromoted, statedAmountMinor,
+    coverageKinds: [...kinds],
+  };
 }
 
 /** Web Crypto, the same primitive the trace and `hashFinding` use, so one hash function serves all. */

@@ -97,6 +97,58 @@ export interface CfoProofTotals {
   readonly unavailableReason: TotalsUnavailableReason | null;
 }
 
+/**
+ * WHAT POPULATION THE MONETARY TOTALS COVER — and what they structurally cannot.
+ *
+ * The report enumerates GOVERNED ROOTS. So an obligation that never became a case is invisible to it:
+ * one the detector refused, one awaiting review, one rejected at review, or an aggregate nobody
+ * promoted. A reader seeing "detected $1,400.00 / open $1,400.00" would reasonably take that for the
+ * book, so without this block the report's completeness is overstated BY OMISSION — the same family as
+ * "an empty report is the same shape whether the book is clean or was never read".
+ */
+export interface CfoCoverage {
+  /** Our own constant naming the population, so a renderer cannot describe it differently. */
+  readonly population: "governed roots in this boundary";
+  readonly governedRootsReported: number;
+  /**
+   * Candidates in this boundary with no governed root.
+   *
+   * `examined: true` is the point: a `0` HERE IS CORRECT, because the population was read and found
+   * empty. That is a different claim from `refusedUpstreamExposure`, which cannot be read at all — and
+   * the two are separate shapes rather than one nullable number, so the distinction cannot be lost in a
+   * renderer.
+   *
+   * THE STATE IS DERIVED FROM THE REVIEW AND THE ROOT, NEVER FROM `status`:
+   * `agent_case_candidates_status_valid` pins that column to `'pending_review'` for every row, so it is
+   * inert by constraint and reading it would report every candidate as unreviewed.
+   */
+  readonly unpromotedCandidates: {
+    readonly examined: true;
+    readonly pendingReview: number;
+    readonly rejected: number;
+    readonly acceptedNotPromoted: number;
+    /**
+     * Σ of the amounts those candidates STATE. A DIFFERENT LEDGER from detected exposure, and never
+     * added to it: a candidate's stated amount is a detector's claim, a case's exposure is a figure
+     * frozen at promotion, and their sum is a number no record asserts. `null` when there are none.
+     */
+    readonly statedAmountMinor: number | null;
+    readonly coverageKinds: readonly ObligationCoverageStated[];
+  };
+  /**
+   * Exposure the detector refused upstream. NOT ESTABLISHABLE, never zero.
+   *
+   * `reconciliationObserver` computes a refused figure and `AgentHandler.run` returns only candidate
+   * signals, so it is discarded at the handler boundary and reaches no record. A reader must learn that
+   * the figure EXISTS AND CANNOT BE READ, which a zero would deny.
+   */
+  readonly refusedUpstreamExposure: {
+    readonly establishable: false;
+    readonly reason: string;
+  };
+  readonly completenessStatement: string;
+}
+
 export interface CfoProofReport {
   readonly scheme: typeof CFO_PROOF_REPORT_SCHEME;
   readonly version: typeof CFO_PROOF_REPORT_VERSION;
@@ -105,6 +157,7 @@ export interface CfoProofReport {
   readonly currency: string | null;
   readonly rows: readonly CfoProofRow[];
   readonly totals: CfoProofTotals;
+  readonly coverage: CfoCoverage;
   /** Non-null EXACTLY when there are no rows, and it says what that does and does not mean. */
   readonly emptyBoundaryNotice: string | null;
   readonly claimStatement: string;
@@ -122,6 +175,18 @@ const DISCLOSURE =
   "SYNTHETIC. Every figure in this report was produced by NH or its harness. No billing system was " +
   "contacted, no charge was raised, no independent party asserted any settlement, and no amount here " +
   "was collected. Nothing in this report is Revenue Returned or Auditable Revenue.";
+
+const REFUSED_UNREADABLE_REASON =
+  "the reconciliation observer computes a refused-exposure figure, and `AgentHandler.run` returns only " +
+  "candidate signals — so the figure is discarded at the handler boundary and reaches no record, no API " +
+  "and no screen. It is NOT ESTABLISHABLE from stored data, which is not the same as nil: an obligation " +
+  "whose billing reference resolves to nothing is refused, and what it withholds cannot be read here.";
+
+const COMPLETENESS_STATEMENT =
+  "THE MONETARY TOTALS COVER GOVERNED ROOTS ONLY. An obligation that never became a case does not " +
+  "appear in them: one the detector refused, one awaiting review, one rejected at review, or an " +
+  "account-level aggregate nobody promoted. The counts beside this sentence are what this system can " +
+  "see; the refused figure is what it cannot. Neither is added to any amount above.";
 
 const EMPTY_NOTICE =
   "NO RECOVERY CASE WAS FOUND for this boundary. That is a statement about what this system holds, NOT " +
@@ -201,9 +266,18 @@ export function cfoProofTotals(rows: readonly CfoProofRow[], currency: string | 
   });
 }
 
+export interface UnpromotedCandidateFacts {
+  readonly pendingReview: number;
+  readonly rejected: number;
+  readonly acceptedNotPromoted: number;
+  readonly statedAmountMinor: number | null;
+  readonly coverageKinds: readonly ObligationCoverageStated[];
+}
+
 export function buildCfoProofReport(input: {
   readonly boundaryId: string;
   readonly rows: readonly CfoProofRow[];
+  readonly unpromoted: UnpromotedCandidateFacts;
 }): CfoProofReport {
   const currencies = new Set(input.rows.map((r) => r.currency));
   const currency = currencies.size === 1 ? [...currencies][0]! : null;
@@ -214,6 +288,23 @@ export function buildCfoProofReport(input: {
     currency,
     rows: Object.freeze([...input.rows]),
     totals: cfoProofTotals(input.rows, currency),
+    coverage: Object.freeze({
+      population: "governed roots in this boundary" as const,
+      governedRootsReported: input.rows.length,
+      unpromotedCandidates: Object.freeze({
+        examined: true as const,
+        pendingReview: input.unpromoted.pendingReview,
+        rejected: input.unpromoted.rejected,
+        acceptedNotPromoted: input.unpromoted.acceptedNotPromoted,
+        statedAmountMinor: input.unpromoted.statedAmountMinor,
+        coverageKinds: Object.freeze([...input.unpromoted.coverageKinds].sort()),
+      }),
+      refusedUpstreamExposure: Object.freeze({
+        establishable: false as const,
+        reason: REFUSED_UNREADABLE_REASON,
+      }),
+      completenessStatement: COMPLETENESS_STATEMENT,
+    }),
     emptyBoundaryNotice: input.rows.length === 0 ? EMPTY_NOTICE : null,
     claimStatement: CLAIM_STATEMENT,
     disclosure: DISCLOSURE,
@@ -255,6 +346,19 @@ export function canonicalCfoProofReport(report: CfoProofReport): string {
         revenueReturnedWithheldCodes: [...r.revenueReturnedWithheldCodes].sort(),
       }))
       .sort((a, b) => a.recoveryCaseId.localeCompare(b.recoveryCaseId)),
+    coverage: {
+      population: report.coverage.population,
+      governedRootsReported: report.coverage.governedRootsReported,
+      unpromotedCandidates: {
+        examined: report.coverage.unpromotedCandidates.examined,
+        pendingReview: report.coverage.unpromotedCandidates.pendingReview,
+        rejected: report.coverage.unpromotedCandidates.rejected,
+        acceptedNotPromoted: report.coverage.unpromotedCandidates.acceptedNotPromoted,
+        statedAmountMinor: report.coverage.unpromotedCandidates.statedAmountMinor,
+        coverageKinds: [...report.coverage.unpromotedCandidates.coverageKinds].sort(),
+      },
+      refusedUpstreamExposureEstablishable: report.coverage.refusedUpstreamExposure.establishable,
+    },
     totals: {
       rowCount: report.totals.rowCount,
       detectedExposureMinor: report.totals.detectedExposureMinor,

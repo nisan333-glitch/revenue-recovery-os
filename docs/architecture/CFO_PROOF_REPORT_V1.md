@@ -112,3 +112,71 @@ issued. That any observed amount became Revenue Returned or Auditable Revenue. T
 column means no money is outstanding. **Every figure is synthetic**, and the settlement key is generated
 per run by the harness, which is why the attestation code is
 `INDEPENDENCE_NOT_ESTABLISHABLE_FROM_RECORD` on every row.
+
+---
+
+## 6 · Coverage disclosure (v1.1.0, 2026-11-07)
+
+Pre-registration `c55ec53`, sha256 `8d2213c80f3dd4057fde0c6dab6c5e1f347d7f75e6c14597371577578c7270df`.
+
+**The gap.** The report enumerates **governed roots**, so an obligation that never became a case is
+invisible to it: refused by the detector, awaiting review, rejected at review, or an aggregate nobody
+promoted. A reader seeing *detected $1,400.00 / open $1,400.00* would reasonably take that for the book.
+The report's completeness was overstated **by omission** — the same family as *an empty report is the
+same shape whether the book is clean or was never read*.
+
+### A correction of my own earlier claim
+
+I recorded for S-ID-1 that *"the reporting is fixed — `refusedExposure` names the 120,000 expected and
+says exposure is UNDETERMINED"*, and marked that work complete. **What shipped was the plan field and
+its tests, with no consumer.** Measured on `cdd3cbd`:
+
+- `AgentHandler.run` returns `Promise<readonly CandidateSignal[]>` — signals only.
+- the observer's `run()` returns `signalsForPlan(plan, …)`, so **the plan carrying `refusedExposure` is
+  discarded at the handler boundary**.
+- 16 occurrences repository-wide: 3 in the observer, the rest in its own two test files. **Zero** in
+  `src/modules`, `src/components`, `server/app.ts` or `server/http`.
+
+That is precisely the half the `obligation_ref` revert rule forbids: *no field is declared until the
+production code that reads it ships in the same slice.* Making it readable needs a widened
+`AgentHandler` contract or input retention — **proposed, not taken**, because it touches every handler
+and the runtime's event writer.
+
+### The rules the disclosure adds
+
+> **A candidate's stated amount and a case's frozen exposure are different ledgers, and their sum is a
+> figure no record asserts.** `statedAmountMinor` is totalled separately and never reaches
+> `detectedExposureMinor`, `disputed` or `openBalanceMinor`. `cfoProofTotals` is asserted not to read
+> the coverage block at all.
+
+> **`examined: true` with a count of `0`, and `establishable: false` with NO amount field, are two
+> different shapes.** The first says the population was read and found empty — that zero IS correct. The
+> second says the figure exists and cannot be read. One nullable number would have lost the distinction;
+> the refused object carries exactly `{establishable, reason}`, so no zero can be rendered for it.
+
+> **The three unpromoted states stay apart:** nobody has looked, somebody looked and said no, somebody
+> said yes and the promotion has not happened. Collapsing them would hide which one a reader can act on.
+
+> **A completeness claim is a decision, so it is in the canonical form** — the digest moves when the
+> covered population changes and not when our prose does. Proved by adding one unreviewed candidate: the
+> money is identical and the digest moves.
+
+> **State is derived from the review row and the root, NEVER from `agent_case_candidates.status`.** The
+> constraint `agent_case_candidates_status_valid` pins that column to `'pending_review'` for every row,
+> so it is inert by construction and reading it would report four promoted candidates as unreviewed. **A
+> column that can only hold one value is not a state machine** — and the test asserts the column really
+> does read `pending_review` on all four promoted candidates before relying on the derivation instead.
+
+### Measured
+
+On the same four-case book plus three deliberately unpromoted candidates: **4 roots reported**, and
+**1 pending · 1 rejected · 1 accepted-not-promoted** stating **$1,000.00** between them. Detected stays
+**$1,400.00**, open stays **$1,400.00**, and $2,400.00 appears nowhere. Refused upstream exposure:
+`establishable: false`.
+
+Five mutations prove the tests can fail: adding the candidate amount into exposure (3 fail), giving the
+refused figure an amount of `0` (1), dropping coverage from the canonical form (1), reporting zeros
+without querying (2), and counting promoted candidates as unpromoted (2). Each reverted and green again.
+
+**Not in this slice:** no change to what the detector refuses (S-ID-1 Option A stands), no splitting an
+aggregate into per-unit candidates (S-DUP-2 Option B remains the owner's), no `AgentHandler` widening.

@@ -308,6 +308,118 @@ describe.skipIf(!HAS_DB)("the CFO Proof report", () => {
     expect(view.report.emptyBoundaryNotice).not.toBeNull();
   });
 
+
+  // ── Q1-Q6 / B1-B4 · the coverage disclosure, on real records ───────────────────────────────────
+  it("Q1-Q3 · counts what never became a case, and refuses to read what the handler discarded", async () => {
+    const book = await seedBook();
+    // B1 · a candidate nobody has reviewed. B2 · one reviewed and rejected. B3 · an aggregate accepted
+    // but never promoted. All three in the same boundary as the four reported cases.
+    const boundaryId = book.boundaryId;
+    const operator = actor("ops@test", "operator", [boundaryId]);
+    const store = new PostgresCandidateReviewStore();
+
+    const stage = async (coverage: Coverage, amountAtRiskMinor: number) => {
+      const sourceRef = pseudonym();
+      const signal = {
+        signalId: `FIX-${hex().slice(0, 32)}`, boundaryId, recoveryType: "RevenueUnderBilled", sourceRef,
+        sourcePayloadHash: hex(), detectorVersion: "cfo-test-v1",
+        observedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        amountAtRiskMinor, currency: "USD", actionAvailable: true,
+        expectedProofEvent: "corrective invoice raised and collected", obligationCoverage: coverage,
+      };
+      const dedupeKey = caseCandidateDedupeKey(signal as never);
+      const candidateId = caseCandidateId(dedupeKey);
+      await prisma.agentCaseCandidateRecord.create({
+        data: { candidateId, dedupeKey, boundaryId, agentId: "cfo-test-v1", signal, submittedAt: new Date() },
+      });
+      return candidateId;
+    };
+
+    await stage(singleObligation(80_000, 50_000), 30_000);                       // pending review
+    const toReject = await stage(singleObligation(70_000, 50_000), 20_000);      // rejected
+    await new CandidateReviewService(store).decide(operator, {
+      candidateId: toReject, boundaryId, decision: "rejected", reason: "test · not a real shortfall",
+    });
+    const accepted = await stage({ kind: "ACCOUNT_AGGREGATE", unitCount: 2 }, 50_000); // accepted, unpromoted
+    await new CandidateReviewService(store).decide(operator, {
+      candidateId: accepted, boundaryId, decision: "accepted", reason: "test · accepted and left unpromoted",
+    });
+
+    const view = await readCfoProofReport(approverIn(boundaryId), boundaryId);
+    const c = view.report.coverage;
+    expect(c.population).toBe("governed roots in this boundary");
+    expect(c.governedRootsReported).toBe(4);
+    expect(c.unpromotedCandidates.examined).toBe(true);
+    expect(c.unpromotedCandidates.pendingReview).toBe(1);
+    expect(c.unpromotedCandidates.rejected).toBe(1);
+    expect(c.unpromotedCandidates.acceptedNotPromoted).toBe(1);
+    // 30,000 + 20,000 + 50,000 stated by candidates that are NOT cases.
+    expect(c.unpromotedCandidates.statedAmountMinor).toBe(100_000);
+    expect([...c.unpromotedCandidates.coverageKinds].sort()).toEqual(["ACCOUNT_AGGREGATE", "SINGLE_OBLIGATION"]);
+
+    // AND NOT ONE CENT OF IT REACHED THE MONEY. Detected stays $1,400.00, open stays $1,400.00, and
+    // 140,000 + 100,000 = 240,000 appears nowhere.
+    expect(view.report.totals.detectedExposureMinor).toBe(140_000);
+    expect(view.report.totals.openBalanceMinor).toBe(140_000);
+    expect(JSON.stringify(view.report.totals)).not.toContain("240000");
+
+    // Q3 · the refused figure is unreadable rather than nil, and carries no amount field at all.
+    expect(c.refusedUpstreamExposure.establishable).toBe(false);
+    expect(Object.keys(c.refusedUpstreamExposure)).toEqual(["establishable", "reason"]);
+  });
+
+  it("the unpromoted state is derived from the review and the root, not from the inert status column", async () => {
+    const book = await seedBook();
+    // Every candidate here WAS promoted, so the unpromoted counts are zero — and that zero is correct
+    // because the population was examined. Reading `status` instead would report all four as pending,
+    // since `agent_case_candidates_status_valid` pins that column to 'pending_review' for every row.
+    const rows = await prisma.agentCaseCandidateRecord.findMany({
+      where: { boundaryId: book.boundaryId }, select: { status: true },
+    });
+    expect(rows).toHaveLength(4);
+    expect(new Set(rows.map((r) => r.status))).toEqual(new Set(["pending_review"]));
+
+    const c = (await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId)).report.coverage;
+    expect([c.unpromotedCandidates.pendingReview, c.unpromotedCandidates.rejected, c.unpromotedCandidates.acceptedNotPromoted])
+      .toEqual([0, 0, 0]);
+    expect(c.unpromotedCandidates.statedAmountMinor).toBeNull();
+    expect(c.governedRootsReported).toBe(4);
+  });
+
+  it("Q5 · the coverage is in the digest, so a change in what is covered moves it", async () => {
+    const book = await seedBook();
+    const before = await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId);
+    // One more candidate, unreviewed: the money does not move and the completeness claim does.
+    const sourceRef = pseudonym();
+    const signal = {
+      signalId: `FIX-${hex().slice(0, 32)}`, boundaryId: book.boundaryId, recoveryType: "RevenueUnderBilled",
+      sourceRef, sourcePayloadHash: hex(), detectorVersion: "cfo-test-v1",
+      observedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      amountAtRiskMinor: 15_000, currency: "USD", actionAvailable: true,
+      expectedProofEvent: "corrective invoice raised and collected",
+      obligationCoverage: singleObligation(55_000, 40_000),
+    };
+    const dedupeKey = caseCandidateDedupeKey(signal as never);
+    await prisma.agentCaseCandidateRecord.create({
+      data: { candidateId: caseCandidateId(dedupeKey), dedupeKey, boundaryId: book.boundaryId,
+              agentId: "cfo-test-v1", signal, submittedAt: new Date() },
+    });
+    const after = await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId);
+    expect(after.report.totals.detectedExposureMinor).toBe(before.report.totals.detectedExposureMinor);
+    expect(after.report.coverage.unpromotedCandidates.pendingReview).toBe(1);
+    expect(after.reportDigest).not.toBe(before.reportDigest);
+  });
+
+  it("Q6 · an empty boundary reports coverage as examined-and-empty, with the refusal still unreadable", async () => {
+    const empty = `TEST-cfo-cov-${uid()}`;
+    const c = (await readCfoProofReport(approverIn(empty), empty)).report.coverage;
+    expect(c.governedRootsReported).toBe(0);
+    expect(c.unpromotedCandidates.examined).toBe(true);
+    expect(c.unpromotedCandidates.statedAmountMinor).toBeNull();
+    expect(c.unpromotedCandidates.coverageKinds).toEqual([]);
+    expect(c.refusedUpstreamExposure.establishable).toBe(false);
+  });
+
   it("P4 · no row or total presents a positive collected figure", async () => {
     const book = await seedBook();
     const view = await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId);
