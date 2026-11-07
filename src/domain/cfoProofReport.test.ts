@@ -167,7 +167,7 @@ describe("P4 · nothing presents money as collected", () => {
   });
 
   it("states the claim in words, on the report", () => {
-    const report = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone });
+    const report = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused: null });
     expect(report.claimStatement).toContain("$0.00");
     expect(report.claimStatement).toContain("still OPEN");
     expect(report.disclosure).toContain("no amount here was collected");
@@ -204,7 +204,7 @@ describe("P5 · totals per column, and no grand total", () => {
       row({ recoveryCaseId: "RC-a", currency: "USD" }),
       row({ recoveryCaseId: "RC-b", currency: "EUR" }),
     ];
-    const report = buildCfoProofReport({ boundaryId: "b-1", rows, unpromoted: examinedNone });
+    const report = buildCfoProofReport({ boundaryId: "b-1", rows, unpromoted: examinedNone, refused: null });
     expect(report.currency).toBeNull();
     expect(report.totals.unavailableReason).toBe("currency_disagreement");
     expect(report.totals.detectedExposureMinor).toBeNull();
@@ -222,19 +222,19 @@ describe("P5 · totals per column, and no grand total", () => {
 
 describe("P6 · the report is reproducible", () => {
   it("is byte-identical for the same rows, and stable under row order", () => {
-    const a = buildCfoProofReport({ boundaryId: "b-1", rows: [row({ recoveryCaseId: "RC-a" }), row({ recoveryCaseId: "RC-b" })], unpromoted: examinedNone });
-    const b = buildCfoProofReport({ boundaryId: "b-1", rows: [row({ recoveryCaseId: "RC-b" }), row({ recoveryCaseId: "RC-a" })], unpromoted: examinedNone });
+    const a = buildCfoProofReport({ boundaryId: "b-1", rows: [row({ recoveryCaseId: "RC-a" }), row({ recoveryCaseId: "RC-b" })], unpromoted: examinedNone, refused: null });
+    const b = buildCfoProofReport({ boundaryId: "b-1", rows: [row({ recoveryCaseId: "RC-b" }), row({ recoveryCaseId: "RC-a" })], unpromoted: examinedNone, refused: null });
     expect(canonicalCfoProofReport(a)).toBe(canonicalCfoProofReport(b));
   });
 
   it("moves when a verdict moves", () => {
-    const a = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone });
-    const b = buildCfoProofReport({ boundaryId: "b-1", rows: [row({ gateVerdict: "OBLIGATION_COVERAGE_IS_AGGREGATE" })], unpromoted: examinedNone });
+    const a = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused: null });
+    const b = buildCfoProofReport({ boundaryId: "b-1", rows: [row({ gateVerdict: "OBLIGATION_COVERAGE_IS_AGGREGATE" })], unpromoted: examinedNone, refused: null });
     expect(canonicalCfoProofReport(a)).not.toBe(canonicalCfoProofReport(b));
   });
 
   it("excludes our prose, so a clearer sentence cannot re-identify a report", () => {
-    const report = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone });
+    const report = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused: null });
     expect(canonicalCfoProofReport(report)).not.toContain("still OPEN");
     expect(canonicalCfoProofReport(report)).not.toContain("SYNTHETIC");
   });
@@ -250,7 +250,7 @@ describe("P6 · the report is reproducible", () => {
 
 describe("P8 / A6 · an empty boundary is not a finding that nothing is owed", () => {
   it("reports zero rows, null totals and an explicit notice", () => {
-    const report = buildCfoProofReport({ boundaryId: "b-empty", rows: [], unpromoted: examinedNone });
+    const report = buildCfoProofReport({ boundaryId: "b-empty", rows: [], unpromoted: examinedNone, refused: null });
     expect(report.rows).toEqual([]);
     expect(report.totals.rowCount).toBe(0);
     expect(report.totals.detectedExposureMinor).toBeNull();
@@ -261,11 +261,11 @@ describe("P8 / A6 · an empty boundary is not a finding that nothing is owed", (
   });
 
   it("carries the notice EXACTLY when there are no rows", () => {
-    expect(buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone }).emptyBoundaryNotice).toBeNull();
+    expect(buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused: null }).emptyBoundaryNotice).toBeNull();
   });
 
   it("does not report a clean zero for an empty boundary", () => {
-    const report = buildCfoProofReport({ boundaryId: "b-empty", rows: [], unpromoted: examinedNone });
+    const report = buildCfoProofReport({ boundaryId: "b-empty", rows: [], unpromoted: examinedNone, refused: null });
     // The claimed figure is still the asserted 0 — we claim nothing, which stays true of an empty book.
     expect(report.totals.claimedIndependentlyEvidencedCollectedMinor).toBe(0);
     // But no exposure, dispute or balance is reported as zero.
@@ -283,7 +283,7 @@ describe("A1 / A3 / A4 · the adversarial rows are reported, not hidden", () => 
     const r = row({ obligationCoverage: "ACCOUNT_AGGREGATE", gateVerdict: "OBLIGATION_COVERAGE_IS_AGGREGATE" });
     expect(r.obligationCoverage).toBe("ACCOUNT_AGGREGATE");
     expect(r.gateVerdict).toBe("OBLIGATION_COVERAGE_IS_AGGREGATE");
-    expect(buildCfoProofReport({ boundaryId: "b-1", rows: [r], unpromoted: examinedNone }).rows).toHaveLength(1);
+    expect(buildCfoProofReport({ boundaryId: "b-1", rows: [r], unpromoted: examinedNone, refused: null }).rows).toHaveLength(1);
   });
 
   it("A3 · an unorderable dispute carries null and its state, never 0", () => {
@@ -302,7 +302,7 @@ describe("A1 / A3 / A4 · the adversarial rows are reported, not hidden", () => 
 
 describe("Q1-Q6 · the coverage block says what the totals cover and what they cannot", () => {
   it("Q1 · names the population and the number of roots reported", () => {
-    const report = buildCfoProofReport({ boundaryId: "b-1", rows: [row(), row({ recoveryCaseId: "RC-2" })], unpromoted: examinedNone });
+    const report = buildCfoProofReport({ boundaryId: "b-1", rows: [row(), row({ recoveryCaseId: "RC-2" })], unpromoted: examinedNone, refused: null });
     expect(report.coverage.population).toBe("governed roots in this boundary");
     expect(report.coverage.governedRootsReported).toBe(2);
     expect(report.coverage.completenessStatement).toContain("GOVERNED ROOTS ONLY");
@@ -312,6 +312,7 @@ describe("Q1-Q6 · the coverage block says what the totals cover and what they c
     const report = buildCfoProofReport({
       boundaryId: "b-1", rows: [row({ detectedExposureMinor: 60_000 })],
       unpromoted: { pendingReview: 2, rejected: 1, acceptedNotPromoted: 1, statedAmountMinor: 90_000, coverageKinds: ["ACCOUNT_AGGREGATE", "SINGLE_OBLIGATION"] },
+      refused: null,
     });
     const u = report.coverage.unpromotedCandidates;
     expect([u.pendingReview, u.rejected, u.acceptedNotPromoted]).toEqual([2, 1, 1]);
@@ -323,17 +324,63 @@ describe("Q1-Q6 · the coverage block says what the totals cover and what they c
     expect(JSON.stringify(report.totals)).not.toContain("150000");
   });
 
-  it("Q3 · refused upstream exposure is NOT ESTABLISHABLE, never zero", () => {
-    const r = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone });
-    expect(r.coverage.refusedUpstreamExposure.establishable).toBe(false);
-    expect(r.coverage.refusedUpstreamExposure.reason).toContain("discarded at the handler boundary");
-    expect(r.coverage.refusedUpstreamExposure.reason).toContain("not the same as nil");
-    // There is no amount field at all, so no zero can be rendered for it.
-    expect(Object.keys(r.coverage.refusedUpstreamExposure)).toEqual(["establishable", "reason"]);
+  it("Q3 · with no observation recorded, refused exposure is NOT_RECORDED and carries no amount", () => {
+    const r = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused: null });
+    const refused = r.coverage.refusedUpstreamExposure;
+    expect(refused.state).toBe("NOT_RECORDED");
+    expect(refused.establishable).toBe(false);
+    expect(refused.reason).toContain("not the same as nil");
+    expect(refused.reason).toContain("Absence of the record is not absence of refusals");
+    // No amount field exists at all on this branch, so no zero can be rendered for it.
+    expect(Object.keys(refused).sort()).toEqual(["establishable", "reason", "state"]);
+  });
+
+  it("Q3 · the four refused states are kept apart, and only NONE_REFUSED means a zero", () => {
+    const build = (refused: Parameters<typeof buildCfoProofReport>[0]["refused"]) =>
+      buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused })
+        .coverage.refusedUpstreamExposure;
+
+    const none = build({ state: "NONE_REFUSED", runsCarryingAnObservation: 2, refusedUnits: 0, refusedExpectedMinor: 0, refusedWithoutExpected: 0, currency: "USD" });
+    expect(none.state).toBe("NONE_REFUSED");
+    expect(none.establishable).toBe(true);
+    expect(none.reason).toContain("a finding, not an absence");
+
+    const notExamined = build({ state: "NOT_EXAMINED", runsCarryingAnObservation: 1, refusedUnits: 0, refusedExpectedMinor: null, refusedWithoutExpected: 0, currency: null });
+    expect(notExamined.state).toBe("NOT_EXAMINED");
+    expect(notExamined.establishable).toBe(true);
+    if (notExamined.establishable) expect(notExamined.refusedExpectedMinor).toBeNull();
+    expect(notExamined.reason).toContain("nobody looked");
+
+    const undetermined = build({ state: "UNDETERMINED", runsCarryingAnObservation: 1, refusedUnits: 1, refusedExpectedMinor: 120_000, refusedWithoutExpected: 0, currency: "USD" });
+    expect(undetermined.state).toBe("UNDETERMINED");
+    // THE NARROWING IS THE POINT, not a nuisance: a reader cannot reach a refused figure without first
+    // establishing that one exists, so `establishable` cannot be skipped on the way to the number.
+    if (!undetermined.establishable) throw new Error("UNDETERMINED must be establishable");
+    expect(undetermined.refusedUnits).toBe(1);
+    expect(undetermined.refusedExpectedMinor).toBe(120_000);
+    expect(undetermined.reason).toContain("the residual is deliberately");
+    expect(undetermined.reason).toContain("never summed into any total");
+
+    // NOT_RECORDED and NONE_REFUSED are the pair that must never be confused: both would render as
+    // "nothing refused" to a careless reader, and only one of them examined anything.
+    const notRecorded = build(null);
+    expect(notRecorded.state).not.toBe(none.state);
+    expect(notRecorded.establishable).not.toBe(none.establishable);
+  });
+
+  it("Q3 · the refused expected figure never reaches a monetary total", () => {
+    const r = buildCfoProofReport({
+      boundaryId: "b-1", rows: [row({ detectedExposureMinor: 60_000 })], unpromoted: examinedNone,
+      refused: { state: "UNDETERMINED", runsCarryingAnObservation: 1, refusedUnits: 1, refusedExpectedMinor: 120_000, refusedWithoutExpected: 0, currency: "USD" },
+    });
+    expect(r.totals.detectedExposureMinor).toBe(60_000);
+    expect(r.totals.openBalanceMinor).toBe(60_000);
+    // 60,000 + 120,000 = 180,000 appears nowhere.
+    expect(JSON.stringify(r.totals)).not.toContain("180000");
   });
 
   it("B4 · an unpromoted count of 0 IS correct, and is a different shape from the unreadable figure", () => {
-    const r = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone });
+    const r = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused: null });
     expect(r.coverage.unpromotedCandidates.examined).toBe(true);
     expect(r.coverage.unpromotedCandidates.pendingReview).toBe(0);
     // `examined: true` with a zero count, versus `establishable: false` with NO count. Two shapes.
@@ -350,10 +397,10 @@ describe("Q1-Q6 · the coverage block says what the totals cover and what they c
   });
 
   it("Q5 · the coverage is in the canonical form, because a completeness claim is a decision", () => {
-    const a = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone });
+    const a = buildCfoProofReport({ boundaryId: "b-1", rows: [row()], unpromoted: examinedNone, refused: null });
     const b = buildCfoProofReport({
       boundaryId: "b-1", rows: [row()],
-      unpromoted: { ...examinedNone, pendingReview: 1 },
+      unpromoted: { ...examinedNone, pendingReview: 1 }, refused: null,
     });
     expect(canonicalCfoProofReport(a)).not.toBe(canonicalCfoProofReport(b));
     // But our prose is not: the statement and the reason are excluded.
@@ -362,7 +409,7 @@ describe("Q1-Q6 · the coverage block says what the totals cover and what they c
   });
 
   it("Q6 · an empty boundary reports coverage too, and the notice is unchanged", () => {
-    const r = buildCfoProofReport({ boundaryId: "b-empty", rows: [], unpromoted: examinedNone });
+    const r = buildCfoProofReport({ boundaryId: "b-empty", rows: [], unpromoted: examinedNone, refused: null });
     expect(r.coverage.governedRootsReported).toBe(0);
     expect(r.coverage.unpromotedCandidates.statedAmountMinor).toBeNull();
     expect(r.coverage.refusedUpstreamExposure.establishable).toBe(false);

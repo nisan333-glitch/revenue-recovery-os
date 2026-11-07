@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { assertCandidateSignal, assertCandidateSignalBatch } from "./admission";
-import type { AgentTask, AgentTaskStatus, AgentTaskStore, CandidateSignal } from "./types";
+import { assertAgentObservation } from "./types";
+import type { AgentObservation, AgentTask, AgentTaskStatus, AgentTaskStore, CandidateSignal } from "./types";
 
 export interface AgentTaskQueryResult<Row> {
   readonly rows: readonly Row[];
@@ -237,9 +238,11 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
     readonly leaseToken: string;
     readonly now: number;
     readonly result: readonly CandidateSignal[];
+    readonly observation?: AgentObservation;
   }): Promise<AgentTask> {
     requireFiniteTime("now", input.now);
     assertCandidateSignalBatch(input.result, input.boundaryId);
+    if (input.observation !== undefined) assertAgentObservation(input.observation);
     return this.mutateLeased(
       `UPDATE agent_tasks AS task
           SET status = 'succeeded', result = $5::jsonb, last_error = NULL,
@@ -254,7 +257,14 @@ export class PostgresAgentTaskStore implements AgentTaskStore {
       "succeed",
       "task.succeeded",
       input.workerId,
-      { signalCount: input.result.length },
+      // NAMESPACED UNDER ONE KEY, so it cannot collide with `signalCount` or with the publication
+      // sink's `admittedCount`/`createdCount` — which `absorbedObservations` and `caseProvenGate` read
+      // by name. The merge is `{ ...metadata, ...additionalMetadata }`, so an un-namespaced field would
+      // be one rename away from shadowing a control. OMITTED ENTIRELY when there is no observation:
+      // a `null` under this key would be a reader's invitation to treat it as "examined, nothing found".
+      input.observation === undefined
+        ? { signalCount: input.result.length }
+        : { signalCount: input.result.length, observation: input.observation },
       async (client, row) => this.successSink?.writeWithin(client, {
         taskId: row.task_id,
         boundaryId: row.boundary_id,

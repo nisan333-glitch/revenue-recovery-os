@@ -19,6 +19,8 @@ import { CandidateReviewService } from "../agents/candidateReview";
 import { CandidatePromotionService } from "../agents/recoveryCase";
 import { PostgresCandidateReviewStore } from "../agents/postgresCandidateReviewStore";
 import { caseCandidateDedupeKey, caseCandidateId } from "../agents/caseAdmission";
+import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
+import { AGENT_OBSERVATION_SCHEME, type AgentObservation } from "../agents/types";
 import { cfoAuditExport } from "../audit/auditService";
 import { readCfoProofReport } from "./cfoProofReportRead";
 import type { ActorContext } from "../auth/identity";
@@ -364,8 +366,9 @@ describe.skipIf(!HAS_DB)("the CFO Proof report", () => {
     expect(JSON.stringify(view.report.totals)).not.toContain("240000");
 
     // Q3 · the refused figure is unreadable rather than nil, and carries no amount field at all.
+    expect(c.refusedUpstreamExposure.state).toBe("NOT_RECORDED");
     expect(c.refusedUpstreamExposure.establishable).toBe(false);
-    expect(Object.keys(c.refusedUpstreamExposure)).toEqual(["establishable", "reason"]);
+    expect(Object.keys(c.refusedUpstreamExposure).sort()).toEqual(["establishable", "reason", "state"]);
   });
 
   it("the unpromoted state is derived from the review and the root, not from the inert status column", async () => {
@@ -418,6 +421,152 @@ describe.skipIf(!HAS_DB)("the CFO Proof report", () => {
     expect(c.unpromotedCandidates.statedAmountMinor).toBeNull();
     expect(c.unpromotedCandidates.coverageKinds).toEqual([]);
     expect(c.refusedUpstreamExposure.establishable).toBe(false);
+  });
+
+
+  // ── The refused figure now reaches the report, through the widened handler contract ─────────────
+  /**
+   * Write one succeeded run carrying an observation, THROUGH THE REAL STORE. `PostgresAgentTaskStore`
+   * is the production code that composes the event metadata, so this exercises the same merge that
+   * carries `admittedCount` — not a hand-built INSERT that would prove only that the test can write
+   * jsonb.
+   */
+  async function recordObservedRun(
+    boundaryId: string,
+    refusedExposure: NonNullable<AgentObservation["refusedExposure"]> | undefined,
+  ): Promise<void> {
+    const store = createPostgresAgentTaskStore();
+    const taskId = `T-${randomUUID()}`;
+    await store.enqueueIfAbsent({
+      taskId, boundaryId, agentId: "cfo-obs-test", idempotencyKey: `k-${randomUUID()}`,
+      payload: {}, now: Date.now(),
+    });
+    const claimed = await store.claimDue({
+      boundaryId, agentId: "cfo-obs-test", workerId: "w-1", now: Date.now(), leaseMs: 30_000,
+      maxAttempts: 3,
+    });
+    expect(claimed).not.toBeNull();
+    await store.succeed({
+      taskId, boundaryId, workerId: "w-1", leaseToken: claimed!.leaseToken!, now: Date.now(),
+      result: [],
+      observation: refusedExposure === undefined
+        ? { scheme: AGENT_OBSERVATION_SCHEME }
+        : { scheme: AGENT_OBSERVATION_SCHEME, refusedExposure },
+    });
+  }
+
+  it("NOT_RECORDED · a boundary whose runs recorded no observation does not read as NONE_REFUSED", async () => {
+    const book = await seedBook();
+    const refused = (await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId))
+      .report.coverage.refusedUpstreamExposure;
+    expect(refused.state).toBe("NOT_RECORDED");
+    expect(refused.establishable).toBe(false);
+    expect(refused.reason).toContain("Absence of the record is not absence of refusals");
+    // And no amount field exists on this branch at all, so no zero can be rendered for it.
+    expect(Object.keys(refused).sort()).toEqual(["establishable", "reason", "state"]);
+  });
+
+  it("UNDETERMINED · a recorded refusal reaches the report, and never any monetary total", async () => {
+    const book = await seedBook();
+    await recordObservedRun(book.boundaryId, {
+      state: "UNDETERMINED", refusedUnits: 1, refusedExpectedMinor: 120_000,
+      refusedWithoutExpected: 0, currency: "USD",
+    });
+    const view = await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId);
+    const refused = view.report.coverage.refusedUpstreamExposure;
+    expect(refused.state).toBe("UNDETERMINED");
+    expect(refused.establishable).toBe(true);
+    if (!refused.establishable) throw new Error("UNDETERMINED must be establishable");
+    expect(refused.refusedUnits).toBe(1);
+    expect(refused.refusedExpectedMinor).toBe(120_000);
+    expect(refused.runsCarryingAnObservation).toBe(1);
+    expect(refused.reason).toContain("never summed into any total");
+
+    // THE MONEY DID NOT MOVE. Detected stays $1,400.00 and 140,000 + 120,000 = 260,000 is absent.
+    expect(view.report.totals.detectedExposureMinor).toBe(140_000);
+    expect(view.report.totals.openBalanceMinor).toBe(140_000);
+    expect(JSON.stringify(view.report.totals)).not.toContain("260000");
+    // And it is not exposure under any other name either.
+    for (const r of view.report.rows) expect(r.detectedExposureMinor).not.toBe(120_000);
+  });
+
+  it("NONE_REFUSED · an examined run with no refusals is a finding, distinguishable from NOT_RECORDED", async () => {
+    const book = await seedBook();
+    await recordObservedRun(book.boundaryId, {
+      state: "NONE_REFUSED", refusedUnits: 0, refusedExpectedMinor: 0,
+      refusedWithoutExpected: 0, currency: "USD",
+    });
+    const refused = (await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId))
+      .report.coverage.refusedUpstreamExposure;
+    expect(refused.state).toBe("NONE_REFUSED");
+    expect(refused.establishable).toBe(true);
+    if (!refused.establishable) throw new Error("NONE_REFUSED must be establishable");
+    expect(refused.refusedUnits).toBe(0);
+    expect(refused.reason).toContain("a finding, not an absence");
+  });
+
+  it("the worst state wins across runs, so a later clean run cannot erase an earlier refusal", async () => {
+    const book = await seedBook();
+    await recordObservedRun(book.boundaryId, {
+      state: "UNDETERMINED", refusedUnits: 2, refusedExpectedMinor: 80_000,
+      refusedWithoutExpected: 1, currency: "USD",
+    });
+    await recordObservedRun(book.boundaryId, {
+      state: "NONE_REFUSED", refusedUnits: 0, refusedExpectedMinor: 0,
+      refusedWithoutExpected: 0, currency: "USD",
+    });
+    const refused = (await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId))
+      .report.coverage.refusedUpstreamExposure;
+    expect(refused.state).toBe("UNDETERMINED");
+    if (!refused.establishable) throw new Error("UNDETERMINED must be establishable");
+    expect(refused.runsCarryingAnObservation).toBe(2);
+    expect(refused.refusedUnits).toBe(2);
+    expect(refused.refusedWithoutExpected).toBe(1);
+  });
+
+  it("NOT_EXAMINED beats NONE_REFUSED, and states no expected figure at all", async () => {
+    const book = await seedBook();
+    await recordObservedRun(book.boundaryId, {
+      state: "NONE_REFUSED", refusedUnits: 0, refusedExpectedMinor: 0, refusedWithoutExpected: 0, currency: "USD",
+    });
+    await recordObservedRun(book.boundaryId, {
+      state: "NOT_EXAMINED", refusedUnits: 0, refusedExpectedMinor: 0, refusedWithoutExpected: 0, currency: "USD",
+    });
+    const refused = (await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId))
+      .report.coverage.refusedUpstreamExposure;
+    expect(refused.state).toBe("NOT_EXAMINED");
+    if (!refused.establishable) throw new Error("NOT_EXAMINED must be establishable");
+    expect(refused.refusedExpectedMinor).toBeNull();
+    expect(refused.reason).toContain("nobody looked");
+  });
+
+  it("a run recording the scheme and nothing else leaves the state NOT_RECORDED", async () => {
+    const book = await seedBook();
+    await recordObservedRun(book.boundaryId, undefined);
+    const refused = (await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId))
+      .report.coverage.refusedUpstreamExposure;
+    // The run recorded an observation but said nothing about refusals, so nothing is established.
+    expect(refused.state).toBe("NOT_RECORDED");
+    expect(refused.establishable).toBe(false);
+  });
+
+  it("the observation does not disturb the metadata the existing controls read", async () => {
+    const book = await seedBook();
+    await recordObservedRun(book.boundaryId, {
+      state: "UNDETERMINED", refusedUnits: 1, refusedExpectedMinor: 10_000, refusedWithoutExpected: 0, currency: "USD",
+    });
+    // `absorbedObservations` and `caseProvenGate` read admittedCount/createdCount BY NAME from the same
+    // metadata object. The observation is namespaced under one key, so those reads are untouched — and
+    // the proven case still reads ELIGIBLE rather than refusing for a reason this slice introduced.
+    const rows = await prisma.$queryRawUnsafe<{ metadata: Record<string, unknown> }[]>(
+      `SELECT metadata FROM agent_task_events WHERE boundary_id = $1 AND kind = 'task.succeeded'
+         AND metadata ? 'observation' ORDER BY event_sequence DESC LIMIT 1`,
+      book.boundaryId,
+    );
+    expect(rows).toHaveLength(1);
+    expect(Object.keys(rows[0]!.metadata).sort()).toEqual(["observation", "signalCount"]);
+    const view = await readCfoProofReport(approverIn(book.boundaryId), book.boundaryId);
+    expect(view.report.rows.find((r) => r.recoveryCaseId === book.proven.caseId)!.gateVerdict).toBe("ELIGIBLE");
   });
 
   it("P4 · no row or total presents a positive collected figure", async () => {

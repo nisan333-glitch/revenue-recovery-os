@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { assertCandidateSignalBatch } from "./admission";
-import type { AgentTask, AgentTaskStore, CandidateSignal } from "./types";
+import { assertAgentObservation, type AgentObservation, type AgentTask, type AgentTaskStore, type CandidateSignal } from "./types";
 
 type MutableTask = {
   -readonly [K in keyof AgentTask]: AgentTask[K];
@@ -110,9 +110,15 @@ export class InMemoryAgentTaskStore implements AgentTaskStore {
     readonly leaseToken: string;
     readonly now: number;
     readonly result: readonly CandidateSignal[];
+    readonly observation?: AgentObservation;
   }): Promise<AgentTask> {
     requireFiniteTime("now", input.now);
     assertCandidateSignalBatch(input.result, input.boundaryId);
+    // VALIDATED EVEN THOUGH THIS STORE HAS NOWHERE TO PUT IT. The in-memory store writes no event
+    // metadata, so the observation is dropped here — but a malformed one must still fail rather than
+    // pass silently in tests and then fail in production, which is the one place the two stores must
+    // not disagree.
+    if (input.observation !== undefined) assertAgentObservation(input.observation);
     const task = this.requireLease(input.taskId, input.boundaryId, input.workerId, input.leaseToken, input.now);
     task.status = "succeeded";
     task.result = freezeSignals(input.result);

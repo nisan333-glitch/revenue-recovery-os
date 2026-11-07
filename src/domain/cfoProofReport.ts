@@ -136,16 +136,42 @@ export interface CfoCoverage {
     readonly coverageKinds: readonly ObligationCoverageStated[];
   };
   /**
-   * Exposure the detector refused upstream. NOT ESTABLISHABLE, never zero.
+   * Exposure the detector refused upstream — now READ from the append-only task log.
    *
-   * `reconciliationObserver` computes a refused figure and `AgentHandler.run` returns only candidate
-   * signals, so it is discarded at the handler boundary and reaches no record. A reader must learn that
-   * the figure EXISTS AND CANNOT BE READ, which a zero would deny.
+   * FOUR STATES, AND NOT ONE OF THEM IS A BARE ZERO.
+   *
+   *  - `NOT_RECORDED` · no succeeded run in this boundary carried an observation at all. Either the
+   *    observer never ran here, or the runs predate the handler being able to record one. **Absence of
+   *    the record is not absence of refusals**, which is why this is not `NONE_REFUSED`.
+   *  - `NOT_EXAMINED` · a run recorded that it could not read the extract. Nobody looked, so "no
+   *    refusals" would claim work that never happened.
+   *  - `NONE_REFUSED` · the units were examined and none was refused. **This zero IS correct**, and it
+   *    is the only state in which `refusedUnits: 0` means anything.
+   *  - `UNDETERMINED` · units were refused. `refusedExpectedMinor` is what the CONTRACT side stated on
+   *    them and is not in doubt; the residual is absent BY DESIGN, because the residual is exactly what
+   *    the refusal is about and publishing one would be the authored figure the refusal prevents.
+   *
+   * `refusedExpectedMinor` IS NOT EXPOSURE and is never summed into any monetary total. Where
+   * `refusedWithoutExpected` is above zero the expected total is a LOWER BOUND, and the count is
+   * carried so a reader can see that rather than being told a complete figure.
    */
-  readonly refusedUpstreamExposure: {
-    readonly establishable: false;
-    readonly reason: string;
-  };
+  readonly refusedUpstreamExposure:
+    | {
+        readonly state: "NOT_RECORDED";
+        readonly establishable: false;
+        readonly reason: string;
+      }
+    | {
+        readonly state: "NOT_EXAMINED" | "NONE_REFUSED" | "UNDETERMINED";
+        readonly establishable: true;
+        readonly runsCarryingAnObservation: number;
+        readonly refusedUnits: number;
+        /** What the contract side stated on refused units. NOT exposure. `null` in NOT_EXAMINED. */
+        readonly refusedExpectedMinor: number | null;
+        readonly refusedWithoutExpected: number;
+        readonly currency: string | null;
+        readonly reason: string;
+      };
   readonly completenessStatement: string;
 }
 
@@ -176,11 +202,25 @@ const DISCLOSURE =
   "contacted, no charge was raised, no independent party asserted any settlement, and no amount here " +
   "was collected. Nothing in this report is Revenue Returned or Auditable Revenue.";
 
-const REFUSED_UNREADABLE_REASON =
-  "the reconciliation observer computes a refused-exposure figure, and `AgentHandler.run` returns only " +
-  "candidate signals — so the figure is discarded at the handler boundary and reaches no record, no API " +
-  "and no screen. It is NOT ESTABLISHABLE from stored data, which is not the same as nil: an obligation " +
-  "whose billing reference resolves to nothing is refused, and what it withholds cannot be read here.";
+const REFUSED_NOT_RECORDED_REASON =
+  "no succeeded run in this boundary recorded an observation, so whether anything was refused is NOT " +
+  "ESTABLISHABLE here. That is not the same as nil: either no detector that can refuse has run in this " +
+  "boundary, or its runs predate handlers being able to record one. Absence of the record is not " +
+  "absence of refusals.";
+
+const REFUSED_REASONS: Readonly<Record<"NOT_EXAMINED" | "NONE_REFUSED" | "UNDETERMINED", string>> =
+  Object.freeze({
+    NOT_EXAMINED:
+      "a run recorded that it could not read the extract, so nobody looked. 'No refusals' would claim " +
+      "work that never happened, and no expected figure is stated.",
+    NONE_REFUSED:
+      "the units were examined and none was refused. This zero is a finding, not an absence.",
+    UNDETERMINED:
+      "units were refused, so what they withhold cannot be stated. The expected figure beside this is " +
+      "what the CONTRACT side stated on those units and is not in doubt; the residual is deliberately " +
+      "absent, because the residual is exactly what the refusal is about. It is never exposure and is " +
+      "never summed into any total here.",
+  });
 
 const COMPLETENESS_STATEMENT =
   "THE MONETARY TOTALS COVER GOVERNED ROOTS ONLY. An obligation that never became a case does not " +
@@ -266,6 +306,20 @@ export function cfoProofTotals(rows: readonly CfoProofRow[], currency: string | 
   });
 }
 
+/**
+ * The refused-exposure facts a caller read out of the append-only task log, or `null` where no run
+ * recorded one. `null` is REQUIRED to be passed rather than defaulted, so a caller that never looked
+ * cannot produce the `NONE_REFUSED` finding by omission.
+ */
+export interface RefusedExposureFacts {
+  readonly state: "NOT_EXAMINED" | "NONE_REFUSED" | "UNDETERMINED";
+  readonly runsCarryingAnObservation: number;
+  readonly refusedUnits: number;
+  readonly refusedExpectedMinor: number | null;
+  readonly refusedWithoutExpected: number;
+  readonly currency: string | null;
+}
+
 export interface UnpromotedCandidateFacts {
   readonly pendingReview: number;
   readonly rejected: number;
@@ -278,6 +332,7 @@ export function buildCfoProofReport(input: {
   readonly boundaryId: string;
   readonly rows: readonly CfoProofRow[];
   readonly unpromoted: UnpromotedCandidateFacts;
+  readonly refused: RefusedExposureFacts | null;
 }): CfoProofReport {
   const currencies = new Set(input.rows.map((r) => r.currency));
   const currency = currencies.size === 1 ? [...currencies][0]! : null;
@@ -299,10 +354,23 @@ export function buildCfoProofReport(input: {
         statedAmountMinor: input.unpromoted.statedAmountMinor,
         coverageKinds: Object.freeze([...input.unpromoted.coverageKinds].sort()),
       }),
-      refusedUpstreamExposure: Object.freeze({
-        establishable: false as const,
-        reason: REFUSED_UNREADABLE_REASON,
-      }),
+      refusedUpstreamExposure:
+        input.refused === null
+          ? Object.freeze({
+              state: "NOT_RECORDED" as const,
+              establishable: false as const,
+              reason: REFUSED_NOT_RECORDED_REASON,
+            })
+          : Object.freeze({
+              state: input.refused.state,
+              establishable: true as const,
+              runsCarryingAnObservation: input.refused.runsCarryingAnObservation,
+              refusedUnits: input.refused.refusedUnits,
+              refusedExpectedMinor: input.refused.refusedExpectedMinor,
+              refusedWithoutExpected: input.refused.refusedWithoutExpected,
+              currency: input.refused.currency,
+              reason: REFUSED_REASONS[input.refused.state],
+            }),
       completenessStatement: COMPLETENESS_STATEMENT,
     }),
     emptyBoundaryNotice: input.rows.length === 0 ? EMPTY_NOTICE : null,
@@ -357,7 +425,19 @@ export function canonicalCfoProofReport(report: CfoProofReport): string {
         statedAmountMinor: report.coverage.unpromotedCandidates.statedAmountMinor,
         coverageKinds: [...report.coverage.unpromotedCandidates.coverageKinds].sort(),
       },
-      refusedUpstreamExposureEstablishable: report.coverage.refusedUpstreamExposure.establishable,
+      refusedUpstreamExposure: {
+        state: report.coverage.refusedUpstreamExposure.state,
+        establishable: report.coverage.refusedUpstreamExposure.establishable,
+        refusedUnits: report.coverage.refusedUpstreamExposure.establishable
+          ? report.coverage.refusedUpstreamExposure.refusedUnits
+          : null,
+        refusedExpectedMinor: report.coverage.refusedUpstreamExposure.establishable
+          ? report.coverage.refusedUpstreamExposure.refusedExpectedMinor
+          : null,
+        refusedWithoutExpected: report.coverage.refusedUpstreamExposure.establishable
+          ? report.coverage.refusedUpstreamExposure.refusedWithoutExpected
+          : null,
+      },
     },
     totals: {
       rowCount: report.totals.rowCount,

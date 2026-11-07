@@ -33,6 +33,7 @@ import {
   type CfoProofReport,
   type CfoProofRow,
   type ObligationCoverageStated,
+  type RefusedExposureFacts,
   type UnpromotedCandidateFacts,
 } from "../../src/domain/cfoProofReport";
 
@@ -91,7 +92,8 @@ export async function readCfoProofReport(
     traceDigests.push({ recoveryCaseId: root.recoveryCaseId, traceDigest: view.traceDigest });
   }
 
-  const report = buildCfoProofReport({ boundaryId, rows, unpromoted: await unpromotedIn(boundaryId) });
+  const [unpromoted, refused] = await Promise.all([unpromotedIn(boundaryId), refusedIn(boundaryId)]);
+  const report = buildCfoProofReport({ boundaryId, rows, unpromoted, refused });
   const canonical = canonicalCfoProofReport(report);
   return Object.freeze({
     scheme: CFO_PROOF_REPORT_READ_SCHEME,
@@ -162,6 +164,85 @@ async function unpromotedIn(boundaryId: string): Promise<UnpromotedCandidateFact
   return {
     pendingReview, rejected, acceptedNotPromoted, statedAmountMinor,
     coverageKinds: [...kinds],
+  };
+}
+
+/** One succeeded run's recorded observation, as the metadata stores it. */
+const REFUSED_SQL = `SELECT ev.metadata -> 'observation' -> 'refusedExposure' AS refused
+       FROM agent_task_events AS ev
+      WHERE ev.kind = 'task.succeeded'
+        AND ev.boundary_id = $1
+        AND ev.metadata -> 'observation' -> 'refusedExposure' IS NOT NULL
+      ORDER BY ev.event_sequence ASC`;
+
+interface RefusedRow {
+  readonly refused: unknown;
+}
+
+/**
+ * The refused-exposure facts for a boundary, read from the append-only task log.
+ *
+ * `null` means NO RUN RECORDED ONE — which the report renders as `NOT_RECORDED`, not as
+ * `NONE_REFUSED`. That distinction is the whole reason this function returns a nullable: either no
+ * detector that can refuse has run here, or its runs predate handlers being able to record one, and
+ * **absence of the record is not absence of refusals**.
+ *
+ * SEVERAL RUNS ARE COMBINED BY TAKING THE WORST STATE, never by averaging or by taking the latest.
+ * `UNDETERMINED` on any run means something was refused in this boundary and that cannot be undone by a
+ * later clean run; `NOT_EXAMINED` on any run means part of the book was never read. Only when every run
+ * examined its units and refused none is the answer `NONE_REFUSED` — the one state in which a zero is a
+ * finding. The counts are summed across runs that carry them.
+ *
+ * `refusedExpectedMinor` is `null` for `NOT_EXAMINED`, because nothing was read and a zero would assert
+ * the contract side stated nothing.
+ */
+async function refusedIn(boundaryId: string): Promise<RefusedExposureFacts | null> {
+  const rows = await prisma.$queryRawUnsafe<RefusedRow[]>(REFUSED_SQL, boundaryId);
+  const observed: {
+    state: "NOT_EXAMINED" | "NONE_REFUSED" | "UNDETERMINED";
+    refusedUnits: number;
+    refusedExpectedMinor: number;
+    refusedWithoutExpected: number;
+    currency: string;
+  }[] = [];
+  for (const row of rows) {
+    const r = row.refused;
+    // SHAPE-CHECKED ON THE WAY OUT TOO. The writer validates, but a row written by another build or
+    // edited by hand must not reach a financial report pretending to be well formed. A malformed row
+    // contributes NOTHING rather than a zero.
+    if (!r || typeof r !== "object") continue;
+    const rec = r as Record<string, unknown>;
+    if (rec.state !== "NOT_EXAMINED" && rec.state !== "NONE_REFUSED" && rec.state !== "UNDETERMINED") continue;
+    if (!Number.isSafeInteger(rec.refusedUnits) || !Number.isSafeInteger(rec.refusedExpectedMinor)
+      || !Number.isSafeInteger(rec.refusedWithoutExpected) || typeof rec.currency !== "string") continue;
+    observed.push({
+      state: rec.state,
+      refusedUnits: rec.refusedUnits as number,
+      refusedExpectedMinor: rec.refusedExpectedMinor as number,
+      refusedWithoutExpected: rec.refusedWithoutExpected as number,
+      currency: rec.currency,
+    });
+  }
+  if (observed.length === 0) return null;
+
+  const state = observed.some((o) => o.state === "UNDETERMINED")
+    ? ("UNDETERMINED" as const)
+    : observed.some((o) => o.state === "NOT_EXAMINED")
+      ? ("NOT_EXAMINED" as const)
+      : ("NONE_REFUSED" as const);
+  const currencies = new Set(observed.map((o) => o.currency));
+  return {
+    state,
+    runsCarryingAnObservation: observed.length,
+    refusedUnits: observed.reduce((n, o) => n + o.refusedUnits, 0),
+    // NULL FOR NOT_EXAMINED, and null where the runs disagree on currency: a sum across currencies is a
+    // figure no record asserts, and NH holds no governed rate to convert with.
+    refusedExpectedMinor:
+      state === "NOT_EXAMINED" || currencies.size !== 1
+        ? null
+        : observed.reduce((n, o) => n + o.refusedExpectedMinor, 0),
+    refusedWithoutExpected: observed.reduce((n, o) => n + o.refusedWithoutExpected, 0),
+    currency: currencies.size === 1 ? [...currencies][0]! : null,
   };
 }
 

@@ -188,7 +188,15 @@ describe("Agent runtime contract", () => {
     expect(h.events.map((event) => event.kind)).toEqual(["task.claimed", "task.released"]);
   });
 
-  it("rejects non-array output and records no partial result", async () => {
+  /**
+   * THE PROPERTY IS UNCHANGED AND THE WORDING MOVED, which is why this assertion was edited rather
+   * than the message bent to fit it. `run` now returns `CandidateSignal[] | AgentRunResult`, so a bare
+   * object is no longer automatically invalid — one of the two legal forms IS an object. A single
+   * signal returned loose is neither form, and the refusal now comes from the normaliser with its own
+   * message instead of from the batch assertion. What this test protects is untouched: the task is
+   * refused, NO partial result is recorded, and the failure is non-terminal so the attempt can retry.
+   */
+  it("rejects output that is neither a signal array nor a run result, and records no partial result", async () => {
     const h = createHarness();
     await enqueue(h.store);
     const invalidRun = (async () => VALID_SIGNAL) as unknown as AgentHandler["run"];
@@ -196,7 +204,19 @@ describe("Agent runtime contract", () => {
     const result = await h.runtime.runNext(handler(invalidRun), "worker-a", BOUNDARY_ID);
 
     expect(result).toMatchObject({ status: "retry_wait", result: null });
-    expect(result?.lastError).toMatch(/must be an array/i);
+    expect(result?.lastError).toMatch(/CandidateSignal array or \{ signals, observation\? \}/);
+    expect(h.events.at(-1)).toMatchObject({ kind: "task.failed", terminal: false });
+  });
+
+  it("still rejects an ARRAY whose entries are not signals, through the batch assertion", async () => {
+    const h = createHarness();
+    await enqueue(h.store);
+    const invalidRun = (async () => [{ nope: true }]) as unknown as AgentHandler["run"];
+
+    const result = await h.runtime.runNext(handler(invalidRun), "worker-a", BOUNDARY_ID);
+
+    expect(result).toMatchObject({ status: "retry_wait", result: null });
+    expect(result?.lastError).toMatch(/CandidateSignal/);
     expect(h.events.at(-1)).toMatchObject({ kind: "task.failed", terminal: false });
   });
 

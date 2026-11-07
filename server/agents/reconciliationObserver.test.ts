@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assertCandidateSignal } from "./admission";
 import { CaseAdmissionService, InMemoryCaseCandidateStore } from "./caseAdmission";
 import { configuredAgentHandlers } from "./activationDetector";
-import { publishesCandidates } from "./types";
+import { AGENT_OBSERVATION_SCHEME, agentRunOutcome, assertAgentObservation, publishesCandidates } from "./types";
 import {
   MAX_EXTRACT_ROWS,
   RECONCILIATION_AGENT_ID,
@@ -38,6 +38,16 @@ const demoPayload = () => ({
   observedAt: OBSERVED_AT,
   actionAvailable: true,
 });
+
+/**
+ * `run` now returns `CandidateSignal[] | AgentRunResult`, so a DIRECT caller normalises. The runtime is
+ * the only production caller and does this itself; this file is the only other caller in the whole
+ * repository, which is what bounded the blast radius of widening the contract.
+ */
+const runSignals = async (
+  handler: { run(p: Readonly<Record<string, unknown>>, c: typeof CONTEXT): Promise<unknown> },
+  payload: Readonly<Record<string, unknown>>,
+) => agentRunOutcome((await handler.run(payload, CONTEXT)) as never).signals;
 
 describe("reconciliation observer · the plan (pure)", () => {
   it("turns exactly the unpaired, priced, under-billed units into candidates — and counts the rest", () => {
@@ -203,9 +213,31 @@ describe("reconciliation observer · the handler", () => {
   });
 
   it("runs the demo book into three signals", async () => {
-    const signals = await handler.run(demoPayload(), CONTEXT);
+    const signals = await runSignals(handler, demoPayload());
     expect(signals).toHaveLength(3);
     expect(signals.every((s) => s.boundaryId === CONTEXT.boundaryId)).toBe(true);
+  });
+
+  // ── THE REFUSED FIGURE LEAVES THE HANDLER · the gap this contract widening was for ──────────────
+  it("records its refused-exposure observation, so the figure no longer dies at the handler boundary", async () => {
+    const outcome = agentRunOutcome(await handler.run(demoPayload(), CONTEXT));
+    expect(outcome.observation).toBeDefined();
+    expect(outcome.observation!.scheme).toBe(AGENT_OBSERVATION_SCHEME);
+    const refused = outcome.observation!.refusedExposure!;
+    // The demo book examines its units, so the state is a FINDING rather than an absence.
+    expect(["NOT_EXAMINED", "NONE_REFUSED", "UNDETERMINED"]).toContain(refused.state);
+    expect(Number.isSafeInteger(refused.refusedUnits)).toBe(true);
+    expect(refused.currency).toMatch(/^[A-Z]{3}$/);
+    // It validates against the contract's own assertion, so what the handler emits is what the store
+    // will accept — one shape, checked in one place.
+    expect(() => assertAgentObservation(outcome.observation)).not.toThrow();
+  });
+
+  it("does NOT carry its headline prose into the observation — a stored sentence drifts", async () => {
+    const outcome = agentRunOutcome(await handler.run(demoPayload(), CONTEXT));
+    expect(Object.keys(outcome.observation!.refusedExposure!)).not.toContain("headline");
+    // And the plan still has it, for a renderer that wants our wording live.
+    expect(JSON.stringify(outcome.observation)).not.toContain("headline");
   });
 
   it("refuses unknown, missing or extra payload fields rather than ignoring them", async () => {
@@ -267,7 +299,7 @@ describe("reconciliation observer · through the real admission boundary", () =>
     const handler = reconciliationObserver(KEY, NOW);
     const service = new CaseAdmissionService(new InMemoryCaseCandidateStore(), clock);
     const results = [];
-    for (const s of await handler.run(demoPayload(), CONTEXT)) results.push(await service.submit(RECONCILIATION_AGENT_ID, s, POLICY));
+    for (const s of await runSignals(handler, demoPayload())) results.push(await service.submit(RECONCILIATION_AGENT_ID, s, POLICY));
     expect(results).toHaveLength(3);
     for (const r of results) {
       expect(r).toMatchObject({ admitted: true, created: true });
@@ -281,23 +313,23 @@ describe("reconciliation observer · through the real admission boundary", () =>
   it("re-running the same book creates no second candidate", async () => {
     const handler = reconciliationObserver(KEY, NOW);
     const service = new CaseAdmissionService(new InMemoryCaseCandidateStore(), clock);
-    const first = await handler.run(demoPayload(), CONTEXT);
+    const first = await runSignals(handler, demoPayload());
     for (const s of first) await service.submit(RECONCILIATION_AGENT_ID, s, POLICY);
     const again = [];
-    for (const s of await handler.run(demoPayload(), CONTEXT)) again.push(await service.submit(RECONCILIATION_AGENT_ID, s, POLICY));
+    for (const s of await runSignals(handler, demoPayload())) again.push(await service.submit(RECONCILIATION_AGENT_ID, s, POLICY));
     expect(again.every((r) => r.admitted && r.created === false)).toBe(true);
   });
 
   it("keeps the FIRST observed amount when a corrected run arrives — documented store behaviour, not hidden", async () => {
     const handler = reconciliationObserver(KEY, NOW);
     const service = new CaseAdmissionService(new InMemoryCaseCandidateStore(), clock);
-    const original = (await handler.run(demoPayload(), CONTEXT)).find((s) => s.amountAtRiskMinor === 60_000)!;
+    const original = (await runSignals(handler, demoPayload())).find((s) => s.amountAtRiskMinor === 60_000)!;
     const first = await service.submit(RECONCILIATION_AGENT_ID, original, POLICY);
     // The billing system later corrects DEMO-A March: 1900.00 instead of 1800.00, so the shortfall is 500.00.
     const corrected = demoPayload();
     corrected.billing.rows = corrected.billing.rows.map((r) =>
       r.cells.invoice_ref === "INV-DEMO-0003" ? { ...r, cells: { ...r.cells, invoice_line_amount: "1900.00" } } : r);
-    const later = (await handler.run(corrected, CONTEXT)).find((s) => s.amountAtRiskMinor === 50_000)!;
+    const later = (await runSignals(handler, corrected)).find((s) => s.amountAtRiskMinor === 50_000)!;
     expect(later.sourceRef).toBe(original.sourceRef); // same payer, same identity
     const second = await service.submit(RECONCILIATION_AGENT_ID, later, POLICY);
     expect(first).toMatchObject({ admitted: true, created: true });

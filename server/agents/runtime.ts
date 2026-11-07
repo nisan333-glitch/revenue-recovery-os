@@ -7,7 +7,7 @@ import type {
   AgentTaskStore,
   CandidateSignal,
 } from "./types";
-import { publishesCandidates } from "./types";
+import { agentRunOutcome, publishesCandidates, type AgentObservation, type AgentRunResult } from "./types";
 import { assertCandidateSignalBatch } from "./admission";
 
 export interface AgentRuntimeDependencies {
@@ -54,9 +54,9 @@ export class AgentRuntime {
       at: now,
     });
 
-    let rawSignals: readonly CandidateSignal[];
+    let raw: readonly CandidateSignal[] | AgentRunResult;
     try {
-      rawSignals = await handler.run(task.payload, {
+      raw = await handler.run(task.payload, {
         taskId: task.taskId,
         boundaryId: task.boundaryId,
         attempt: task.attempt,
@@ -67,7 +67,14 @@ export class AgentRuntime {
     }
 
     let signals: readonly CandidateSignal[];
+    let observation: AgentObservation | undefined;
     try {
+      // NORMALISED AND VALIDATED BEFORE ANYTHING ELSE, and inside the same try that already fails the
+      // task on a malformed batch: a bad observation is a contract violation of the same kind, so it
+      // must not reach `succeed()` — the only call that invokes the publication sink.
+      const outcome = agentRunOutcome(raw);
+      const rawSignals = outcome.signals;
+      observation = outcome.observation;
       assertCandidateSignalBatch(rawSignals, task.boundaryId);
       // An observation-only handler that returns a signal is a contract violation, and it is caught
       // HERE — before `succeed()`, which is the only thing that invokes the publication sink. So the
@@ -122,6 +129,7 @@ export class AgentRuntime {
       leaseToken: task.leaseToken,
       now: this.deps.now(),
       result: signals,
+      observation,
     });
     this.emit({
       kind: "task.succeeded",

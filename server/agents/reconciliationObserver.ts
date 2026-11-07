@@ -54,7 +54,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { assertCandidateSignal } from "./admission";
 import type { ObligationCoverage } from "../../src/domain/provenEligibility";
-import type { AgentHandler, CandidateSignal } from "./types";
+import { AGENT_OBSERVATION_SCHEME, type AgentHandler, type CandidateSignal } from "./types";
 import {
   validateExpectationExtract,
   type RawExpectationRow,
@@ -506,9 +506,24 @@ export function reconciliationObserver(
       const plan = planReconciliation({
         expectation: payload.expectation, billing: payload.billing, currency: payload.currency,
       });
-      return signalsForPlan(plan, {
-        boundaryId: context.boundaryId, observedAt, actionAvailable: payload.actionAvailable, pseudonymKey,
-      });
+      // THE REFUSED FIGURE NOW LEAVES THIS HANDLER. It used to die here: `run` could return only
+      // signals, and a refused unit deliberately produces NO signal — crediting a malformed reference
+      // is exactly what the refusal prevents — so the plan's `refusedExposure` was computed, named
+      // UNDETERMINED, and discarded. It reached no record, no API and no screen: a governed number that
+      // existed and could not be read. `AgentRunResult` is the channel for it.
+      //
+      // THE HEADLINE IS NOT CARRIED. `plan.refusedExposure.headline` is our prose, and a stored sentence
+      // drifts from the code that renders it; the reader builds its own from these facts.
+      const { headline: _headline, ...refusedExposure } = plan.refusedExposure;
+      return {
+        signals: signalsForPlan(plan, {
+          boundaryId: context.boundaryId, observedAt, actionAvailable: payload.actionAvailable, pseudonymKey,
+        }),
+        observation: {
+          scheme: AGENT_OBSERVATION_SCHEME,
+          refusedExposure,
+        },
+      };
     },
   };
 }
