@@ -1,0 +1,56 @@
+{
+  "artefact": "cfoAuditExport",
+  "fix": "no-proof-is-not-a-zero",
+  "version": "1.1.0",
+  "preRegisteredAt": "2026-11-07",
+  "baselineCommit": "5a44efe",
+  "issue": "#18 — owner approved PREPARING this fix",
+  "writtenBefore": "any line of the implementation, and before the first run",
+
+  "theDefect": "cfoAuditExport answers for a case id THAT DOES NOT EXIST with provenRevenueReturnedMinor 0, auditableRevenueMinor 0, currency null, excluded false and an empty chain. So a case with no proof, a case whose proofs were all reversed, and a case that was never opened are indistinguishable on the surface behind GET /audit/cases/:caseId/cfo-export — the most financially consequential read in the product.",
+
+  "measuredFactsThatDecideTheDESIGN": [
+    {
+      "id": "D1",
+      "fact": "FAILING CLOSED ON A MISSING ROOT WOULD BREAK A LIVE SCREEN, so it is rejected.",
+      "evidence": "src/components/EventDetail.tsx:73 calls governed.loadCaseTrust(event.eventId, …) with a SEED EVENT ID, and RecoveryContext.loadCaseTrust calls trust.getCfoExport inside a Promise.all. A rejection there fails the whole batch and the screen renders 'Failed to load governed case data' for every seed event. This is the same reason caseAuditTrail is deliberately root-tolerant — the two share that call site.",
+      "consequence": "the route keeps answering; what changes is that it stops stating a monetary zero it did not compute."
+    },
+    {
+      "id": "D2",
+      "fact": "auditableRevenueMinor === 0 IS LOAD-BEARING AND CORRECT where proofs exist but are excluded or provenance-gapped. A blanket nullification would destroy an existing governed meaning.",
+      "evidence": "trustGate.test.ts:250-251 asserts provenRevenueReturnedMinor 1_060_000 with auditableRevenueMinor 0 — 'gapped — excluded from the CFO-grade ledger'; auditService.test.ts:162-163 asserts the same pair after exclusion. That zero is a FINDING: this proven money is not CFO-grade.",
+      "consequence": "the figure is nullified ONLY where there was no population to sum, never where a sum over real proofs came out at zero. The accumulator starts at the first established figure — the same correction ledgerTotals needed."
+    },
+    {
+      "id": "D3",
+      "fact": "the two existing non-test consumers both call it for cases that DO have proofs, so neither observes the changed branch.",
+      "evidence": "server/agents/syntheticPilot.ts:307 asserts 5_000/5_000 on a case it has just proved; src/data/governedTrustClient.ts:218 is the UI client whose only caller is loadCaseTrust.",
+      "consequence": "the DTO becomes nullable and the one reader that could see a null is the UI, which must render NOT COMPUTED rather than coalescing to 0."
+    }
+  ],
+
+  "properties": [
+    { "id": "E1", "property": "a case id with no governed root and no proofs reports null for both monetary fields, with a named reason", "expectedReason": "no_effective_recovery_proof", "expectedBehaviour": "the route still answers 200, so no screen breaks" },
+    { "id": "E2", "property": "a case whose proofs exist but are all excluded keeps auditableRevenueMinor at 0 and proven at its real figure", "rule": "that zero is a finding over a real population and must not become null" },
+    { "id": "E3", "property": "a case whose proofs sum to a genuine zero reports 0, not null", "rule": "summed-to-zero and nothing-to-sum are different claims" },
+    { "id": "E4", "property": "no monetary field is ever coalesced to 0 by a renderer", "expectedBehaviour": "the UI DTO is number | null and a source scan finds no ?? 0 or || 0 on either field" },
+    { "id": "E5", "property": "currency null and excluded false are not presented as facts about a case that does not exist", "expectedBehaviour": "a reason field distinguishes the no-root case from the no-proof case where the records allow it" },
+    { "id": "E6", "property": "every existing assertion in auditService.test.ts, trustGate.test.ts, csvProof.postgres.test.ts and syntheticPilot keeps passing unchanged", "rule": "a fix that needs its own callers' tests rewritten to pass has changed a meaning, not a defect" }
+  ],
+
+  "adversarialCases": [
+    { "id": "F1", "name": "a case id that never existed", "expected": "200, both figures null, reason named, chain empty" },
+    { "id": "F2", "name": "a root with no proof yet", "expected": "200, both figures null, reason named" },
+    { "id": "F3", "name": "proofs all reversed", "expected": "proven null or its real residual figure — never a bare 0 standing for 'no effective proof'" },
+    { "id": "F4", "name": "proofs excluded", "expected": "proven at its real figure, auditable 0 — UNCHANGED from today" },
+    { "id": "F5", "name": "a seed event id through the real UI path", "expected": "loadCaseTrust resolves rather than throwing, so the screen still renders" }
+  ],
+
+  "whatThisFixWillNotDo": [
+    "fail closed on a missing root — proved to break a live screen",
+    "change what counts as auditable, excluded or proven",
+    "touch the proof chain, the exclusion rule or the provenance-gap rule",
+    "turn any observed amount into Revenue Returned"
+  ]
+}
