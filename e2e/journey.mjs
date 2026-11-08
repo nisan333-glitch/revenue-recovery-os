@@ -1589,7 +1589,31 @@ try {
     drive.author.status === 201 && drive.baseline.status === 201 && drive.intervention.status === 201,
     `author=${drive.author.status} baseline=${drive.baseline.status} intervention=${drive.intervention.status}`);
 
+  // G1 · THE FIX, EVIDENCED BY THE SOURCE. The intervention above is the operator's governed timing
+  // record — the beneficiary describing their own work. This is the billing source's signed attestation
+  // that the corrective charge was raised, which `approve()` now requires. Signed by the harness because
+  // the browser must not be able to mint a source attestation.
+  const fixEvidence = JSON.parse(
+    execFileSync("npx", ["vite-node", "scripts/seed-journey-case-evidence.ts", recoveryCaseId, "correction"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        JOURNEY_API_PORT: String(API_PORT),
+        JOURNEY_EVIDENCE_KEY_ID: EVIDENCE_KEY_ID,
+        JOURNEY_EVIDENCE_PRIVATE_KEY: EVIDENCE_PRIVATE_KEY,
+      },
+    }),
+  );
+  check("G1 · the billing source's signed correction record is ingested, and the SERVER classifies it",
+    fixEvidence.ingested === true && fixEvidence.role === "correction",
+    JSON.stringify({ status: fixEvidence.status, role: fixEvidence.role }));
+
   caseText = await readCase();
+  // AND THE STAGE DOES NOT MOVE. This is the lifecycle correction G1 surfaced, asserted in the browser:
+  // `EVIDENCED` means the OUTCOME was observed. A correction record is evidence that the billing was
+  // fixed, so a case carrying one and no outcome must still read INTERVENED — otherwise recording the fix
+  // would claim the money had been seen.
   check("the screen now shows INTERVENED, derived from the record and not from a stored status",
     (await stageReached("INTERVENED")) && !(await stageReached("EVIDENCED")));
   check("and the proven ledger is STILL not computed — a fix is not a recovery",
@@ -1898,8 +1922,22 @@ try {
   check("NC · the approver and the steward cannot trigger the synthetic payer",
     Object.values(settleRefusals).every((s) => s === 403), JSON.stringify(settleRefusals));
   const evidenceBefore = await apiCall("GET", `/cases/${reconCaseId}/evidence`, asApprover);
-  check("and no evidence exists yet — every refusal above left the case untouched",
-    evidenceBefore.status === 200 && (evidenceBefore.json ?? []).length === 0, `${evidenceBefore.status} ${evidenceBefore.body}`);
+  const beforeRows = evidenceBefore.json ?? [];
+  // G1 · THE FIX IS EVIDENCED, THE MONEY IS NOT. Recording the corrective action now also obtains the
+  // billing source's signed attestation that the corrective charge was raised, so one `correction` record
+  // exists here. What must NOT exist yet is any OUTCOME record: nothing has been collected, and every
+  // refusal above left the case untouched. The first form of this check asserted "no evidence at all" and
+  // would have had to be weakened; it is narrowed to the claim that actually matters instead.
+  check("the fix is evidenced but no money is — one signed correction record, zero outcome records",
+    evidenceBefore.status === 200 &&
+      beforeRows.filter((e) => e.evidenceRole === "outcome").length === 0 &&
+      beforeRows.filter((e) => e.evidenceRole === "correction").length === 1 &&
+      beforeRows.every((e) => e.trustClassification === "independent" && e.sourceVerification?.method === "ed25519-v1"),
+    `${evidenceBefore.status} roles=${JSON.stringify(beforeRows.map((e) => e.evidenceRole))}`);
+  const correctionRecord = beforeRows.find((e) => e.evidenceRole === "correction");
+  check("NC · the synthetic billing source attests the correction at most once",
+    (await apiCall("POST", `/synthetic-demo/cases/${reconCaseId}/correction`, asOperator)).status === 409,
+    `evidenceId=${correctionRecord?.evidenceId}`);
 
   await page.getByRole("button", { name: "Simulate synthetic payment" }).click();
   check("the case reads EVIDENCED", await stageNow("EVIDENCED"));
@@ -1911,14 +1949,27 @@ try {
   await shot("05-evidenced-still-not-computed");
 
   const evidenceList = await apiCall("GET", `/cases/${reconCaseId}/evidence`, asApprover);
-  const settledEvidence = (evidenceList.json ?? [])[0];
+  const allEvidence = evidenceList.json ?? [];
+  // BY ROLE, NEVER BY POSITION. `[0]` used to be the settlement because it was the only record; with G1 it
+  // is the correction, and a positional read would have silently pointed every assertion below — and the
+  // proof's own evidence reference — at the wrong record while still passing.
+  const settledEvidence = allEvidence.find((e) => e.evidenceRole === "outcome");
   check("the settlement is ONE signed, independent OUTCOME record for exactly the identified exposure, labelled SYNTHETIC",
-    (evidenceList.json ?? []).length === 1 &&
+    allEvidence.length === 2 &&
+      allEvidence.filter((e) => e.evidenceRole === "outcome").length === 1 &&
       settledEvidence?.evidenceRole === "outcome" && settledEvidence?.trustClassification === "independent" &&
       settledEvidence?.amountMinor === exposureMinor && settledEvidence?.amountMinor === TARGET_EXPOSURE_MINOR &&
       settledEvidence?.currency === "USD" &&
       /^SYNTHETIC-/.test(settledEvidence?.sourceRecordId ?? "") && settledEvidence?.evidenceId === `EV-SYNTHETIC-${reconCaseId}`,
     JSON.stringify(settledEvidence ?? null).slice(0, 220));
+  // G1 · THE AUDITABLE RELATIONSHIP, in the browser. The correction must PRECEDE the collection by the
+  // server's own clock — a payment observed before the fix cannot have been caused by it — and this is the
+  // ordering `approve()` checks. Shared obligation plus precedence is necessary evidence of the
+  // relationship and never proof of causation; the trace says so separately.
+  check("G1 · the signed correction was recorded BEFORE the signed collection",
+    !!correctionRecord?.ingestedAt && !!settledEvidence?.ingestedAt &&
+      Date.parse(correctionRecord.ingestedAt) < Date.parse(settledEvidence.ingestedAt),
+    `fix=${correctionRecord?.ingestedAt} money=${settledEvidence?.ingestedAt}`);
   const secondSettle = await apiCall("POST", `/synthetic-demo/cases/${reconCaseId}/settle`, asOperator);
   check("NC · the synthetic payer settles a case at most once", secondSettle.status === 409,
     `${secondSettle.status} ${secondSettle.body}`);

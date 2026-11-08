@@ -52,11 +52,46 @@ export async function seedBaseline(
   return baselineId;
 }
 
+/**
+ * G1 · The billing system's signed statement that the corrective charge was RAISED.
+ *
+ * WHY THIS IS A FIXTURE CHANGE AND NOT A GATE WEAKENING — the same reasoning `seedGovernedRoot` carries.
+ * `approve()` now refuses a case with no verified executed-correction record, which is the approved rule.
+ * Before this helper existed, every acceptance test approved a proof for a case where NOTHING recorded
+ * that the billing had actually been corrected — so the suite was exercising a path the rule forbids, and
+ * in production an operator could do the same. The tests model BILLING CORRECTIONS, so the fixture now
+ * says so explicitly instead of leaving the Fix leg unrecorded.
+ *
+ * It is attested through the SAME fixture verifier as outcome evidence, because the only thing that can
+ * establish that a corrective charge was raised is the source that raised it. An operator's assertion
+ * would be the beneficiary describing their own work.
+ */
+export async function seedCorrection(
+  app: FastifyInstance,
+  caseId: string,
+  opts: { evidenceId?: string; actor?: Record<string, string>; evidenceType?: string } = {},
+): Promise<{ evidenceId: string; res: Awaited<ReturnType<FastifyInstance["inject"]>> }> {
+  return seedEvidence(app, caseId, {
+    evidenceId: opts.evidenceId ?? `EV-FIX-${uid()}`,
+    sourceSystem: "billing",
+    evidenceType: opts.evidenceType ?? "corrective_invoice_issued",
+    actor: opts.actor,
+  });
+}
+
 /** Record the governed Fix/intervention timing event for a case. */
 export async function seedIntervention(
   app: FastifyInstance,
   caseId: string,
-  opts: { actor?: Record<string, string> } = {},
+  opts: {
+    actor?: Record<string, string>;
+    /**
+     * Skip the executed-correction record. ONLY for a test whose subject is its ABSENCE — the same escape
+     * `seedBaseline.noGovernedRoot` provides, and for the same reason: leaving it absent everywhere else
+     * was what made the old suite exercise a path the approved rule forbids.
+     */
+    noCorrectionRecord?: boolean;
+  } = {},
 ): Promise<void> {
   const res = await app.inject({
     method: "POST",
@@ -64,6 +99,14 @@ export async function seedIntervention(
     headers: opts.actor ?? AUTHOR,
   });
   if (res.statusCode !== 201) throw new Error(`seedIntervention failed: ${res.statusCode} ${res.body}`);
+  // THE FIX LEG, RECORDED. The intervention event is the governed TIMING fact; this is the billing
+  // system's attestation that the corrective charge was actually raised. They are different claims and
+  // G1 requires the second, so the fixture for "the case was fixed" now produces both.
+  if (opts.noCorrectionRecord === true) return;
+  const correction = await seedCorrection(app, caseId);
+  if (correction.res.statusCode !== 201) {
+    throw new Error(`seedIntervention correction failed: ${correction.res.statusCode} ${correction.res.body}`);
+  }
 }
 
 /** Ingest one evidence item. Defaults to an outcome-role billing record (invoice_paid). */

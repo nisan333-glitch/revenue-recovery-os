@@ -39,7 +39,7 @@ export interface IngestedEvidence {
   currency: string | null;
   trustClassification: "independent" | "beneficiary_controlled";
   beneficiaryControl: boolean;
-  evidenceRole: "outcome" | "supporting";
+  evidenceRole: "outcome" | "correction" | "supporting";
   roleMapVersion: string;
   ingestedBy: string;
   ingestedByRole: string;
@@ -61,7 +61,7 @@ function rowToEvidence(r: Row): IngestedEvidence {
     currency: r.currency,
     trustClassification: r.trustClassification as "independent" | "beneficiary_controlled",
     beneficiaryControl: r.beneficiaryControl,
-    evidenceRole: r.evidenceRole as "outcome" | "supporting",
+    evidenceRole: r.evidenceRole as "outcome" | "correction" | "supporting",
     roleMapVersion: r.roleMapVersion,
     ingestedBy: r.ingestedBy,
     ingestedByRole: r.ingestedByRole,

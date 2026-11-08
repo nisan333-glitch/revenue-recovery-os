@@ -277,7 +277,10 @@ describe.skipIf(!HAS_DB)("the financial trace · one obligation, end to end", ()
     );
     expect(view.trace.attestation.independentlyAttested).toBe(false);
     expect(view.trace.attestation.code).toBe("INDEPENDENCE_NOT_ESTABLISHABLE_FROM_RECORD");
-    expect(view.trace.attestation.verifiedSignatureCount).toBe(1);
+    // TWO signed records now: G1 made the Fix leg evidential, so the case carries the billing source's
+    // signed correction attestation alongside the signed settlement. The SUBJECT is untouched — neither
+    // signature establishes independence, because neither receipt carries a key holder.
+    expect(view.trace.attestation.verifiedSignatureCount).toBe(2);
     expect(view.trace.attestation.holderFieldsPresent).toEqual([]);
   });
 
@@ -286,13 +289,19 @@ describe.skipIf(!HAS_DB)("the financial trace · one obligation, end to end", ()
     const rows = await prisma.evidenceRecord.findMany({
       where: { recoveryCaseId: seeded.caseId }, select: { sourceVerification: true },
     });
-    expect(rows).toHaveLength(1);
-    const receipt = rows[0]!.sourceVerification as Record<string, unknown>;
-    // A signature really was verified — this is not a case of there being no attestation attempt.
-    expect(receipt.method).toBe("ed25519-v1");
-    expect(typeof receipt.signature).toBe("string");
-    // And not one field could say whose key it was.
-    for (const f of HOLDER_INDEPENDENCE_FIELDS) expect(Object.keys(receipt)).not.toContain(f);
+    // Both signed records are inspected, not just the settlement: the claim is about the receipt SHAPE,
+    // so every stored receipt must be shown to carry no holder, not merely the one that carries money.
+    expect(rows).toHaveLength(2);
+    // EVERY stored receipt, not just the first. The comment above says every one carries no holder, and a
+    // check that reads `rows[0]` would be claiming more than it tested.
+    for (const row of rows) {
+      const receipt = row.sourceVerification as Record<string, unknown>;
+      // A signature really was verified — this is not a case of there being no attestation attempt.
+      expect(receipt.method).toBe("ed25519-v1");
+      expect(typeof receipt.signature).toBe("string");
+      // And not one field could say whose key it was.
+      for (const f of HOLDER_INDEPENDENCE_FIELDS) expect(Object.keys(receipt)).not.toContain(f);
+    }
 
     // THE SAME FACT AT THE TYPE LEVEL, so adding a holder field to the type cannot be forgotten here:
     // these assignments stop compiling the day either type gains one of the declared fields.

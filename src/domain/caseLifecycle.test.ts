@@ -39,6 +39,9 @@ const input = (over: Partial<CaseLifecycleInput> = {}): CaseLifecycleInput =>
     authority: [],
     baselineCount: 0,
     evidenceCount: 0,
+    // DEFAULTED TO 0 DELIBERATELY, not to `evidenceCount`. Mirroring the total would make the distinction
+    // the field exists for untestable: a case must say whether its evidence is OF THE COLLECTION.
+    outcomeEvidenceCount: 0,
     provenRevenueReturned: null,
     ...over,
   });
@@ -62,7 +65,9 @@ describe("case lifecycle · progress follows the history, nothing else", () => {
       deriveCaseLifecycle(input({ authority: [ev("Author", 1), ev("Intervene", 2)], baselineCount: 1 })).progress,
     ).toBe("INTERVENED");
     expect(
-      deriveCaseLifecycle(input({ authority: [ev("Author", 1)], baselineCount: 1, evidenceCount: 2 })).progress,
+      deriveCaseLifecycle(
+        input({ authority: [ev("Author", 1)], baselineCount: 1, evidenceCount: 2, outcomeEvidenceCount: 2 }),
+      ).progress,
     ).toBe("EVIDENCED");
     expect(
       deriveCaseLifecycle(
@@ -70,10 +75,41 @@ describe("case lifecycle · progress follows the history, nothing else", () => {
           authority: [ev("Author", 1)],
           baselineCount: 1,
           evidenceCount: 2,
+          outcomeEvidenceCount: 2,
           provenRevenueReturned: { amount: money(7_000, "USD"), proofIds: ["P-1"] },
         }),
       ).progress,
     ).toBe("PROVEN");
+  });
+
+  it("2b · evidence that is NOT of the collection does not reach EVIDENCED", () => {
+    // THE DEFECT G1 SURFACED. `EVIDENCED` used to be reached by `evidenceCount > 0`, so once a
+    // `correction`-role record existed — the billing system's signed statement that the corrective charge
+    // was RAISED — a case that had only been FIXED read as EVIDENCED. That claims the money was observed
+    // when only the fix was. Two records, neither of them an outcome, and the case stays at INTERVENED.
+    expect(
+      deriveCaseLifecycle(
+        input({
+          authority: [ev("Author", 1), ev("Intervene", 2)],
+          baselineCount: 1,
+          evidenceCount: 2,
+          outcomeEvidenceCount: 0,
+        }),
+      ).progress,
+    ).toBe("INTERVENED");
+
+    // And one outcome record among them is enough, which is what makes the test above a real distinction
+    // rather than a claim that evidence never advances the stage.
+    expect(
+      deriveCaseLifecycle(
+        input({
+          authority: [ev("Author", 1), ev("Intervene", 2)],
+          baselineCount: 1,
+          evidenceCount: 2,
+          outcomeEvidenceCount: 1,
+        }),
+      ).progress,
+    ).toBe("EVIDENCED");
   });
 
   it("3 · an authority ledger ALONE never reaches BASELINED, EVIDENCED or PROVEN", () => {

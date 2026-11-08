@@ -100,6 +100,13 @@ describe.skipIf(!process.env.DATABASE_URL)("synthetic demo · operator journey t
     // still no intervention → still refused
     expect((await call("POST", `/synthetic-demo/cases/${caseId}/settle`, OPERATOR)).statusCode).toBe(409);
     expect((await call("POST", `/cases/${caseId}/intervention`, OPERATOR)).statusCode).toBe(201);
+    // G1 · the billing source signs that the corrective charge was raised. A SEPARATE call from settle,
+    // because the correction must precede the collection by the server's own clock.
+    expect((await call("POST", `/synthetic-demo/cases/${caseId}/correction`, OPERATOR)).statusCode).toBe(201);
+    // NEGATIVE: it attests once. A second attestation for one case is a conflict, not a second fix.
+    expect((await call("POST", `/synthetic-demo/cases/${caseId}/correction`, OPERATOR)).statusCode).toBe(409);
+    // NEGATIVE: and only the demo's own book — a foreign case id is refused, never corrected.
+    expect((await call("POST", "/synthetic-demo/cases/RC-does-not-exist/correction", OPERATOR)).statusCode).toBe(404);
 
     // ── NEGATIVE: not every role may trigger the source; and nothing the caller sends is honoured
     for (const who of [APPROVER, hdr("val@company", "verifier"), hdr("gov@company", "steward")]) {

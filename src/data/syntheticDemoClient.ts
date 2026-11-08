@@ -26,6 +26,16 @@ export function launchSyntheticDemo(actor: DevActor): Promise<SyntheticLaunchDTO
   return apiRequest("POST", "/synthetic-demo/launch", actor, undefined);
 }
 
+/**
+ * G1 · ask the synthetic billing source to attest that the corrective charge was raised.
+ *
+ * Separate from `settleSyntheticCase` because the correction must precede the collection: a payment
+ * observed before the fix cannot have been caused by it, and the server checks that by its own clock.
+ */
+export function issueSyntheticCorrection(caseId: string, actor: DevActor): Promise<EvidenceRecordDTO> {
+  return apiRequest("POST", `/synthetic-demo/cases/${encodeURIComponent(caseId)}/correction`, actor, undefined);
+}
+
 export function settleSyntheticCase(caseId: string, actor: DevActor): Promise<EvidenceRecordDTO> {
   return apiRequest("POST", `/synthetic-demo/cases/${encodeURIComponent(caseId)}/settle`, actor, undefined);
 }

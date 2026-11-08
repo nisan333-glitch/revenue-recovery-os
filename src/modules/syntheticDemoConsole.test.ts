@@ -71,10 +71,16 @@ describe("Synthetic Demo console · structure", () => {
 
   it("the synthetic-source client has no parameter that could carry an amount, currency or date", () => {
     expect(clientBody).toMatch(/settleSyntheticCase\(caseId: string, actor: DevActor\)/);
+    expect(clientBody).toMatch(/issueSyntheticCorrection\(caseId: string, actor: DevActor\)/);
     expect(clientBody).toMatch(/launchSyntheticDemo\(actor: DevActor\)/);
     expect(clientBody).not.toMatch(/amountMinor|collectedMinor|observedAt|evidenceId/);
-    // and both POSTs send no body at all
-    expect([...clientBody.matchAll(/apiRequest\("POST".*undefined\)/g)]).toHaveLength(2);
+    // EVERY POST SENDS NO BODY — not "the two POSTs do". The first form of this check counted them and
+    // read 2, so adding a third endpoint failed a guard whose claim was never about the number. A count is
+    // a fact about the file; "no POST can carry a figure" is the claim, and it holds for any number.
+    const posts = [...clientBody.matchAll(/apiRequest\("POST"/g)];
+    const bodyless = [...clientBody.matchAll(/apiRequest\("POST".*undefined\)/g)];
+    expect(posts.length).toBeGreaterThanOrEqual(3);
+    expect(bodyless).toHaveLength(posts.length);
   });
 
   it("is reachable from the app shell, next to — not in place of — the existing client-side simulation", () => {

@@ -21,12 +21,13 @@ import {
   chainRootExists,
 } from "../persistence/proofStore";
 import { getBaselineSnapshot, establishAndLockBaseline } from "../persistence/baselineStore";
-import { getEvidenceByIds, ingestEvidence, type IngestedEvidence } from "../persistence/evidenceStore";
+import { getEvidenceByIds, getEvidenceForCase, ingestEvidence, type IngestedEvidence } from "../persistence/evidenceStore";
 import { money } from "../../src/domain/money";
 import { ENFORCED_REASON_SCOPE, reasonScopeViolation } from "../../src/domain/reasons";
 import { prisma } from "../db";
 import { caseProvenEligibility } from "./caseProvenGate";
 import { financialOutcomeSufficiency } from "../../src/domain/outcomeEvidence";
+import { executedCorrection } from "../../src/domain/executedCorrection";
 import type { Proof, ProofApprovalInput } from "../../src/domain/proof";
 import { baselineTemporallyValid, type Baseline } from "../../src/domain/baseline";
 import { hasIndependentEvidence, type Evidence } from "../../src/domain/evidence";
@@ -342,6 +343,44 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
     // outcome records total less than you claimed" — a generic 403 satisfies a gate and fails a reader.
     throw new ForbiddenError(
       `PROVEN requires verified financial outcome evidence — ${sufficiency.code}: ${sufficiency.reason}`,
+    );
+  }
+
+  // G1 · A VERIFIED EXECUTED CORRECTION, AUDITABLY RELATED TO THE MONEY.
+  //
+  //   > PROVEN must require a verified executed-correction record, verified financial collection
+  //   > evidence, and an auditable relationship between the correction and the financial outcome.
+  //
+  // Before this, a case reached PROVEN with no `Intervene` event ever recorded: the intervention was read
+  // only for the baseline-lock ordering, and that check passes on absence. `BillingCorrection` is a
+  // recovery REASON — it establishes that the claim is about a correction, never that one happened.
+  //
+  // THE CORRECTION IS READ FROM THE CASE, NOT CITED BY THE REQUEST. A caller who could choose which
+  // correction substantiates their claim would be choosing their own evidence; and the whole case's
+  // evidence is already case-scoped by `getEvidenceForCase`, so there is no field to assert here at all.
+  //
+  // RELATIONSHIP, AND ITS LIMIT. Leg A has already refused unless this case's identity covers exactly one
+  // reconciliation unit, so correction and collection concern the same obligation; the correction must
+  // additionally PRECEDE the collection by the server's own clock. That is necessary evidence of the
+  // relationship and never proof of causation — `causationEstablished` is the literal `false`.
+  const caseEvidence = await getEvidenceForCase(req.recoveryCaseId);
+  const correction = executedCorrection({
+    earliestOutcomeIngestedAt: outcomeObservedAt,
+    corrections: caseEvidence
+      .filter((e) => e.evidenceRole === "correction")
+      .map((e) => ({
+        evidenceId: e.evidenceId,
+        sourceSystem: e.sourceSystem,
+        sourceRecordId: e.sourceRecordId,
+        ingestedAt: e.ingestedAt,
+        sourceVerified: !!e.sourceVerification,
+        beneficiaryControl: !e.sourceVerification || e.beneficiaryControl,
+        trustClassification: e.sourceVerification ? e.trustClassification : "beneficiary_controlled",
+      })),
+  });
+  if (!correction.established) {
+    throw new ForbiddenError(
+      `PROVEN requires a verified executed correction — ${correction.code}: ${correction.reason}`,
     );
   }
 

@@ -41,6 +41,7 @@ import {
   getSyntheticDemoStatus,
   launchSyntheticDemo,
   settleSyntheticCase,
+  issueSyntheticCorrection,
   type SyntheticDemoStatusDTO,
 } from "../data/syntheticDemoClient";
 import { APPROVER, type DevActor } from "../data/devActor";
@@ -187,7 +188,16 @@ export function SyntheticDemoConsole() {
     });
     return "Baseline established and locked before any outcome exists.";
   });
-  const interveneStep = () => act("intervene", async () => { await recordIntervention(caseId!, OPERATOR); return "Corrective action recorded."; });
+  // G1 · TWO FACTS, NOT ONE. `recordIntervention` is the governed timing event — an operator stating that
+  // a correction was made, which is the beneficiary describing their own work. The second call obtains the
+  // billing source's SIGNED attestation that the corrective charge was actually raised, which is what
+  // `approve()` now requires. They are two calls and in this order because the correction must precede the
+  // collection by the server's own clock.
+  const interveneStep = () => act("intervene", async () => {
+    await recordIntervention(caseId!, OPERATOR);
+    await issueSyntheticCorrection(caseId!, OPERATOR);
+    return "Corrective action recorded, and the SYNTHETIC billing source signed an attestation that the corrective invoice was raised.";
+  });
   const settleStep = () => act("settle", async () => {
     await settleSyntheticCase(caseId!, OPERATOR);
     return "SYNTHETIC payer settled the corrected invoice. A signed outcome record was ingested. Nothing is proven yet.";

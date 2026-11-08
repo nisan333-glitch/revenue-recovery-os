@@ -194,7 +194,11 @@ describe.skipIf(!HAS_DB)("the CFO Proof report", () => {
     expect(proven.proofChainFigureMinor).toBe(60_000);
     expect(proven.gateVerdict).toBe("ELIGIBLE");
     expect(proven.attestationCode).toBe("INDEPENDENCE_NOT_ESTABLISHABLE_FROM_RECORD");
+    // TWO signed billing sources now: G1 made the Fix leg evidential, so the case carries the correction
+    // attestation alongside the settlement. Both are independent and both verified — which is the point of
+    // the field, and `attestationCode` above still refuses to call the result independently attested.
     expect(proven.evidenceSources).toEqual([
+      { sourceSystem: "billing", trustClassification: "independent", signatureVerified: true },
       { sourceSystem: "billing", trustClassification: "independent", signatureVerified: true },
     ]);
 

@@ -189,6 +189,7 @@ export async function readRecoveryCase(
     authority: authorityEntries,
     baselineCount: baselines.length,
     evidenceCount: evidence.length,
+    outcomeEvidenceCount: evidence.filter((e) => e.evidenceRole === "outcome").length,
     provenRevenueReturned:
       ledger.amount === null ? null : { amount: ledger.amount, proofIds: ledger.proofIds },
   });

@@ -24,6 +24,12 @@ const recoveryCaseId = process.argv[2];
 // script exits 0 in this mode either way and reports the status, because the point is what the SERVER
 // answered — a non-zero exit would make a correct refusal indistinguishable from a harness failure.
 const tampered = process.argv[3] === "tampered";
+// G1 · CORRECTION MODE. Signs and ingests the billing source's statement that the corrective charge was
+// RAISED — role `correction`, derived by the server from (sourceSystem, evidenceType) and never asserted
+// here. It carries NO amount, because it is not collected money: `approve()` reads outcome-role records
+// only for the monetary check, and this record answers a different question, namely whether the fix
+// actually happened. It is ingested before the settlement so the correction demonstrably precedes it.
+const correction = process.argv[3] === "correction";
 const privateKeyPem = process.env.JOURNEY_EVIDENCE_PRIVATE_KEY ?? "";
 const keyId = process.env.JOURNEY_EVIDENCE_KEY_ID ?? "";
 const apiPort = process.env.JOURNEY_API_PORT ?? "4000";
@@ -34,16 +40,25 @@ if (!recoveryCaseId || !privateKeyPem || !keyId) {
 }
 
 async function main(): Promise<void> {
-  const evidenceId = `EV-journey-${tampered ? "tamper-" : ""}${recoveryCaseId!.slice(3, 11)}`;
-  const claim = {
-    evidenceId,
-    sourceSystem: "billing",
-    sourceRecordId: `inv-journey-${recoveryCaseId!.slice(3, 11)}`,
-    evidenceType: "invoice_paid",
-    observedAt: "2026-07-25T00:00:00.000Z",
-    amountMinor: 9_000,
-    currency: "USD",
-  };
+  const suffix = tampered ? "tamper-" : correction ? "fix-" : "";
+  const evidenceId = `EV-journey-${suffix}${recoveryCaseId!.slice(3, 11)}`;
+  const claim = correction
+    ? {
+        evidenceId,
+        sourceSystem: "billing",
+        sourceRecordId: `corrective-journey-${recoveryCaseId!.slice(3, 11)}`,
+        evidenceType: "corrective_invoice_issued",
+        observedAt: "2026-07-20T00:00:00.000Z",
+      }
+    : {
+        evidenceId,
+        sourceSystem: "billing",
+        sourceRecordId: `inv-journey-${recoveryCaseId!.slice(3, 11)}`,
+        evidenceType: "invoice_paid",
+        observedAt: "2026-07-25T00:00:00.000Z",
+        amountMinor: 9_000,
+        currency: "USD",
+      };
   const issuedAt = new Date().toISOString();
   const signature = sign(
     null,
@@ -60,14 +75,20 @@ async function main(): Promise<void> {
     },
     body: JSON.stringify({
       ...claim,
-      ...(tampered ? { amountMinor: claim.amountMinor * 10 } : {}),
+      ...(tampered && "amountMinor" in claim ? { amountMinor: claim.amountMinor * 10 } : {}),
       sourceAttestation: { keyId, issuedAt, signature },
     }),
   });
   const body = await res.text();
   // The journey asserts `ingested`; the status and body are printed so a failure names itself rather
   // than surfacing later as a case that never reaches EVIDENCED for no stated reason.
-  console.log(JSON.stringify({ ingested: res.status === 201, status: res.status, evidenceId, body: body.slice(0, 300) }));
+  let role: unknown = null;
+  try {
+    role = (JSON.parse(body) as { evidenceRole?: unknown }).evidenceRole ?? null;
+  } catch {
+    role = null;
+  }
+  console.log(JSON.stringify({ ingested: res.status === 201, status: res.status, evidenceId, role, body: body.slice(0, 300) }));
   if (res.status !== 201 && !tampered) process.exitCode = 1;
 }
 

@@ -147,6 +147,16 @@ export interface CaseLifecycleInput {
   readonly baselineCount: number;
   readonly evidenceCount: number;
   /**
+   * How many of those records are evidence OF THE COLLECTION (role `outcome`).
+   *
+   * SEPARATE FROM `evidenceCount` BECAUSE THEY ANSWER DIFFERENT QUESTIONS, and conflating them was a real
+   * defect. `EVIDENCED` means the outcome has been observed. Once G1 added a `correction` role — the
+   * billing system's signed statement that the corrective charge was RAISED — a case that had only been
+   * FIXED began reading `EVIDENCED`, because any evidence at all satisfied the old condition. That claims
+   * the money was seen when only the fix was. Recording a fix must leave the case at `INTERVENED`.
+   */
+  readonly outcomeEvidenceCount: number;
+  /**
    * Computed by the caller from `effectiveProofs`/`provenLedger`, NOT re-derived here.
    *
    * `null` means no effective proof exists. It is deliberately not `0`: a second implementation of the
@@ -194,7 +204,9 @@ function deriveProgress(input: CaseLifecycleInput): CaseProgress {
   const actions = new Set(input.authority.map((a) => a.action));
   // Highest first: a proven case is proven whatever else is recorded.
   if (input.provenRevenueReturned !== null) return "PROVEN";
-  if (input.evidenceCount > 0) return "EVIDENCED";
+  // OUTCOME evidence, not any evidence. See `outcomeEvidenceCount` above: a correction record is evidence
+  // that the billing was fixed, never evidence that the money arrived.
+  if (input.outcomeEvidenceCount > 0) return "EVIDENCED";
   if (actions.has("Intervene")) return "INTERVENED";
   if (input.baselineCount > 0) return "BASELINED";
   if (actions.has("Author")) return "OWNED";

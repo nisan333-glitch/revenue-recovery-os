@@ -7,7 +7,7 @@ import { buildApp } from "../app";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { prisma } from "../db";
 import * as auditService from "./auditService";
-import { uid, AUTHOR, APPROVER, VERIFIER, STEWARD, seedAuditableCase, seedBaseline, seedEvidence, approveBody } from "../test/fixtures";
+import { uid, AUTHOR, APPROVER, VERIFIER, STEWARD, seedAuditableCase, seedBaseline, seedEvidence, approveBody, seedCorrection} from "../test/fixtures";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
@@ -51,6 +51,12 @@ describe.skipIf(!HAS_DB)("EP-8 · governance, audit trail & explainability", () 
     await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR });
     const baselineId = await seedBaseline(app, caseId);
     // deliberately no /intervention call — the fix timing stays unknown/unverified
+    // G1 · a VERIFIED CORRECTION, and still no Intervene event. The two are different facts: the
+    // Intervene event is the operator's governed timing record, this is the billing source's signed
+    // attestation that the corrective charge was raised. G1 requires the second; `interventionUnverified`
+    // remains a provenance gap because the first is absent — which is exactly this test's subject.
+    const fix = await seedCorrection(app, caseId);
+    expect(fix.res.statusCode, fix.res.body).toBe(201);
     const { evidenceId, res: evRes } = await seedEvidence(app, caseId, { amountMinor: 1_320_000, currency: "USD" });
     expect(evRes.statusCode).toBe(201);
     const proofId = `PF-${uid()}`;

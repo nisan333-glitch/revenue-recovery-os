@@ -174,6 +174,65 @@ export class SyntheticDemo {
   }
 
   /**
+   * G1 · The synthetic billing system's signed statement that the CORRECTIVE CHARGE WAS RAISED.
+   *
+   * This is the Fix leg made evidential. `POST /cases/:id/intervention` records the governed TIMING fact —
+   * an operator says a correction was made — and that is the beneficiary describing their own work. This
+   * records the SOURCE attesting that it actually happened, through the same Ed25519 channel that already
+   * carries the settlement, because the only thing that can establish that a corrective charge was raised
+   * is the system that raised it.
+   *
+   * IT IS A SEPARATE STEP FROM `settle`, AND THAT IS THE POINT. G1 requires the correction to PRECEDE the
+   * collection by the server's own clock — a payment observed before the fix cannot have been caused by
+   * it — so minting both inside one call would put them in the same instant and establish no order at all.
+   */
+  async issueCorrection<T>(
+    actor: ActorContext,
+    recoveryCaseId: string,
+    ingest: (claim: SyntheticEvidenceClaim) => Promise<T>,
+  ): Promise<T> {
+    if (!roleCan(actor.role, "IngestEvidence")) {
+      throw new ForbiddenError(`role '${actor.role}' may not perform 'IngestEvidence'`);
+    }
+    const root = await this.ports.readCase(recoveryCaseId);
+    if (!root) throw new NotFoundError("no such Recovery Case");
+    if (
+      root.boundaryId !== this.boundaryId
+      || root.recoveryType !== RECONCILIATION_RECOVERY_TYPE
+      || root.detectorVersion !== RECONCILIATION_AGENT_ID
+    ) {
+      throw new ForbiddenError("the synthetic billing source only corrects cases opened from the synthetic demo book");
+    }
+    requireBoundaryAccess(actor, root.boundaryId);
+    if (!(await this.ports.hasIntervention(recoveryCaseId))) {
+      throw new ConflictError("the corrective action must be recorded before the billing source attests to it");
+    }
+    const evidenceId = `EV-SYNTHETIC-FIX-${recoveryCaseId}`;
+    if (await this.ports.evidenceExists(recoveryCaseId, evidenceId)) {
+      throw new ConflictError("the synthetic billing source has already attested the correction for this case");
+    }
+    const issuedAt = new Date(this.now()).toISOString();
+    const claim = {
+      evidenceId,
+      sourceSystem: SYNTHETIC_DEMO_SOURCE_SYSTEM,
+      sourceRecordId: `SYNTHETIC-CORRECTIVE-INVOICE-${recoveryCaseId}`,
+      // Derives `correction` via the server's own role allowlist. The caller cannot assert a role.
+      evidenceType: "corrective_invoice_issued",
+      observedAt: issuedAt,
+      // The corrective invoice is raised FOR the identified exposure. It is not collected money and is
+      // never summed into the outcome total — `financialOutcomeSufficiency` reads outcome-role records only.
+      amountMinor: root.amountAtRiskMinor,
+      currency: root.currency,
+    };
+    const signature = sign(null, sourceSigningPayload(recoveryCaseId, claim, issuedAt), this.privateKey).toString("base64");
+    return ingest(Object.freeze({
+      ...claim,
+      note: SYNTHETIC_DEMO_NOTE,
+      sourceAttestation: Object.freeze({ keyId: this.trustKey.keyId, issuedAt, signature }),
+    }));
+  }
+
+  /**
    * Simulate the synthetic payer settling the corrected invoice, as a signed outcome record. Returns the
    * ingested evidence. `ingest` is the REAL `proofService.ingestCaseEvidence` bound to the REAL verifier.
    */

@@ -27,8 +27,7 @@ import {
   seedGovernedRoot,
   seedIntervention,
   seedEvidence,
-  approveBody,
-} from "../test/fixtures";
+  approveBody, seedCorrection,} from "../test/fixtures";
 
 const HAS_DB = !!process.env.DATABASE_URL;
 
@@ -236,6 +235,12 @@ describe.skipIf(!HAS_DB)("EP-8.1 · trust gate hardening (adversarial regression
     await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR });
     const baselineId = await seedBaseline(app, caseId);
     // no intervention recorded — an unknown fact (a gap), never a block
+    // G1 · a VERIFIED CORRECTION, and still no Intervene event. The two are different facts: the
+    // Intervene event is the operator's governed timing record, this is the billing source's signed
+    // attestation that the corrective charge was raised. G1 requires the second; `interventionUnverified`
+    // remains a provenance gap because the first is absent — which is exactly this test's subject.
+    const fix = await seedCorrection(app, caseId);
+    expect(fix.res.statusCode, fix.res.body).toBe(201);
     const { evidenceId, res: evRes } = await seedEvidence(app, caseId, { amountMinor: 1_320_000, currency: "USD" });
     expect(evRes.statusCode).toBe(201);
     const proofId = `PF-${uid()}`;

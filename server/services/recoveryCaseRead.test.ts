@@ -205,7 +205,10 @@ describe.skipIf(!HAS_DB)("the governed Recovery Case read surface", () => {
     expect(evRes.statusCode).toBe(201);
     view = await read();
     expect(view.lifecycle.progress).toBe("EVIDENCED");
-    expect(view.evidence.map((e) => e.evidenceId)).toEqual([evidenceId]);
+    // TWO records now: the correction `seedIntervention` records (role `correction`) and the outcome.
+    // The ORDER matters and is asserted: the fix is evidenced before the money, which is what G1 checks.
+    expect(view.evidence.map((e) => e.evidenceRole)).toEqual(["correction", "outcome"]);
+    expect(view.evidence.map((e) => e.evidenceId).filter((id) => id === evidenceId)).toEqual([evidenceId]);
 
     // EVIDENCED is as far as evidence alone goes. Up to this exact point the proven ledger is still
     // NOT COMPUTED — evidence is not a proof, and a renderer has nothing it could print as recovered.

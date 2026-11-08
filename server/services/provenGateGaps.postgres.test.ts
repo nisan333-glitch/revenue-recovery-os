@@ -104,21 +104,25 @@ describe.skipIf(!HAS_DB)("PROVEN gate · the two gaps, measured on the real path
   beforeAll(async () => { await app.ready(); }, 60_000);
   afterAll(async () => { await app.close(); await prisma.$disconnect(); });
 
-  // ── G1 · matrix rows 5 and 6: the correction leg is not a conjunct ────────────────────────────────
-  it("G1 · a case with NO Intervene event ever recorded still reaches PROVEN", async () => {
+  // ── G1 · CLOSED. What this test asserted, and what it asserts now ────────────────────────────────
+  //
+  // IT USED TO ASSERT THE DEFECT. The original form took a single-obligation case to approval with NO
+  // `Intervene` event ever recorded — asserted absent by reading `authority_events` directly — and
+  // asserted `201` with 60_000 minor of Revenue Returned minted, while `recoveryReason` said
+  // `BillingCorrection`. That was the measurement establishing G1: the Fix leg had no mechanism behind it.
+  //
+  // G1 IS NOW CLOSED. The assertions below are inverted and the history is recorded here rather than
+  // deleted. Three things are kept apart deliberately, because conflating them is how the original defect
+  // was argued away: a RECOVERY REASON names a mechanism, an INTERVENE EVENT is the operator's own timing
+  // record, and a CORRECTION RECORD is the source's signed attestation that the charge was raised. Only
+  // the third evidences the fix.
+  it("G1 NEGATIVE · no correction record at all is refused, whatever the reason says", async () => {
     const seeded = await seedProvableCase(160_000, 100_000);
     expect((await app.inject({ method: "POST", url: `/cases/${seeded.caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
     const baselineId = await seedBaseline(app, seeded.caseId, { calculatedMinor: 10_000 });
     const { evidenceId, res } = await seedEvidence(app, seeded.caseId, { amountMinor: 70_000, currency: "USD" });
     expect(res.statusCode, res.body).toBe(201);
-
-    // DELIBERATELY NO `seedIntervention`. Nothing was fixed, and nothing claims it was.
-    const authority = await prisma.authorityEvent.findMany({
-      where: { recoveryCaseId: seeded.caseId }, select: { action: true },
-    });
-    expect(authority.map((a) => a.action)).not.toContain("Intervene");
-
-    const approved = await app.inject({
+    const refused = await app.inject({
       method: "POST", url: "/proofs", headers: APPROVER,
       payload: {
         proofId: `SYNTHETIC-proof-${randomUUID()}`, recoveryCaseId: seeded.caseId, currency: "USD",
@@ -127,11 +131,54 @@ describe.skipIf(!HAS_DB)("PROVEN gate · the two gaps, measured on the real path
         evidenceIds: [evidenceId], baselineId, confidenceUsed: 95,
       },
     });
-    // THE GAP. A proof is minted, and Revenue Returned with it, on a case where no correction was ever
-    // recorded — while the reason says `BillingCorrection`. Matrix rows 5 and 6 read NOT ENFORCED.
-    expect(approved.statusCode, approved.body).toBe(201);
-    expect(approved.json().revenueReturned.minor).toBe(60_000);
-    // When this assertion starts failing, G1 has been closed. Update docs/PROVEN_GATE_REVIEW_V1.md §3.
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(refused.body).toContain("NO_EXECUTED_CORRECTION_RECORD");
+    expect(await prisma.proof.count({ where: { recoveryCaseId: seeded.caseId } })).toBe(0);
+  }, 60_000);
+
+  it("G1 NEGATIVE · an INTERVENE EVENT alone is not a correction record", async () => {
+    // The sharpest of the three. An operator saying they fixed it is the beneficiary describing their own
+    // work; G1 asks the source. `noCorrectionRecord` records the governed timing event and nothing else.
+    const seeded = await seedProvableCase(160_000, 100_000);
+    expect((await app.inject({ method: "POST", url: `/cases/${seeded.caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
+    const baselineId = await seedBaseline(app, seeded.caseId, { calculatedMinor: 10_000 });
+    await seedIntervention(app, seeded.caseId, { noCorrectionRecord: true });
+    const authority = await prisma.authorityEvent.findMany({
+      where: { recoveryCaseId: seeded.caseId }, select: { action: true },
+    });
+    expect(authority.map((a) => a.action)).toContain("Intervene");
+    const { evidenceId } = await seedEvidence(app, seeded.caseId, { amountMinor: 70_000, currency: "USD" });
+    const refused = await app.inject({
+      method: "POST", url: "/proofs", headers: APPROVER,
+      payload: {
+        proofId: `SYNTHETIC-proof-${randomUUID()}`, recoveryCaseId: seeded.caseId, currency: "USD",
+        collectedMinor: 70_000, excludedRecoveryMinor: 0, exclusionStatement: "no exclusions asserted",
+        recoveryReason: "BillingCorrection", attribution: "ar-system",
+        evidenceIds: [evidenceId], baselineId, confidenceUsed: 95,
+      },
+    });
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(refused.body).toContain("NO_EXECUTED_CORRECTION_RECORD");
+  }, 60_000);
+
+  it("G1 POSITIVE · a verified correction recorded BEFORE the money is accepted", async () => {
+    // THE CONTROL. Without this the two negatives could be measuring a gate that refuses everything.
+    const seeded = await seedProvableCase(160_000, 100_000);
+    expect((await app.inject({ method: "POST", url: `/cases/${seeded.caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
+    const baselineId = await seedBaseline(app, seeded.caseId, { calculatedMinor: 10_000 });
+    await seedIntervention(app, seeded.caseId); // records the timing event AND the signed correction
+    const { evidenceId } = await seedEvidence(app, seeded.caseId, { amountMinor: 70_000, currency: "USD" });
+    const accepted = await app.inject({
+      method: "POST", url: "/proofs", headers: APPROVER,
+      payload: {
+        proofId: `SYNTHETIC-proof-${randomUUID()}`, recoveryCaseId: seeded.caseId, currency: "USD",
+        collectedMinor: 70_000, excludedRecoveryMinor: 0, exclusionStatement: "no exclusions asserted",
+        recoveryReason: "BillingCorrection", attribution: "ar-system",
+        evidenceIds: [evidenceId], baselineId, confidenceUsed: 95,
+      },
+    });
+    expect(accepted.statusCode, accepted.body).toBe(201);
+    expect(accepted.json().revenueReturned.minor).toBe(60_000);
   }, 60_000);
 
   // ── G2 · CLOSED. What this test asserted, and what it asserts now ────────────────────────────────

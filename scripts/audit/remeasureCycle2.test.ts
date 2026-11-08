@@ -33,6 +33,8 @@ import {
 } from "./remeasureCycle2";
 
 const ROOT = resolve(__dirname, "..", "..");
+/** Where the FROZEN EVIDENCE lives. Not `e2e/`, which also holds the browser-journey harness. */
+const EVIDENCE_PATH = "e2e/fixtures/";
 const sha = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 const DATASETS = ["dataset", "spot-multicurrency", "spot-cancelled-after-asof"] as const;
@@ -345,14 +347,31 @@ describe("the command · read-only, proved against the filesystem", () => {
     expect(out.falsePositiveMinor).toBe(fresh.falsePositiveMinor);
   }, 60_000);
 
-  it("20 · git confirms no tracked file under e2e/ is MODIFIED or DELETED", () => {
-    // Narrowed from "e2e/ is clean", which was imprecise: a staged ADDITION is not a modification, and
-    // the first form went red while `score.json` was being added to the index — flagging the one change
-    // the audit is allowed to make. The property that matters is that no EXISTING evidence moved.
-    const lines = execFileSync("git", ["status", "--porcelain", "e2e/"], { cwd: ROOT, encoding: "utf8" })
+  it("20 · git confirms no tracked EVIDENCE file is MODIFIED or DELETED", () => {
+    // NARROWED TWICE, AND THE SUBJECT IS THE SAME BOTH TIMES: no EXISTING EVIDENCE moved.
+    //
+    // First narrowing: "e2e/ is clean" was imprecise because a staged ADDITION is not a modification, and
+    // that form went red while `score.json` was being added to the index — flagging the one change the
+    // audit is allowed to make.
+    //
+    // Second narrowing: the scope was the whole of `e2e/`, which also contains the browser-journey
+    // HARNESS. A harness is an instrument, not evidence, and it legitimately changes when the product it
+    // drives changes — so the guard failed on a deliberate edit to `e2e/journey.mjs` while the frozen
+    // packages it exists to protect were untouched. The evidence lives under `e2e/fixtures/`.
+    const lines = execFileSync("git", ["status", "--porcelain", EVIDENCE_PATH], { cwd: ROOT, encoding: "utf8" })
       .split("\n")
       .filter(Boolean);
     const touched = lines.filter((l) => /^(.[MD]|[MD].)/.test(l));
-    expect(touched, `no tracked file under e2e/ may be modified or deleted, got:\n${touched.join("\n")}`).toEqual([]);
+    expect(touched, `no tracked evidence file may be modified or deleted, got:\n${touched.join("\n")}`).toEqual([]);
+  });
+
+  it("20b · and that scope is not empty — a narrowed guard that covers nothing is no guard", () => {
+    // Narrowing a guard is exactly when it can become vacuous, and this repository has already shipped a
+    // check that matched nothing and was mistaken for a passing one. So the scope is asserted to contain
+    // tracked files before the check above is trusted to mean anything.
+    const tracked = execFileSync("git", ["ls-files", EVIDENCE_PATH], { cwd: ROOT, encoding: "utf8" })
+      .split("\n")
+      .filter(Boolean);
+    expect(tracked.length).toBeGreaterThan(0);
   });
 });

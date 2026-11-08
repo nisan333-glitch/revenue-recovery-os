@@ -172,6 +172,18 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     // NO BODY IS READ. The caller names a case and nothing else: amount, currency, date, source and evidence
     // id are fixed by the demo's own rule (server/demo/syntheticDemo.ts), so an injected `amountMinor` is
     // ignored rather than honoured — a test pins that.
+    // G1 · the billing source attests that the corrective charge was raised. A separate call from
+    // `settle` on purpose: the correction must precede the collection by the server's own clock.
+    app.post<{ Params: { caseId: string } }>(
+      "/synthetic-demo/cases/:caseId/correction",
+      { schema: caseParamsSchema },
+      async (req, reply) => {
+        const actor = await resolveActor(req, options.identityResolver);
+        const evidence = await syntheticDemo.issueCorrection(actor, req.params.caseId, (claim) =>
+          proofService.ingestCaseEvidence(actor, req.params.caseId, claim, sourceVerifier));
+        return reply.code(201).send(evidence);
+      },
+    );
     app.post<{ Params: { caseId: string } }>(
       "/synthetic-demo/cases/:caseId/settle",
       { schema: caseParamsSchema },

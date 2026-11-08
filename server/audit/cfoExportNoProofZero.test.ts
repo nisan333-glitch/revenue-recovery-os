@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../app";
 import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
-import { APPROVER, AUTHOR, seedBaseline, seedEvidence, seedIntervention, uid } from "../test/fixtures";
+import { APPROVER, AUTHOR, seedBaseline, seedEvidence, seedIntervention, uid, seedCorrection} from "../test/fixtures";
 import { cfoAuditExport } from "./auditService";
 import type { ActorContext } from "../auth/identity";
 
@@ -129,6 +129,12 @@ describe.skipIf(!HAS_DB)("cfoAuditExport · no proof is not a zero", () => {
     expect((await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
     const baselineId = await seedBaseline(app, caseId, { calculatedMinor: 10_000 });
     // NO intervention recorded — an unknown fact, which is a provenance gap and never a block.
+    // G1 · a VERIFIED CORRECTION, and still no Intervene event. The two are different facts: the
+    // Intervene event is the operator's governed timing record, this is the billing source's signed
+    // attestation that the corrective charge was raised. G1 requires the second; `interventionUnverified`
+    // remains a provenance gap because the first is absent — which is exactly this test's subject.
+    const fix = await seedCorrection(app, caseId);
+    expect(fix.res.statusCode, fix.res.body).toBe(201);
     const { evidenceId, res } = await seedEvidence(app, caseId, { amountMinor: 70_000, currency: "USD" });
     expect(res.statusCode, res.body).toBe(201);
     const approved = await app.inject({

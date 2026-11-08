@@ -92,7 +92,15 @@ describe("EP-31d · SourceNamespace", () => {
     expect(deriveEvidenceRole("billing", "invoice_paid")).toBe("outcome");
     expect(deriveEvidenceRole("billing", "activation_event")).toBe("supporting");
     expect(deriveEvidenceRole("ns-billing-primary", "invoice_paid")).toBe("supporting");
-    expect(ROLE_MAP_VERSION).toBe("evidence-role-2026.1");
+    // AND THE SAME FOR THE ROLE ADDED SINCE. G1 added `correction`, so this test's subject — that a
+    // namespaced source never earns a privileged role — now has a second role to hold against.
+    expect(deriveEvidenceRole("billing", "corrective_invoice_issued")).toBe("correction");
+    expect(deriveEvidenceRole("ns-billing-primary", "corrective_invoice_issued")).toBe("supporting");
+    // THE VERSION MOVED, AND WHY IT MOVED IS THE POINT. 2026.1 → 2026.2 because G1 added the `correction`
+    // role; nothing about namespace resolution changed, which is what the four assertions above establish.
+    // The literal is kept rather than loosened, because a version nothing asserts is free to drift — but
+    // it is not the subject here, and updating it without those assertions would be the drift it guards.
+    expect(ROLE_MAP_VERSION).toBe("evidence-role-2026.2");
     const evidence = makeEvidence({
       evidenceId: "EV-1", evidenceType: "invoice_paid", sourceSystem: "billing",
       sourceRecordId: "R-1", observedAt: "2026-01-01", ingestedAt: "2026-01-02",

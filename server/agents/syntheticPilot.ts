@@ -257,6 +257,33 @@ async function completeGovernedProof(
     effectiveAt: new Date(Date.now() - 30 * 86_400_000).toISOString(),
   }, 201);
   await expectStatus(app, "POST", `/cases/${recoveryCaseId}/intervention`, AUTHOR, undefined, 201);
+  // G1 · the Fix leg, evidenced. The intervention event above is the operator's governed timing record;
+  // this is the SOURCE's attestation that the corrective charge was actually raised, which `approve()`
+  // now requires. It is ingested before the settlement so the correction demonstrably precedes the money.
+  const correctionClaim: EvidenceClaim = {
+    evidenceId: `SYNTHETIC-correction-${randomUUID()}`,
+    sourceSystem: "billing",
+    sourceRecordId: `SYNTHETIC-corrective-${randomUUID()}`,
+    // Derives role `correction` via the server's own allowlist; a caller cannot assert a role.
+    //
+    // REPORTED, NOT SOLVED: this case's reason is `UsageActivation`, and G1 does NOT yet require the
+    // correction type to match the mechanism the reason names — so a billing-correction record currently
+    // substantiates an activation recovery. That mapping is a governance decision (which source attests
+    // to an activation?) and is proposed rather than invented here.
+    evidenceType: "billing_corrected",
+    observedAt: new Date().toISOString(),
+  };
+  const correction = await expectStatus(
+    app,
+    "POST",
+    `/cases/${recoveryCaseId}/evidence`,
+    AUTHOR,
+    source.attest(recoveryCaseId, correctionClaim),
+    201,
+  );
+  if (correction.evidenceRole !== "correction") {
+    throw new Error(`synthetic correction evidence was classified '${correction.evidenceRole}', not 'correction'`);
+  }
 
   const evidenceId = `SYNTHETIC-evidence-${randomUUID()}`;
   const claim: EvidenceClaim = {
