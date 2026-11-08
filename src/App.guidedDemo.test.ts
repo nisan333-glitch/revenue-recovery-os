@@ -209,6 +209,29 @@ describe.skipIf(!HAS_DB)("EP-9 · Guided Demo Prove panel (real governed backend
       // still satisfies as "independent". Using the same billing/invoice_paid pattern already
       // relied on by server/test/fixtures.ts's own seedAuditableCase().
       const { attestFixture } = await import("../server/test/sourceFixture");
+      // G1: `approve()` now requires a VERIFIED EXECUTED CORRECTION — the billing source's signed
+      // statement that the corrective charge was raised. The `/intervention` call above is the operator's
+      // governed TIMING record and is deliberately not enough: an operator asserting they fixed it is the
+      // beneficiary describing their own work. It is ingested BEFORE the settlement below, because the
+      // correction must precede the collection by the server's own clock.
+      const correction = await app.inject({
+        method: "POST",
+        url: `/cases/${CASE_ID}/evidence`,
+        headers: authorHeaders,
+        payload: {
+          ...attestFixture(CASE_ID, {
+            evidenceId: `EV-${CASE_ID}-fix`,
+            sourceSystem: "billing",
+            sourceRecordId: "UA-7781-CORRECTIVE",
+            // Derives role `correction` from the server's own allowlist; a caller cannot assert a role.
+            evidenceType: "corrective_invoice_issued",
+            observedAt: "2026-06-01T12:00:00.000Z",
+          }),
+        },
+      });
+      if (correction.statusCode !== 201) {
+        throw new Error(`demo correction seed failed: ${correction.statusCode} ${correction.body}`);
+      }
       const evidence = await app.inject({
         method: "POST",
         url: `/cases/${CASE_ID}/evidence`,
