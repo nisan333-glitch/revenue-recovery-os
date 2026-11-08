@@ -26,6 +26,7 @@ import { money } from "../../src/domain/money";
 import { ENFORCED_REASON_SCOPE, reasonScopeViolation } from "../../src/domain/reasons";
 import { prisma } from "../db";
 import { caseProvenEligibility } from "./caseProvenGate";
+import { financialOutcomeSufficiency } from "../../src/domain/outcomeEvidence";
 import type { Proof, ProofApprovalInput } from "../../src/domain/proof";
 import { baselineTemporallyValid, type Baseline } from "../../src/domain/baseline";
 import { hasIndependentEvidence, type Evidence } from "../../src/domain/evidence";
@@ -293,39 +294,55 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
     throw new ConflictError(`baseline trust violation: ${temporal.reason}`);
   }
 
-  // Auditable-tier claims (confidence clears the server-pinned threshold) additionally require
-  // independent, outcome-role evidence sufficient to substantiate the collected amount claimed.
-  const auditableTierClaimed = req.confidenceUsed >= CURRENT_POLICY.proofThreshold;
-  if (auditableTierClaimed) {
-    const evidenceForGate: Evidence[] = evidenceRecords.map((e) => ({
+  // G2 · VERIFIED FINANCIAL OUTCOME EVIDENCE, AT EVERY TIER.
+  //
+  //   > Every PROVEN revenue outcome requires sufficient verified financial outcome evidence, REGARDLESS
+  //   > of confidence tier. `confidenceUsed` may influence the Auditable classification only.
+  //
+  // These six checks used to run only inside `if (req.confidenceUsed >= CURRENT_POLICY.proofThreshold)`,
+  // and `confidenceUsed` is a field on THIS REQUEST — so the submitter chose which evidence bar applied
+  // to their own claim. Measured on the real governed path before it was changed: the same
+  // supporting-role evidence carrying no amount was refused 403 at confidence 80 and accepted 201 at 79,
+  // minting Revenue Returned either way. A number that selects its own evidence bar is the
+  // beneficiary-determines-the-number shape, and rule 10 is "claimed revenue is not proven revenue".
+  //
+  // CONFIDENCE KEEPS ITS ONE LEGITIMATE JOB. `isAuditable` reads `confidence >= PROOF_THRESHOLD`, so the
+  // Auditable subset of Revenue Returned is still decided by confidence. What confidence no longer
+  // decides is whether the money had to be evidenced at all.
+  //
+  // THE DECISION IS PURE AND LIVES ELSEWHERE (`src/domain/outcomeEvidence.ts`), so a refusal cannot be
+  // invented here where no unit test would look for it — the same split `caseProvenGate` uses.
+  const evidenceForGate: Evidence[] = evidenceRecords.map((e) => ({
+    evidenceId: e.evidenceId,
+    evidenceType: e.evidenceType,
+    sourceSystem: e.sourceSystem,
+    sourceRecordId: e.sourceRecordId,
+    observedAt: e.observedAt,
+    ingestedAt: e.ingestedAt,
+    trustClassification: e.sourceVerification ? e.trustClassification : "beneficiary_controlled",
+    suppliedBy: e.ingestedBy,
+    beneficiaryControl: !e.sourceVerification || e.beneficiaryControl,
+  }));
+  const sufficiency = financialOutcomeSufficiency({
+    claimedCollectedMinor: req.collectedMinor,
+    currency: req.currency,
+    anyIndependent: hasIndependentEvidence(evidenceForGate),
+    outcomeItems: outcomeItems.map((e) => ({
       evidenceId: e.evidenceId,
-      evidenceType: e.evidenceType,
-      sourceSystem: e.sourceSystem,
-      sourceRecordId: e.sourceRecordId,
-      observedAt: e.observedAt,
-      ingestedAt: e.ingestedAt,
-      trustClassification: e.sourceVerification ? e.trustClassification : "beneficiary_controlled",
-      suppliedBy: e.ingestedBy,
+      amountMinor: e.amountMinor,
+      currency: e.currency,
+      // A source attestation the SERVER recorded, never the caller's opinion of its own evidence.
+      sourceVerified: !!e.sourceVerification,
       beneficiaryControl: !e.sourceVerification || e.beneficiaryControl,
-    }));
-    if (!hasIndependentEvidence(evidenceForGate)) {
-      throw new ForbiddenError(
-        "auditable claim requires at least one independent evidence reference (operator notes alone are insufficient)",
-      );
-    }
-    if (outcomeItems.length === 0) {
-      throw new ForbiddenError("auditable claim requires at least one outcome-role evidence reference");
-    }
-    if (outcomeItems.some((e) => !e.sourceVerification || e.beneficiaryControl || e.trustClassification !== "independent")) {
-      throw new ForbiddenError("auditable claim requires authenticated independent outcome evidence");
-    }
-    if (outcomeItems.some((e) => e.currency !== req.currency)) {
-      throw new ForbiddenError("outcome evidence currency does not match the proof currency");
-    }
-    const outcomeSum = outcomeItems.reduce((sum, e) => sum + (e.amountMinor ?? 0), 0);
-    if (outcomeSum < req.collectedMinor) {
-      throw new ForbiddenError("outcome evidence amount does not substantiate the collected amount claimed");
-    }
+      trustClassification: e.sourceVerification ? e.trustClassification : "beneficiary_controlled",
+    })),
+  });
+  if (!sufficiency.sufficient) {
+    // THE REFUSAL NAMES ITS CODE, so a caller can tell "you cited nothing independent" from "your
+    // outcome records total less than you claimed" — a generic 403 satisfies a gate and fails a reader.
+    throw new ForbiddenError(
+      `PROVEN requires verified financial outcome evidence — ${sufficiency.code}: ${sufficiency.reason}`,
+    );
   }
 
   const input: ProofApprovalInput = {

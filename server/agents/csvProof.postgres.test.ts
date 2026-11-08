@@ -106,7 +106,11 @@ describe.skipIf(!process.env.DATABASE_URL)("SYNTHETIC CSV to governed proof", ()
     const laundering = await app.inject({ method: "POST", url: "/proofs", headers: APPROVER,
       payload: approveBody({ proofId, caseId, baselineId, evidenceIds: [evidenceId, supporting.evidenceId], collectedMinor: 7_000 }) });
     expect(laundering.statusCode).toBe(403);
-    expect(laundering.json().message).toMatch(/authenticated independent outcome/);
+    // The CODE, not the prose. G2 made this refusal universal rather than tier-gated and the message
+    // now carries a stable code; asserting the sentence would make a financial control's test depend on
+    // its wording. The behaviour under test — a caller's own billing label is not independent proof —
+    // is unchanged, and the refusal is still 403.
+    expect(laundering.json().message).toMatch(/OUTCOME_EVIDENCE_NOT_AUTHENTICATED/);
     const forgedId = `EV-${randomUUID()}`;
     const forged = await app.inject({ method: "POST", url: `/cases/${caseId}/evidence`, headers: AUTHOR,
       payload: { ...payload, evidenceId: forgedId, sourceAttestation: {

@@ -134,48 +134,105 @@ describe.skipIf(!HAS_DB)("PROVEN gate · the two gaps, measured on the real path
     // When this assertion starts failing, G1 has been closed. Update docs/PROVEN_GATE_REVIEW_V1.md §3.
   }, 60_000);
 
-  // ── G2 · matrix rows 10, 11 and 12: the submitter selects the evidence bar ────────────────────────
-  it("G2 · the SAME evidence is refused at the threshold and accepted one point below it", async () => {
-    // Supporting-role evidence carrying NO amount: it cannot substantiate any collected figure.
-    // `deriveEvidenceRole` makes (crm, operator_note) `supporting`, from the server's own allowlist.
-    const mk = async () => {
-      const seeded = await seedProvableCase(160_000, 100_000);
-      expect((await app.inject({ method: "POST", url: `/cases/${seeded.caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
-      const baselineId = await seedBaseline(app, seeded.caseId, { calculatedMinor: 10_000 });
-      await seedIntervention(app, seeded.caseId);
-      const { evidenceId, res } = await seedEvidence(app, seeded.caseId, {
-        sourceSystem: "crm", evidenceType: "operator_note",
-      });
-      expect(res.statusCode, res.body).toBe(201);
-      return { seeded, baselineId, evidenceId };
-    };
-    const payload = (caseId: string, baselineId: string, evidenceId: string, confidenceUsed: number) => ({
-      proofId: `SYNTHETIC-proof-${randomUUID()}`, recoveryCaseId: caseId, currency: "USD",
-      collectedMinor: 70_000, excludedRecoveryMinor: 0, exclusionStatement: "no exclusions asserted",
-      recoveryReason: "BillingCorrection", attribution: "ar-system",
-      evidenceIds: [evidenceId], baselineId, confidenceUsed,
+  // ── G2 · CLOSED. What this test asserted, and what it asserts now ────────────────────────────────
+  //
+  // IT USED TO ASSERT THE DEFECT. The original form ran the SAME supporting-role evidence carrying no
+  // amount twice — once at `confidenceUsed = 80`, once at `79` — and asserted `403` then `201`, with
+  // 60_000 minor of Revenue Returned minted at the lower number. That was the measurement that
+  // established G2: the submitter chose which evidence bar applied to their own claim.
+  //
+  // G2 IS NOW CLOSED, so that assertion is inverted and the history is recorded here rather than
+  // deleted. The evidence requirement is universal, and the two tests below separate the two things a
+  // reader must not confuse: the bar no longer MOVES with the tier (negative), and the bar is about the
+  // EVIDENCE rather than about the confidence number (positive).
+  const unsubstantiated = async () => {
+    const seeded = await seedProvableCase(160_000, 100_000);
+    expect((await app.inject({ method: "POST", url: `/cases/${seeded.caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
+    const baselineId = await seedBaseline(app, seeded.caseId, { calculatedMinor: 10_000 });
+    await seedIntervention(app, seeded.caseId);
+    // Supporting-role, no amount: `deriveEvidenceRole` makes (crm, operator_note) `supporting`.
+    const { evidenceId, res } = await seedEvidence(app, seeded.caseId, {
+      sourceSystem: "crm", evidenceType: "operator_note",
     });
+    expect(res.statusCode, res.body).toBe(201);
+    return { seeded, baselineId, evidenceId };
+  };
+  const substantiated = async (collectedMinor: number) => {
+    const seeded = await seedProvableCase(160_000, 100_000);
+    expect((await app.inject({ method: "POST", url: `/cases/${seeded.caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
+    const baselineId = await seedBaseline(app, seeded.caseId, { calculatedMinor: 10_000 });
+    await seedIntervention(app, seeded.caseId);
+    // Outcome-role, authenticated by the fixture verifier, amount stated and sufficient.
+    const { evidenceId, res } = await seedEvidence(app, seeded.caseId, { amountMinor: collectedMinor, currency: "USD" });
+    expect(res.statusCode, res.body).toBe(201);
+    return { seeded, baselineId, evidenceId };
+  };
+  const payload = (caseId: string, baselineId: string, evidenceId: string, confidenceUsed: number) => ({
+    proofId: `SYNTHETIC-proof-${randomUUID()}`, recoveryCaseId: caseId, currency: "USD",
+    collectedMinor: 70_000, excludedRecoveryMinor: 0, exclusionStatement: "no exclusions asserted",
+    recoveryReason: "BillingCorrection", attribution: "ar-system",
+    evidenceIds: [evidenceId], baselineId, confidenceUsed,
+  });
 
-    const atBar = await mk();
+  it("G2 NEGATIVE · unsubstantiated evidence is refused at EVERY tier, not only at the threshold", async () => {
+    for (const confidence of [THRESHOLD, THRESHOLD - 1, 50, 1, 0]) {
+      const c = await unsubstantiated();
+      const res = await app.inject({
+        method: "POST", url: "/proofs", headers: APPROVER,
+        payload: payload(c.seeded.caseId, c.baselineId, c.evidenceId, confidence),
+      });
+      expect(res.statusCode, `confidence ${confidence}: ${res.body}`).toBe(403);
+      // The same code at every tier. Before G2, `THRESHOLD - 1` and below returned 201.
+      expect(res.body).toMatch(/NO_OUTCOME_EVIDENCE|OUTCOME_EVIDENCE_NOT_AUTHENTICATED|NO_INDEPENDENT_EVIDENCE/);
+      expect(await prisma.proof.count({ where: { recoveryCaseId: c.seeded.caseId } })).toBe(0);
+    }
+  }, 180_000);
+
+  it("G2 POSITIVE · substantiated evidence is accepted at EVERY tier, including below the threshold", async () => {
+    // THE CONTROL THAT MAKES THE NEGATIVE MEAN SOMETHING. If a sub-threshold claim were refused whatever
+    // its evidence, the test above would be measuring "low confidence is refused" rather than "the
+    // evidence requirement no longer moves with the tier". A test that cannot pass is no better than a
+    // test that cannot fail.
+    for (const confidence of [THRESHOLD, THRESHOLD - 1, 1]) {
+      const c = await substantiated(70_000);
+      const res = await app.inject({
+        method: "POST", url: "/proofs", headers: APPROVER,
+        payload: payload(c.seeded.caseId, c.baselineId, c.evidenceId, confidence),
+      });
+      expect(res.statusCode, `confidence ${confidence}: ${res.body}`).toBe(201);
+      expect(res.json().revenueReturned.minor).toBe(60_000);
+    }
+  }, 180_000);
+
+  it("G2 · evidence that states no amount is refused rather than counted as zero", async () => {
+    // The sharpest of the six refusals: the previous arithmetic summed `amountMinor ?? 0`, so an outcome
+    // record with no amount contributed a silent zero and a claim could clear a sum it never met.
+    const seeded = await seedProvableCase(160_000, 100_000);
+    expect((await app.inject({ method: "POST", url: `/cases/${seeded.caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
+    const baselineId = await seedBaseline(app, seeded.caseId, { calculatedMinor: 10_000 });
+    await seedIntervention(app, seeded.caseId);
+    // Outcome ROLE (billing/invoice_paid) and authenticated, but NO amount at all.
+    const { evidenceId, res } = await seedEvidence(app, seeded.caseId, {
+      sourceSystem: "billing", evidenceType: "invoice_paid",
+    });
+    expect(res.statusCode, res.body).toBe(201);
     const refused = await app.inject({
       method: "POST", url: "/proofs", headers: APPROVER,
-      payload: payload(atBar.seeded.caseId, atBar.baselineId, atBar.evidenceId, THRESHOLD),
+      payload: payload(seeded.caseId, baselineId, evidenceId, THRESHOLD - 1),
     });
-    // At or above the threshold the Auditable requirements bite, exactly as designed.
     expect(refused.statusCode, refused.body).toBe(403);
-    expect(refused.body).toMatch(/independent|outcome-role/i);
+    expect(refused.body).toContain("OUTCOME_EVIDENCE_AMOUNT_NOT_STATED");
+  }, 60_000);
 
-    const belowBar = await mk();
-    const accepted = await app.inject({
+  it("G2 · evidence that does not reach the amount claimed is refused", async () => {
+    const c = await substantiated(10_000); // evidence states 10_000, the claim will state 70_000
+    const refused = await app.inject({
       method: "POST", url: "/proofs", headers: APPROVER,
-      payload: payload(belowBar.seeded.caseId, belowBar.baselineId, belowBar.evidenceId, THRESHOLD - 1),
+      payload: payload(c.seeded.caseId, c.baselineId, c.evidenceId, THRESHOLD - 1),
     });
-    // THE GAP. One point lower on a number the SUBMITTER supplies, and the same unsubstantiated evidence
-    // mints Revenue Returned. Matrix rows 10, 11 and 12 read NOT ENFORCED below the threshold.
-    expect(accepted.statusCode, accepted.body).toBe(201);
-    expect(accepted.json().revenueReturned.minor).toBe(60_000);
-    // When this starts failing, G2 has been closed. Update docs/PROVEN_GATE_REVIEW_V1.md §4.
-  }, 90_000);
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(refused.body).toContain("OUTCOME_EVIDENCE_INSUFFICIENT");
+  }, 60_000);
 
   // ── The control: leg A really is doing the refusing, so the two tests above are not vacuous ───────
   it("CONTROL · the same payload on a case with no obligation coverage is refused by leg A", async () => {
