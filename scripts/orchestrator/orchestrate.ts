@@ -3,9 +3,12 @@
 // Every claim worth testing lives in `command.ts`, which this file imports. Nothing here runs when that
 // module is imported by a test — which is the point, and a defect this repository has already shipped once.
 import { runOrchestratorCommand } from "./command.ts";
+import { probeLiveHost } from "./probeHost.ts";
 
 async function main(): Promise<void> {
-  const result = await runOrchestratorCommand(process.argv.slice(2), process.env, new Date());
+  // The probe runs HERE, in the entry point, because it is network I/O. It carries no credential.
+  const probe = await probeLiveHost();
+  const result = await runOrchestratorCommand(process.argv.slice(2), process.env, new Date(), undefined, probe);
   for (const line of result.lines) process.stdout.write(`${line}\n`);
   process.exit(result.exitCode);
 }

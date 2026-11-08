@@ -14,6 +14,7 @@ import { formatMessageComment } from "../coordination/wire.ts";
 import { MSG_SCHEMA, type Message } from "../coordination/bridge.ts";
 import { bodyHash } from "../coordination/wire.ts";
 import { openAiPortFromEnv } from "./openaiPort.ts";
+import { liveReadiness, renderLiveReadiness, type ProbeResult } from "./liveReadiness.ts";
 import { StubModelPort, stubOk } from "./stubPort.ts";
 import { buildStatus, renderStatus, type LivePortStatus } from "./status.ts";
 import { runTask, submit, DEFAULT_CONFIG, EMPTY_STATE, type OrchestratorState } from "./orchestrator.ts";
@@ -51,6 +52,13 @@ export async function runOrchestratorCommand(
   env: Record<string, string | undefined>,
   now: Date,
   port?: ModelPort,
+  /**
+   * The credential-free reachability probe's result, injected.
+   *
+   * DEFAULTS TO `NOT_PROBED`, which is deliberately NOT "blocked": an unmeasured network is the absence of
+   * a measurement and must never be reported as a refusal. The entry point supplies a real probe.
+   */
+  probe: ProbeResult = { state: "NOT_PROBED", detail: "no reachability probe was run for this invocation" },
 ): Promise<CommandResult> {
   const mode = argv[0];
   if (mode === undefined || mode === "--help" || mode === "-h") return { lines: USAGE, exitCode: 2 };
@@ -112,6 +120,11 @@ export async function runOrchestratorCommand(
 
   const report = buildStatus(state, now, live, DEFAULT_CONFIG);
   lines.push(...renderStatus(report));
+  // THE TWO BLOCKERS, SEPARATELY. A caller must never learn "the live call is not possible" without
+  // learning which half is missing and whose action clears it.
+  lines.push("");
+  lines.push("LIVE PROVIDER READINESS");
+  lines.push(...renderLiveReadiness(liveReadiness(env, probe)).map((l) => `  ${l}`));
   // A report that established nothing exits non-zero, so a caller cannot read silence as health.
   return { lines, exitCode: report.establishment === "NOT_ESTABLISHABLE" ? 2 : 0 };
 }
