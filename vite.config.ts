@@ -33,6 +33,7 @@ export default defineConfig({
       "scripts/audit/**/*.test.ts",
       "scripts/coordination/**/*.test.ts",
       "scripts/trace/**/*.test.ts",
+      "scripts/orchestrator/**/*.test.ts",
     ],
   },
 });

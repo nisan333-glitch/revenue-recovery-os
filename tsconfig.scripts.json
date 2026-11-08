@@ -29,6 +29,7 @@
     "scripts/audit/**/*.ts",
     "scripts/exposure/**/*.ts",
     "scripts/coordination/**/*.ts",
+    "scripts/orchestrator/**/*.ts",
     "src"
   ]
 }
