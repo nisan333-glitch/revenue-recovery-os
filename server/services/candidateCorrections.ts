@@ -5,11 +5,20 @@
 // An upward correction therefore leaves money unreported, and a downward one leaves exposure overstated.
 // Measured on synthetic data: 200.00 unreported upward, 400.00 overstated downward.
 //
-// WHY THIS MODULE DOES NOT FIX IT, AND MUST NOT. Choosing first-wins, last-wins, highest-wins or a
-// re-open rule is a BUSINESS RULE about which statement of an amount is authoritative, and no approved
-// requirement states one. Picking one here would be the error this repository keeps correcting —
-// promoting an implementation detail into a rule — and it would do it inside a monetary figure. So the
-// correction is made VISIBLE and the figure is left exactly where the governed store put it.
+// WHY THIS MODULE USED TO REFUSE TO FIX IT, AND WHAT CHANGED. The original reasoning stands and is kept:
+// choosing first-wins, last-wins, highest-wins or a re-open rule is a BUSINESS RULE about which statement
+// of an amount is authoritative, "and no approved requirement states one" — so picking one here would have
+// promoted an implementation detail into a rule, inside a monetary figure.
+//
+// AN APPROVED REQUIREMENT NOW STATES ONE (S-DUP-4), and it does not choose among those four. It refuses all
+// of them and decides by EVIDENCE: an observed amount is authoritative only where authoritative billing
+// evidence corroborates it and that evidence itself reconciles. The rule lives in
+// `src/domain/correctionPrecedence.ts`; this module supplies the observations and reports the verdict.
+//
+// `state` AND `precedence` ARE DIFFERENT ANSWERS AND BOTH ARE REPORTED. `state` says what the observations
+// look like and still names no amount authoritative; `precedence` says which figure the billing evidence
+// supports, or refuses with a code. `storedMinor` is UNTOUCHED: it is still exactly where the governed
+// store put it, because what the store holds is a fact about the store.
 //
 // NOTHING NEW IS PERSISTED, AND NOTHING NEEDED TO BE. The corrected observation was never lost: every
 // emitted signal is already in `agent_tasks.result`, and `agent_task_events` records each succeeded run
@@ -38,6 +47,21 @@
 //
 // IT REPORTS NO CORRECTED EXPOSURE. There is deliberately no "the real amount is X" field: that number
 // is the precedence decision wearing a different name.
+import {
+  resolvePrecedence,
+  type AuthoritativeBilling,
+  type PrecedenceVerdict,
+} from "../../src/domain/correctionPrecedence";
+
+/**
+ * S-DUP-4 · corroboration, keyed by `correctionIdentity`.
+ *
+ * SUPPLIED BY THE CALLER, because the caller is the only layer that may perform the join. The read surface
+ * digests the identity away for privacy, so it cannot resolve the case; this module still sees the identity
+ * and so it is where the verdict is computed — with only the VERDICT flowing onward, never the reference.
+ */
+export type CorroborationByIdentity = ReadonlyMap<string, AuthoritativeBilling>;
+
 export const CANDIDATE_CORRECTIONS_SCHEME = "nh-candidate-corrections-v1";
 
 /** One emitted signal, reduced to the facts this derivation needs. */
@@ -85,6 +109,13 @@ export interface CorrectionRecord {
   readonly obligationRef: string | null;
   readonly obligationGrained: boolean;
   readonly state: CorrectionState;
+  /**
+   * S-DUP-4 · which observed amount authoritative billing evidence corroborates, or why none does.
+   *
+   * REPORTED BESIDE `state`, NEVER INSTEAD OF IT, and an unresolved verdict is a named refusal rather
+   * than a silent fallback to the first observation.
+   */
+  readonly precedence: PrecedenceVerdict;
   readonly observationCount: number;
   /**
    * Every amount ever observed for this identity, none discarded. In APPEND order where the order is
@@ -152,7 +183,10 @@ export function correctionIdentity(row: SucceededObservationRow): string {
 }
 
 /** PURE, TOTAL, DETERMINISTIC. The same rows always produce a byte-identical report. */
-export function summariseCorrections(rows: readonly SucceededObservationRow[]): CorrectionReport {
+export function summariseCorrections(
+  rows: readonly SucceededObservationRow[],
+  corroboration: CorroborationByIdentity = new Map(),
+): CorrectionReport {
   const byIdentity = new Map<string, SucceededObservationRow[]>();
   for (const row of rows) {
     const key = correctionIdentity(row);
@@ -195,6 +229,15 @@ export function summariseCorrections(rows: readonly SucceededObservationRow[]): 
       obligationRef: first.observed.obligationRef,
       obligationGrained: first.observed.obligationGrained,
       state,
+      // DECIDED BY EVIDENCE, NOT BY ORDER — computed from the DISTINCT amounts, with the sequence not
+      // consulted at all. An identity whose append order is unestablishable can still have an
+      // authoritative amount, because this question does not depend on order.
+      precedence: resolvePrecedence({
+        observedAmountsMinor: [...new Set(ordered.map((r) => r.observed.amountAtRiskMinor))],
+        currency: first.observed.currency,
+        obligationGrained: first.observed.obligationGrained,
+        billing: corroboration.get(identity) ?? null,
+      }),
       observationCount: ordered.length,
       observedAmountsMinor: Object.freeze([...amounts]),
       orderCertain,
@@ -220,6 +263,13 @@ export function summariseCorrections(rows: readonly SucceededObservationRow[]): 
         .reduce((n, r) => n + (r.undecidedMagnitudeMinor ?? 0), 0),
       downwardUndecidedMinor: corrections.filter((r) => r.direction === "DOWNWARD")
         .reduce((n, r) => n + (r.undecidedMagnitudeMinor ?? 0), 0),
+      // S-DUP-4 · COUNTS ONLY. How many identities the billing evidence could and could not settle. The
+      // money each one carries stays on its own record, so nothing here can be read as a total recovered.
+      precedenceResolved: records.filter((r) => r.precedence.resolved).length,
+      precedenceUnresolved: records.filter((r) => !r.precedence.resolved).length,
+      partiallySettled: records.filter(
+        (r) => r.precedence.resolved && r.precedence.settlement === "PARTIALLY_SETTLED",
+      ).length,
     }),
     netIsDeliberatelyAbsent: true,
   });

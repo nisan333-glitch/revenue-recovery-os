@@ -64,6 +64,151 @@ describe.skipIf(!HAS_DB)("GET /candidate-corrections · the governed correction 
   const read = (role: string, b = boundary) =>
     readCandidateCorrections(actor(`${role}@test`, role as ActorContext["role"], [b]), b);
 
+  // ── S-DUP-4 · PRECEDENCE FROM AUTHORITATIVE BILLING EVIDENCE, on the real path ───────────────────
+  //
+  // THE SHAPE OF THE DEFECT, so the assertions below are readable. Two observations of ONE obligation
+  // carry 600.00 then 800.00. "First observation wins" answers 600.00 — and the only ordering the data
+  // holds is the append sequence, which is arrival order. The corrective charge the billing system
+  // actually raised is the evidence that decides, and here it was raised for 800.00.
+  async function seedCorroboratedIdentity(opts: {
+    readonly charges: readonly number[];
+    readonly payments: readonly number[];
+  }): Promise<{ readonly boundaryId: string }> {
+    const boundaryId = `SYNTHETIC-corrread-sdup4-${randomUUID()}`;
+    const sourceRef = `hmac-sha256:${"a".repeat(64)}`;
+    await recordObservation(boundaryId, [
+      { signals: [obligationSignal(60_000, OBL)] },
+      { signals: [obligationSignal(80_000, OBL)] },
+    ]);
+    // THROUGH THE REAL PROMOTION PATH, because a shortcut was REFUSED by the database: inserting the
+    // root directly raised `RecoveryCase requires an accepted candidate review` (23514). That control is
+    // doing its job, and going through review and promotion is the more faithful fixture anyway.
+    const { CandidateReviewService } = await import("../agents/candidateReview");
+    const { CandidatePromotionService } = await import("../agents/recoveryCase");
+    const { PostgresCandidateReviewStore } = await import("../agents/postgresCandidateReviewStore");
+    const { caseCandidateDedupeKey, caseCandidateId } = await import("../agents/caseAdmission");
+    const signal = {
+      signalId: `FIX-sdup4${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+      boundaryId,
+      recoveryType: "RevenueUnderBilled",
+      sourceRef,
+      sourcePayloadHash: "b".repeat(64),
+      detectorVersion: "corr-read-test",
+      observedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      amountAtRiskMinor: 80_000,
+      currency: "USD",
+      actionAvailable: true,
+      expectedProofEvent: "corrective invoice raised and collected",
+      obligationCoverage: {
+        kind: "SINGLE_OBLIGATION", obligationRef: OBL,
+        expectedMinor: 180_000, billedMinor: 100_000, residualMinor: 80_000, currency: "USD",
+      },
+    };
+    const dedupeKey = caseCandidateDedupeKey(signal as never);
+    const candidateId = caseCandidateId(dedupeKey);
+    await prisma.agentCaseCandidateRecord.create({
+      data: { candidateId, dedupeKey, boundaryId, agentId: "corr-read-test", signal, submittedAt: new Date() },
+    });
+    const operator = actor("ops@test", "operator", [boundaryId]);
+    const store = new PostgresCandidateReviewStore();
+    await new CandidateReviewService(store).decide(operator, {
+      candidateId, boundaryId, decision: "accepted", reason: "test · S-DUP-4 corroboration fixture",
+    });
+    const promoted = await new CandidatePromotionService(store).promote(operator, candidateId, boundaryId);
+    const caseId = promoted.recoveryCase.recoveryCaseId;
+    const { attestFixture } = await import("../test/sourceFixture");
+    const ingest = async (evidenceType: string, amountMinor: number, n: number) => {
+      const res = await app.inject({
+        method: "POST", url: `/cases/${caseId}/evidence`,
+        headers: { "x-actor-id": "dana@company", "x-actor-role": "author" },
+        payload: {
+          ...attestFixture(caseId, {
+            evidenceId: `EV-sdup4-${n}-${randomUUID()}`,
+            sourceSystem: "billing",
+            sourceRecordId: `SDUP4-${n}-${randomUUID()}`,
+            evidenceType,
+            observedAt: "2026-07-20T00:00:00.000Z",
+            amountMinor,
+            currency: "USD",
+          }),
+        },
+      });
+      if (res.statusCode !== 201) throw new Error(`seed evidence failed: ${res.statusCode} ${res.body}`);
+    };
+    let n = 0;
+    for (const c of opts.charges) await ingest("corrective_invoice_issued", c, n++);
+    for (const p of opts.payments) await ingest("invoice_paid", p, n++);
+    return { boundaryId };
+  }
+
+  const sdup4 = async (b: string) => {
+    const view = await readCandidateCorrections(actor("cfo@test", "approver", [b]), b);
+    expect(view.result.outcome).toBe("REPORTED");
+    expect(view.records).toHaveLength(1);
+    return view.records[0]!.precedence;
+  };
+
+  it("S-DUP-4 · the corrective charge decides, NOT the first observation", async () => {
+    const { boundaryId } = await seedCorroboratedIdentity({ charges: [80_000], payments: [80_000] });
+    const p = await sdup4(boundaryId);
+    expect(p.resolved).toBe(true);
+    if (!p.resolved) return;
+    // THE WHOLE POINT: first-wins would answer 60_000 here.
+    expect(p.authoritativeMinor).toBe(80_000);
+    expect(p.authoritativeMinor).not.toBe(60_000);
+    expect(p.billedMinor).toBe(80_000);
+    expect(p.collectedMinor).toBe(80_000);
+    expect(p.settlement).toBe("FULLY_SETTLED");
+    expect(p.outstandingMinor).toBe(0);
+  }, 90_000);
+
+  it("S-DUP-4 · a verified PARTIAL payment series is summed, and does not reduce what was owed", async () => {
+    const { boundaryId } = await seedCorroboratedIdentity({ charges: [80_000], payments: [30_000, 20_000] });
+    const p = await sdup4(boundaryId);
+    expect(p.resolved).toBe(true);
+    if (!p.resolved) return;
+    expect(p.collectedMinor).toBe(50_000);
+    expect(p.settlement).toBe("PARTIALLY_SETTLED");
+    // The authoritative figure is what was CHARGED. Subtracting the payment would under-report it.
+    expect(p.authoritativeMinor).toBe(80_000);
+    expect(p.outstandingMinor).toBe(30_000);
+  }, 90_000);
+
+  it("S-DUP-4 · two corrective charges FAIL CLOSED rather than being summed", async () => {
+    // Two charges may be two additive charges or one re-issued. 40_000 + 40_000 = 80_000 would match an
+    // observation and look convincing — which is exactly why it is refused.
+    const { boundaryId } = await seedCorroboratedIdentity({ charges: [40_000, 40_000], payments: [] });
+    const p = await sdup4(boundaryId);
+    expect(p.resolved).toBe(false);
+    expect(!p.resolved && p.code).toBe("BILLED_AMOUNT_AMBIGUOUS");
+  }, 90_000);
+
+  it("S-DUP-4 · collecting more than was charged is CONTRADICTORY, and nothing is made authoritative", async () => {
+    const { boundaryId } = await seedCorroboratedIdentity({ charges: [80_000], payments: [80_001] });
+    const p = await sdup4(boundaryId);
+    expect(!p.resolved && p.code).toBe("BILLING_EVIDENCE_CONTRADICTORY");
+  }, 90_000);
+
+  it("S-DUP-4 · no corrective charge at all leaves it unresolved, never a zero", async () => {
+    const { boundaryId } = await seedCorroboratedIdentity({ charges: [], payments: [80_000] });
+    const p = await sdup4(boundaryId);
+    expect(!p.resolved && p.code).toBe("NO_AUTHORITATIVE_BILLING_EVIDENCE");
+  }, 90_000);
+
+  it("S-DUP-4 · a charge matching NEITHER observation corroborates nothing", async () => {
+    const { boundaryId } = await seedCorroboratedIdentity({ charges: [70_000], payments: [] });
+    const p = await sdup4(boundaryId);
+    expect(!p.resolved && p.code).toBe("NO_OBSERVATION_MATCHES_BILLED");
+  }, 90_000);
+
+  it("S-DUP-4 · the identity-only boundary, with no case, reports no authoritative amount", async () => {
+    // The default fixture has the two conflicting observations and NO Recovery Case, so there is nothing
+    // to corroborate against. An absence, reported as one.
+    const p = (await readCandidateCorrections(actor("cfo@test", "approver", [boundary]), boundary))
+      .records[0]!.precedence;
+    expect(!p.resolved && p.code).toBe("NO_AUTHORITATIVE_BILLING_EVIDENCE");
+  }, 60_000);
+
   // ── AUTHORIZATION ─────────────────────────────────────────────────────────────────────────────────
   it("approver, verifier and steward may read it", async () => {
     for (const role of ["approver", "verifier", "steward"] as const) {
@@ -171,11 +316,29 @@ describe.skipIf(!HAS_DB)("GET /candidate-corrections · the governed correction 
     expect(view.precedenceNotice).toContain("NOT decided here");
   });
 
-  it("structurally: the module declares no authoritative-amount field", () => {
+  it("structurally: this module picks no winner on its own authority", () => {
+    // WHAT THIS GUARD WAS, AND WHAT IT IS NOW. It asserted that no authoritative-amount field existed at
+    // all, which was right while no approved requirement said which statement of an amount wins. S-DUP-4
+    // now states one, so the field exists — and the guard's real subject SURVIVES and is stronger: the
+    // figure must come from a governed predicate fed by source-attested evidence, never from a rule
+    // chosen in this file. Simply deleting the guard would have thrown away the property it protects.
     const src = require("node:fs").readFileSync(
       require("node:path").resolve(__dirname, "candidateCorrectionsRead.ts"), "utf8",
     ) as string;
-    expect(/readonly\s+(corrected|authoritative|effective|resolved)Minor/.test(src)).toBe(false);
+    const code = src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    // No selection rule of any kind is implemented here: no sort, no ordering, no max/min over amounts.
+    // `latestObservedMinor` is deliberately NOT on this list, and my first form of the check wrongly put
+    // it there. REPORTING the latest observed amount is not CHOOSING an authoritative one — it is one of
+    // the observations, passed through beside all the others. Banning it would have banned the module's
+    // own honest disclosure in the name of guarding against selection.
+    for (const forbidden of ["sort(", "Math.max", "Math.min", "eventSequence"]) {
+      expect(code, forbidden).not.toContain(forbidden);
+    }
+    // And the authoritative figure is reachable ONLY through the verdict the pure rule produced.
+    expect(code).toContain("r.precedence.resolved");
+    expect(code).toContain("authoritativeMinor: r.precedence.authoritativeMinor");
+    // The pure rule is imported as a TYPE here; the decision itself is taken in candidateCorrections.ts.
+    expect(code).toContain('from "../../src/domain/correctionPrecedence"');
   });
 
   // ── THE UNSAFE SEQUENCE IS A REFUSAL, NOT A 500 ───────────────────────────────────────────────────

@@ -41,9 +41,10 @@ import { prisma } from "../db";
 import { requireCan } from "../auth/authorityGate";
 import { requireBoundaryAccess, type ActorContext } from "../auth/identity";
 import {
-  CANDIDATE_CORRECTIONS_SCHEME, CANDIDATE_CORRECTIONS_SQL, observationsFromRows,
+  CANDIDATE_CORRECTIONS_SCHEME, CANDIDATE_CORRECTIONS_SQL, correctionIdentity, observationsFromRows,
   summariseCorrections, type CorrectionDirection, type CorrectionState, type RawCorrectionRow,
 } from "./candidateCorrections";
+import type { AuthoritativeBilling, PrecedenceCode, SettlementState } from "../../src/domain/correctionPrecedence";
 
 export const CANDIDATE_CORRECTIONS_READ_SCHEME = "nh-candidate-corrections-read-v1";
 
@@ -58,6 +59,22 @@ export interface CorrectionViewRecord {
   /** Whether the claim was obligation-grained. The REFERENCE itself is deliberately absent. */
   readonly obligationGrained: boolean;
   readonly state: CorrectionState;
+  /**
+   * S-DUP-4 · the precedence verdict, with the identity ALREADY REMOVED.
+   *
+   * The join that produced it needed the obligation reference; this carries only the outcome, so a reader
+   * learns which figure the billing evidence supports without learning which obligation it was.
+   */
+  readonly precedence:
+    | {
+        readonly resolved: true;
+        readonly authoritativeMinor: number;
+        readonly billedMinor: number;
+        readonly collectedMinor: number;
+        readonly outstandingMinor: number;
+        readonly settlement: SettlementState;
+      }
+    | { readonly resolved: false; readonly code: PrecedenceCode };
   readonly orderCertain: boolean;
   readonly observationCount: number;
   readonly observedAmountsMinor: readonly number[];
@@ -135,6 +152,69 @@ export function identityDigest(identity: string): string {
  * The query is SCOPED to the boundary: unscoped, `CANDIDATE_CORRECTIONS_SQL` is a forensic scan, and a
  * governed read must not be able to return another boundary's history by omission.
  */
+/**
+ * Resolve each identity's authoritative billing evidence: the corrective charges raised and the amounts
+ * collected, from SOURCE-ATTESTED records only.
+ *
+ * EVERY FACT COMES FROM THE RECORD. The case is found by the identity the detector itself wrote
+ * (`boundaryId`, `recoveryType`, `sourceRef`), and the evidence by that case — no request parameter
+ * reaches any of it. Unverified, beneficiary-controlled or non-independent records are EXCLUDED rather
+ * than down-weighted: a beneficiary may not corroborate their own figure, which is the same bar `approve()`
+ * applies to the money.
+ *
+ * AN IDENTITY WITH NO RESOLVABLE CASE GETS NO ENTRY, which the predicate reads as
+ * `NO_AUTHORITATIVE_BILLING_EVIDENCE` — an absence, never a zero.
+ */
+async function authoritativeBillingByIdentity(
+  boundaryId: string,
+  observations: readonly ReturnType<typeof observationsFromRows>[number][],
+): Promise<Map<string, AuthoritativeBilling>> {
+  const out = new Map<string, AuthoritativeBilling>();
+  // One identity may appear on many observations; the case lookup is per identity, not per observation.
+  const byIdentity = new Map<string, (typeof observations)[number]>();
+  for (const o of observations) {
+    const key = correctionIdentity(o);
+    if (!byIdentity.has(key)) byIdentity.set(key, o);
+  }
+  for (const [identity, sample] of byIdentity) {
+    const root = await prisma.recoveryCaseRecord.findFirst({
+      where: { boundaryId, recoveryType: sample.recoveryType, sourceRef: sample.sourceRef },
+      select: { recoveryCaseId: true },
+    });
+    if (!root) continue;
+    const evidence = await prisma.evidenceRecord.findMany({
+      where: { recoveryCaseId: root.recoveryCaseId },
+      select: {
+        evidenceId: true, evidenceRole: true, amountMinor: true, currency: true,
+        sourceVerification: true, beneficiaryControl: true, trustClassification: true,
+      },
+      orderBy: { ingestedAt: "asc" },
+    });
+    const attested = evidence.filter(
+      (e) => !!e.sourceVerification && !e.beneficiaryControl && e.trustClassification === "independent"
+        && e.amountMinor !== null && e.currency !== null,
+    );
+    const billed = attested.filter((e) => e.evidenceRole === "correction");
+    const collected = attested.filter((e) => e.evidenceRole === "outcome");
+    if (billed.length === 0 && collected.length === 0) continue;
+    // The currency is taken from the records themselves; a disagreement among them is left for the
+    // predicate to refuse rather than resolved here by picking one.
+    const currency = (billed[0] ?? collected[0])!.currency!;
+    out.set(identity, Object.freeze({
+      billedAmountsMinor: Object.freeze(billed.map((e) => Number(e.amountMinor))),
+      collectedAmountsMinor: Object.freeze(collected.map((e) => Number(e.amountMinor))),
+      currency: billed.some((e) => e.currency !== currency) || collected.some((e) => e.currency !== currency)
+        // A deliberate mismatch marker so the predicate's currency check fires instead of this function
+        // choosing a winner. It is compared against the observations' currency and will never equal it.
+        ? "MIXED"
+        : currency,
+      billedRecordIds: Object.freeze(billed.map((e) => e.evidenceId)),
+      collectedRecordIds: Object.freeze(collected.map((e) => e.evidenceId)),
+    }));
+  }
+  return out;
+}
+
 export async function readCandidateCorrections(
   actor: ActorContext,
   boundaryId: string,
@@ -146,9 +226,21 @@ export async function readCandidateCorrections(
 
   const raw = await prisma.$queryRawUnsafe<RawCorrectionRow[]>(CANDIDATE_CORRECTIONS_SQL, boundaryId);
 
-  let report: ReturnType<typeof summariseCorrections>;
+  // S-DUP-4 · THE PRIVILEGED JOIN, performed here and nowhere else.
+  //
+  // The corroboration needs the obligation reference, which this surface digests away before anything is
+  // returned. So the join happens before the digest and only the VERDICT survives it. `AuditRead` and the
+  // boundary were both checked above, so this reads nothing the caller could not already read.
+  // THE NAMED REFUSAL BELONGS TO EXACTLY ONE FAILURE, and keeping it that way needed care. My first form
+  // of this change hoisted `observationsFromRows` out of the try, which silently removed the refusal —
+  // caught by the test that asserts an unorderable sequence is a named refusal rather than a 500. The
+  // flatten stays inside, because it is the call that throws on an unsafe sequence; the DB join that
+  // follows is deliberately OUTSIDE, so a genuine database fault surfaces as a fault instead of being
+  // reported to the caller as "your data cannot be ordered" — blaming the input for our own failure is
+  // the NH-AX-1009 mistake.
+  let observations: ReturnType<typeof observationsFromRows>;
   try {
-    report = summariseCorrections(observationsFromRows(raw));
+    observations = observationsFromRows(raw);
   } catch (err) {
     // NAMED, WITH NO FIGURES. The message is this module's own wording and never the caught error's,
     // which could in principle carry a value from the row that produced it.
@@ -171,6 +263,9 @@ export async function readCandidateCorrections(
     });
   }
 
+  const corroboration = await authoritativeBillingByIdentity(boundaryId, observations);
+  const report = summariseCorrections(observations, corroboration);
+
   return Object.freeze({
     scheme: CANDIDATE_CORRECTIONS_READ_SCHEME,
     derivedFromScheme: CANDIDATE_CORRECTIONS_SCHEME,
@@ -181,6 +276,20 @@ export async function readCandidateCorrections(
       recoveryType: r.recoveryType,
       obligationGrained: r.obligationGrained,
       state: r.state,
+      // The verdict, carried verbatim minus nothing — it never held an identifier in the first place.
+      precedence: r.precedence.resolved
+        ? Object.freeze({
+            resolved: true as const,
+            authoritativeMinor: r.precedence.authoritativeMinor,
+            billedMinor: r.precedence.billedMinor,
+            collectedMinor: r.precedence.collectedMinor,
+            outstandingMinor: r.precedence.outstandingMinor,
+            settlement: r.precedence.settlement,
+          })
+        // THE CODE ONLY. The predicate's `reason` is our own wording, but it embeds the figures it
+        // compared, and this surface reports no figure it did not already report. Codes are ours; a
+        // sentence built from values is not.
+        : Object.freeze({ resolved: false as const, code: r.precedence.code }),
       orderCertain: r.orderCertain,
       observationCount: r.observationCount,
       observedAmountsMinor: r.observedAmountsMinor,
