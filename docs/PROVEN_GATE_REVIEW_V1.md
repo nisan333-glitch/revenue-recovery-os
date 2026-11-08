@@ -188,3 +188,33 @@ accept.
 
 **No observed amount became Revenue Returned by this review**, no synthetic figure is presented as collected
 revenue, and nothing here was changed in the product.
+
+---
+
+## 8. The two findings are MEASURED, not argued
+
+§3 and §4 were reached by reading code. That is an argument, and this repository's standard is measurement,
+so both were then executed against a real database through the real governed path — real candidate, real
+review, real promotion, real baseline, real evidence ingestion, real `POST /proofs`:
+**`server/services/provenGateGaps.postgres.test.ts`**, 3 passed.
+
+| | What was run | What happened |
+|---|---|---|
+| **G1** | A single-obligation case taken to approval with **no `Intervene` event ever recorded** — asserted absent by reading `authority_events` directly, not assumed | **`201`**, and `revenueReturned.minor = 60_000` minted, while `recoveryReason` says `BillingCorrection` |
+| **G2** | The **same** supporting-role evidence carrying **no amount**, submitted twice: once at `confidenceUsed = 80`, once at `79` | **`403`** at 80 (*independent / outcome-role*), **`201`** at 79 with `revenueReturned.minor = 60_000` |
+| **CONTROL** | The same payload on a case whose candidate states **no coverage** | **`403 OBLIGATION_COVERAGE_NOT_STATED`** |
+
+The control is the part that makes the other two mean anything: **leg A really is refusing**, so the two
+acceptances are not an observation about a gate that admits everything. *A test that cannot fail is not a
+control.*
+
+**These tests document the holes and deliberately do not close them.** Each asserts the **current**
+behaviour, so the day a gap is closed the test fails and whoever closed it must update §3 or §4 in the same
+change. The alternative — a test that pretended the gap was caught — would be worse than no test, which is
+the same choice already made for the attestation hole.
+
+One number is worth stating plainly, because it is the whole finding in one line:
+
+> **One point lower on a field the submitter supplies, and $600.00 of Revenue Returned is minted from
+> evidence that carries no amount at all.** Every figure here is synthetic, on a `TEST-` boundary, and
+> no observed amount became Revenue Returned.
