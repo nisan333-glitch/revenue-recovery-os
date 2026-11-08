@@ -111,6 +111,27 @@ describe("the properties the rule exists for", () => {
     }
   });
 
+  it("TYPE LEVEL: causation cannot be claimed, because the type forbids the value", () => {
+    // THE RUNTIME CHECK ABOVE IS NOT THE GUARD, and discovering that was worth recording. A mutation that
+    // rewrote `false as const` to `false as unknown as false` SURVIVED the suite — because it still
+    // evaluates to false. A mutation that changes no behaviour proves nothing about the test that let it
+    // through. The real claim is that the type admits one value, so it is asserted where types are checked:
+    // `tsc` fails the build if either line below stops being an error.
+    const v = executedCorrection({ corrections: [fix()], earliestOutcomeIngestedAt: "2026-11-08T12:00:00.000Z" });
+    expect(v.established).toBe(true);
+    if (!v.established) return;
+    // @ts-expect-error · causationEstablished is the literal `false`; `true` is not assignable to it.
+    const claimed: typeof v.causationEstablished = true;
+    void claimed;
+    // AND A SECOND ASSERTION I GOT WRONG, kept as the correct version rather than removed. I first wrote
+    // `@ts-expect-error` on `const widened: { causationEstablished: boolean } = v`, claiming the field
+    // could not be widened. `tsc` reported the directive as UNUSED, because that assignment is perfectly
+    // legal: `false` is a subtype of `boolean`, so READING it as a boolean is fine. What the type forbids
+    // is PRODUCING `true`, which is the line above. Reading a widened copy claims nothing.
+    const readAsBoolean: boolean = v.causationEstablished;
+    expect(readAsBoolean).toBe(false);
+  });
+
   it("STRUCTURAL: the verdict has no field in which a recovery reason could substitute for evidence", () => {
     const v = ask();
     expect(v.established).toBe(true);

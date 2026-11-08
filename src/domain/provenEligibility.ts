@@ -69,7 +69,18 @@ export type ProvenIneligibilityCode =
   /** Stored evidence shows a second observation was folded into this claim. */
   | "ABSORBED_OBSERVATION_RECORDED"
   /** Nobody ran the absorption query, so a merge can be neither excluded nor shown. */
-  | "ABSORPTION_NOT_CHECKED";
+  | "ABSORPTION_NOT_CHECKED"
+  /**
+   * The detector's own at-risk figure contradicts the coverage it declared on the same signal.
+   *
+   * REFUSES THE MONEY, NOT THE FINDING. The exposure stays visible and reportable — rejecting the signal
+   * would let a beneficiary shrink measured exposure by making a detector disagree with itself. What is
+   * refused is FINANCIAL RECOGNITION: when a detector says one amount is at risk and its declared
+   * obligation says another, neither figure is traceable, and a proof may not be minted over the
+   * disagreement. The intake already re-derives `residualMinor` from expected − billed; nothing checked
+   * that the at-risk amount agreed with it.
+   */
+  | "AT_RISK_CONTRADICTS_COVERAGE";
 
 export type ProvenEligibility =
   | { readonly eligible: true; readonly obligationRef: string; readonly residualMinor: number }
@@ -81,6 +92,14 @@ const deny = (code: ProvenIneligibilityCode, reason: string): ProvenEligibility 
 export interface ProvenEligibilityInput {
   readonly coverage: ObligationCoverage | null;
   readonly absorbedObservations: AbsorbedObservations;
+  /**
+   * The at-risk figure the detector stated on the same signal, or null where none was recorded.
+   *
+   * NULL IS NOT AGREEMENT. A signal with no at-risk figure cannot contradict its coverage, so it is not
+   * refused on this ground — but it is also not evidence that the two agree, and the distinction is kept
+   * rather than collapsed into a default.
+   */
+  readonly statedAtRiskMinor?: number | null;
 }
 
 /**
@@ -144,6 +163,23 @@ export function provenEligibility(input: ProvenEligibilityInput): ProvenEligibil
         "absorption is not an absence — a merge can neither be excluded nor shown",
     );
   }
+  // THE DETECTOR MUST AGREE WITH ITSELF. Checked after the facts are known to be well-formed and
+  // self-consistent, because comparing against a figure that does not yet reconcile would name the wrong
+  // problem — the same ordering rule the other refusals follow.
+  if (
+    input.statedAtRiskMinor !== undefined
+    && input.statedAtRiskMinor !== null
+    && input.statedAtRiskMinor !== coverage.residualMinor
+  ) {
+    return deny(
+      "AT_RISK_CONTRADICTS_COVERAGE",
+      `the detector stated ${input.statedAtRiskMinor} at risk while the obligation it declared shows a ` +
+        `discrepancy of ${coverage.residualMinor} (expected ${coverage.expectedMinor} − billed ` +
+        `${coverage.billedMinor}); the two cannot both be the amount this claim is about, so no proof may ` +
+        "be minted over the disagreement — the exposure itself remains reportable",
+    );
+  }
+
   if (input.absorbedObservations.count > 0) {
     return deny(
       "ABSORBED_OBSERVATION_RECORDED",

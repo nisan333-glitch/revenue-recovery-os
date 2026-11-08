@@ -109,12 +109,16 @@ export async function caseProvenEligibility(recoveryCaseId: string): Promise<Pro
     select: { signal: true },
   });
   const coverage = coverageOf(candidate?.signal);
+  // The detector's own at-risk figure, from the same signal. Shape-checked rather than cast: a row from an
+  // older build, or one hand-edited, must not reach the predicate pretending to be a number.
+  const statedAtRisk = (candidate?.signal as { amountAtRiskMinor?: unknown } | null | undefined)?.amountAtRiskMinor;
+  const statedAtRiskMinor = typeof statedAtRisk === "number" && Number.isSafeInteger(statedAtRisk) ? statedAtRisk : null;
 
   // The absorption query is skipped when the coverage already refuses: the answer cannot change, and a
   // full boundary scan on a request that is going to be refused anyway is waste. The predicate still
   // receives `{ checked: false }`, so if that ordering ever became wrong the refusal stays a refusal.
   if (coverage === null || coverage.kind !== "SINGLE_OBLIGATION") {
-    return provenEligibility({ coverage, absorbedObservations: { checked: false } });
+    return provenEligibility({ coverage, absorbedObservations: { checked: false }, statedAtRiskMinor });
   }
 
   const group = accountGrainedGroup(root.boundaryId, {
@@ -122,6 +126,7 @@ export async function caseProvenEligibility(recoveryCaseId: string): Promise<Pro
   });
   return provenEligibility({
     coverage,
+    statedAtRiskMinor,
     absorbedObservations: await absorbedForIdentity(root.boundaryId, group),
   });
 }

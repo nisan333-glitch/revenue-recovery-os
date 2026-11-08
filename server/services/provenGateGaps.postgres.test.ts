@@ -281,6 +281,59 @@ describe.skipIf(!HAS_DB)("PROVEN gate · the two gaps, measured on the real path
     expect(refused.body).toContain("OUTCOME_EVIDENCE_INSUFFICIENT");
   }, 60_000);
 
+  // ── S-DUP · the detector must agree with itself, and obligation ambiguity refuses the money ───────
+  it("a detector whose at-risk figure contradicts its declared coverage is refused the MONEY", async () => {
+    // The signal is created directly because `assertCandidateSignal` re-derives `residualMinor` from
+    // expected − billed and refuses an inconsistent triple — but it has never compared the AT-RISK figure
+    // against it, which is the gap. The coverage here is internally perfect and the at-risk figure
+    // disagrees with it by one cent.
+    const boundaryId = `TEST-pgap-${uid()}`;
+    const obligationRef = pseudonym();
+    const signal = {
+      signalId: `FIX-${hex().slice(0, 32)}`, boundaryId, recoveryType: "RevenueUnderBilled",
+      sourceRef: pseudonym(), sourcePayloadHash: hex(), detectorVersion: "proven-gap-test-v1",
+      observedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      amountAtRiskMinor: 59_999, // the coverage below says 60_000
+      currency: "USD", actionAvailable: true, expectedProofEvent: "corrective invoice raised and collected",
+      obligationCoverage: {
+        kind: "SINGLE_OBLIGATION", obligationRef,
+        expectedMinor: 160_000, billedMinor: 100_000, residualMinor: 60_000, currency: "USD",
+      },
+    };
+    const dedupeKey = caseCandidateDedupeKey(signal as never);
+    const candidateId = caseCandidateId(dedupeKey);
+    await prisma.agentCaseCandidateRecord.create({
+      data: { candidateId, dedupeKey, boundaryId, agentId: "proven-gap-test-v1", signal, submittedAt: new Date() },
+    });
+    const operator = actor("ops@test", "operator", [boundaryId]);
+    const store = new PostgresCandidateReviewStore();
+    await new CandidateReviewService(store).decide(operator, {
+      candidateId, boundaryId, decision: "accepted", reason: "test · contradictory at-risk figure",
+    });
+    const promoted = await new CandidatePromotionService(store).promote(operator, candidateId, boundaryId);
+    const caseId = promoted.recoveryCase.recoveryCaseId;
+
+    // THE FINDING IS NOT DISCARDED. The case exists and carries its exposure; only the proof is refused.
+    expect(promoted.recoveryCase.recoveryCaseId).toBeTruthy();
+
+    expect((await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
+    const baselineId = await seedBaseline(app, caseId, { calculatedMinor: 10_000 });
+    await seedIntervention(app, caseId);
+    const { evidenceId } = await seedEvidence(app, caseId, { amountMinor: 70_000, currency: "USD" });
+    const refused = await app.inject({
+      method: "POST", url: "/proofs", headers: APPROVER,
+      payload: {
+        proofId: `SYNTHETIC-proof-${randomUUID()}`, recoveryCaseId: caseId, currency: "USD",
+        collectedMinor: 70_000, excludedRecoveryMinor: 0, exclusionStatement: "no exclusions asserted",
+        recoveryReason: "BillingCorrection", attribution: "ar-system",
+        evidenceIds: [evidenceId], baselineId, confidenceUsed: 95,
+      },
+    });
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(refused.body).toContain("AT_RISK_CONTRADICTS_COVERAGE");
+    expect(await prisma.proof.count({ where: { recoveryCaseId: caseId } })).toBe(0);
+  }, 60_000);
+
   // ── The control: leg A really is doing the refusing, so the two tests above are not vacuous ───────
   it("CONTROL · the same payload on a case with no obligation coverage is refused by leg A", async () => {
     // Identical in every respect except that the candidate states NO coverage. If this were also accepted,

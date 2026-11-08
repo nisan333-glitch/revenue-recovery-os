@@ -160,3 +160,57 @@ describe("PROVEN eligibility · the approved rule", () => {
     expect(specifiers).toEqual(["./caseIdentityGrain"]);
   });
 });
+
+describe("AT_RISK_CONTRADICTS_COVERAGE · the detector must agree with itself", () => {
+  const single = {
+    kind: "SINGLE_OBLIGATION" as const,
+    obligationRef: `hmac-sha256:${"a".repeat(64)}`,
+    expectedMinor: 160_000,
+    billedMinor: 100_000,
+    residualMinor: 60_000,
+    currency: "USD",
+  };
+  const checked = { checked: true as const, count: 0 };
+
+  it("refuses when the stated at-risk figure differs from the declared discrepancy", () => {
+    const v = provenEligibility({ coverage: single, absorbedObservations: checked, statedAtRiskMinor: 59_999 });
+    expect(v.eligible).toBe(false);
+    expect(!v.eligible && v.code).toBe("AT_RISK_CONTRADICTS_COVERAGE");
+    expect(!v.eligible && v.reason).toContain("59999");
+    expect(!v.eligible && v.reason).toContain("60000");
+    // The refusal is about the MONEY, and says so: the finding itself stays reportable.
+    expect(!v.eligible && v.reason).toContain("exposure itself remains reportable");
+  });
+
+  it("accepts when they agree", () => {
+    expect(provenEligibility({ coverage: single, absorbedObservations: checked, statedAtRiskMinor: 60_000 }).eligible).toBe(true);
+  });
+
+  it("NULL IS NOT AGREEMENT, and is not refused on this ground either", () => {
+    // A signal with no at-risk figure cannot contradict its coverage. The two states stay distinguishable:
+    // absent is not "equal", and treating it as a default would decide the question by omission.
+    for (const statedAtRiskMinor of [null, undefined]) {
+      expect(provenEligibility({ coverage: single, absorbedObservations: checked, statedAtRiskMinor }).eligible).toBe(true);
+    }
+  });
+
+  it("a more fundamental refusal still wins — the contradiction is checked last but one", () => {
+    // An aggregate with a contradicting at-risk figure reports the aggregate, which is what the caller can
+    // act on. Ordering most-informative-first is the rule this module already follows.
+    const v = provenEligibility({
+      coverage: { kind: "ACCOUNT_AGGREGATE", unitCount: 3 },
+      absorbedObservations: checked,
+      statedAtRiskMinor: 1,
+    });
+    expect(!v.eligible && v.code).toBe("OBLIGATION_COVERAGE_IS_AGGREGATE");
+  });
+
+  it("an ABSORBED observation outranks it, because a merged claim is not about one obligation at all", () => {
+    const v = provenEligibility({
+      coverage: single,
+      absorbedObservations: { checked: true, count: 1 },
+      statedAtRiskMinor: 60_000,
+    });
+    expect(!v.eligible && v.code).toBe("ABSORBED_OBSERVATION_RECORDED");
+  });
+});
