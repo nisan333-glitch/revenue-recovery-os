@@ -30,6 +30,7 @@
     "scripts/exposure/**/*.ts",
     "scripts/coordination/**/*.ts",
     "scripts/orchestrator/**/*.ts",
+    "scripts/typecheck/**/*.ts",
     "src"
   ]
 }

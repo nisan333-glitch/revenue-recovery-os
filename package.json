@@ -57,7 +57,10 @@
     "trace:case": "vite-node scripts/trace/financial-trace.ts",
     "trace:seed": "vite-node scripts/trace/seed-trace-demo.ts",
     "coordination:inbox": "vite-node scripts/coordination/coordination-inbox.ts",
-    "orchestrate": "vite-node scripts/orchestrator/orchestrate.ts"
+    "orchestrate": "vite-node scripts/orchestrator/orchestrate.ts",
+    "typecheck:server": "tsc --noEmit -p tsconfig.server.json",
+    "typecheck:server:tests": "tsc -p tsconfig.server.test.json",
+    "typecheck:server:ratchet": "vite-node scripts/typecheck/check-server-tests.ts"
   },
   "dependencies": {
     "@fastify/static": "^8.3.0",

@@ -1,0 +1,9 @@
+{
+  "_what": "The measured typecheck debt in server/**/*.test.ts and server/test/** under tsconfig.server.test.json.",
+  "_measuredAt": "2026-11-09",
+  "_measuredOn": "bb17ecd20493abb1924c91be78fe9ea3f9a37a9f",
+  "_alsoAtBaseline": "07590b498b53dc25ffbf7e1cc0572797e62d0e55 reports the identical 33 across 19, error-for-error.",
+  "_notABudget": "This records a known debt so a REGRESSION is detectable. It is not an allowance to spend, and it is never raised to make a new error pass.",
+  "errors": 33,
+  "files": 19
+}

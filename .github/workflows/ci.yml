@@ -56,6 +56,38 @@ jobs:
       - name: Strict types for the local readiness scripts
         run: npm run typecheck:scripts
 
+      # THE SERVER'S PRODUCTION TYPECHECK, AS A NAMED GATE IN ITS OWN RIGHT.
+      #
+      # It was not absent before this step existed — an audit that said so was WRONG, and the correction
+      # matters more than the step. `Dockerfile:29` runs `npm run build && npm run build:server`, so
+      # `tsc -p tsconfig.server.json` really does execute in CI, inside the EP-10 image build; the run
+      # log shows it writing `dist-server`. What was missing is that the ONLY server typecheck in CI was
+      # a side effect of a Docker build in a job whose stated purpose is a runtime smoke test. Nobody
+      # scanning this workflow for typechecks would find it, it costs a full image build, and the day
+      # someone edits that one Dockerfile line the server's type safety leaves CI silently.
+      #
+      # So this is not new coverage, it is the same coverage made EXPLICIT, FAST and INDEPENDENTLY
+      # NAMED — and it stays here rather than replacing the Dockerfile's build, because that build must
+      # keep proving the server also EMITS.
+      - name: Strict types for the server's production code (hard gate, zero errors)
+        run: npm run typecheck:server
+
+      # AND THE SERVER'S TEST FILES, WHICH REALLY WERE TYPECHECKED BY NOTHING.
+      #
+      # `tsconfig.server.json` excludes `server/**/*.test.ts` and `server/test/**`, and no other project
+      # includes them — so `actor("auditor", ...)` compiled against a `BackendRole` that has no such role.
+      # They now have `tsconfig.server.test.json`, whose ONLY difference from the production config is the
+      # module system the tests actually execute under; every strictness flag is inherited unchanged.
+      #
+      # IT IS A RATCHET, NOT A ZERO-ERROR GATE, and deliberately: the measured debt is 33 errors across 19
+      # files, identical at the baseline commit error-for-error. A hard gate would be red on arrival and
+      # would therefore be switched off or satisfied with suppressions. The ratchet refuses the only thing
+      # that matters in the meantime — the number getting worse — and refuses an unrecorded improvement
+      # too, so the pinned figure keeps describing the repository. The plan to reach zero is in
+      # docs/CI_SERVER_TYPECHECK_V1.md and is not a promise this step enforces.
+      - name: Server test typecheck ratchet (known debt may not grow)
+        run: npm run typecheck:server:ratchet
+
   frozen-verifiers:
     name: Frozen packages + intake verifiers (read-only)
     # THE GAP THIS JOB CLOSES. Four verifiers guarding the customer-facing pilot package and the two

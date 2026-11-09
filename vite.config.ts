@@ -34,6 +34,7 @@ export default defineConfig({
       "scripts/coordination/**/*.test.ts",
       "scripts/trace/**/*.test.ts",
       "scripts/orchestrator/**/*.test.ts",
+      "scripts/typecheck/**/*.test.ts",
     ],
   },
 });
