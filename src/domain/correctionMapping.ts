@@ -1,0 +1,171 @@
+// WHICH EXECUTED CORRECTION MAY EVIDENCE WHICH RECOVERY? A declared mapping, failing closed on anything
+// it does not declare.
+//
+// WHY THIS IS NEEDED. G1 requires a source-attested executed-correction record before a case may reach
+// PROVEN, and the only correction evidence types that exist are BILLING ones —
+// `(billing, corrective_invoice_issued)` and `(billing, billing_corrected)`. Nothing checked that the
+// correction supplied matched the mechanism the recovery reason NAMED. So a `UsageActivation` recovery
+// could be evidenced by a corrective invoice: an activation was missed, nothing was mis-billed, and a
+// billing artefact was accepted as proof that the activation happened. The reason and its evidence
+// disagreed, and the proof is immutable, so the disagreement could never be corrected afterwards.
+//
+// EVERY ENTRY IS INVENTORIED FROM THE CODEBASE, NOT INVENTED. The eight reasons are
+// `RECOVERY_REASONS`' own keys; the two correction evidence types are `CORRECTION_EVIDENCE_TYPES`' own
+// entries in `server/domain/evidenceRole.ts`. No category is added here, and a reason whose correction
+// channel does not exist is DECLARED as not existing rather than quietly permitted.
+//
+// FAIL CLOSED, IN THREE DIFFERENT WAYS, because the three are different situations:
+//
+//   · an UNKNOWN reason — not in the vocabulary at all — is refused outright;
+//   · a reason with NO DECLARED CHANNEL is refused, and the refusal says the channel does not exist, so
+//     the remedy is a governance decision rather than a different upload;
+//   · a reason paired with a correction type its channel does not permit is refused as INCOMPATIBLE.
+//
+// IT CANNOT BE BYPASSED BY THE REQUEST. The reason is read from the approval request — it has to be, it
+// is the claim being made — but the CORRECTION TYPE comes from an ingested evidence record whose role the
+// server derived and whose source signed it. A caller cannot supply a correction type, cannot set a
+// confidence that changes which mapping applies, and cannot label a record into a different channel.
+//
+// PURE: no clock, no I/O, no randomness.
+
+/** The correction evidence types that exist. Mirrors `CORRECTION_EVIDENCE_TYPES`, billing only. */
+export const DECLARED_CORRECTION_TYPES = Object.freeze([
+  "corrective_invoice_issued",
+  "billing_corrected",
+] as const);
+export type DeclaredCorrectionType = (typeof DECLARED_CORRECTION_TYPES)[number];
+
+/**
+ * What each recovery reason's executed correction may be.
+ *
+ * `permitted: []` means NO CORRECTION CHANNEL EXISTS for that mechanism — not that anything goes. The
+ * seven relationship and activation mechanisms are in that state because no source attests them: a
+ * corrective invoice says the billing changed, and it says nothing whatsoever about an onboarding being
+ * restarted, a milestone being reached or a usage flag being switched on. `why` records that, so a reader
+ * is told why the list is empty instead of inferring that nobody filled it in.
+ */
+export interface ReasonChannel {
+  readonly reason: string;
+  readonly permitted: readonly DeclaredCorrectionType[];
+  readonly why: string;
+}
+
+export const CORRECTION_CHANNELS: readonly ReasonChannel[] = Object.freeze([
+  {
+    reason: "BillingCorrection",
+    permitted: Object.freeze([...DECLARED_CORRECTION_TYPES]),
+    why: "the mechanism IS a billing change, and both declared correction types are the billing system's "
+      + "own statement that it made one",
+  },
+  ...(["OnboardingReboot", "MilestoneNudge", "EnablementSession", "CSMOutreach", "ExecBusinessReview",
+    "RenewalOutreach", "UsageActivation"] as const).map((reason) => Object.freeze({
+    reason,
+    permitted: Object.freeze([] as DeclaredCorrectionType[]),
+    why: "no source-attested correction channel exists for this mechanism: the only declared correction "
+      + "types are the billing system's statements about billing, and they attest nothing about whether "
+      + "this action was taken. Declaring a channel for it — and naming which source may attest it — is a "
+      + "governance decision and is not taken here",
+  })),
+]);
+
+const CHANNEL_BY_REASON: ReadonlyMap<string, ReasonChannel> =
+  new Map(CORRECTION_CHANNELS.map((c) => [c.reason, c]));
+
+export type CorrectionMappingCode =
+  /** The reason is not in the declared vocabulary at all. */
+  | "RECOVERY_REASON_UNKNOWN"
+  /** The reason is declared and no correction channel exists for its mechanism. */
+  | "CORRECTION_CHANNEL_NOT_DECLARED"
+  /** A correction record exists, and its type is not one this reason's channel permits. */
+  | "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON";
+
+export type CorrectionMappingVerdict =
+  | { readonly ok: true; readonly reason: string; readonly correctionType: DeclaredCorrectionType }
+  | { readonly ok: false; readonly code: CorrectionMappingCode; readonly detail: string };
+
+const deny = (code: CorrectionMappingCode, detail: string): CorrectionMappingVerdict =>
+  Object.freeze({ ok: false as const, code, detail });
+
+/**
+ * May this executed correction evidence this recovery?
+ *
+ * `correctionType` is the `evidenceType` of the correction-role record the server found on the case —
+ * never a value from the request. A null means no correction record was found, which G1 already refuses
+ * on its own ground; this function is not that check and says so rather than duplicating it.
+ */
+export function correctionMapping(
+  recoveryReason: string,
+  correctionType: string | null,
+): CorrectionMappingVerdict {
+  const channel = CHANNEL_BY_REASON.get(recoveryReason);
+  if (channel === undefined) {
+    return deny(
+      "RECOVERY_REASON_UNKNOWN",
+      `'${recoveryReason}' is not a declared recovery reason, so no correction can be matched to it`,
+    );
+  }
+  if (channel.permitted.length === 0) {
+    return deny(
+      "CORRECTION_CHANNEL_NOT_DECLARED",
+      `${channel.reason}: ${channel.why}`,
+    );
+  }
+  if (correctionType === null) {
+    return deny(
+      "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON",
+      `${channel.reason} requires an executed correction of type ${channel.permitted.join(" or ")}, and no `
+        + "correction type was established",
+    );
+  }
+  if (!(channel.permitted as readonly string[]).includes(correctionType)) {
+    return deny(
+      "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON",
+      `${channel.reason} permits ${channel.permitted.join(" or ")}; the correction on this case is `
+        + `'${correctionType}', which attests a different mechanism`,
+    );
+  }
+  return Object.freeze({ ok: true as const, reason: channel.reason, correctionType: correctionType as DeclaredCorrectionType });
+}
+
+/**
+ * Which refusals BLOCK an approval today, and which are reported without blocking.
+ *
+ * THE SPLIT IS A GOVERNANCE BOUNDARY, NOT A CONVENIENCE, and it is declared here rather than buried in the
+ * service so that moving it is a visible change to a named constant.
+ *
+ * BLOCKING, because each is decidable from the record with no decision outstanding:
+ *   · `RECOVERY_REASON_UNKNOWN` — a reason outside the vocabulary names no mechanism at all.
+ *   · `CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON` — the reason HAS a declared channel and the correction
+ *     supplied is not in it. Measured: enforcing this breaks nothing, because nothing in the repository
+ *     pairs `BillingCorrection` with a non-billing correction.
+ *
+ * REPORTED AND NOT BLOCKING:
+ *   · `CORRECTION_CHANNEL_NOT_DECLARED` — seven of the eight reasons have no correction channel, so
+ *     enforcing it would make PROVEN unreachable for every mechanism except a billing correction.
+ *     MEASURED, not estimated: enforcing it gives 41 failed / 905 passed against 946 passed without it,
+ *     and 905 + 41 = 946 exactly — so the mutation's whole effect is those 41 and nothing else moved.
+ *     Every failure is a 403 at approval; where the refusal body is printed it carries this code, and no
+ *     other mapping code appears in the output at all. The rest are truncated by vitest to a bare status
+ *     assertion, so one cause is strongly evidenced and NOT read off 41 individual refusal bodies.
+ *     `docs/CORRECTION_TYPE_MAPPING_V1.md` §6 states the evidence at exactly that strength.
+ *
+ *     That is not a defect to patch — it is G1's universal correction requirement meeting the fact that
+ *     no source attests an onboarding restart, a milestone, an enablement session, an outreach, a review
+ *     or a usage activation. The remedy is to DECLARE a channel for those mechanisms and name which
+ *     source may attest each, which is a governance decision with an owner. Enforcing it here would take
+ *     that decision by implementation, and permitting it silently would let a billing artefact stand in
+ *     as proof of an activation. So it is surfaced and refused neither way: recorded, with the decision
+ *     put to its owner.
+ */
+export const BLOCKING_MAPPING_CODES: readonly CorrectionMappingCode[] = Object.freeze([
+  "RECOVERY_REASON_UNKNOWN",
+  "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON",
+]);
+
+/** Does this verdict block an approval today? Pure, and the only place the split is applied. */
+export function mappingBlocksApproval(verdict: CorrectionMappingVerdict): boolean {
+  return !verdict.ok && BLOCKING_MAPPING_CODES.includes(verdict.code);
+}
+
+/** Every declared reason, for a report or a test that must enumerate rather than guess. */
+export const DECLARED_REASONS: readonly string[] = Object.freeze(CORRECTION_CHANNELS.map((c) => c.reason));

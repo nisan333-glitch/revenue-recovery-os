@@ -28,6 +28,7 @@ import { prisma } from "../db";
 import { caseProvenEligibility } from "./caseProvenGate";
 import { financialOutcomeSufficiency } from "../../src/domain/outcomeEvidence";
 import { executedCorrection } from "../../src/domain/executedCorrection";
+import { correctionMapping, mappingBlocksApproval } from "../../src/domain/correctionMapping";
 import type { Proof, ProofApprovalInput } from "../../src/domain/proof";
 import { baselineTemporallyValid, type Baseline } from "../../src/domain/baseline";
 import { hasIndependentEvidence, type Evidence } from "../../src/domain/evidence";
@@ -381,6 +382,35 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
   if (!correction.established) {
     throw new ForbiddenError(
       `PROVEN requires a verified executed correction — ${correction.code}: ${correction.reason}`,
+    );
+  }
+
+  // THE CORRECTION MUST EVIDENCE THE MECHANISM THE REASON NAMES.
+  //
+  // G1 above establishes that A correction happened. It does not establish that the correction has
+  // anything to do with the recovery being claimed: the only declared correction types are the billing
+  // system's statements about billing, so without this check a `UsageActivation` recovery could be
+  // evidenced by a corrective invoice — an activation was missed, nothing was mis-billed, and a billing
+  // artefact stood in as proof that the activation happened. A proof is immutable, so that disagreement
+  // could never be corrected afterwards.
+  //
+  // THE TYPE COMES FROM THE RECORD, NOT THE REQUEST. `executedCorrection` chose the earliest qualifying
+  // correction; its `evidenceType` was derived server-side at ingestion from (sourceSystem, evidenceType)
+  // and signed by the source. The request supplies the REASON — it has to, that is the claim — and can
+  // supply nothing that changes which channel applies to it.
+  const chosenCorrection = caseEvidence.find((e) => e.evidenceId === correction.correctionEvidenceId);
+  //
+  // WHICH REFUSALS BLOCK is declared in `BLOCKING_MAPPING_CODES`, not decided here. Two are decidable
+  // from the record and block; the third — seven of eight reasons having no correction channel at all —
+  // is a governance decision and is reported rather than enforced, because enforcing it would take that
+  // decision by implementation. Measured on this tree: enforcing it gives 41 failed / 905 passed against
+  // 946 passed, and 905 + 41 = 946, so nothing else moves. See `docs/CORRECTION_TYPE_MAPPING_V1.md` §6,
+  // which states what the 41 bodies do and do not individually evidence.
+  const mapping = correctionMapping(req.recoveryReason, chosenCorrection?.evidenceType ?? null);
+  if (mappingBlocksApproval(mapping)) {
+    throw new ForbiddenError(
+      `PROVEN requires a correction that evidences the reason claimed — ${!mapping.ok ? mapping.code : ""}: `
+        + `${!mapping.ok ? mapping.detail : ""}`,
     );
   }
 
