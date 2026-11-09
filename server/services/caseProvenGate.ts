@@ -136,9 +136,15 @@ export async function caseProvenEligibility(recoveryCaseId: string): Promise<Pro
   }
 
   // The claim's own identity, at the grain its coverage supports. `coverage.kind` is already known to be
-  // SINGLE_OBLIGATION here, and its `obligationRef` was pattern-checked by the admission boundary; it is
-  // re-checked rather than trusted, because a row written by an older build must not reach the grouping
-  // pretending to be well-formed.
+  // SINGLE_OBLIGATION here, and its `obligationRef` was pattern-checked by the admission boundary.
+  //
+  // THIS LINE IS REDUNDANT DEFENCE-IN-DEPTH, AND SAYING SO IS THE POINT. Removing the test changes no
+  // behaviour whatsoever — measured, not assumed: `observationGroup` and `signalTouchesIdentity` each
+  // pattern-test the reference themselves, so a malformed value falls back to account grain downstream
+  // and the claim's group comes out byte-identical either way. A mutation that drops this test therefore
+  // SURVIVES every suite, and that is correct rather than a gap: a mutation which changes no behaviour
+  // proves nothing. It is kept because it makes the fallback legible AT the claim site, and the comment
+  // must not credit it with a protection that lives elsewhere.
   const claimObligationRef = OBLIGATION_REF_PATTERN.test(coverage.obligationRef) ? coverage.obligationRef : null;
   return provenEligibility({
     coverage,

@@ -154,6 +154,57 @@ describe("absorbed observations · a replay is not a second obligation", () => {
     expect(report.boundaries[0]!.accountIdentitiesWithDifferingObservations).toBe(0);
   });
 
+  // THE MUTATION THESE TWO EXIST FOR. Every fixture above omits `obligationRef`, so account grain and
+  // observation grain return the SAME answer on all of them — which means none of them can tell whether
+  // the summariser actually uses the corrected grouping. Reverting that one line to `accountGrainedGroup`
+  // SURVIVED the whole suite until these were added: the drift test proves `observationGroup` is right,
+  // and proved nothing about it being called. The same shape as mutation Q7, found the same way.
+  it("TWO DISTINCT OBLIGATIONS of one account are two identities, not one with a differing observation", () => {
+    const oblA = `hmac-sha256:${"1".repeat(64)}`;
+    const oblB = `hmac-sha256:${"2".repeat(64)}`;
+    const report = summariseAbsorption([
+      row({
+        admittedCount: 1, createdCount: 0,
+        signals: [{ ...FACTS, obligationRef: oblA, sourcePayloadHash: "a".repeat(64) }],
+      }),
+      row({
+        admittedCount: 1, createdCount: 0,
+        signals: [{ ...FACTS, obligationRef: oblB, sourcePayloadHash: "b".repeat(64) }],
+      }),
+    ]);
+    // At the signal's own grain these are two groups holding one digest each. At account grain — the
+    // pre-correction behaviour — they would be ONE group holding two digests, and the diagnostic would
+    // report a differing observation that does not exist.
+    expect(report.boundaries[0]!.accountIdentitiesAbsorbing).toBe(2);
+    expect(report.boundaries[0]!.accountIdentitiesWithDifferingObservations).toBe(0);
+    expect(report.boundaries[0]!.distinctObservationDigests).toBe(0);
+  });
+
+  it("…and the SAME obligation with a differing digest is still the evidence it always was", () => {
+    // The negative control. Narrowing the grain must not stop the diagnostic seeing a real differing
+    // observation, or the correction would have bought a false negative with a false positive.
+    const obl = `hmac-sha256:${"1".repeat(64)}`;
+    const report = summariseAbsorption([
+      row({ admittedCount: 1, createdCount: 0, signals: [{ ...FACTS, obligationRef: obl, sourcePayloadHash: "a".repeat(64) }] }),
+      row({ admittedCount: 1, createdCount: 0, signals: [{ ...FACTS, obligationRef: obl, sourcePayloadHash: "b".repeat(64) }] }),
+    ]);
+    expect(report.boundaries[0]!.accountIdentitiesAbsorbing).toBe(1);
+    expect(report.boundaries[0]!.accountIdentitiesWithDifferingObservations).toBe(1);
+    expect(report.boundaries[0]!.distinctObservationDigests).toBe(2);
+  });
+
+  it("a MALFORMED obligation reference falls back to account grain, which is the fail-closed side", () => {
+    // A row from an older build, or one hand-edited, must not buy obligation-level separation by
+    // carrying a value shaped like nothing. Both signals group at account grain, so the differing
+    // observation is still reported.
+    const report = summariseAbsorption([
+      row({ admittedCount: 1, createdCount: 0, signals: [{ ...FACTS, obligationRef: "obligation-7", sourcePayloadHash: "a".repeat(64) }] }),
+      row({ admittedCount: 1, createdCount: 0, signals: [{ ...FACTS, obligationRef: "obligation-9", sourcePayloadHash: "b".repeat(64) }] }),
+    ]);
+    expect(report.boundaries[0]!.accountIdentitiesAbsorbing).toBe(1);
+    expect(report.boundaries[0]!.accountIdentitiesWithDifferingObservations).toBe(1);
+  });
+
   it("a different ACCOUNT is a different identity, not an absorption into the same one", () => {
     const report = summariseAbsorption([
       row({ admittedCount: 1, createdCount: 0 }),
