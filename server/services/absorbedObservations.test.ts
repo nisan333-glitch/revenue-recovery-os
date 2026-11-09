@@ -9,6 +9,8 @@ import { readFileSync } from "node:fs";
 import {
   ABSORBED_OBSERVATIONS_SCHEME,
   accountGrainedGroup,
+  observationGroup,
+  signalTouchesIdentity,
   formatAbsorptionReport,
   readSucceededRows,
   summariseAbsorption,
@@ -195,6 +197,97 @@ describe("absorbed observations · the grouping cannot drift from the real dedup
         expect(sameGroup).toBe(sameKey);
       }
     }
+  });
+
+  it("the grouping follows the dedupe key across BOTH grains, not just the account one", () => {
+    // THE DEFECT THIS WOULD HAVE CAUGHT. Every variant in the test above is account-grained, so it
+    // passed while the dedupe key gained an obligation-grained branch and the grouping did not — and
+    // absorption was judged one grain coarser than the identity it protects. Adding single-obligation
+    // variants is what exposes that, and `observationGroup` is what satisfies it.
+    const base: CandidateSignal = {
+      signalId: "signal-1", boundaryId: "tenant-1", recoveryType: "ActivationMissed",
+      sourceRef: "crm:account-1", sourcePayloadHash: "a".repeat(64), detectorVersion: "v1",
+      observedAt: "2026-10-01T00:00:00.000Z", amountAtRiskMinor: 60_000, currency: "USD",
+      actionAvailable: true, expectedProofEvent: "invoice paid",
+    };
+    const oblA = `hmac-sha256:${"1".repeat(64)}`;
+    const oblB = `hmac-sha256:${"2".repeat(64)}`;
+    const withCoverage = (obligationRef: string, over: Partial<CandidateSignal> = {}): CandidateSignal => ({
+      ...base,
+      obligationCoverage: {
+        kind: "SINGLE_OBLIGATION", obligationRef,
+        expectedMinor: 160_000, billedMinor: 100_000, residualMinor: 60_000, currency: "USD",
+      },
+      ...over,
+    });
+    const variants: readonly CandidateSignal[] = [
+      base,                                                      // account-grained
+      { ...base, sourceRef: "crm:account-2" },                   // another account
+      withCoverage(oblA),                                        // obligation A
+      withCoverage(oblA, { signalId: "signal-2", sourcePayloadHash: "b".repeat(64), amountAtRiskMinor: 90_000 }),
+      withCoverage(oblB),                                        // obligation B, SAME account
+      withCoverage(oblA, { sourceRef: "crm:account-2" }),         // obligation A, another account
+    ];
+    const groupOf = (sig: CandidateSignal) =>
+      observationGroup(sig.boundaryId, {
+        recoveryType: sig.recoveryType,
+        sourceRef: sig.sourceRef,
+        obligationRef: sig.obligationCoverage?.kind === "SINGLE_OBLIGATION"
+          ? sig.obligationCoverage.obligationRef
+          : null,
+      });
+    for (const left of variants) {
+      for (const right of variants) {
+        const sameKey = caseCandidateDedupeKey(left) === caseCandidateDedupeKey(right);
+        expect(groupOf(left) === groupOf(right), `${left.signalId}/${right.signalId}`).toBe(sameKey);
+      }
+    }
+    // And the specific pair the correction exists for: two obligations, one account, DIFFERENT groups.
+    expect(groupOf(withCoverage(oblA))).not.toBe(groupOf(withCoverage(oblB)));
+    // While the old function cannot tell them apart — which is the defect, asserted rather than described.
+    expect(accountGrainedGroup("tenant-1", withCoverage(oblA)))
+      .toBe(accountGrainedGroup("tenant-1", withCoverage(oblB)));
+  });
+
+  describe("the required cases · A, C and F at the identity level", () => {
+    const claim = (obligationRef: string | null) => ({
+      recoveryType: "ActivationMissed", sourceRef: "crm:account-1", obligationRef,
+    });
+    const oblA = `hmac-sha256:${"1".repeat(64)}`;
+    const oblB = `hmac-sha256:${"2".repeat(64)}`;
+    const sig = (obligationRef: string | null, over: Record<string, string> = {}) => ({
+      recoveryType: "ActivationMissed", sourceRef: "crm:account-1", obligationRef, ...over,
+    });
+
+    it("A · same account, two verified distinct obligations: no cross-obligation touch", () => {
+      expect(signalTouchesIdentity("t1", sig(oblB), claim(oblA))).toBe(false);
+      // …and the same obligation still does, so the check has not simply stopped matching.
+      expect(signalTouchesIdentity("t1", sig(oblA), claim(oblA))).toBe(true);
+    });
+
+    it("C · a missing or malformed obligation identity FAILS CLOSED to account grain", () => {
+      for (const bad of [null, "", "not-a-pseudonym", "hmac-sha256:xyz", `hmac-sha256:${"1".repeat(63)}`]) {
+        // It still TOUCHES, because nothing establishes which obligation it was about. Fail-closed here
+        // means counting it, not excluding it: excluding would be the unsupported upgrade.
+        expect(signalTouchesIdentity("t1", sig(bad as string | null), claim(oblA)), String(bad)).toBe(true);
+      }
+    });
+
+    it("F · legacy account-grained evidence is NOT upgraded to obligation-level certainty", () => {
+      // A legacy signal reaches every obligation of its account…
+      expect(signalTouchesIdentity("t1", sig(null), claim(oblA))).toBe(true);
+      expect(signalTouchesIdentity("t1", sig(null), claim(oblB))).toBe(true);
+      // …and still does not reach another account.
+      expect(signalTouchesIdentity("t1", sig(null, { sourceRef: "crm:account-2" }), claim(oblA))).toBe(false);
+      // Nor does a different boundary.
+      expect(signalTouchesIdentity("t2", sig(null), claim(oblA))).toBe(
+        signalTouchesIdentity("t2", sig(null), claim(oblA)),
+      );
+    });
+
+    it("an obligation-grained claim is not matched by an obligation-grained signal of another account", () => {
+      expect(signalTouchesIdentity("t1", sig(oblA, { sourceRef: "crm:account-2" }), claim(oblA))).toBe(false);
+    });
   });
 });
 

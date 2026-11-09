@@ -19,7 +19,8 @@
 // and all three refuse — but they refuse through the same pure predicate rather than through three
 // hand-written throws, so the refusal vocabulary cannot drift between them.
 import { prisma } from "../db";
-import { accountGrainedGroup } from "./absorbedObservations";
+import { signalTouchesIdentity, OBLIGATION_REF_PATTERN } from "./absorbedObservations";
+import { candidateDedupeGrain } from "../agents/caseAdmission";
 import { provenEligibility, type ObligationCoverage, type ProvenEligibility } from "../../src/domain/provenEligibility";
 
 /** The one statement, scoped to a boundary. Unscoped, this is a forensic full-table scan. */
@@ -42,14 +43,25 @@ interface AbsorptionRow {
 }
 
 /** Only the two fields the grouping needs. A signal shaped otherwise contributes nothing. */
-function signalsOf(result: unknown): readonly { readonly recoveryType: string; readonly sourceRef: string }[] {
+function signalsOf(
+  result: unknown,
+): readonly { readonly recoveryType: string; readonly sourceRef: string; readonly obligationRef: string | null }[] {
   if (!Array.isArray(result)) return [];
   return result.flatMap((s) => {
     if (!s || typeof s !== "object") return [];
-    const sig = s as { recoveryType?: unknown; sourceRef?: unknown };
-    return typeof sig.recoveryType === "string" && typeof sig.sourceRef === "string"
-      ? [{ recoveryType: sig.recoveryType, sourceRef: sig.sourceRef }]
-      : [];
+    const sig = s as { recoveryType?: unknown; sourceRef?: unknown; obligationCoverage?: unknown };
+    if (typeof sig.recoveryType !== "string" || typeof sig.sourceRef !== "string") return [];
+    // THE ONE GRAIN RULE, CONSULTED RATHER THAN RE-DERIVED. `candidateDedupeGrain` is exported for
+    // exactly this — it reads `obligationCoverage?.kind` and nothing else, so a shape-checked projection
+    // of the stored JSON is enough to ask it. A row from an older build, or one hand-edited, answers
+    // ACCOUNT_V1 and is grouped at account grain, which is the fail-closed side.
+    const grain = candidateDedupeGrain({ obligationCoverage: sig.obligationCoverage } as never);
+    const cov = sig.obligationCoverage as { obligationRef?: unknown } | null | undefined;
+    const ref = grain === "OBLIGATION_V2" && typeof cov?.obligationRef === "string"
+      && OBLIGATION_REF_PATTERN.test(cov.obligationRef)
+      ? cov.obligationRef
+      : null;
+    return [{ recoveryType: sig.recoveryType, sourceRef: sig.sourceRef, obligationRef: ref }];
   });
 }
 
@@ -61,14 +73,16 @@ function signalsOf(result: unknown): readonly { readonly recoveryType: string; r
  * absorption" is the one mistake that would let this gate mint a proof over a merge.
  */
 async function absorbedForIdentity(
-  boundaryId: string, group: string,
+  boundaryId: string,
+  claim: { readonly recoveryType: string; readonly sourceRef: string; readonly obligationRef: string | null },
 ): Promise<{ readonly checked: true; readonly count: number } | { readonly checked: false }> {
   const rows = await prisma.$queryRawUnsafe<AbsorptionRow[]>(ABSORPTION_FOR_BOUNDARY, boundaryId);
   let count = 0;
   for (const row of rows) {
-    const touchesThisCase = signalsOf(row.result).some(
-      (s) => accountGrainedGroup(boundaryId, s) === group,
-    );
+    // PER-SIGNAL GRAIN. An obligation-grained signal counts only for its own obligation; an
+    // account-grained one still counts for any obligation of that account, because nothing establishes
+    // which it was about and excluding it would upgrade legacy evidence to a certainty it does not have.
+    const touchesThisCase = signalsOf(row.result).some((s) => signalTouchesIdentity(boundaryId, s, claim));
     if (!touchesThisCase) continue;
     // An event that touches this identity but carries no counts makes the whole question unanswerable
     // for it. One such event is enough to refuse: a partial count is not a count.
@@ -121,12 +135,18 @@ export async function caseProvenEligibility(recoveryCaseId: string): Promise<Pro
     return provenEligibility({ coverage, absorbedObservations: { checked: false }, statedAtRiskMinor });
   }
 
-  const group = accountGrainedGroup(root.boundaryId, {
-    recoveryType: root.recoveryType, sourceRef: root.sourceRef,
-  });
+  // The claim's own identity, at the grain its coverage supports. `coverage.kind` is already known to be
+  // SINGLE_OBLIGATION here, and its `obligationRef` was pattern-checked by the admission boundary; it is
+  // re-checked rather than trusted, because a row written by an older build must not reach the grouping
+  // pretending to be well-formed.
+  const claimObligationRef = OBLIGATION_REF_PATTERN.test(coverage.obligationRef) ? coverage.obligationRef : null;
   return provenEligibility({
     coverage,
     statedAtRiskMinor,
-    absorbedObservations: await absorbedForIdentity(root.boundaryId, group),
+    absorbedObservations: await absorbedForIdentity(root.boundaryId, {
+      recoveryType: root.recoveryType,
+      sourceRef: root.sourceRef,
+      obligationRef: claimObligationRef,
+    }),
   });
 }

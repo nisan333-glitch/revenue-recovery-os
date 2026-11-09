@@ -71,7 +71,23 @@ export interface AbsorbedSignalFacts {
   readonly recoveryType: string;
   readonly sourceRef: string;
   readonly sourcePayloadHash: string;
+  /**
+   * The signal's own obligation reference, present ONLY where its identity is obligation-grained.
+   *
+   * OPTIONAL, AND ITS ABSENCE IS MEANINGFUL. Omitted or null means this observation's identity does not
+   * name an obligation — a legacy or account-grained signal — and it is then grouped at account grain,
+   * which is the fail-closed answer. A caller must never invent one to satisfy the type: a fake value
+   * passed to satisfy a type is worse than a narrower type, because a reviewer believes it.
+   *
+   * WHICH SIGNALS CARRY IT IS NOT DECIDED HERE. `candidateDedupeGrain` in `caseAdmission.ts` is the one
+   * rule, exported precisely because "re-deriving it beside each of them is how two implementations of
+   * one rule drift apart". The extraction consults it; this module uses what it was given.
+   */
+  readonly obligationRef?: string | null;
 }
+
+/** The shape an obligation reference must have to be usable as identity. Never a raw identifier. */
+export const OBLIGATION_REF_PATTERN = /^hmac-sha256:[a-f0-9]{64}$/;
 
 /** What one boundary's history establishes. Every field is a COUNT. */
 export interface BoundaryAbsorption {
@@ -149,6 +165,57 @@ export function accountGrainedGroup(
   return JSON.stringify([boundaryId, signal.recoveryType, signal.sourceRef]);
 }
 
+/**
+ * The group an observation belongs to, AT THE GRAIN ITS OWN IDENTITY SUPPORTS.
+ *
+ * WHY THIS EXISTS. `accountGrainedGroup` is `(boundaryId, recoveryType, sourceRef)` and its comment calls
+ * that "the key's own preimage". That was true before the dedupe key gained an obligation-grained branch
+ * and is now true of the ACCOUNT branch only — so absorption was being judged one grain coarser than the
+ * identity it protects, and two verified-distinct obligations of one account blocked each other.
+ *
+ * IT OVER-REFUSED RATHER THAN UNDER-REFUSED, which is why this is a correction and not an incident: a
+ * gate that refuses too much costs usability, one that refuses too little produces a wrong number. The
+ * correction must not reverse that asymmetry, so an observation whose identity names NO obligation stays
+ * at account grain and keeps its full account-level reach.
+ *
+ * NOT A SECOND IDENTITY RULE. The decision of WHICH signals are obligation-grained belongs to
+ * `candidateDedupeGrain`; this is a projection of what the caller resolved. A drift test holds this
+ * function against `caseCandidateDedupeKey` across BOTH grains, so the two cannot diverge again.
+ */
+export function observationGroup(
+  boundaryId: string,
+  signal: Pick<AbsorbedSignalFacts, "recoveryType" | "sourceRef" | "obligationRef">,
+): string {
+  const ref = signal.obligationRef;
+  return typeof ref === "string" && OBLIGATION_REF_PATTERN.test(ref)
+    ? JSON.stringify(["obligation-v2", boundaryId, signal.recoveryType, signal.sourceRef, ref])
+    : accountGrainedGroup(boundaryId, signal);
+}
+
+/**
+ * Does `signal` touch the identity a case's claim names?
+ *
+ * PER-SIGNAL GRAIN, AND THIS IS THE WHOLE CORRECTION. An obligation-grained signal is compared at
+ * obligation grain, so a different obligation of the same account no longer matches. An
+ * ACCOUNT-grained signal is compared at account grain and therefore still matches — because nothing
+ * establishes which obligation it was about, and excluding it would be an unsupported upgrade of legacy
+ * evidence to obligation-level certainty. The second half is what keeps the correction fail-closed.
+ */
+export function signalTouchesIdentity(
+  boundaryId: string,
+  signal: Pick<AbsorbedSignalFacts, "recoveryType" | "sourceRef" | "obligationRef">,
+  claim: { readonly recoveryType: string; readonly sourceRef: string; readonly obligationRef: string | null },
+): boolean {
+  const signalIsObligationGrained =
+    typeof signal.obligationRef === "string" && OBLIGATION_REF_PATTERN.test(signal.obligationRef);
+  if (!signalIsObligationGrained) {
+    // Legacy or account-grained evidence: it could be about this obligation, so it still counts.
+    return accountGrainedGroup(boundaryId, signal) === accountGrainedGroup(boundaryId, claim);
+  }
+  // Obligation-grained evidence: it names its subject, so it counts only for that subject.
+  return observationGroup(boundaryId, signal) === observationGroup(boundaryId, claim);
+}
+
 /** Pure, total, deterministic. The same rows always produce a byte-identical report. */
 export function summariseAbsorption(rows: readonly SucceededTaskRow[]): AbsorptionReport {
   const byBoundary = new Map<
@@ -197,7 +264,9 @@ export function summariseAbsorption(rows: readonly SucceededTaskRow[]): Absorpti
     // each other. Only the absorbing identities are then counted, so a boundary where every signal
     // created its own candidate contributes nothing however many digests it carries.
     for (const signal of row.signals) {
-      const group = accountGrainedGroup(row.boundaryId, signal);
+      // AT THE SIGNAL'S OWN GRAIN. Two verified-distinct obligations of one account are two groups, so
+      // one no longer records the other's differing observation against it.
+      const group = observationGroup(row.boundaryId, signal);
       const digests = b.digestsByGroup.get(group) ?? new Set<string>();
       digests.add(signal.sourcePayloadHash);
       b.digestsByGroup.set(group, digests);
