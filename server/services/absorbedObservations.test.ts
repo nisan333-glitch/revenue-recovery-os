@@ -417,7 +417,7 @@ describe("absorbed observations · the diagnostic is structurally read-only", ()
     // end-to-end test below failed with "Engine is not yet connected" when the scan lived here. Keeping
     // the logic in the import-free module and the side effects here satisfies both halves of *a command
     // whose claims cannot be imported cannot be falsified* without a self-invocation guard.
-    expect(importSpecifiers(cli).sort()).toEqual([
+    expect([...importSpecifiers(cli)].sort()).toEqual([
       "../../server/db",
       "../../server/services/absorbedObservations",
     ]);

@@ -1,9 +1,9 @@
 {
   "_what": "The measured typecheck debt in server/**/*.test.ts and server/test/** under tsconfig.server.test.json.",
-  "_measuredAt": "2026-11-09",
-  "_measuredOn": "bb17ecd20493abb1924c91be78fe9ea3f9a37a9f",
-  "_alsoAtBaseline": "07590b498b53dc25ffbf7e1cc0572797e62d0e55 reports the identical 33 across 19, error-for-error.",
+  "_measuredAt": "2026-11-10",
+  "_measuredOn": "aba7cac (+ the debt-reduction change in the same commit)",
+  "_was": "33 errors across 19 files when the ratchet was introduced. Lowered to 9 across 8 by fixing real defects \u2014 never by weakening a compiler flag or adding a suppression. The 24 that went: 8 unused symbols (one of which became a RESTORED assertion), 12 from one over-narrowed test helper whose type accepted only its own defaults, and 4 individually.",
   "_notABudget": "This records a known debt so a REGRESSION is detectable. It is not an allowance to spend, and it is never raised to make a new error pass.",
-  "errors": 33,
-  "files": 19
+  "errors": 9,
+  "files": 8
 }

@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { buildApp } from "../app";
 import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
-import { uid, hdr, AUTHOR, APPROVER, VERIFIER, seedAuditableCase, approveBody } from "../test/fixtures";
+import { uid, hdr, AUTHOR, APPROVER, seedAuditableCase, approveBody } from "../test/fixtures";
 import { authorityFor } from "../auth/authorityStore";
 import { getCaseProofs } from "../persistence/proofStore";
 

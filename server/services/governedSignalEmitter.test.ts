@@ -21,8 +21,6 @@ import {
 import { AgentRuntime } from "../agents/runtime";
 import { createPilotAssessmentAgent } from "../agents/pilotAssessmentAgent";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
-import { TransactionalCaseCandidateStore } from "../agents/postgresCaseCandidateStore";
-import { PLAYBOOK } from "../../src/domain/recommendation";
 import type { RecoveryTypeAdmissionPolicy } from "../agents/admission";
 import {
   LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL,
@@ -215,6 +213,33 @@ describe.skipIf(!HAS_DB)("EP-31 · the governed signal emitter", () => {
         /proofService|proofStore|recoveryCase|baselineStore|evidenceStore|authorityStore|candidateReview/i,
       );
     }
+  });
+
+  it("11 · the emitter's OWN identity is what it stamps, and the behavioural assertion is UNREACHABLE", () => {
+    // WHY THIS TEST EXISTS AND WHY IT IS STRUCTURAL. `SIGNAL_EMITTER_AGENT_ID` and
+    // `SIGNAL_EMITTER_DETECTOR_VERSION` were imported by this file and asserted NOWHERE — found by
+    // the server-test typecheck, which flagged both as declared-but-never-read.
+    //
+    // That is not a stale import to delete. The emitter stamps both onto every signal it publishes
+    // (`detectorVersion: SIGNAL_EMITTER_DETECTOR_VERSION`, and `submit(SIGNAL_EMITTER_AGENT_ID, …)`),
+    // so the identity SHOULD be asserted on an emitted candidate. It cannot be: every test in this file
+    // exercises the path where `leakInstanceIdentityStatus()` blocks emission, so `candidatesCreated` is
+    // 0 and no emitted signal exists to read an identity off. The behavioural assertion is unreachable
+    // until that gate opens, and deleting the imports would have hidden that fact rather than recorded
+    // it. An unused import can be a test that stopped asserting something — here it is a test that
+    // never could.
+    //
+    // So this asserts what IS checkable: that the two constants the emitter declares are the two it
+    // actually stamps, read from the source rather than from a comment.
+    const src = readFileSync(new URL("./governedSignalEmitter.ts", import.meta.url), "utf8");
+    expect(SIGNAL_EMITTER_AGENT_ID).toBe("pilot-signal-emitter");
+    expect(SIGNAL_EMITTER_DETECTOR_VERSION).toBe("pilot-signal-emitter@1.0.0");
+    // The publish call carries the agent id, and the signal carries the detector version.
+    expect(src).toMatch(/submit\(\s*SIGNAL_EMITTER_AGENT_ID/);
+    expect(src).toMatch(/detectorVersion:\s*SIGNAL_EMITTER_DETECTOR_VERSION/);
+    // Neither is a literal at the call site — a hardcoded string there could drift from the constant.
+    expect(src).not.toMatch(/submit\(\s*"pilot-signal-emitter"/);
+    expect(src).not.toMatch(/detectorVersion:\s*"pilot-signal-emitter@/);
   });
 
   it("10 · NC · the request body cannot supply the at-risk amount or anything else about the signal", async () => {

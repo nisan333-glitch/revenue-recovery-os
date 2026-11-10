@@ -29,7 +29,6 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 // EP-26 · Only the currency is still the caller's to state. The cut-off and the stall threshold are a
 // governed definition, cited by reference; `GOVERNED_TERMS_FIELDS` is that reference.
-const POLICY = { currency: "USD" };
 
 function body(over: Record<string, unknown> = {}) {
   return {

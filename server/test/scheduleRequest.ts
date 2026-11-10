@@ -14,7 +14,10 @@
 // NOT A PRODUCTION HELPER. Nothing in `server/services` or `src/` imports it: the real clients build the
 // two requests separately, because they are two requests.
 export function scheduleRequestFrom<T extends object>(intakeBody: T): Omit<T, "declaredVersion"> {
-  const rest: Record<string, unknown> = { ...intakeBody };
-  delete rest.declaredVersion;
+  // Spreading a generic `T` does not produce a `Record<string, unknown>` as far as the compiler is
+  // concerned, so the local was annotated with a type the value does not have. Destructuring states the
+  // SAME subtraction without asserting anything: the field is named once, removed once, and the return
+  // type is derived rather than reached by a mutable delete.
+  const { declaredVersion: _declaredVersion, ...rest } = intakeBody as T & { declaredVersion?: unknown };
   return rest as Omit<T, "declaredVersion">;
 }

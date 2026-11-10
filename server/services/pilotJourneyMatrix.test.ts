@@ -39,7 +39,6 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 /** The same as-of the scenario expectations were written against. */
 // EP-26 · Currency only. The cut-off and the threshold are the governed definition this suite activates
 // per boundary (asOf 2026-03-01, N 30) and cites by reference at the top level of the request, not here.
-const ASSESSMENT = { currency: "USD" };
 
 describe.skipIf(!HAS_DB)("EP-19 · the risk matrix through the real stack", () => {
   const app = buildApp({ sourceVerifier: fixtureVerifier });

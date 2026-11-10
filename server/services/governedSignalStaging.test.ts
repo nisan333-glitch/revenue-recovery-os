@@ -9,7 +9,7 @@ import { prisma } from "../db";
 import { fixtureVerifier } from "../test/sourceFixture";
 import { SYNTHETIC_PROVENANCE, syntheticPilotCsv } from "../../src/contract/syntheticPilotDataset";
 import { PILOT_DATA_CONTRACT_VERSION } from "../../src/contract/pilotDataContract";
-import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS, TEST_ANALYSIS_TERMS } from "../test/governedTerms";
+import { ensureGovernedTerms, GOVERNED_TERMS_FIELDS } from "../test/governedTerms";
 import { schedulePilotAssessment } from "./pilotAssessmentService";
 import { createExecutionIfAbsent, findExecution } from "../persistence/pilotExecutionStore";
 import { AgentRuntime } from "../agents/runtime";
