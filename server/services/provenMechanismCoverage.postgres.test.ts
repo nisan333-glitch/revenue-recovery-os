@@ -33,8 +33,12 @@ import { CandidateReviewService } from "../agents/candidateReview";
 import { CandidatePromotionService } from "../agents/recoveryCase";
 import { PostgresCandidateReviewStore } from "../agents/postgresCandidateReviewStore";
 import { caseCandidateDedupeKey, caseCandidateId } from "../agents/caseAdmission";
-import { correctionMapping, mappingBlocksApproval, DECLARED_REASONS, CORRECTION_CHANNELS } from "../../src/domain/correctionMapping";
+import {
+  correctionMapping, mappingBlocksApproval, DECLARED_REASONS, CORRECTION_CHANNELS,
+  BLOCKING_MAPPING_CODES, ALL_MAPPING_REFUSALS_BLOCK, type CorrectionMappingCode,
+} from "../../src/domain/correctionMapping";
 import { ENFORCED_REASON_SCOPE, reasonScopeViolation } from "../../src/domain/reasons";
+import { cfoAuditExport } from "../audit/auditService";
 import type { ActorContext } from "../auth/identity";
 
 const HAS_DB = !!process.env.DATABASE_URL;
@@ -80,9 +84,27 @@ describe("PROVEN coverage · the determination, from the evidence contracts", ()
       }
       expect(verdict.ok).toBe(false);
       expect(!verdict.ok && verdict.code).toBe("CORRECTION_CHANNEL_NOT_DECLARED");
-      // THE GAP, in one assertion. Inverting this is the governance decision; see the doc.
-      expect(mappingBlocksApproval(verdict)).toBe(false);
+      // CLOSED 2026-11-10, owner-approved. This assertion was `toBe(false)` and recorded the gap; it is
+      // now the opposite claim, and the inversion is the whole change.
+      expect(mappingBlocksApproval(verdict)).toBe(true);
     }
+  });
+
+  it("EVERY mapping refusal blocks — the set is exhaustive, not a list someone must remember to extend", () => {
+    // THE DANGEROUS SHAPE THIS FORBIDS. If a future `CorrectionMappingCode` is added and left out of
+    // `BLOCKING_MAPPING_CODES`, a new unsupported mechanism could mint Revenue Returned while every
+    // existing test still passed. Enumerating the codes from a verdict is not enough — they must be
+    // enumerated from the TYPE's own inhabitants, which is what this list is.
+    const everyCode: CorrectionMappingCode[] = [
+      "RECOVERY_REASON_UNKNOWN",
+      "CORRECTION_CHANNEL_NOT_DECLARED",
+      "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON",
+    ];
+    for (const code of everyCode) {
+      expect(BLOCKING_MAPPING_CODES, code).toContain(code);
+    }
+    expect(BLOCKING_MAPPING_CODES).toHaveLength(everyCode.length);
+    expect(ALL_MAPPING_REFUSALS_BLOCK).toBe(true);
   });
 });
 
@@ -132,7 +154,15 @@ describe.skipIf(!HAS_DB)("PROVEN coverage · the gap, measured on the real path"
     return promoted.recoveryCase.recoveryCaseId;
   }
 
-  async function approveWith(reason: string): Promise<{ status: number; body: string }> {
+  async function caseBoundary(caseId: string): Promise<string> {
+    const row = await prisma.recoveryCaseRecord.findUnique({
+      where: { recoveryCaseId: caseId }, select: { boundaryId: true },
+    });
+    if (!row) throw new Error(`no governed root for ${caseId}`);
+    return row.boundaryId;
+  }
+
+  async function approveWith(reason: string): Promise<{ status: number; body: string; caseId: string }> {
     const caseId = await provableCase();
     expect((await app.inject({ method: "POST", url: `/cases/${caseId}/author`, headers: AUTHOR })).statusCode).toBe(201);
     const baselineId = await seedBaseline(app, caseId, { calculatedMinor: 10_000 });
@@ -147,7 +177,7 @@ describe.skipIf(!HAS_DB)("PROVEN coverage · the gap, measured on the real path"
         evidenceIds: [evidenceId], baselineId, confidenceUsed: 95,
       },
     });
-    return { status: res.statusCode, body: res.body };
+    return { status: res.statusCode, body: res.body, caseId };
   }
 
   it("POSITIVE · BillingCorrection reaches PROVEN, which is the supported mechanism", async () => {
@@ -156,24 +186,40 @@ describe.skipIf(!HAS_DB)("PROVEN coverage · the gap, measured on the real path"
     expect(JSON.parse(res.body).revenueReturned.minor).toBe(60_000);
   }, 120_000);
 
-  it("GAP · an UNSUPPORTED mechanism is ALSO accepted today, on a BILLING correction record", async () => {
-    // THIS TEST ASSERTS A DEFECT, NOT A FEATURE, and it is written this way on purpose.
-    //
-    // `UsageActivation` means an activation was performed. The executed-correction record behind this
-    // approval is `corrective_invoice_issued` — the billing system's statement that it re-billed. That
-    // record attests NOTHING about an activation, and the proof is immutable, so the disagreement could
-    // never be corrected afterwards. The constitution names this exact failure: "a billing artefact
-    // stood in as proof that the activation happened".
-    //
-    // IT IS ACCEPTED BECAUSE BOTH GATES LET IT THROUGH. `CORRECTION_CHANNEL_NOT_DECLARED` is computed
-    // and not blocking, and `UsageActivation` has no entry in `ENFORCED_REASON_SCOPE`, so the scope
-    // check returns null by its own contract.
-    //
-    // WHEN THE REFUSAL BECOMES BLOCKING THIS TEST FAILS, which is the point: closing the gap must force
-    // whoever closes it to update this record rather than discover a stale assertion later.
-    const res = await approveWith("UsageActivation");
-    expect(res.status, res.body).toBe(201);
-    expect(JSON.parse(res.body).revenueReturned.minor).toBe(60_000);
+  // ── WHAT THESE TESTS REPLACED, kept because the inversion is the record ──────────────────────────
+  //
+  // Until 2026-11-10 one test here asserted the DEFECT: that `UsageActivation` reached 201 and minted
+  // $600.00 on a billing correction record. It was written to fail the day the refusal became blocking,
+  // and it did. These are its replacements, and they assert the opposite in three independent ways —
+  // the status, the absence of a proof row, and the absence of any Revenue Returned at all.
+  //
+  // THREE ASSERTIONS AND NOT ONE, because "403" alone would not establish that no money was minted. A
+  // refusal that nonetheless wrote a row would satisfy a status check and violate the rule.
+
+  it("REJECTED · every unsupported mechanism is refused, and mints NOTHING", async () => {
+    for (const reason of DECLARED_REASONS.filter((r) => r !== PROVABLE)) {
+      const { status, body, caseId } = await approveWith(reason);
+      expect(status, `${reason}: ${body}`).toBe(403);
+      expect(body, reason).toContain("CORRECTION_CHANNEL_NOT_DECLARED");
+      // NO PROOF ROW. The decisive assertion: a refusal that still wrote a proof would pass a status
+      // check and break the rule.
+      expect(await prisma.proof.count({ where: { recoveryCaseId: caseId } }), reason).toBe(0);
+      // AND NO REVENUE RETURNED ANYWHERE FOR THIS CASE. `null` is NOT COMPUTED; a `0` here would assert
+      // that a proof was found and summed to nothing, which is a different and false claim.
+      const auditor = actor("cfo@company", "approver", [(await caseBoundary(caseId))]);
+      const audit = await cfoAuditExport(auditor, caseId);
+      expect(audit.provenRevenueReturnedMinor, reason).toBeNull();
+    }
+  }, 600_000);
+
+  it("REJECTED · the refusal names the mechanism and says the channel does not exist", async () => {
+    // A refusal a CFO cannot read is not a control. The message must name which mechanism was claimed
+    // and why no evidence could substantiate it — not merely that something was forbidden.
+    const { status, body } = await approveWith("UsageActivation");
+    expect(status).toBe(403);
+    expect(body).toContain("UsageActivation");
+    expect(body).toContain("no source-attested correction channel exists for this mechanism");
+    expect(body).toMatch(/governance decision/);
   }, 120_000);
 
   it("CONTROL · a reason outside the closed vocabulary IS refused, so the gate is not inert", async () => {

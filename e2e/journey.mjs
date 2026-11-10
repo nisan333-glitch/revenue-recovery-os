@@ -1665,22 +1665,44 @@ try {
     });
     return { status: res.status, body: await res.text() };
   }, [recoveryCaseId, `BL-journey-${recoveryCaseId.slice(3, 11)}`, evidence.evidenceId]);
-  check("an approver — never the author — freezes the proof", approval.status === 201,
-    `${approval.status} ${approval.body.slice(0, 160)}`);
+  // ── THE LEDGER'S DOOR, AND IT HOLDS ────────────────────────────────────────────────────────────
+  //
+  // Until 2026-11-10 this section asserted 201 and a proven $70.00. That was wrong, and the whole arc
+  // above is what makes the refusal meaningful rather than a dead end: the detector found the leak, a
+  // human accepted it, promotion was idempotent, the baseline was locked before the outcome, the SOURCE
+  // attested that the corrective charge was raised, and the SOURCE attested that money arrived — all of
+  // it signed, with the private key never in the API process.
+  //
+  // AND IT IS STILL REFUSED, because this case is an ActivationMissed leak and `UsageActivation` is the
+  // correct reason for it. No source system attests that an activation was PERFORMED. The correction
+  // record is the billing system's statement about BILLING; it says nothing about an activation, and a
+  // proof is immutable, so accepting it would freeze a disagreement nothing could later correct.
+  //
+  // THE COMPLETE LOOP IS STILL DEMONSTRATED — in §14, on a RevenueUnderBilled case where the correction
+  // and the money are linked by an accounting identity on one obligation. That is where $600.00
+  // identified and $500.00 returned appear as two numbers on one screen. This section demonstrates the
+  // boundary of the capability, which a product that must never overstate itself needs to show too.
+  check("the approval is REFUSED for a mechanism nothing can attest, 403", approval.status === 403,
+    `${approval.status} ${approval.body.slice(0, 200)}`);
+  check("and the refusal names the mechanism and the missing channel, not merely 'forbidden'",
+    /UsageActivation/.test(approval.body) && /CORRECTION_CHANNEL_NOT_DECLARED/.test(approval.body),
+    approval.body.slice(0, 240));
 
   caseText = await readCase();
-  check("the case reads PROVEN", await stageReached("PROVEN"), caseText.slice(0, 200));
+  check("the case does NOT read PROVEN", !(await stageReached("PROVEN")), caseText.slice(0, 200));
+  check("it still reads EVIDENCED — every earlier leg of the loop held", await stageReached("EVIDENCED"),
+    caseText.slice(0, 200));
+  // THE POINT OF THE SECTION, on one screen at one moment: an identified gap of $100.00 and NOTHING
+  // proven, with the absence stated as NOT COMPUTED rather than rendered as $0.00. A zero would assert
+  // that a proof was found and came to nothing.
   check(
-    "Revenue Returned is the kernel's figure, collected minus baseline, and names the proof it came from",
-    /\$70\.00/.test(caseText) && /PF-journey-/.test(caseText),
+    "the identified gap is shown and Revenue Returned reads NOT COMPUTED, never $0.00",
+    /\$100\.00/.test(caseText) && /NOT COMPUTED/.test(caseText) && !/\$0\.00/.test(caseText) &&
+      /not money returned/i.test(caseText),
     caseText.slice(0, 240),
   );
-  // THE WHOLE POINT OF THE SECTION, on one screen at one moment: an identified gap of $100.00 and a
-  // proven return of $70.00, two numbers, neither standing in for the other.
-  check(
-    "the identified gap and the proven return are shown as two DIFFERENT numbers on the same screen",
-    /\$100\.00/.test(caseText) && /\$70\.00/.test(caseText) && /not money returned/i.test(caseText),
-  );
+  check("and no proof id was minted anywhere on the screen", !/PF-journey-/.test(caseText),
+    caseText.slice(0, 240));
 
   // ── 13f · The governed record agrees, and no second case exists ────────────────────────────────
   const finalState = await page.evaluate(async ([caseId, boundaryId]) => {
@@ -1694,12 +1716,16 @@ try {
     return { status: res.status, view, pending: queue.ok ? (await queue.json()).length : -1 };
   }, [recoveryCaseId, BOUNDARY]);
   check(
-    "the server's own record carries the same two figures the screen showed",
+    "the server's own record agrees: the exposure is recorded and NOTHING is proven",
     finalState.status === 200 &&
       finalState.view?.lifecycle?.exposure?.minor === 10_000 &&
-      finalState.view?.provenRevenueReturnedMinor === 7_000 &&
+      // `null` is NOT COMPUTED. A `0` here would be the server asserting a proof it does not hold.
+      finalState.view?.provenRevenueReturnedMinor === null &&
       finalState.view?.lifecycle?.exposureIsNotRecoveredRevenue === true,
-    JSON.stringify(finalState.view?.lifecycle?.exposure ?? {}),
+    JSON.stringify({
+      e: finalState.view?.lifecycle?.exposure ?? {},
+      p: finalState.view?.provenRevenueReturnedMinor ?? null,
+    }),
   );
   check(
     "the case's root still names the candidate and the detector it came from",

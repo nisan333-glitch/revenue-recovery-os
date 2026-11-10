@@ -67,23 +67,29 @@ async function promoteCase(
       }
     : undefined;
   const signal = {
-    signalId: `ACT-${createHash("sha256").update(randomUUID()).digest("hex").slice(0, 32)}`,
+    signalId: `FIX-${createHash("sha256").update(randomUUID()).digest("hex").slice(0, 32)}`,
     boundaryId,
-    recoveryType: "ActivationMissed",
+    // REVENUE-UNDER-BILLED, BECAUSE THIS SUITE NEEDS A CASE THAT CAN BE PROVEN. The fixture was
+    // `ActivationMissed` — an arbitrary choice for a suite whose subject is the READ surface, not the
+    // detector. Once the correction-channel refusal became blocking, an activation case can no longer
+    // reach PROVEN at all (correctly: no source attests that an activation was performed), so the two
+    // tests here that read a PROVEN case had nothing to read. The fixture is changed to a mechanism
+    // whose proof is legitimate, rather than the gate being loosened to keep the fixture.
+    recoveryType: "RevenueUnderBilled",
     sourceRef: `hmac-sha256:${createHash("sha256").update(randomUUID()).digest("hex")}`,
     sourcePayloadHash: createHash("sha256").update(randomUUID()).digest("hex"),
-    detectorVersion: "activation-deadline-v1",
+    detectorVersion: "reconciliation-observer-v1",
     observedAt: new Date().toISOString(),
     amountAtRiskMinor: AMOUNT_AT_RISK_MINOR,
     currency: "USD",
     actionAvailable: true,
-    expectedProofEvent: "activation followed by next invoice paid",
+    expectedProofEvent: "corrective invoice raised and collected",
     ...(obligationCoverage ? { obligationCoverage } : {}),
   };
   const dedupeKey = caseCandidateDedupeKey(signal);
   const candidateId = caseCandidateId(dedupeKey);
   await prisma.agentCaseCandidateRecord.create({
-    data: { candidateId, dedupeKey, boundaryId, agentId: "activation-deadline-v1", signal, submittedAt: new Date() },
+    data: { candidateId, dedupeKey, boundaryId, agentId: "reconciliation-observer-v1", signal, submittedAt: new Date() },
   });
 
   const store = new PostgresCandidateReviewStore();
@@ -119,7 +125,7 @@ describe.skipIf(!HAS_DB)("the governed Recovery Case read surface", () => {
 
     expect(view.root.sourceCandidateId).toBe(candidateId);
     expect(view.root.boundaryId).toBe(b);
-    expect(view.root.detectorVersion).toBe("activation-deadline-v1");
+    expect(view.root.detectorVersion).toBe("reconciliation-observer-v1");
     expect(view.root.amountAtRiskMinor).toBe(AMOUNT_AT_RISK_MINOR);
     expect(view.lifecycle.progress).toBe("OPENED");
     expect(view.lifecycle.exposure.minor).toBe(AMOUNT_AT_RISK_MINOR);

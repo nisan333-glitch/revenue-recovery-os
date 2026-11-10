@@ -139,28 +139,36 @@ export function correctionMapping(
  *     supplied is not in it. Measured: enforcing this breaks nothing, because nothing in the repository
  *     pairs `BillingCorrection` with a non-billing correction.
  *
- * REPORTED AND NOT BLOCKING:
- *   · `CORRECTION_CHANNEL_NOT_DECLARED` — seven of the eight reasons have no correction channel, so
- *     enforcing it would make PROVEN unreachable for every mechanism except a billing correction.
- *     MEASURED, not estimated: enforcing it gives 41 failed / 905 passed against 946 passed without it,
- *     and 905 + 41 = 946 exactly — so the mutation's whole effect is those 41 and nothing else moved.
- *     Every failure is a 403 at approval; where the refusal body is printed it carries this code, and no
- *     other mapping code appears in the output at all. The rest are truncated by vitest to a bare status
- *     assertion, so one cause is strongly evidenced and NOT read off 41 individual refusal bodies.
- *     `docs/CORRECTION_TYPE_MAPPING_V1.md` §6 states the evidence at exactly that strength.
+ * ALSO BLOCKING, SINCE THE OWNER DECIDED IT ON 2026-11-10:
+ *   · `CORRECTION_CHANNEL_NOT_DECLARED` — seven of the eight reasons have no correction channel at all.
  *
- *     That is not a defect to patch — it is G1's universal correction requirement meeting the fact that
- *     no source attests an onboarding restart, a milestone, an enablement session, an outreach, a review
- *     or a usage activation. The remedy is to DECLARE a channel for those mechanisms and name which
- *     source may attest each, which is a governance decision with an owner. Enforcing it here would take
- *     that decision by implementation, and permitting it silently would let a billing artefact stand in
- *     as proof of an activation. So it is surfaced and refused neither way: recorded, with the decision
- *     put to its owner.
+ *     THIS WAS DELIBERATELY NOT ENFORCED UNTIL THE DECISION WAS MADE, and the history is kept because it
+ *     explains the shape. Enforcing it makes PROVEN unreachable for every mechanism except a billing
+ *     correction, which is a visible product consequence rather than a tidy-up: it refuses the synthetic
+ *     pilot's own `ActivationMissed` → `UsageActivation` demonstration, where `UsageActivation` is the
+ *     CORRECT reason by the declared scope. Taking that by implementation would have been deciding for
+ *     the owner. Permitting it silently let a billing artefact stand in as proof that an activation
+ *     happened — the failure the constitution names in those words.
+ *
+ *     The owner approved enforcement, so the refusal now blocks. The synthetic pilot moved to a billing
+ *     case rather than the gate being softened to accommodate it: a demonstration is adjusted to the
+ *     rule, never the rule to the demonstration.
  */
 export const BLOCKING_MAPPING_CODES: readonly CorrectionMappingCode[] = Object.freeze([
   "RECOVERY_REASON_UNKNOWN",
   "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON",
+  // Owner-approved 2026-11-10. Every declared refusal now blocks, so the set is exhaustive over
+  // `CorrectionMappingCode` — a mapping verdict that is not `ok` cannot mint Revenue Returned.
+  "CORRECTION_CHANNEL_NOT_DECLARED",
 ]);
+
+/**
+ * EVERY refusal blocks, as of the owner's decision. Kept as a named, asserted property rather than left
+ * implicit in the list above: if a future code is added to `CorrectionMappingCode` and NOT to
+ * `BLOCKING_MAPPING_CODES`, a new unsupported mechanism could mint money while every existing test still
+ * passed. The test on this constant is what makes that impossible to do quietly.
+ */
+export const ALL_MAPPING_REFUSALS_BLOCK = true as const;
 
 /** Does this verdict block an approval today? Pure, and the only place the split is applied. */
 export function mappingBlocksApproval(verdict: CorrectionMappingVerdict): boolean {

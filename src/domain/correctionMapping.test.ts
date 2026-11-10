@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { RECOVERY_REASONS } from "./reasons";
 import {
-  BLOCKING_MAPPING_CODES, CORRECTION_CHANNELS, DECLARED_CORRECTION_TYPES, DECLARED_REASONS,
+  ALL_MAPPING_REFUSALS_BLOCK, BLOCKING_MAPPING_CODES, CORRECTION_CHANNELS, DECLARED_CORRECTION_TYPES, DECLARED_REASONS,
   correctionMapping, mappingBlocksApproval,
 } from "./correctionMapping";
 
@@ -79,28 +79,53 @@ describe("unsupported combinations · all seven, each explicitly", () => {
   });
 });
 
-describe("the enforcement split, and what it costs", () => {
-  it("blocks exactly the two decidable codes and NOT the governance one", () => {
+describe("enforcement · EVERY refusal blocks, owner-approved 2026-11-10", () => {
+  it("blocks all three codes — the set is exhaustive, not a list to remember to extend", () => {
+    // THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-11-10. It required exactly the two "decidable" codes and
+    // explicitly NOT the governance one, which is what let an unsupported mechanism mint Revenue Returned.
+    // The inversion IS the fix, and the old shape is described here rather than deleted so the change is
+    // legible to whoever reads this file next.
     expect([...BLOCKING_MAPPING_CODES].sort()).toEqual([
-      "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON", "RECOVERY_REASON_UNKNOWN",
+      "CORRECTION_CHANNEL_NOT_DECLARED",
+      "CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON",
+      "RECOVERY_REASON_UNKNOWN",
     ]);
+    expect(ALL_MAPPING_REFUSALS_BLOCK).toBe(true);
     expect(mappingBlocksApproval(correctionMapping("Whatever", "corrective_invoice_issued"))).toBe(true);
     expect(mappingBlocksApproval(correctionMapping("BillingCorrection", "usage_activated"))).toBe(true);
-    // NOT blocking: seven of eight reasons have no channel, and enforcing that is a governance decision.
-    expect(mappingBlocksApproval(correctionMapping("UsageActivation", "corrective_invoice_issued"))).toBe(false);
-    // And a passing verdict never blocks.
+    // NOW BLOCKING, and this one line is the whole point of the change.
+    expect(mappingBlocksApproval(correctionMapping("UsageActivation", "corrective_invoice_issued"))).toBe(true);
+    // And a passing verdict still never blocks — the gate did not become unconditional.
     expect(mappingBlocksApproval(correctionMapping("BillingCorrection", "billing_corrected"))).toBe(false);
   });
 
-  it("MEASURES what enforcing the governance code would make unreachable", () => {
-    // Not an estimate: the count comes from the declaration itself, and the empirical half is recorded in
-    // the module comment — enforcing it gives 41 failed / 905 passed where 946 pass without it, and
-    // 905 + 41 = 946, so the mutation's whole effect is those 41. What the 41 bodies individually
-    // evidence is stated at its real strength there and in the decision record, not overclaimed here.
+  it("NOT ONE unsupported mechanism can pass, checked over every declared reason", () => {
+    // Enumerated from the declaration rather than listed by hand: if a ninth reason is added without a
+    // channel, it is covered here the moment it exists.
+    for (const channel of CORRECTION_CHANNELS) {
+      for (const correctionType of ["corrective_invoice_issued", "billing_corrected"]) {
+        const verdict = correctionMapping(channel.reason, correctionType);
+        const supported = channel.permitted.length > 0;
+        expect(verdict.ok, `${channel.reason}/${correctionType}`).toBe(supported);
+        expect(mappingBlocksApproval(verdict), `${channel.reason}/${correctionType}`).toBe(!supported);
+      }
+    }
+  });
+
+  it("records what enforcement cost, measured rather than estimated", () => {
+    // THE COST, AS IT TURNED OUT. Enforcing this looked like 41 failures across 10 files. Of those, 37
+    // traced to ONE line — a shared proof fixture defaulting to `recoveryReason ?? "UsageActivation"`,
+    // an arbitrary stand-in that was itself what kept the gap invisible. Correcting that default left
+    // FOUR genuine cases, each a flow that really did take an unprovable mechanism to PROVEN: the CSV
+    // pipeline, the synthetic pilot, the browser journey's §13, and the case-read fixture.
+    //
+    // None of them was fixed by softening the gate. The CSV pipeline and the pilot now assert the
+    // REFUSAL, §13 demonstrates the capability boundary while §14 keeps the full PROVEN loop on a
+    // billing case, and the case-read fixture moved to a mechanism whose proof is legitimate.
     const blocked = CORRECTION_CHANNELS.filter((c) => c.permitted.length === 0);
     expect(blocked).toHaveLength(7);
     expect(CORRECTION_CHANNELS).toHaveLength(8);
-    // So PROVEN would be reachable for exactly one mechanism.
+    // PROVEN is reachable for exactly one mechanism, and that is now enforced rather than documented.
     expect(CORRECTION_CHANNELS.filter((c) => c.permitted.length > 0).map((c) => c.reason)).toEqual(["BillingCorrection"]);
   });
 

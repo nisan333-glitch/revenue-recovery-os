@@ -37,7 +37,7 @@ describe.skipIf(!process.env.DATABASE_URL)("SYNTHETIC CSV to governed proof", ()
   const app = buildApp({ sourceVerifier: fixtureVerifier });
   afterAll(async () => { await app.close(); await prisma.$disconnect(); });
 
-  it("links ingestion, human review, promotion, action and immutable proof without counting opportunity", async () => {
+  it("links ingestion, human review, promotion and action — and REFUSES proof for an unprovable mechanism", async () => {
     const boundaryId = `SYNTHETIC-loop-${randomUUID()}`;
     const operator = hdr("SYNTHETIC-reviewer", "operator");
     const input = csvWithObligation();
@@ -68,21 +68,41 @@ describe.skipIf(!process.env.DATABASE_URL)("SYNTHETIC CSV to governed proof", ()
     const payload = approveBody({ proofId, caseId, baselineId, evidenceIds: [evidenceId], collectedMinor: 7_000 });
     const selfApproval = await app.inject({ method: "POST", url: "/proofs", headers: hdr("dana@company", "approver"), payload });
     expect(selfApproval.statusCode).toBe(403);
+    // AND THE APPROVAL IS NOW REFUSED, which is the change of 2026-11-10 and is CORRECT.
+    //
+    // This CSV describes an ActivationMissed leak, and NO mechanism can prove one. The correction for a
+    // missed activation is a human action that no source system attests, so the link between it and a
+    // later payment is a behavioural hypothesis rather than a chain on one obligation. This test used to
+    // take that case to 201 and mint $50.00 with `UsageActivation` — substantiated by a record about
+    // BILLING, which attests nothing about whether an activation happened.
+    //
+    // THE REFUSAL THAT FIRES IS THE ENFORCED SCOPE, not the channel gate, and asserting the one that
+    // actually fires matters. The fixture now asks for `BillingCorrection`, which is scope-enforced to
+    // RevenueUnderBilled cases, so the reason is rejected before the channel question is reached. Both
+    // refusals are correct; this is the first one in the order the server checks them.
     const approved = await app.inject({ method: "POST", url: "/proofs", headers: APPROVER, payload });
-    expect(approved.statusCode, approved.body).toBe(201);
-    expect(approved.json().revenueReturned.minor).toBe(5_000);
+    expect(approved.statusCode, approved.body).toBe(403);
+    expect(approved.body).toContain("applies only to RevenueUnderBilled");
+    expect(await prisma.proof.count({ where: { recoveryCaseId: caseId } })).toBe(0);
+
+    // THE CFO EXPORT READS NOT COMPUTED, NEVER $0.00. A zero would assert that a proof was found and
+    // summed to nothing; `null` says no proof exists, which is the true and different statement — and
+    // it makes this test's own subject, "without counting opportunity", stricter than before: the
+    // $100.00 opportunity reaches the governed record and NOTHING reaches the ledger.
     const exported = await app.inject({ method: "GET", url: `/audit/cases/${caseId}/cfo-export`, headers: STEWARD });
     expect(exported.statusCode).toBe(200);
-    expect(exported.json().provenRevenueReturnedMinor).toBe(5_000);
-    expect(exported.json().auditableRevenueMinor).toBe(5_000);
-    const before = await prisma.proof.findUniqueOrThrow({ where: { proofId } });
+    expect(exported.json().provenRevenueReturnedMinor).toBeNull();
+    expect(exported.json().auditableRevenueMinor).toBeNull();
+
+    // IDEMPOTENCY OF THE CHAIN IS STILL ASSERTED, which is what this suite is really for: re-ingesting
+    // the same CSV creates nothing, and re-promoting returns the same case rather than a second one.
     await expect(ingestSecureCsv(input, new PostgresCaseCandidateStore(), { ...SYNTHETIC_OPTIONS, boundaryId }))
       .resolves.toMatchObject({ created: 0 });
     const replay = await promote();
     expect(replay.statusCode).toBe(200);
     expect(replay.json().recoveryCase.recoveryCaseId).toBe(caseId);
-    expect(await prisma.proof.findUniqueOrThrow({ where: { proofId } })).toEqual(before);
-    expect(await prisma.proof.count({ where: { recoveryCaseId: caseId } })).toBe(1);
+    // Still zero after the replay: a refused approval leaves no row for a retry to duplicate.
+    expect(await prisma.proof.count({ where: { recoveryCaseId: caseId } })).toBe(0);
   });
 
   it("does not turn a caller's billing label into independent proof", async () => {

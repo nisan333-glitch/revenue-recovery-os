@@ -17,7 +17,11 @@ import { CandidateReviewService } from "./candidateReview";
 import { PostgresCandidateReviewStore } from "./postgresCandidateReviewStore";
 import { createPostgresAgentTaskStore } from "./prismaTaskDatabase";
 
-const PILOT_SCHEMA_VERSION = "nh-synthetic-pilot-v1";
+// BUMPED to v2 on 2026-11-10. The report shape materially changed: this pilot's case is an
+// ActivationMissed leak, no mechanism can prove one, and the proof leg is therefore a REFUSAL rather
+// than a frozen figure. A consumer reading a v1 report expects `revenueReturnedMinor: 5_000`; a v2
+// report says NOT COMPUTED and names why. Leaving the version alone would have let the two be confused.
+const PILOT_SCHEMA_VERSION = "nh-synthetic-pilot-v2";
 const OPERATOR = Object.freeze({
   actorId: "SYNTHETIC-pilot-operator",
   role: "operator" as const,
@@ -51,12 +55,28 @@ export interface SyntheticPilotReport {
     readonly opportunityMinor: 10_000;
     readonly collectedMinor: 7_000;
     readonly baselineMinor: 2_000;
-    readonly revenueReturnedMinor: 5_000;
-    readonly auditableRevenueMinor: 5_000;
+    /**
+     * `null` MEANS NOT COMPUTED, and the literal type FORBIDS a number. This pilot cannot produce a
+     * proven figure: its case is an ActivationMissed leak and no mechanism can prove one. A `0` here
+     * would assert that a proof was found and summed to nothing — a different and false claim.
+     */
+    readonly revenueReturnedMinor: null;
+    readonly auditableRevenueMinor: null;
   };
-  readonly proof: {
-    readonly proofId: string;
+  /**
+   * WHY NO PROOF EXISTS, named rather than left as an absence.
+   *
+   * The pilot still exercises the whole governed chain — worker, candidate, human review, promotion,
+   * author, locked baseline, the source's executed-correction attestation and signed outcome evidence.
+   * The last step is refused, and that refusal IS the demonstration: the loop reaches the ledger's door
+   * and the door holds for a mechanism whose recovery nothing can attest.
+   */
+  readonly proofRefused: {
+    readonly httpStatus: 403;
+    readonly reasonClaimed: "UsageActivation";
+    readonly code: "CORRECTION_CHANNEL_NOT_DECLARED";
     readonly evidenceId: string;
+    readonly correctionEvidenceRole: "correction";
     readonly sourceVerificationMethod: "ed25519-v1";
     readonly sourceKeyId: "SYNTHETIC-pilot-billing";
   };
@@ -171,12 +191,16 @@ export async function runSyntheticPilot(
         opportunityMinor: 10_000,
         collectedMinor: 7_000,
         baselineMinor: 2_000,
-        revenueReturnedMinor: proof.revenueReturnedMinor,
-        auditableRevenueMinor: proof.auditableRevenueMinor,
+        // NOT COMPUTED, never 0. There is no proof to sum.
+        revenueReturnedMinor: null,
+        auditableRevenueMinor: null,
       }),
-      proof: Object.freeze({
-        proofId: proof.proofId,
+      proofRefused: Object.freeze({
+        httpStatus: 403,
+        reasonClaimed: "UsageActivation",
+        code: "CORRECTION_CHANNEL_NOT_DECLARED",
         evidenceId: proof.evidenceId,
+        correctionEvidenceRole: "correction",
         sourceVerificationMethod: "ed25519-v1",
         sourceKeyId: source.keyId,
       }),
@@ -190,7 +214,11 @@ export async function runSyntheticPilot(
         "separate_author_and_approver",
         "ephemeral_ed25519_source_attestation",
         "opportunity_not_counted_as_revenue",
-        "cfo_audit_export_reconciled",
+        // The CFO export is still read, and what it reconciles to is NOT COMPUTED rather than a figure.
+        "cfo_audit_export_reports_not_computed",
+        // The control this pilot now demonstrates, and the reason it is worth running: an unprovable
+        // mechanism is refused at the ledger's door with every earlier leg of the loop satisfied.
+        "unprovable_mechanism_refused_at_approval",
       ]),
     });
   } finally {
@@ -244,7 +272,7 @@ async function completeGovernedProof(
   app: FastifyInstance,
   source: ReturnType<typeof syntheticSourceVerifier>,
   recoveryCaseId: string,
-): Promise<{ proofId: string; evidenceId: string; revenueReturnedMinor: 5_000; auditableRevenueMinor: 5_000 }> {
+): Promise<{ evidenceId: string }> {
   await expectStatus(app, "POST", `/cases/${recoveryCaseId}/author`, AUTHOR, undefined, 201);
   const baselineId = `SYNTHETIC-baseline-${randomUUID()}`;
   await expectStatus(app, "POST", `/cases/${recoveryCaseId}/baseline`, AUTHOR, {
@@ -307,21 +335,53 @@ async function completeGovernedProof(
     throw new Error("synthetic evidence did not retain its verified source receipt");
   }
 
-  const proofId = `SYNTHETIC-proof-${randomUUID()}`;
-  const approved = await expectStatus(app, "POST", "/proofs", APPROVER, {
-    proofId,
-    recoveryCaseId,
-    currency: "USD",
-    collectedMinor: 7_000,
-    excludedRecoveryMinor: 0,
-    exclusionStatement: "synthetic pilot; no exclusions asserted",
-    recoveryReason: "UsageActivation",
-    attribution: "SYNTHETIC-pilot",
-    evidenceIds: [evidenceId],
-    baselineId,
-    confidenceUsed: 95,
-  }, 201);
-  if (approved.revenueReturned?.minor !== 5_000) throw new Error("synthetic proof returned an unexpected amount");
+  // ── THE LEDGER'S DOOR, AND IT HOLDS ──────────────────────────────────────────────────────────────
+  //
+  // Every leg before this one succeeded: the production worker ran, a candidate was admitted on an
+  // economic threshold, a human accepted it, promotion was idempotent, the baseline was locked before the
+  // outcome, the source attested that the corrective charge was RAISED, and the source attested that the
+  // money ARRIVED — signed Ed25519, with the private half never reaching this process.
+  //
+  // AND THE APPROVAL IS REFUSED, which is what this pilot now demonstrates. The case is an
+  // ActivationMissed leak and `UsageActivation` is the CORRECT reason for it by the declared scope — but
+  // no source system attests that an activation was performed. The correction record above is the billing
+  // system's statement about BILLING; it attests nothing about an activation, and a proof is immutable,
+  // so accepting it would freeze a disagreement that could never afterwards be corrected.
+  //
+  // UNTIL 2026-11-10 THIS PILOT MINTED $50.00 HERE, and the comment above the correction record had
+  // already flagged it as "REPORTED, NOT SOLVED". The gate is not softened to let the demonstration
+  // through: the demonstration is corrected to match the rule.
+  const refused = await app.inject({
+    method: "POST",
+    url: "/proofs",
+    headers: APPROVER,
+    payload: {
+      proofId: `SYNTHETIC-proof-${randomUUID()}`,
+      recoveryCaseId,
+      currency: "USD",
+      collectedMinor: 7_000,
+      excludedRecoveryMinor: 0,
+      exclusionStatement: "synthetic pilot; no exclusions asserted",
+      recoveryReason: "UsageActivation",
+      attribution: "SYNTHETIC-pilot",
+      evidenceIds: [evidenceId],
+      baselineId,
+      confidenceUsed: 95,
+    },
+  });
+  if (refused.statusCode !== 403) {
+    throw new Error(
+      `synthetic pilot expected the approval to be REFUSED 403, received ${refused.statusCode}: ${refused.body}`,
+    );
+  }
+  if (!refused.body.includes("CORRECTION_CHANNEL_NOT_DECLARED")) {
+    throw new Error(`synthetic pilot refusal did not name the channel gap: ${refused.body}`);
+  }
+
+  // AND NOTHING WAS MINTED. Two further readings, because a 403 alone would not establish it: no proof
+  // row at all, and a CFO export reading NOT COMPUTED on both ledgers rather than $0.00.
+  const proofRows = await prisma.proof.count({ where: { recoveryCaseId } });
+  if (proofRows !== 0) throw new Error(`synthetic pilot wrote ${proofRows} proof row(s) after a refusal`);
 
   const exported = await expectStatus(
     app,
@@ -331,10 +391,16 @@ async function completeGovernedProof(
     undefined,
     200,
   );
-  if (exported.provenRevenueReturnedMinor !== 5_000 || exported.auditableRevenueMinor !== 5_000) {
-    throw new Error("synthetic CFO export did not reconcile to the governed proof");
+  if (exported.provenRevenueReturnedMinor !== null || exported.auditableRevenueMinor !== null) {
+    throw new Error(
+      "synthetic CFO export must read NOT COMPUTED after a refusal, never a figure and never a zero: " +
+        JSON.stringify({
+          proven: exported.provenRevenueReturnedMinor,
+          auditable: exported.auditableRevenueMinor,
+        }),
+    );
   }
-  return { proofId, evidenceId, revenueReturnedMinor: 5_000, auditableRevenueMinor: 5_000 };
+  return { evidenceId };
 }
 
 async function expectStatus(

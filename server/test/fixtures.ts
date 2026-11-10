@@ -271,7 +271,12 @@ export function approveBody(input: {
     collectedMinor: input.collectedMinor ?? 1_320_000,
     excludedRecoveryMinor: input.excludedRecoveryMinor ?? 0,
     exclusionStatement: input.exclusionStatement ?? "no exclusions asserted",
-    recoveryReason: input.recoveryReason ?? "UsageActivation",
+    // BillingCorrection is the DEFAULT because it is the only mechanism whose recovery is provable:
+    // the correction and the money are linked by an accounting identity on one obligation. The previous
+    // default, `UsageActivation`, was an arbitrary stand-in in a shared fixture, and that arbitrariness
+    // is exactly what kept the channel gap invisible across 41 tests that never cared which reason they
+    // used. A fixture default is a claim about what the normal case looks like; this one now is.
+    recoveryReason: input.recoveryReason ?? "BillingCorrection",
     attribution: input.attribution ?? "ar-system",
     evidenceIds: input.evidenceIds,
     baselineId: input.baselineId,
