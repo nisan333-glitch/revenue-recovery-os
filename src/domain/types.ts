@@ -10,13 +10,27 @@ export type FunnelStage =
   | "Renewal"
   | "Expansion";
 
+// A LEAKAGE TYPE IS ALSO THE CASE'S RECOVERY TYPE, and that is a statement rather than a coincidence.
+// The governed server records `RecoveryCaseRecord.recoveryType` as a free-form string and enforces the
+// scope of exactly one reason against it (`ENFORCED_REASON_SCOPE`, today `BillingCorrection` →
+// `RevenueUnderBilled`). The pure domain had no such concept at all, which is how the client-side
+// approve path came to mint proofs no governed route would accept. Rather than invent a SECOND
+// vocabulary to carry the same fact — two names for one thing being the defect this slice removes —
+// the leakage type IS what is handed to `reasonScopeViolation`. `approval.test.ts` pins that the
+// member spellings match the server's enforced values exactly: no case folding, no trimming.
 export type LeakageType =
   | "StalledOnboarding"
   | "ActivationMissed"
   | "NoFirstValue"
   | "LowAdoption"
   | "RenewalAtRisk"
-  | "ExpansionStalled";
+  | "ExpansionStalled"
+  // Added through the sanctioned extension path (Constitution: *a new workflow = new `LeakageType` +
+  // `PLAYBOOK` entry + `RecoveryReason` plays — never a special case carved into the invariants, the
+  // ledger, or the proof chain*). It is the one leakage family whose correction mechanism has a
+  // declared, source-attested channel, so it is the only one that can reach PROVEN — which is why its
+  // absence here meant the domain could not express a provable recovery at all.
+  | "RevenueUnderBilled";
 
 // Lifecycle of a recovery event: Detect -> Queue -> Assign -> Fix -> Prove.
 export type RecoveryStatus =

@@ -1,6 +1,19 @@
 // Realistic seed data covering every state the product must distinguish:
 // open opportunity, proof-grade recovery, low-confidence recovery,
-// unclassified (uncounted) recovery, failed, and dismissed.
+// unclassified (uncounted) recovery, PROOF REFUSED, failed, and dismissed.
+//
+// PROOF REFUSED is the state added by the owner's Option 1 decision (2026-11-10), and seven of these
+// cases are in it. Their mechanisms — RenewalOutreach, MilestoneNudge, OnboardingReboot,
+// ExecBusinessReview, CSMOutreach, EnablementSession, UsageActivation — have no declared correction
+// channel, because the only correction evidence that exists is the billing system's statement about
+// billing and it attests nothing about whether a human or in-product action was taken. So their
+// Revenue Returned reads NOT COMPUTED, never $0.00, and `metrics.ts` reports their COLLECTED money
+// apart from both ledgers.
+//
+// NOT ONE FIELD ON THOSE SEVEN WAS CHANGED. No reason, leakage type, amount, date, confidence or
+// evidence note moved. Relabelling them would have manufactured a provable mechanism for a case that
+// never had one, which is the one thing the gate exists to prevent. RE-1015 was ADDED beside them as
+// a case whose mechanism really is attestable.
 import type { RecoveryEvent, AuditEntry } from "../domain/types";
 import { withDerivedReturn } from "../domain/invariants";
 
@@ -344,6 +357,42 @@ export function seedEvents(): RecoveryEvent[] {
       audit: [
         entry("2026-06-01T09:00:00.000Z", "system", "created", "Detected activation milestone missed"),
         entry("2026-06-09T09:00:00.000Z", "Dana Levy", "status_changed", "Recovered via usage activation"),
+      ],
+    } as Seed),
+    // --- The one PROVABLE recovery: a billing-side shortfall corrected by billing itself. ---
+    //
+    // Every other Recovered case above names a mechanism no source can attest, so no proof can exist
+    // for it and its Revenue Returned reads NOT COMPUTED. This one is different in kind rather than in
+    // degree: the uplift EQUALS a corrective charge the billing system states it raised
+    // ($18,000.00 collected − $12,500.00 originally invoiced = $5,500.00 = CN-9120), so the
+    // attribution is an accounting identity a CFO can re-derive from two documents.
+    make({
+      eventId: "RE-1015",
+      customer: "Umbrella Logistics",
+      funnelStage: "Renewal",
+      leakageType: "RevenueUnderBilled",
+      recoveryReason: "BillingCorrection",
+      owner: "Marcus Cole",
+      status: "Recovered",
+      riskAmount: 18000,
+      baselineAmount: 12500,
+      collectedAmount: 18000,
+      confidence: 92,
+      actionsTaken: [
+        "Confirmed the $5,500.00 residual against the contracted obligation",
+        "Billing raised corrective invoice CN-9120 and attested it at source",
+      ],
+      evidenceNotes:
+        "Reconciliation found a $5,500.00 positive residual on the contracted obligation. Billing raised "
+        + "corrective invoice CN-9120 for exactly that amount (attested at source) and it settled in full "
+        + "on INV-9121. The uplift equals the corrective charge, so the attribution is an accounting "
+        + "identity rather than a behavioural hypothesis.",
+      createdAt: "2026-06-04T09:00:00.000Z",
+      updatedAt: "2026-06-14T09:00:00.000Z",
+      audit: [
+        entry("2026-06-04T09:00:00.000Z", "system", "created", "Reconciliation found a positive residual on the obligation"),
+        entry("2026-06-04T14:00:00.000Z", "Marcus Cole", "action_added", "Billing raised corrective invoice CN-9120"),
+        entry("2026-06-14T09:00:00.000Z", "Marcus Cole", "status_changed", "Recovered — corrective charge settled on INV-9121"),
       ],
     } as Seed),
   ];

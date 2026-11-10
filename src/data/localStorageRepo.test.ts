@@ -5,8 +5,11 @@ import { describe, it, expect, afterEach } from "vitest";
 import { createLocalStorageRepo } from "./localStorageRepo";
 import { provenLedger } from "../domain/provenLedger";
 
-const SEEDED_EVENTS = 14;
-const SEEDED_PROOFS = 7;
+// 15 events: the original 14 plus RE-1015, the one case whose mechanism is attestable.
+// 1 proof: the other seven are refused by the real approval gate, so the seed builds no proof for
+// them. The count is low on purpose and must not be "fixed" by loosening the gate.
+const SEEDED_EVENTS = 15;
+const SEEDED_PROOFS = 1;
 
 function memStorage(): Storage {
   const m = new Map<string, string>();
@@ -40,8 +43,8 @@ describe("localStorageRepo — in-memory is authoritative (R3)", () => {
     expect(repo.list().length).toBe(SEEDED_EVENTS);
     const t = repo.loadTrust();
     expect(t.proofs.length).toBe(SEEDED_PROOFS);
-    expect(provenLedger(t.proofs, "USD").revenueReturned.minor).toBe(8_340_000);
-    expect(provenLedger(t.proofs, "USD").auditableRevenue.minor).toBe(7_980_000);
+    expect(provenLedger(t.proofs, "USD").revenueReturned.minor).toBe(550_000);
+    expect(provenLedger(t.proofs, "USD").auditableRevenue.minor).toBe(550_000);
     // A second repo instance reads what the first persisted.
     const repo2 = createLocalStorageRepo();
     expect(repo2.loadTrust().proofs.length).toBe(SEEDED_PROOFS);

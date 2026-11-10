@@ -136,6 +136,32 @@ export const PLAYBOOK: Record<LeakageType, PlaybookEntry> = {
     probabilityOfSuccess: 0.4,
     effort: "High",
   },
+  // THE ONLY FAMILY WHOSE RECOVERY IS PROVABLE TODAY, and the entry says why in its own fields.
+  // `expectedProofEvent` names an ACCOUNTING event — a corrective charge raised by the billing system
+  // and then settled — not a behavioural one. That is the whole difference: the other six families
+  // expect a human or in-product action (a milestone reached, an onboarding restarted, an outreach
+  // answered), and no source attests that it happened, so `CORRECTION_CHANNELS` declares them with no
+  // channel and the proof gate refuses them. Billing attests its own corrections, which is why
+  // `BillingCorrection` has a channel and is the recommended play here.
+  RevenueUnderBilled: {
+    rootCause:
+      "The contracted obligation was billed for less than it was owed — a billing-side shortfall, "
+      + "not a behavioural one.",
+    creationRule:
+      "Reconciliation shows a positive residual (expected − observed) on a governed unit, with no "
+      + "mechanism-linked counterpart.",
+    economicThreshold: 5000,
+    expectedProofEvent:
+      "The billing system raises a corrective charge for the shortfall and that charge is settled.",
+    recommendedReason: "BillingCorrection",
+    recommendedActions: [
+      "Confirm the residual against the contract and the governed reconciliation grain",
+      "Have billing raise the corrective charge and attest it at source",
+      "Collect the corrected amount and reference the settlement as outcome evidence",
+    ],
+    probabilityOfSuccess: 0.75,
+    effort: "Low",
+  },
 };
 
 export interface Recommendation {

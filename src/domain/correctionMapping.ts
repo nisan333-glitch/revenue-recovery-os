@@ -27,13 +27,21 @@
 // confidence that changes which mapping applies, and cannot label a record into a different channel.
 //
 // PURE: no clock, no I/O, no randomness.
+import { ALL_CORRECTION_EVIDENCE_TYPES, type CorrectionEvidenceType } from "./evidenceRole";
 
-/** The correction evidence types that exist. Mirrors `CORRECTION_EVIDENCE_TYPES`, billing only. */
-export const DECLARED_CORRECTION_TYPES = Object.freeze([
-  "corrective_invoice_issued",
-  "billing_corrected",
-] as const);
-export type DeclaredCorrectionType = (typeof DECLARED_CORRECTION_TYPES)[number];
+/**
+ * The correction evidence types that exist — DERIVED from the role allowlist, not restated.
+ *
+ * The previous form was a hand-written list carrying the comment "Mirrors
+ * `CORRECTION_EVIDENCE_TYPES`". A mirror is two declarations that can disagree, and the day they
+ * disagree the channel gate is deciding on a vocabulary the ingestion path does not use. Deriving it
+ * makes the disagreement unrepresentable, which is strictly stronger than a test that compares them.
+ * `correctionMapping.test.ts` still pins the resulting values, so a change to the allowlist is a
+ * visible change here rather than a silent one.
+ */
+export const DECLARED_CORRECTION_TYPES: readonly CorrectionEvidenceType[] =
+  ALL_CORRECTION_EVIDENCE_TYPES;
+export type DeclaredCorrectionType = CorrectionEvidenceType;
 
 /**
  * What each recovery reason's executed correction may be.
@@ -125,6 +133,34 @@ export function correctionMapping(
     );
   }
   return Object.freeze({ ok: true as const, reason: channel.reason, correctionType: correctionType as DeclaredCorrectionType });
+}
+
+/**
+ * Does this reason have a declared correction channel AT ALL?
+ *
+ * A DIFFERENT QUESTION FROM `correctionMapping`, and the difference is load-bearing. That function
+ * asks whether a PARTICULAR correction may evidence a reason, so it needs the correction's type and
+ * answers `CORRECTION_TYPE_INCOMPATIBLE_WITH_REASON` when none was established. This asks whether any
+ * correction could ever satisfy the reason — which the ledger predicates in `invariants.ts` must ask,
+ * because a `RecoveryEvent` carries no evidence list and calling `correctionMapping(reason, null)`
+ * there would refuse a perfectly provable `BillingCorrection` case for want of an argument it cannot
+ * supply.
+ *
+ * Both read the same `CHANNEL_BY_REASON`, so this is a second QUESTION over one policy, never a
+ * second policy.
+ */
+export function reasonHasDeclaredChannel(recoveryReason: string): boolean {
+  const channel = CHANNEL_BY_REASON.get(recoveryReason);
+  return channel !== undefined && channel.permitted.length > 0;
+}
+
+/** Why a reason has no declared channel, for a refusal that must explain itself. */
+export function channelAbsenceReason(recoveryReason: string): string {
+  const channel = CHANNEL_BY_REASON.get(recoveryReason);
+  if (channel === undefined) {
+    return `'${recoveryReason}' is not a declared recovery reason, so no correction can be matched to it`;
+  }
+  return `${channel.reason}: ${channel.why}`;
 }
 
 /**

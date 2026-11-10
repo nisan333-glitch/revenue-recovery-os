@@ -1,7 +1,15 @@
 // Integration proofs of the approval gate: the immutable Proof is created only when EVERY trust
 // invariant holds together (separation of authority + baseline temporal validity + mandatory
-// exclusion + independent evidence for auditable), and a stored Proof is judged forever against
-// the versions STAMPED on it — a later policy/threshold change can never re-judge history.
+// exclusion + independent evidence for auditable + an attestable recovery mechanism), and a stored
+// Proof is judged forever against the versions STAMPED on it — a later policy/threshold change can
+// never re-judge history.
+//
+// THE BASE FIXTURE MOVED FROM `ActivationMissed`/`MilestoneNudge` TO `RevenueUnderBilled`/
+// `BillingCorrection`, with a corrective-invoice record beside the paid invoice. Not to make a test
+// pass: the old fixture is now refused, correctly, because no source attests that a milestone was
+// reached — so EVERY other gate in this file would have been unreachable behind that one refusal,
+// and the file would have stopped testing the things it exists to test. The refusal itself is
+// asserted directly in its own block below, on the old pair, rather than being lost.
 import { describe, it, expect } from "vitest";
 import { establishBaseline, lockBaseline } from "./baseline";
 import { makeEvidence, type Evidence } from "./evidence";
@@ -34,7 +42,7 @@ const lockedBaseline = lockBaseline(
     methodVersion: CURRENT_POLICY.baselineMethodVersion,
     sourceRefs: ["cohort:test"],
     calculatedAmount: money(620_000, USD),
-    applicableLeakType: "ActivationMissed",
+    applicableLeakType: "RevenueUnderBilled",
     effectiveAt: "2026-06-01T00:00:00.000Z",
     establishedAt: "2026-06-01T00:00:00.000Z",
     establishedBy: "system",
@@ -54,6 +62,18 @@ const independentEvidence: Evidence = makeEvidence({
   suppliedBy: "billing",
 });
 
+/** The executed correction: billing's own statement that it raised the corrective charge. */
+const correctionEvidence: Evidence = makeEvidence({
+  evidenceId: "EV-fix",
+  evidenceType: "corrective_invoice_issued",
+  sourceSystem: "billing",
+  sourceRecordId: "CN-1",
+  observedAt: "2026-06-12T00:00:00.000Z",
+  ingestedAt: "2026-06-12T00:00:00.000Z",
+  trustClassification: "independent",
+  suppliedBy: "billing",
+});
+
 function ctx(over: Partial<CaseApprovalContext> = {}): CaseApprovalContext {
   return {
     proofId: "PF-1",
@@ -62,17 +82,18 @@ function ctx(over: Partial<CaseApprovalContext> = {}): CaseApprovalContext {
     ownerActorId: OWNER,
     approverActor: APPROVER,
     baseline: lockedBaseline,
-    evidence: [independentEvidence],
+    evidence: [correctionEvidence, independentEvidence],
     interventionAt: "2026-06-10T00:00:00.000Z",
     outcomeObservedAt: "2026-06-18T00:00:00.000Z",
     collectedMinor: 3_100_000,
     currency: USD,
     excludedMinor: 0,
     exclusionStatement: "No excluded recovery — asserted: full delta independently evidenced.",
-    recoveryReason: "MilestoneNudge",
-    attribution: "MilestoneNudge; invoice paid",
+    recoveryReason: "BillingCorrection",
+    attribution: "Corrective invoice CN-1 raised for the shortfall; INV-1 settled it in full",
     confidenceUsed: 95,
     policy: CURRENT_POLICY,
+    recoveryType: "RevenueUnderBilled",
     ...over,
   };
 }
@@ -99,7 +120,7 @@ describe("approval gate — the immutable proof is created only when all invaria
         methodVersion: 1,
         sourceRefs: ["cohort:test"],
         calculatedAmount: money(620_000, USD),
-        applicableLeakType: "ActivationMissed",
+        applicableLeakType: "RevenueUnderBilled",
         effectiveAt: "2026-06-01T00:00:00.000Z",
         establishedAt: "2026-06-01T00:00:00.000Z",
         establishedBy: "system",

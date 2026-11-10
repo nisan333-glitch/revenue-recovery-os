@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { seedEvents } from "./seed";
 import { portfolioMetrics } from "../domain/metrics";
-import { isAuditable, isCounted, validateEvent } from "../domain/invariants";
+import { isAuditable, isCounted, validateEvent, proofUnavailable } from "../domain/invariants";
 import { globalAuditFeed } from "../domain/audit";
 import { bandOf } from "../domain/confidence";
 
@@ -40,24 +40,41 @@ describe("detected vs proven are disjoint and exact", () => {
     expect(m.detectedCount).toBe(4);
   });
 
-  it("proven recovered = sum of counted returns", () => {
-    // 19200 + 7700 + 15000 + 10500 + 3600 + 16800 + 10600
-    expect(m.recoveredRevenue).toBe(83400);
-    expect(m.recoveredCount).toBe(7);
+  it("proven recovered = sum of counted returns — RE-1015 alone", () => {
+    // RECOMPUTED for the owner's Option 1 decision. The old figure summed seven uplifts whose
+    // mechanisms no source attests: 19200 + 7700 + 15000 + 10500 + 3600 + 16800 + 10600 = 83400.
+    // Every one is now refused, and the only counted recovery is RE-1015's $5,500 billing correction.
+    expect(m.recoveredRevenue).toBe(5500);
+    expect(m.recoveredCount).toBe(1);
   });
 
-  it("recovery rate = recovered / (recovered + failed) = 7/8", () => {
-    expect(m.recoveryRate).toBeCloseTo(0.875, 5);
+  it("the refused money is REPORTED apart from both ledgers, never dropped", () => {
+    // $106,500 collected across the seven refused cases. Reported as COLLECTED — never as
+    // `collected − baseline`, because the delta in the same units reads as Revenue Returned.
+    expect(m.proofRefusedCount).toBe(7);
+    expect(m.proofRefusedCollected).toBe(106500);
+    // And it is blended into nothing.
+    expect(Object.values(m)).not.toContain(m.proofRefusedCollected + m.recoveredRevenue);
+    expect(Object.values(m)).not.toContain(m.proofRefusedCollected + m.detectedOpportunity);
+  });
+
+  it("recovery rate counts RECOVERIES, provable or not = 8/9", () => {
+    // Deliberately NOT gated on provability. Eight cases recovered money and one failed; calling the
+    // seven unprovable ones non-recoveries would put this rate at 0.5 and say seven recoveries failed
+    // when the cash arrived in every one. *Cannot be proven* and *did not recover* are different facts.
+    expect(m.recoveryRate).toBeCloseTo(8 / 9, 5);
   });
 });
 
 describe("CFO auditable excludes unclassified and low-confidence", () => {
-  it("auditable total drops the medium-confidence recovery", () => {
-    // 83400 counted - 3600 (RE-1005, conf 58, Medium) = 79800
-    expect(m.auditableRevenue).toBe(79800);
-    expect(m.auditableCount).toBe(6);
-    expect(m.unprovenRevenue).toBe(3600);
-    expect(m.unprovenCount).toBe(1);
+  it("auditable equals counted, because the one attestable mechanism carries an identity", () => {
+    // RECOMPUTED. RE-1005 used to be the counted-but-not-auditable demonstration; it is now refused
+    // one layer earlier, on the channel. So `unprovenRevenue` is zero — reported as a
+    // demonstration-coverage consequence rather than asserted as a desirable property.
+    expect(m.auditableRevenue).toBe(5500);
+    expect(m.auditableCount).toBe(1);
+    expect(m.unprovenRevenue).toBe(0);
+    expect(m.unprovenCount).toBe(0);
   });
 
   it("RE-1006 (Recovered, no reason) contributes $0 to every recovered total", () => {
@@ -67,15 +84,20 @@ describe("CFO auditable excludes unclassified and low-confidence", () => {
     expect(re1006.revenueReturned).toBe(4300); // it DID collect
     expect(isCounted(re1006)).toBe(false); // ...but is not counted
     expect(isAuditable(re1006)).toBe(false);
-    // its 4300 appears in NO portfolio total
-    expect(m.recoveredRevenue).not.toBe(83400 + 4300);
-    expect(m.auditableRevenue).not.toBe(79800 + 4300);
+    // its 4300 appears in NO portfolio total, including the refused one — an unclassified recovery
+    // is refused by rule 2, which is a different fact with a different remedy (classify it).
+    expect(m.recoveredRevenue).not.toBe(5500 + 4300);
+    expect(m.auditableRevenue).not.toBe(5500 + 4300);
+    expect(m.proofRefusedCollected).not.toBe(106500 + 4300);
   });
 
-  it("RE-1005 (low confidence) is counted but never auditable", () => {
+  it("RE-1005 is refused on the CHANNEL — low confidence is no longer the binding reason", () => {
     const re1005 = events.find((e) => e.eventId === "RE-1005")!;
     expect(bandOf(re1005.confidence)).not.toBe("High");
-    expect(isCounted(re1005)).toBe(true);
+    // Both would refuse it. The channel refusal is asserted because it is the one that FIRES, and it
+    // is strictly stronger: a higher confidence would not help while no correction attests CSMOutreach.
+    expect(proofUnavailable(re1005)!.code).toBe("CORRECTION_CHANNEL_NOT_DECLARED");
+    expect(isCounted(re1005)).toBe(false);
     expect(isAuditable(re1005)).toBe(false);
   });
 

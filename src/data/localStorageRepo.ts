@@ -1,12 +1,41 @@
 // localStorage-backed repository. Seeds realistic data on first run.
+//
+// IT ALSO FAILS CLOSED ON WHAT IS ALREADY STORED, which the Option 1 correction made necessary. Before
+// this slice a browser that had used the app held seven approved proofs for mechanisms no source
+// attests. Changing the seed does nothing for that browser: `readTrust()` finds the old store and
+// returns it. Two independent defences, and only the second is load-bearing.
+//
+//   1 · The storage keys moved to `.v2`, so an existing browser re-seeds once. This handles the
+//       ordinary case and nothing else — it is a one-time migration, not a guard.
+//   2 · `admissibleProofs` filters EVERY proof read from storage through the same gate the approval
+//       path uses. This reaches any store, including a `.v2` one that was hand-edited or written by an
+//       older build, and it keeps working after the migration is forgotten. A proof whose reason has no
+//       declared correction channel is dropped on READ, so it can never reach a screen or a total.
+//
+// Dropping on read rather than deleting is deliberate: the stored bytes are left alone, so nothing is
+// destroyed and the next legitimate write persists whatever the gate admits.
 import type { RecoveryEvent } from "../domain/types";
 import { withDerivedReturn } from "../domain/invariants";
+import { reasonHasDeclaredChannel } from "../domain/correctionMapping";
+import type { Proof } from "../domain/proof";
 import type { RecoveryRepository, TrustStore } from "./repository";
 import { seedEvents } from "./seed";
 import { seedTrust } from "./seedTrust";
 
-const KEY = "rros.events.v1";
-const TRUST_KEY = "rros.trust.v1";
+// BUMPED from `.v1` with the Option 1 correction — see defence 1 above.
+const KEY = "rros.events.v2";
+const TRUST_KEY = "rros.trust.v2";
+
+/**
+ * Keep only proofs whose recovery mechanism has a declared correction channel.
+ *
+ * It asks the CHANNEL question and not the full `correctionMapping`, because a stored `Proof` carries
+ * its reason and not the evidence record that satisfied the channel — so the answerable question is
+ * the decisive one: could any correction ever have evidenced this mechanism?
+ */
+function admissibleProofs(proofs: Proof[]): Proof[] {
+  return proofs.filter((p) => p.recoveryReason !== null && reasonHasDeclaredChannel(p.recoveryReason));
+}
 
 function read(): RecoveryEvent[] | null {
   try {
@@ -30,7 +59,9 @@ function readTrust(): TrustStore | null {
   try {
     const raw = localStorage.getItem(TRUST_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as TrustStore;
+    const stored = JSON.parse(raw) as TrustStore;
+    // Defence 2: a persisted proof for an unattestable mechanism never reaches a caller.
+    return { ...stored, proofs: admissibleProofs(stored.proofs ?? []) };
   } catch {
     return null;
   }
@@ -85,8 +116,11 @@ export function createLocalStorageRepo(): RecoveryRepository {
       return trust;
     },
     saveTrust(next) {
-      trust = next; // in-memory is authoritative
-      writeTrust(next); // best-effort; swallows quota/unavailable
+      // Symmetric with the read: an inadmissible proof is not accepted into the in-memory store
+      // either, so a caller cannot route around the gate by writing one directly.
+      const admitted = { ...next, proofs: admissibleProofs(next.proofs) };
+      trust = admitted; // in-memory is authoritative
+      writeTrust(admitted); // best-effort; swallows quota/unavailable
     },
   };
 }

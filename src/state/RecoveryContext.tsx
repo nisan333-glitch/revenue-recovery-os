@@ -587,6 +587,12 @@ export function RecoveryProvider({ children }: { children: ReactNode }) {
         attribution: input.attribution,
         confidenceUsed: input.confidenceUsed ?? e.confidence,
         policy: CURRENT_POLICY,
+        // The case's own recorded leakage type, which IS its recovery type for scope purposes. Read
+        // from the stored event — never from `input`, which is what the approver typed. A beneficiary
+        // who could name the recovery type on the approval request could unlock `BillingCorrection`
+        // for a case that was never under-billed, which is the Trust Invariant's standing test
+        // answered the wrong way.
+        recoveryType: e.leakageType,
       };
       return { ctx };
     },

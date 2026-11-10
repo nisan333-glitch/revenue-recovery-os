@@ -4,7 +4,9 @@ import type { RecoveryEvent, FunnelStage, RecoveryReason } from "./types";
 import { OPEN_STATUSES } from "./types";
 import {
   isAuditable,
+  isClassifiedRecovery,
   isCounted,
+  isProofRefusedRecovery,
   isUnprovenRecovery,
   reportableReturned,
 } from "./invariants";
@@ -22,7 +24,24 @@ export interface PortfolioMetrics {
   /** Counted but not yet proof-grade. */
   unprovenRevenue: number;
   unprovenCount: number;
-  /** Recovered count / (recovered + failed) — a true recovery rate. */
+  /**
+   * DETECTED AND REFUSED: cases where money was collected and the mechanism has no declared
+   * correction channel, so no proof can exist. Reported apart from every other figure because it is
+   * neither opportunity (it is not a forecast) nor recovered revenue (it is not proven), and folding
+   * it into either would be the blend the constitution forbids.
+   *
+   * The figure is COLLECTED, never `collected − baseline`: the delta in the same units reads as
+   * Revenue Returned whatever it is labelled.
+   */
+  proofRefusedCollected: number;
+  proofRefusedCount: number;
+  /**
+   * Recovered count / (recovered + failed) — a true recovery rate.
+   *
+   * Counts CLASSIFIED recoveries, provable or not. A case whose mechanism cannot be attested still
+   * recovered the money; calling it a non-recovery would answer a question nobody asked and would put
+   * this portfolio's rate at 0.5 instead of 0.875 on the strength of a PROOF limitation.
+   */
   recoveryRate: number;
   totalEvents: number;
 }
@@ -34,10 +53,13 @@ export function portfolioMetrics(events: RecoveryEvent[]): PortfolioMetrics {
   const counted = events.filter(isCounted);
   const auditable = events.filter(isAuditable);
   const unproven = events.filter(isUnprovenRecovery);
+  const refused = events.filter(isProofRefusedRecovery);
   const failed = events.filter((e) => e.status === "Failed");
 
   const recoveredCount = counted.length;
-  const denom = recoveredCount + failed.length;
+  // The rate's numerator is the operational one, not the monetary one — see the field's note.
+  const classified = events.filter(isClassifiedRecovery);
+  const denom = classified.length + failed.length;
 
   return {
     detectedOpportunity: sum(open.map((e) => e.riskAmount)),
@@ -48,7 +70,9 @@ export function portfolioMetrics(events: RecoveryEvent[]): PortfolioMetrics {
     auditableCount: auditable.length,
     unprovenRevenue: sum(unproven.map(reportableReturned)),
     unprovenCount: unproven.length,
-    recoveryRate: denom === 0 ? 0 : recoveredCount / denom,
+    proofRefusedCollected: sum(refused.map((e) => e.collectedAmount)),
+    proofRefusedCount: refused.length,
+    recoveryRate: denom === 0 ? 0 : classified.length / denom,
     totalEvents: events.length,
   };
 }

@@ -2,23 +2,36 @@
 // CFO-auditable revenue, with every excluded dollar explained.
 //
 // The thesis in one place: "We do not count money we cannot explain."
-// Gross Recovered  − Unclassified  = Counted Recovered
-// Counted Recovered − (Missing Proof + Double Claim + Low Confidence) = Auditable
+// Gross Recovered   − (Unclassified + Proof Refused)                      = Counted Recovered
+// Counted Recovered − (Missing Proof + Double Claim + Low Confidence)     = Auditable
 import type { RecoveryEvent } from "./types";
 import { PROOF_THRESHOLD } from "./confidence";
-import { isAuditable, reportableReturned } from "./invariants";
+import { isAuditable, proofUnavailable, reportableReturned } from "./invariants";
 
 // Why a recovered dollar is held back from the CFO-auditable total.
 // Ordered by priority — each excluded event is assigned exactly one reason,
 // so the buckets are disjoint and sum exactly to the gap.
 export type ExclusionReason =
   | "Unclassified" // no recovery reason — cannot be attributed
+  | "ProofRefused" // the mechanism has no declared correction channel — no evidence could settle it
   | "DoubleClaim" // already credited elsewhere (dedupe) — future flag
   | "MissingProof" // no evidence captured
   | "LowConfidence"; // below proof-grade threshold
 
+// PRIORITY ORDER, and `ProofRefused` sits second for a measurable reason rather than a tidy one.
+//
+// Without it, the seven channel-less cases fell through this ladder to the `MissingProof` safety net —
+// $83,400 of the seed portfolio filed as "no evidence captured" when every one of them carries an
+// independent paid invoice and a 80-to-94 confidence. That is not a smaller mistake than dropping the
+// money: it tells an operator to go and gather evidence that cannot settle the question, because no
+// correction type exists which attests the mechanism at all.
+//
+// It outranks `MissingProof` and `LowConfidence` because it strictly dominates them: more evidence and
+// a higher score both change nothing while the channel is undeclared. It sits below `Unclassified`
+// because a recovery with no reason names no mechanism to have a channel for.
 export const EXCLUSION_ORDER: ExclusionReason[] = [
   "Unclassified",
+  "ProofRefused",
   "DoubleClaim",
   "MissingProof",
   "LowConfidence",
@@ -26,6 +39,7 @@ export const EXCLUSION_ORDER: ExclusionReason[] = [
 
 export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   Unclassified: "Unclassified (no reason)",
+  ProofRefused: "Proof Refused (no correction channel for this mechanism)",
   DoubleClaim: "Double Claim (deduped)",
   MissingProof: "Missing Proof (no evidence)",
   LowConfidence: "Low Confidence (below threshold)",
@@ -44,6 +58,9 @@ export function classifyExclusion(e: RecoveryEvent): ExclusionReason | null {
   if (!isRecoveredWithUplift(e)) return null;
   if (isAuditable(e)) return null;
   if (e.recoveryReason === null) return "Unclassified";
+  // Before the evidence and confidence tests, because neither can be satisfied while no correction
+  // type exists that attests this mechanism.
+  if (proofUnavailable(e) !== null) return "ProofRefused";
   // DoubleClaim would be set by a future dedupe flag; none in the model yet.
   if (e.evidenceNotes.trim().length < 10) return "MissingProof";
   if (e.confidence < PROOF_THRESHOLD) return "LowConfidence";
@@ -62,7 +79,10 @@ export interface Reconciliation {
   detectedOpportunity: number;
   /** All positive uplift on Recovered-status events, before any exclusion. */
   grossRecovered: number;
-  /** Gross minus Unclassified — matches the product's "Recovered Revenue". */
+  /**
+   * Gross minus the dollars that are not counted as recovery at all — Unclassified (rule 2) and
+   * ProofRefused (no attestable mechanism). Matches the product's "Recovered Revenue" exactly.
+   */
   countedRecovered: number;
   /** The CFO number: counted minus proof exclusions. */
   auditableRevenue: number;
@@ -93,14 +113,16 @@ export function reconcile(events: RecoveryEvent[]): Reconciliation {
   // Build disjoint exclusion buckets.
   const byReason = new Map<ExclusionReason, { amount: number; count: number }>();
   for (const r of EXCLUSION_ORDER) byReason.set(r, { amount: 0, count: 0 });
-  let unclassifiedAmount = 0;
+  // Both are subtracted from gross to reach `countedRecovered`, because both are excluded from
+  // `isCounted` upstream — so this stays equal to the product's own Recovered Revenue figure.
+  let notCountedAmount = 0;
   for (const e of recovered) {
     const reason = classifyExclusion(e);
     if (!reason) continue;
     const cell = byReason.get(reason)!;
     cell.amount += reportableReturned(e);
     cell.count += 1;
-    if (reason === "Unclassified") unclassifiedAmount += reportableReturned(e);
+    if (reason === "Unclassified" || reason === "ProofRefused") notCountedAmount += reportableReturned(e);
   }
 
   const buckets: ExclusionBucket[] = EXCLUSION_ORDER.map((reason) => ({
@@ -111,7 +133,7 @@ export function reconcile(events: RecoveryEvent[]): Reconciliation {
   }));
 
   const excludedTotal = buckets.reduce((s, b) => s + b.amount, 0);
-  const countedRecovered = grossRecovered - unclassifiedAmount;
+  const countedRecovered = grossRecovered - notCountedAmount;
 
   return {
     detectedOpportunity,

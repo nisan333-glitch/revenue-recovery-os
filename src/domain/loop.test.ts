@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import { seedEvents } from "../data/seed";
 import { seedTrust } from "../data/seedTrust";
 import { recoveryLoop } from "./loop";
+import { portfolioMetrics } from "./metrics";
 import { establishBaseline, lockBaseline } from "./baseline";
 import { makeEvidence } from "./evidence";
 import { money } from "./money";
@@ -18,6 +19,11 @@ const proofs = seedTrust().proofs;
 const loop = recoveryLoop(events, proofs);
 
 // Build one extra approved Proof (through the real gate) for a case that has none in the seed.
+//
+// It is a BILLING CORRECTION, which it has to be: the gate now refuses a mechanism no source attests,
+// so a `MilestoneNudge` fixture would be refused and this helper could not build anything. The point
+// of the helper is unchanged — prove that `recoveryLoop`'s proven figures come from Proofs and not
+// from Cases — and a provable mechanism is what lets it keep making that point.
 function extraProofFor(caseId: string, collectedMinor: number, baselineMinor: number): Proof {
   const baseline = lockBaseline(
     establishBaseline({
@@ -26,7 +32,7 @@ function extraProofFor(caseId: string, collectedMinor: number, baselineMinor: nu
       methodVersion: CURRENT_POLICY.baselineMethodVersion,
       sourceRefs: ["cohort:test"],
       calculatedAmount: money(baselineMinor, "USD"),
-      applicableLeakType: "ActivationMissed",
+      applicableLeakType: "RevenueUnderBilled",
       effectiveAt: "2026-06-18T00:00:00.000Z",
       establishedAt: "2026-06-18T00:00:00.000Z",
       establishedBy: "system",
@@ -35,6 +41,16 @@ function extraProofFor(caseId: string, collectedMinor: number, baselineMinor: nu
     "pre-registered",
   );
   const evidence = [
+    makeEvidence({
+      evidenceId: `EV-${caseId}-fix`,
+      evidenceType: "corrective_invoice_issued",
+      sourceSystem: "billing",
+      sourceRecordId: "CN-X",
+      observedAt: "2026-06-19T12:00:00.000Z",
+      ingestedAt: "2026-06-19T12:00:00.000Z",
+      trustClassification: "independent",
+      suppliedBy: "billing",
+    }),
     makeEvidence({
       evidenceId: `EV-${caseId}-x`,
       evidenceType: "invoice_paid",
@@ -60,33 +76,45 @@ function extraProofFor(caseId: string, collectedMinor: number, baselineMinor: nu
     currency: "USD",
     excludedMinor: 0,
     exclusionStatement: "No excluded recovery — asserted: full delta independently evidenced.",
-    recoveryReason: "MilestoneNudge",
+    recoveryReason: "BillingCorrection",
     attribution: "test",
     confidenceUsed: 95,
     policy: CURRENT_POLICY,
+    recoveryType: "RevenueUnderBilled",
   });
 }
 
 describe("recovery loop summary", () => {
   it("Identify: money at risk is the live open exposure; opportunity is total surfaced", () => {
     expect(loop.moneyAtRisk).toBe(71800); // open risk only — the live exposure
-    expect(loop.opportunity).toBe(200200); // Σ riskAmount over all 14 seed events
-    expect(loop.identifiedCount).toBe(14);
+    expect(loop.opportunity).toBe(218200); // Σ riskAmount over all 15 seed events (+ RE-1015's 18,000)
+    expect(loop.identifiedCount).toBe(15);
     expect(loop.openCount).toBe(4);
     expect(loop.recoverableForecast).toBe(32660); // forecast, not proven
   });
 
   it("Act: dominant play is advice; action-taken counts only logged, observable actions", () => {
     expect(loop.recommendedPlay).toBe("MilestoneNudge");
-    expect(loop.actionTakenCount).toBe(11);
+    expect(loop.actionTakenCount).toBe(12); // + RE-1015
+  });
+
+  it("Prove: the money that CANNOT be proven is reported, not dropped", () => {
+    // RECOMPUTED for the owner's Option 1 decision. Seven cases collected $106,500 under mechanisms
+    // no source attests, so no proof exists for any of them — and the figure is reported apart from
+    // both ledgers rather than vanishing from the loop summary.
+    const m = portfolioMetrics(events);
+    expect(m.proofRefusedCount).toBe(7);
+    expect(m.proofRefusedCollected).toBe(106_500);
   });
 
   it("Prove: returned and auditable come from approved Proofs (Money), not from Cases", () => {
-    expect(loop.returned.minor).toBe(8_340_000); // $83,400
-    expect(loop.auditable.minor).toBe(7_980_000); // $79,800
-    expect(loop.provenCount).toBe(7);
-    expect(loop.auditableCount).toBe(6);
-    expect(loop.recoveryRate).toBeCloseTo(0.875, 5);
+    // RECOMPUTED: the only attestable mechanism in the seed set is RE-1015's billing correction.
+    expect(loop.returned.minor).toBe(550_000); // $5,500
+    expect(loop.auditable.minor).toBe(550_000); // $5,500
+    expect(loop.provenCount).toBe(1);
+    expect(loop.auditableCount).toBe(1);
+    // The RATE still counts recoveries rather than proofs — 8 recovered, 1 failed.
+    expect(loop.recoveryRate).toBeCloseTo(8 / 9, 5);
   });
 
   it("R1: seed events with NO approved Proofs ⇒ returned = 0 and auditable = 0", () => {
@@ -101,25 +129,27 @@ describe("recovery loop summary", () => {
     // Force the open Stark case (RE-1007) to look fully recovered at the Case level.
     const tampered = events.map((e) =>
       e.eventId === "RE-1007"
-        ? { ...e, status: "Recovered" as const, recoveryReason: "MilestoneNudge" as const, collectedAmount: 999999, confidence: 99 }
+        ? { ...e, status: "Recovered" as const, recoveryReason: "BillingCorrection" as const, leakageType: "RevenueUnderBilled" as const, collectedAmount: 999999, confidence: 99 }
         : e,
     );
+    // Tampered into the MOST favourable shape available — a provable mechanism on a provable case type
+    // with a huge collection — and it still moves nothing, because the figures come from Proofs.
     const after = recoveryLoop(tampered, proofs); // same proofs — none approved for RE-1007
-    expect(after.returned.minor).toBe(8_340_000); // unchanged
-    expect(after.auditable.minor).toBe(7_980_000); // unchanged
-    expect(after.provenCount).toBe(7);
+    expect(after.returned.minor).toBe(550_000); // unchanged
+    expect(after.auditable.minor).toBe(550_000); // unchanged
+    expect(after.provenCount).toBe(1);
   });
 
   it("R1: approving a Proof changes the headline values exactly once, by exactly its amount", () => {
     const extra = extraProofFor("RE-1007", 3_100_000, 620_000); // returned = 2_480_000
     const after = recoveryLoop(events, [...proofs, extra]);
-    expect(after.returned.minor).toBe(8_340_000 + 2_480_000);
-    expect(after.auditable.minor).toBe(7_980_000 + 2_480_000);
-    expect(after.provenCount).toBe(8);
+    expect(after.returned.minor).toBe(550_000 + 2_480_000);
+    expect(after.auditable.minor).toBe(550_000 + 2_480_000);
+    expect(after.provenCount).toBe(2);
     // Adding the SAME proof again must not double-count (chain fold by chainId).
     const twice = recoveryLoop(events, [...proofs, extra, extra]);
     expect(twice.returned.minor).toBe(after.returned.minor);
-    expect(twice.provenCount).toBe(8);
+    expect(twice.provenCount).toBe(2);
   });
 
   it("the funnel only narrows: identified ≥ action taken ≥ proven ≥ auditable", () => {

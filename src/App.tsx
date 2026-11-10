@@ -22,9 +22,17 @@ import { CandidateReviewQueue } from "./modules/CandidateReviewQueue";
 import { CorrectionLedger } from "./modules/CorrectionLedger";
 import { SyntheticDemoConsole } from "./modules/SyntheticDemoConsole";
 import { RecoveryCaseCenter } from "./modules/RecoveryCaseCenter";
+import { DemoDataBanner } from "./components/DemoDataBanner";
+import { ProofRefusedNotice, ProvenRevenueFigure } from "./components/ProvenRevenueFigure";
+import { provenRevenueReturned } from "./domain/invariants";
 
 // The single case used by the Guided Demo navigation mode. Only an identifier — no business values here.
 const DEMO_CASE_ID = "RE-1014";
+
+// The case that carries the PROVEN half of the demonstration. Separate identifier, deliberately:
+// RE-1014's mechanism cannot be proven and relabelling it would assert a mechanism it never had, so
+// the demo shows a refusal and a proof side by side rather than one case pretending to be both.
+const PROVEN_DEMO_CASE_ID = "RE-1015";
 
 type ModuleKey =
   | "demo"
@@ -90,6 +98,7 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
 
   // Select the demonstration case from the existing events collection (never fabricated).
   const demoEvent = events.find((e) => e.eventId === DEMO_CASE_ID);
+  const provenDemoEvent = events.find((e) => e.eventId === PROVEN_DEMO_CASE_ID);
 
   const groups = [...new Set(NAV.map((n) => n.group))];
 
@@ -157,14 +166,16 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
                     Guided Demo — one recovered case, end to end
                   </h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    Follow {demoEvent.eventId} through the whole loop: find the leak, fix it, and prove
-                    exactly how much came back.
+                    Follow {demoEvent.eventId} through the whole loop: find the leak, fix it, and see exactly
+                    what can and cannot be proven about how much came back.
                   </p>
+                  <DemoDataBanner />
                   <p className="mt-4 rounded-lg border border-ink-600/50 bg-ink-800/40 px-4 py-3 text-sm text-slate-300">
                     How to read this: the recommended play is a <strong>forecast — not proven revenue</strong>.
                     The proven, CFO-auditable <strong>Revenue Returned</strong> is shown separately below and
                     in the CFO Proof View; the two ledgers are never combined into one &ldquo;recovered&rdquo;
-                    number.
+                    number. Where no proof can exist it reads <strong>NOT COMPUTED</strong> — never
+                    &ldquo;$0.00&rdquo;, which would claim a proof was found and summed to nothing.
                   </p>
                 </header>
 
@@ -174,24 +185,69 @@ export function App({ initialModule = "loop" }: { initialModule?: ModuleKey }) {
                   <EventDetail event={demoEvent} onClose={() => setActive("loop")} />
                 </div>
 
+                {/* WHAT THIS BLOCK USED TO SAY, AND WHY IT WAS WRONG.
+                    It read: "RE-1014's proven Revenue Returned $10,600 is marked for you on its exact
+                    proof line in the CFO Proof View." Unqualified, on a screen with no DEMO banner,
+                    for a mechanism no source attests — while the governed route a few files away
+                    refused exactly that claim. It now renders the figure through
+                    `ProvenRevenueFigure`, which says NOT COMPUTED where no proof can exist, and the
+                    refusal names the mechanism instead of leaving a reader to infer a zero. */}
                 <div className="mt-6">
                   <p className="mb-2 text-sm text-slate-400">
                     {demoEvent.eventId}&rsquo;s proven <strong className="text-slate-200">Revenue Returned</strong>
                     {" "}
-                    <span className="tabular-nums text-proof-500">{money(demoEvent.revenueReturned)}</span> is
-                    marked for you on its exact proof line in the CFO Proof View.
+                    <ProvenRevenueFigure event={demoEvent} />
+                    {provenRevenueReturned(demoEvent) === null
+                      ? " — no proof exists for this recovery mechanism, so there is no proof line to show you."
+                      : " is marked for you on its exact proof line in the CFO Proof View."}
                   </p>
+                  <ProofRefusedNotice event={demoEvent} />
                   <button
                     type="button"
                     onClick={() => {
                       setFocusCaseId(demoEvent.eventId);
                       setActive("cfo");
                     }}
-                    className="rounded-lg border border-proof-500/50 bg-proof-500/10 px-4 py-2 text-sm font-medium text-proof-500 hover:bg-proof-500/20"
+                    className="mt-3 rounded-lg border border-proof-500/50 bg-proof-500/10 px-4 py-2 text-sm font-medium text-proof-500 hover:bg-proof-500/20"
                   >
                     Continue to CFO Proof View →
                   </button>
                 </div>
+
+                {/* THE PROVEN HALF OF THE DEMONSTRATION, on a case that can carry one.
+                    Showing only the refusal would leave the product looking incapable of proof, which
+                    is as misleading in the other direction. So the demo shows both: a mechanism
+                    governance refuses, and one it accepts — side by side, never blended. */}
+                {provenDemoEvent && provenDemoEvent.eventId !== demoEvent.eventId && (
+                  <div className="mt-8 rounded-lg border border-proof-500/30 bg-proof-500/5 px-4 py-4">
+                    <h3 className="text-sm font-semibold text-slate-100">
+                      And one that CAN be proven — {provenDemoEvent.eventId}
+                    </h3>
+                    <p className="mt-2 text-sm text-slate-400">
+                      {provenDemoEvent.customer} was invoiced {money(provenDemoEvent.baselineAmount)} against a
+                      contracted obligation of {money(provenDemoEvent.riskAmount)}. Billing raised a corrective
+                      charge for the shortfall and attested it at source; it settled in full. Proven{" "}
+                      <strong className="text-slate-200">Revenue Returned</strong>{" "}
+                      <ProvenRevenueFigure event={provenDemoEvent} />.
+                    </p>
+                    <p className="mt-2 text-[12px] text-slate-500">
+                      The uplift equals the corrective charge, so the attribution is an accounting identity
+                      rather than a judgement about why a customer behaved differently. That is the whole
+                      difference between this case and the one above — not more effort, and not a higher
+                      confidence score.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFocusCaseId(provenDemoEvent.eventId);
+                        setActive("cfo");
+                      }}
+                      className="mt-3 rounded-lg border border-proof-500/50 bg-proof-500/10 px-4 py-2 text-sm font-medium text-proof-500 hover:bg-proof-500/20"
+                    >
+                      See its proof line →
+                    </button>
+                  </div>
+                )}
               </section>
             ) : (
               <section>

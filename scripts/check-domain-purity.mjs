@@ -19,6 +19,12 @@ const FORBIDDEN = [
   [/^\.\.\/hooks(\/|$)/, "UI hooks layer"],
   [/^\.\.\/lib(\/|$)/, "app lib layer"],
   [/^\.\.\/data(\/|$)/, "seed data / fixtures"],
+  // Added with the Option 1 fail-closed correction. `evidenceRole` moved DOWN into the domain so the
+  // pure approval path and the governed route share one implementation; the tempting alternative was
+  // to leave it in `server/` and import upward from `src/domain/`, which inverts the dependency and
+  // would let server-only concerns (Prisma types, Fastify errors, a clock) reach the core through one
+  // transitive edge. The guard forbids the shape rather than trusting nobody to write it.
+  [/^(\.\.\/)+server(\/|$)/, "server layer (the domain may not depend upward)"],
 ];
 
 const files = readdirSync(DOMAIN_DIR).filter(

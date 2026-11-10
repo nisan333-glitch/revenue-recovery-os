@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { money } from "./money";
 import { createApprovedProof, type ProofApprovalInput } from "./proof";
 import { CURRENT_POLICY } from "./policy";
-import { computeRevenueReturned, isAuditable, isCounted, withDerivedReturn } from "./invariants";
+import { computeRevenueReturned, isAuditable, isCounted, withDerivedReturn, proofUnavailable } from "./invariants";
 import { ALL_REASON_KEYS, RECOVERY_REASONS, reasonLabel } from "./reasons";
 import type { RecoveryEvent } from "./types";
 
@@ -32,8 +32,14 @@ const approval = (over: Partial<ProofApprovalInput> = {}): ProofApprovalInput =>
   ...over,
 });
 
+// THE FIXTURE'S LEAKAGE TYPE WAS `RenewalAtRisk`, WHICH WAS INCOHERENT WITH ITS OWN REASON, and the
+// new gate is what found it. `BillingCorrection`'s declared scope has been `RevenueUnderBilled` since
+// the reason was added on 2026-10-23, and `reasonScopeViolation` has refused the pair on the governed
+// route ever since — but the frontend predicates never asked, so this fixture asserted that a billing
+// correction on a renewal-at-risk case was auditable. It is not; it never was. Corrected to the type
+// the reason's own definition names, with the refusal asserted directly below so the finding is kept.
 const event = (over: Partial<RecoveryEvent>): RecoveryEvent => withDerivedReturn({
-  eventId: "e-bc", customer: "Synthetic", funnelStage: "Renewal", leakageType: "RenewalAtRisk",
+  eventId: "e-bc", customer: "Synthetic", funnelStage: "Renewal", leakageType: "RevenueUnderBilled",
   recoveryReason: "BillingCorrection", owner: "Dana", status: "Recovered", riskAmount: 1000,
   baselineAmount: 200, collectedAmount: 1000, revenueReturned: 800, confidence: 90,
   actionsTaken: ["corrective invoice"], evidenceNotes: "synthetic", createdAt: "2026-01-01T00:00:00.000Z",
@@ -73,6 +79,17 @@ describe("BillingCorrection · it is a label, never a money source", () => {
 
   it("the explicit-exclusion rule still applies to this reason", () => {
     expect(() => createApprovedProof(approval({ exclusionStatement: "" }))).toThrow(/exclusion/);
+  });
+
+  it("the label cannot be borrowed by a case that was not under-billed", () => {
+    // The scope gate. Found by this slice: the fixture above used to be `RenewalAtRisk`, and nothing
+    // in the frontend refused it.
+    for (const leakageType of ["RenewalAtRisk", "ActivationMissed", "LowAdoption"] as const) {
+      const e = event({ leakageType });
+      expect(proofUnavailable(e)!.code, leakageType).toBe("REASON_SCOPE_VIOLATION");
+      expect(isAuditable(e), leakageType).toBe(false);
+      expect(isCounted(e), leakageType).toBe(false);
+    }
   });
 
   it("an event labelled BillingCorrection is auditable only with uplift, status and proof-grade confidence", () => {

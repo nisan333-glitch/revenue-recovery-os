@@ -14,18 +14,30 @@ describe("outcomes rollup", () => {
   it("largest live problem (ActivationMissed) leads, with forecast and proven separated", () => {
     const top = outcomes[0]!;
     expect(top.leakageType).toBe("ActivationMissed");
-    expect(top.atRisk).toBe(43500); // RE-1007 31,000 + RE-1008 12,500 open
-    expect(top.recoverable).toBe(19140); // forecast (13,640 + 5,500)
-    expect(top.recovered).toBe(18300); // RE-1002 7,700 + RE-1014 10,600 proven
-    expect(top.auditable).toBe(18300);
+    expect(top.atRisk).toBe(43500); // RE-1007 31,000 + RE-1008 12,500 open — UNCHANGED
+    expect(top.recoverable).toBe(19140); // forecast (13,640 + 5,500) — UNCHANGED
+    // RECOMPUTED, and the zero here is the correction working rather than a loss of data. RE-1002 and
+    // RE-1014 collected $7,700 and $10,600, and neither mechanism — MilestoneNudge, UsageActivation —
+    // is one any source attests, so no proof can exist and the PROVEN figure is zero for this family.
+    // The collections themselves are still recorded on the events and reported by
+    // `portfolioMetrics.proofRefusedCollected`; it is the proof that is absent, not the money.
+    expect(top.recovered).toBe(0);
+    expect(top.auditable).toBe(0);
   });
 
   it("a problem can have proven recovery and zero open exposure", () => {
-    const es = get("ExpansionStalled"); // only RE-1004, recovered
+    // RE-1004's ExecBusinessReview is refused, so the family that demonstrates this is now
+    // RevenueUnderBilled — the one leakage type whose correction mechanism is attestable.
+    const es = get("RevenueUnderBilled"); // only RE-1015, recovered and provable
     expect(es.atRisk).toBe(0);
     expect(es.recoverable).toBe(0);
-    expect(es.recovered).toBe(10500);
+    expect(es.recovered).toBe(5500);
     expect(es.openCount).toBe(0);
+    // And the family whose mechanism cannot be attested shows zero PROVEN with zero open exposure,
+    // which is a different statement and must not read as "nothing happened here".
+    const exp = get("ExpansionStalled"); // only RE-1004, recovered but unprovable
+    expect(exp.recovered).toBe(0);
+    expect(exp.openCount).toBe(0);
   });
 
   it("totals reconcile with the portfolio — forecast and proven each add up", () => {
@@ -35,8 +47,8 @@ describe("outcomes rollup", () => {
     const m = portfolioMetrics(events);
 
     expect(totalRecoverable).toBe(expectedRecoverable(events)); // 32,660 forecast
-    expect(totalRecovered).toBe(m.recoveredRevenue); // 83,400 proven
-    expect(totalAuditable).toBe(m.auditableRevenue); // 79,800 proven
+    expect(totalRecovered).toBe(m.recoveredRevenue); // 5,500 proven
+    expect(totalAuditable).toBe(m.auditableRevenue); // 5,500 proven
   });
 
   it("CONSTITUTION: recoverable (forecast) is disjoint from recovered (proven)", () => {

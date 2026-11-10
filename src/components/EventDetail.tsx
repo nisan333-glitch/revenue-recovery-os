@@ -7,6 +7,7 @@ import { RECOVERY_REASONS, reasonLabel } from "../domain/reasons";
 import { recommend } from "../domain/recommendation";
 import { explainConfidence } from "../domain/confidence";
 import { formatMoney, fromDecimal } from "../domain/money";
+import { ProofRefusedNotice, ProvenRevenueFigure } from "./ProvenRevenueFigure";
 import type { BaselineSnapshotDTO, EvidenceRecordDTO } from "../data/governedTrustClient";
 import { operatorActorFor, APPROVER, type DevActor } from "../data/devActor";
 import { money, percent } from "../lib/format";
@@ -244,6 +245,17 @@ export function EventDetail({
           governed proof in the Prove panel below and the CFO Proof View. Detected risk on this
           event: {money(event.riskAmount)}.
         </p>
+
+        {/* WHERE NO PROOF CAN EXIST, SAY SO HERE RATHER THAN LET THE PROVE PANEL LOOK EMPTY.
+            The paragraph above already denies that the operational estimate is proven, which was
+            honest and not sufficient: it tells a reader the real figure lives elsewhere, and if that
+            elsewhere is blank they are left to infer why. This states the reason, in the gate's own
+            words, before they go looking. */}
+        <ProofRefusedNotice event={event} />
+        <div className="mb-5 mt-3 text-[11px] text-slate-500">
+          Proven <strong className="text-slate-300">Revenue Returned</strong> for this case:{" "}
+          <ProvenRevenueFigure event={event} />
+        </div>
 
         {/* Owner + status */}
         <div className="mb-5 grid grid-cols-2 gap-3">
