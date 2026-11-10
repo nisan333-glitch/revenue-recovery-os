@@ -14,6 +14,11 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PrismaClient } from "@prisma/client";
+import {
+  LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL,
+  OBLIGATION_IDENTITY_FIELDS,
+  leakInstanceIdentityStatus,
+} from "../../src/contract/leakInstanceIdentity";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -167,6 +172,42 @@ const pk = async (c: Db): Promise<readonly string[]> => {
   return rows.map((x) => x.attname);
 };
 
+/**
+ * Every constraint on the table, as the CATALOGUE defines it.
+ *
+ * READ FROM `pg_get_constraintdef` RATHER THAN FROM A LIST WE WROTE. A migration that quietly altered an
+ * existing CHECK while adding its own would pass any test that only looked for the constraints it
+ * expected to find. Comparing the whole map before and against after is what makes this a check on
+ * referential integrity rather than a check on the three constraints the migration means to add.
+ */
+const constraints = async (c: Db): Promise<Record<string, string>> => {
+  const rows = await c.query<{ conname: string; def: string }>(
+    `SELECT conname, pg_get_constraintdef(oid) AS def
+       FROM pg_constraint
+      WHERE conrelid = 'pilot_assessment_entity_attributions'::regclass
+      ORDER BY conname`,
+  );
+  return Object.fromEntries(rows.map((r) => [r.conname, r.def]));
+};
+
+/** Every index on the table, by name and definition. */
+const indexes = async (c: Db): Promise<Record<string, string>> => {
+  const rows = await c.query<{ indexname: string; indexdef: string }>(
+    `SELECT indexname, indexdef FROM pg_indexes
+      WHERE tablename = 'pilot_assessment_entity_attributions' ORDER BY indexname`,
+  );
+  return Object.fromEntries(rows.map((r) => [r.indexname, r.indexdef]));
+};
+
+/** Constraints on OTHER tables that reference this one — what a PRIMARY KEY drop could cascade through. */
+const inboundReferences = async (c: Db): Promise<readonly string[]> => {
+  const rows = await c.query<{ conname: string }>(
+    `SELECT conname FROM pg_constraint
+      WHERE confrelid = 'pilot_assessment_entity_attributions'::regclass ORDER BY conname`,
+  );
+  return rows.map((r) => r.conname);
+};
+
 const rowFacts = async (c: Db) => {
   return c.query(
     `SELECT execution_id, source_ref, amount_at_risk_minor::text AS amount, currency,
@@ -181,6 +222,9 @@ describe.skipIf(!HAS_DB)("Gate B · obligation-attribution migration on an isola
   let db: Db;
   /** Every pre-existing fact about the legacy row, captured before the migration touches anything. */
   let before: Awaited<ReturnType<typeof rowFacts>>;
+  /** And every pre-existing SCHEMA fact, so referential integrity is compared rather than assumed. */
+  let beforeConstraints: Record<string, string>;
+  let beforeIndexes: Record<string, string>;
 
   beforeAll(async () => {
     admin = await connect("postgres");
@@ -191,6 +235,8 @@ describe.skipIf(!HAS_DB)("Gate B · obligation-attribution migration on an isola
     db = await connect(DB_NAME);
     await seedLegacyRow(db);
     before = await rowFacts(db);
+    beforeConstraints = await constraints(db);
+    beforeIndexes = await indexes(db);
   }, 180_000);
 
   afterAll(async () => {
@@ -241,6 +287,107 @@ describe.skipIf(!HAS_DB)("Gate B · obligation-attribution migration on an isola
     });
   }, 60_000);
 
+  // ── REFERENTIAL INTEGRITY AND MIGRATION SAFETY ───────────────────────────────────────────────────
+  //
+  // ADDED 2026-11-10, and the gap was real: this file had THIRTEEN tests and not one of them mentioned a
+  // foreign key. The migration DROPS AND RECREATES A PRIMARY KEY, which is exactly the operation that can
+  // cascade through dependent objects — so "the legacy row is byte-identical" was being measured while
+  // the schema around it was not.
+
+  it("SAFETY · nothing references this table's primary key, so the drop cannot cascade", async () => {
+    // Measured, not assumed. If some other table ever gains an FK onto `(execution_id, source_ref)`,
+    // `DROP CONSTRAINT ... pkey` would either fail or take that constraint with it, and this test is what
+    // turns that from a surprise during a deploy into a failure here.
+    expect(await inboundReferences(db)).toEqual([]);
+  });
+
+  it("SAFETY · the FK to the parent execution survives the migration byte-identically", async () => {
+    const fk = "pilot_assessment_attributions_execution_fkey";
+    expect(beforeConstraints[fk], "the FK must exist before the migration").toContain("FOREIGN KEY");
+    const after = await constraints(db);
+    expect(after[fk]).toBe(beforeConstraints[fk]);
+    // And it is still the COMPOSITE key with RESTRICT on both sides — the parts that make it meaningful.
+    expect(after[fk]).toContain("(execution_id, boundary_id)");
+    expect(after[fk]).toContain("ON UPDATE RESTRICT");
+    expect(after[fk]).toContain("ON DELETE RESTRICT");
+  });
+
+  it("SAFETY · every PRE-EXISTING constraint is unchanged, and only the three new ones appeared", async () => {
+    const after = await constraints(db);
+    for (const [name, def] of Object.entries(beforeConstraints)) {
+      if (name === "pilot_assessment_entity_attributions_pkey") continue; // the one the migration changes
+      expect(after[name], `${name} changed definition`).toBe(def);
+    }
+    const added = Object.keys(after).filter((n) => !(n in beforeConstraints)).sort();
+    expect(added).toEqual([
+      "attributions_obligation_provenance_agrees",
+      "attributions_obligation_provenance_valid",
+      "attributions_obligation_ref_present",
+    ]);
+    // Nothing was removed. A migration that dropped a CHECK while adding its own would otherwise pass.
+    expect(Object.keys(beforeConstraints).filter((n) => !(n in after))).toEqual([]);
+  });
+
+  it("SAFETY · the boundary index is untouched, as the migration's own comment claims", async () => {
+    const after = await indexes(db);
+    const idx = "pilot_assessment_entity_attributions_boundary_idx";
+    expect(after[idx]).toBe(beforeIndexes[idx]);
+  });
+
+  it("INTEGRITY · the FK still ENFORCES — an attribution for an unknown execution is refused", async () => {
+    // The constraint surviving in the catalogue is not the same claim as the constraint still biting.
+    await expect(db.write(
+      `INSERT INTO pilot_assessment_entity_attributions
+         (execution_id, boundary_id, source_ref, amount_at_risk_minor, currency,
+          contributing_cycle_count, attribution_rule, source_ref_key_id,
+          obligation_ref, obligation_identity_version, obligation_provenance)
+       VALUES ($1,$2,$3,500,'USD',1,'rule-v1','k1',$4,'oblig-v1','SERVER_DERIVED_SINGLE_UNIT')`,
+      `PAX-does-not-exist-${randomUUID()}`, BOUNDARY, ACCOUNT, OBLIGATION_1,
+    )).rejects.toThrow(/violates foreign key constraint|pilot_assessment_attributions_execution_fkey/);
+  });
+
+  it("INTEGRITY · the parent execution cannot be deleted — and the refusal is the APPEND-ONLY TRIGGER", async () => {
+    // I WROTE THIS TEST EXPECTING THE FK's `ON DELETE RESTRICT` TO FIRE, AND IT DOES NOT. Measured:
+    // `pilot_assessment_executions` carries `BEFORE DELETE OR UPDATE ... EXECUTE FUNCTION
+    // nh_reject_mutation()`, and a BEFORE trigger runs ahead of foreign-key enforcement. So the DELETE is
+    // refused one layer earlier than the constraint I was testing.
+    //
+    // THAT MAKES `ON DELETE RESTRICT` UNREACHABLE IN PRACTICE, which is worth stating rather than
+    // smoothing over: it is defence-in-depth sitting behind a strictly stronger guard, not the mechanism
+    // that protects an attribution from being orphaned. The append-only trigger is. The FK still earns
+    // its place on the INSERT side, which the previous test measures and which no trigger covers.
+    //
+    // The lesson is the one this repository keeps relearning: assert the refusal that ACTUALLY fires,
+    // because a test naming the wrong mechanism passes for the wrong reason the day the right one is
+    // removed.
+    await expect(db.write(
+      `DELETE FROM pilot_assessment_executions WHERE execution_id = $1`, EXEC,
+    )).rejects.toThrow(/append-only|nh_reject_mutation|rejected/);
+
+    // AND THE ROW IS STILL THERE. A refusal that nonetheless deleted would satisfy a throw assertion.
+    const still = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM pilot_assessment_executions WHERE execution_id = $1`, EXEC,
+    );
+    expect(still[0]?.n).toBe("1");
+  });
+
+  it("INTEGRITY · and the FK is the mechanism on the INSERT side, which the trigger does not cover", async () => {
+    // The division of labour, asserted so neither guard is credited with the other's work: the trigger
+    // refuses DELETE and UPDATE on the parent; the FK refuses an INSERT naming a parent that does not
+    // exist. Removing either one leaves a real hole, and this pair is what would catch that.
+    const triggers = await db.query<{ tgname: string; def: string }>(
+      `SELECT tgname, pg_get_triggerdef(oid) AS def FROM pg_trigger
+        WHERE tgrelid = 'pilot_assessment_executions'::regclass AND NOT tgisinternal
+        ORDER BY tgname`,
+    );
+    expect(triggers.map((t) => t.tgname)).toContain("pilot_assessment_executions_no_mutation");
+    expect(triggers.find((t) => t.tgname === "pilot_assessment_executions_no_mutation")?.def)
+      .toMatch(/BEFORE DELETE OR UPDATE/);
+    // The FK survived the PK swap and is still composite — the INSERT-side guard is intact.
+    const after = await constraints(db);
+    expect(after["pilot_assessment_attributions_execution_fkey"]).toContain("FOREIGN KEY (execution_id, boundary_id)");
+  });
+
   it("AFTER · two obligations of ONE account now coexist, which is the whole point", async () => {
     for (const [ref, amount] of [[OBLIGATION_1, 700], [OBLIGATION_2, 300]] as const) {
       await db.write(
@@ -260,6 +407,36 @@ describe.skipIf(!HAS_DB)("Gate B · obligation-attribution migration on an isola
     expect(r[0]!.n).toBe("2");
     // NEITHER AMOUNT WAS LOST. 700 + 300 against one account, separately identified.
     expect(r[0]!.total).toBe("1000");
+  });
+
+  it("TWO BLOCKERS, NOT ONE · the migration clears the SCHEMA one and the CONTRACT one remains", async () => {
+    // THE DISTINCTION THIS TEST EXISTS TO KEEP, because collapsing it would let "Option B is done" be
+    // read as "obligation-grained attribution is live". It is not, and the two reasons are independent:
+    //
+    //   SCHEMA   · the primary key was account-grained, so the table COULD NOT HOLD a second obligation
+    //              of one account whatever anything else declared. That is what this migration fixes,
+    //              and the test above measures it holding two.
+    //   CONTRACT · `OBLIGATION_IDENTITY_FIELDS` is empty, so the customer data contract declares NO
+    //              field from which a stable obligation identity could be derived. `leakInstanceIdentityStatus`
+    //              therefore refuses, and the staging path writes nothing — on a migrated schema just as
+    //              on an unmigrated one.
+    //
+    // Clearing either one alone changes nothing observable, which is precisely why both must be named.
+    // The same reason `leakInstanceIdentityStatus` and `SOURCE_NAMESPACE_RESOLUTION_AVAILABLE` are
+    // separate: collapsing them would let closing either look like closing both.
+    expect(await pk(db)).toEqual(["execution_id", "source_ref", "obligation_ref"]);
+
+    // The contract blocker, read from the contract rather than from a comment about it.
+    expect(OBLIGATION_IDENTITY_FIELDS).toEqual([]);
+    const identity = leakInstanceIdentityStatus();
+    expect(identity.establishable).toBe(false);
+    expect(identity.reason).toBe("leak_instance_identity_unavailable");
+
+    // AND IT IS A DIFFERENT REASON FROM THE ONE THE MIGRATION ADDRESSED. The schema no longer refuses a
+    // second obligation; the contract still refuses to name one. A reader who sees this migration land
+    // must not conclude that obligation-grained attribution has started flowing.
+    expect(identity.detail).toBe(LEAK_INSTANCE_IDENTITY_UNAVAILABLE_DETAIL);
+    expect(identity.detail).not.toMatch(/primary key|pkey|execution_id/);
   });
 
   it("the SAME obligation twice is still refused — splitting the key did not weaken idempotency", async () => {
