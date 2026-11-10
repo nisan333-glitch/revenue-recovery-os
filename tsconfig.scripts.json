@@ -31,6 +31,7 @@
     "scripts/coordination/**/*.ts",
     "scripts/orchestrator/**/*.ts",
     "scripts/typecheck/**/*.ts",
+    "scripts/pilot-acceptance/**/*.ts",
     "src"
   ]
 }
