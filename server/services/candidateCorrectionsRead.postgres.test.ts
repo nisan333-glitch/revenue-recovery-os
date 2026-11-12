@@ -3,6 +3,9 @@
 // The module under test exists because `candidateCorrections.ts` had NO consumer. These tests are about
 // what the consumer is allowed to say and to whom — not about the derivation, which is covered purely.
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../app";
 import { prisma } from "../db";
@@ -15,6 +18,7 @@ const actor = (actorId: string, role: ActorContext["role"], boundaryIds: readonl
 import { identityDigest, readCandidateCorrections } from "./candidateCorrectionsRead";
 
 const HAS_DB = !!process.env.DATABASE_URL;
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** An event + task pair, written through the same append-only tables production writes. */
 async function recordObservation(
@@ -420,12 +424,105 @@ describe.skipIf(!HAS_DB)("GET /candidate-corrections · the governed correction 
     expect(missing.statusCode).toBe(400);
   }, 60_000);
 
+  // ── "THE READ PERSISTS NOTHING" — WHY THE GLOBAL COUNT WAS THE WRONG INSTRUMENT ────────────────
+  //
+  // This assertion used to read `await prisma.proof.count()` with NO filter, taken before and after the
+  // reads. The intent was right; the instrument was not. Its premise is *nothing anywhere in the
+  // database writes a Proof while I perform two reads* — and `vitest.ep2.config.ts` sets no `pool`,
+  // `fileParallelism` or `sequence` option, so test FILES run concurrently across worker threads
+  // against ONE database. The premise was false the whole time and held only by luck: no other file
+  // happened to land a proof inside that two-count window.
+  //
+  // It stopped being lucky in CI run #336, where `bothDoorsRefuse.postgres.test.ts` — whose positive
+  // control mints exactly one real proof through a 201 — landed inside the window and the count read
+  // 29 against 28. Nothing about the subject under test had changed. The boundary-scoped candidate
+  // count on the line above passed, because it was already scoped.
+  //
+  // THE REPLACEMENT IS NOT WEAKER, IT IS TWO CLAIMS WHERE THERE WAS ONE SLOPPY ONE:
+  //
+  //   · BEHAVIOURAL, scoped and race-free — no Proof appears for any case THIS FILE created. The scope
+  //     is the file's own boundary prefix, which is strictly WIDER than the endpoint's authority (the
+  //     read is called with one boundary) and cannot be touched by another file, whose boundaries carry
+  //     their own prefix and a fresh UUID.
+  //   · STRUCTURAL, global and race-free — `candidateCorrectionsRead.ts` contains no Prisma write and
+  //     no raw execute AT ALL. That covers every table and every boundary, which the global count never
+  //     did either: a count proves only that the net did not move, while this proves no write exists to
+  //     move it.
+  //
+  // A third claim is deliberately NOT made: that no other process wrote a proof during these reads.
+  // That is not a property of this endpoint, it is not checkable from inside a parallel suite, and
+  // pretending to check it is what produced a test that failed for a reason unrelated to its subject.
+  const TEST_BOUNDARY_PREFIX = "SYNTHETIC-corrread-";
+
+  const caseIdsOfThisFile = async (): Promise<string[]> =>
+    (await prisma.recoveryCaseRecord.findMany({
+      where: { boundaryId: { startsWith: TEST_BOUNDARY_PREFIX } },
+      select: { recoveryCaseId: true },
+    })).map((c) => c.recoveryCaseId);
+
   it("the read persists nothing", async () => {
-    const before = await prisma.agentCaseCandidateRecord.count({ where: { boundaryId: boundary } });
-    const proofs = await prisma.proof.count();
+    // AND THE SCOPED HALF WAS VACUOUS TOO, which the non-vacuity guard below found on its first run.
+    // `agent_case_candidates` holds ZERO rows for this boundary: `recordObservation` writes
+    // `agent_tasks` and `agent_task_events`, and the correction read DERIVES candidates from that event
+    // log rather than reading a candidate table. So the original
+    // `expect(count({boundaryId})).toBe(before)` compared 0 with 0 and would have passed against a read
+    // that wrote anything at all. Both halves of this test were asleep: one racy, one empty.
+    //
+    // The populated tables are the ones `recordObservation` actually writes, so those carry the
+    // non-vacuity control; the empty ones are still compared, because "still nothing" is a real claim
+    // once something in the same assertion is known to be observable.
+    const scope = { where: { boundaryId: boundary } };
+    const tasksBefore = await prisma.agentTaskRecord.count(scope);
+    const eventsBefore = await prisma.agentTaskEventRecord.count(scope);
+    const candidatesBefore = await prisma.agentCaseCandidateRecord.count(scope);
+
+    // NON-VACUITY: at least one counted population must be real, or every comparison below is 0-vs-0
+    // and proves nothing — *a test that cannot fail is not a control*.
+    expect(tasksBefore, "this boundary must hold tasks, or the comparisons below are vacuous")
+      .toBeGreaterThan(0);
+    expect(eventsBefore, "this boundary must hold events, or the comparisons below are vacuous")
+      .toBeGreaterThan(0);
+
+    const caseIdsBefore = await caseIdsOfThisFile();
+    const proofsBefore = await prisma.proof.count({ where: { recoveryCaseId: { in: caseIdsBefore } } });
+
     await read("approver");
     await read("steward");
-    expect(await prisma.agentCaseCandidateRecord.count({ where: { boundaryId: boundary } })).toBe(before);
-    expect(await prisma.proof.count()).toBe(proofs);
+
+    expect(await prisma.agentTaskRecord.count(scope)).toBe(tasksBefore);
+    expect(await prisma.agentTaskEventRecord.count(scope)).toBe(eventsBefore);
+    expect(await prisma.agentCaseCandidateRecord.count(scope)).toBe(candidatesBefore);
+    // No case appeared either — a read that opened a Recovery Case would be a larger defect than a
+    // stray proof, and the proof scope is derived from this set, so an unchecked growth here would
+    // silently widen the scope rather than fail.
+    expect((await caseIdsOfThisFile()).length).toBe(caseIdsBefore.length);
+    expect(await prisma.proof.count({ where: { recoveryCaseId: { in: caseIdsBefore } } })).toBe(proofsBefore);
+  });
+
+  it("the read module contains no write construct at all — global, and immune to concurrency", () => {
+    // This is the half that replaces what the global count was reaching for, and it reaches further:
+    // every table, every boundary, no window.
+    //
+    // IT MUST READ THE CONSTRUCT, NOT THE WORD. A naive `/\.update\(/` scan matches
+    // `createHash(...).update(identity)` — a crypto digest, not a database write — which is the trap
+    // this repository has now recorded more than a dozen times. So the pattern is anchored on Prisma
+    // delegates and raw execution specifically, and comments are stripped first because the header
+    // above discusses the very constructs it forbids.
+    const src = readFileSync(resolve(HERE, "candidateCorrectionsRead.ts"), "utf8");
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    const WRITES = /prisma\s*\.\s*\w+\s*\.\s*(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(|\$execute(Raw|RawUnsafe)\s*\(/;
+    expect(WRITES.test(code), "candidateCorrectionsRead.ts must not write to the database").toBe(false);
+
+    // The pattern is not vacuous: it fires on a real write and on a raw execute.
+    expect(WRITES.test('await prisma.proof.create({ data: {} })')).toBe(true);
+    expect(WRITES.test('await prisma.$executeRawUnsafe("INSERT INTO x VALUES (1)")')).toBe(true);
+    // And it does NOT fire on the crypto digest the module really contains, which is the false
+    // positive that makes the anchoring necessary rather than decorative.
+    expect(WRITES.test('createHash("sha256").update(identity)')).toBe(false);
+    expect(src).toContain(".update(");
+
+    // The comment stripper did something, so the scan above ran against code rather than prose.
+    expect(src.length).toBeGreaterThan(code.length);
   });
 });

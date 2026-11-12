@@ -142,6 +142,53 @@ nothing in the frontend refused it. And the CI #335 failure's real cause: my san
 approved **2026-11-08 under `UsageActivation`**, two days before the gate, so the old guard found it,
 skipped the seed and the 403 never fired locally.
 
+## 5b · The EP-2 failure in CI #336, and the two sleeping assertions it woke
+
+CI #336 ran on the pushed commit. **Five of six jobs were green and the step that broke #335 passed**
+(130/131) — the correction holds. `test:ep2` then failed on **one** test that is not part of this slice:
+
+```
+FAIL  server/services/candidateCorrectionsRead.postgres.test.ts > the read persists nothing
+AssertionError: expected 29 to be 28
+ ❯ …:429  expect(await prisma.proof.count()).toBe(proofs);
+```
+
+**Both halves of that test were asleep, and each was asleep in a different way.**
+
+| half | what it did | why it proved nothing |
+|---|---|---|
+| line 429, proofs | `prisma.proof.count()` with **no filter** | its premise is *nothing anywhere writes a Proof while I read twice*, false under vitest's default parallel file execution against one database |
+| line 428, candidates | `count({ boundaryId })` — correctly scoped | **the count is 0**: `recordObservation` writes `agent_tasks` and `agent_task_events`, and the read DERIVES candidates from that log, so it compared 0 with 0 |
+
+The second was found by the **non-vacuity guard added while fixing the first**, on its first run. A test
+whose scoped half is empty and whose global half is racy would have passed a read that wrote anything.
+
+> **A count over an empty scope and a count over an uncontrolled scope fail in opposite directions, and
+> both read as green.** Scope the assertion to a population the test actually created, and prove that
+> population is non-empty in the same assertion.
+
+**The replacement is two claims where there was one sloppy one**, and together they are stronger than the
+global count ever was:
+
+- **Behavioural, scoped, race-free** — tasks, events, candidates for this boundary, cases for this file's
+  boundary prefix, and proofs for those cases. Non-vacuity is asserted on the populated tables.
+- **Structural, global, race-free** — `candidateCorrectionsRead.ts` contains no Prisma write and no raw
+  execute at all, which covers every table and every boundary. A count proves the net did not move; this
+  proves there is nothing that could move it.
+
+A third claim is deliberately **not** made: that no other process wrote a proof during the reads. That is
+not a property of this endpoint and is not checkable from inside a parallel suite — pretending to check it
+is what produced a test that failed for a reason unrelated to its subject.
+
+**The guard had to read the construct, not the word.** A naive `/\.update\(/` scan matches
+`createHash(...).update(identity)` — a crypto digest, not a database write — so the pattern is anchored on
+Prisma delegates and raw execution, comments are stripped first, and the test asserts the pattern fires on
+a real write and does **not** fire on the digest the module genuinely contains.
+
+**Mutation proof:** making the read insert one `agent_task_events` row fails **both** halves — the
+behavioural one at `expected 10 to be 8`, the structural one by name. The pre-fix version would have
+caught neither, because its scoped half was empty and its global half was measuring other files.
+
 ## 6 · What this does NOT do
 
 - **The seven mechanisms are still unprovable, and that is not a defect being deferred.** Declaring a
