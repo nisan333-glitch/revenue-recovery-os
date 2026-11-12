@@ -1965,6 +1965,83 @@ file — so the slice makes the case *governed and visible* and does not make NH
 Contract **2.0.0**, both extracts, every `*_VERSION`/`*_SCHEME` constant, `OBLIGATION_IDENTITY_FIELDS = []`
 and every frozen artefact are unmoved, and `prisma/schema.prisma` is untouched.
 
+**Proof-bypass closure decision (2026-11-10, Option 1).** The D3 correction-channel gate protected the
+governed HTTP route and nothing else. `correctionMapping`/`mappingBlocksApproval` and
+`reasonScopeViolation` had **one production consumer between them**, and the pure domain could not
+consult either — `recoveryType` appeared **zero times** in `src/domain/{types,approval,invariants}.ts`,
+and `RevenueUnderBilled` was not a `LeakageType` at all. Meanwhile `src/state/RecoveryContext.tsx:613`
+minted proofs straight through `approveProofForCase`. So the same claim got two answers depending on
+which door it came through, and `src/App.tsx` stated *"RE-1014's proven Revenue Returned $10,600"*
+unqualified, on a screen with no DEMO banner, because the labelling guard scanned `src/modules/` only.
+The governing rules are now:
+
+> **A gate that protects one door protects nothing, and the set of proof-minting paths is answered by
+> the COMPILER rather than by a reading.** `recoveryType` is **required** on `CaseApprovalContext`, not
+> optional, because an optional field lets an existing caller keep its old behaviour by saying nothing
+> — which is how the bypass arose. `tsc` then named exactly four sites, two of them tests. Missing or
+> blank fails closed.
+
+> **One implementation, never two agreeing implementations.** `evidenceRole` **moved** into
+> `src/domain/` and `server/domain/evidenceRole.ts` became a pure re-export, with equivalence asserted
+> by **identity** — the same function object — because *a finite agreement is necessary evidence of
+> equivalence and never a proof of it*, the semantic-equivalence correction applied to a second case. A
+> test reads the re-export's source and fails if it ever *declares* anything, and
+> `check-domain-purity.mjs` now forbids a `server/` import so the dependency cannot invert back. The
+> hand-written `DECLARED_CORRECTION_TYPES` **mirror** is gone: deriving it makes disagreement
+> unrepresentable, which beats a test comparing two lists.
+
+> **`null` is NOT zero, enforced in the type.** `provenRevenueReturned(): number | null`, where `null`
+> means NO PROOF CAN EXIST; a rendered `$0.00` asserts a proof was looked for, found and summed to
+> nothing. **Refused money is REPORTED, not dropped** — `proofRefusedCollected`, apart from both
+> ledgers, stated as **COLLECTED** rather than `collected − baseline`, because the delta in the same
+> units reads as Revenue Returned whatever it is labelled.
+
+**Built 2026-11-10** ([`docs/PROOF_BYPASS_CLOSURE_V1.md`](docs/PROOF_BYPASS_CLOSURE_V1.md)). Seven seed
+proofs became **detected-and-refused** — proven **$83,400.00 → $5,500.00**, auditable **$79,800.00 →
+$5,500.00**, with **$106,500.00 collected across 7 cases** reported separately — and **not one field
+moved on any of the seven**: no reason, leakage type, amount, date, confidence or evidence record. The
+refusal is the **gate's own**, because `buildOne` calls `validateApproval` and builds a proof only when
+it returns no violations, so declaring a channel for one of the seven starts producing its proof with
+no edit. RE-1015 was **added** beside them: $18,000.00 contracted, $12,500.00 invoiced, CN-9120 raised
+for $5,500.00 and settled, so the uplift **equals** the corrective charge — an accounting identity a
+CFO re-derives from two documents, which is the whole difference from a behavioural hypothesis. The
+reconciliation waterfall gained a **`ProofRefused`** bucket ranked above `MissingProof` and
+`LowConfidence`: without it those $83,400 fell through to the *"no evidence captured"* safety net,
+telling an operator to gather evidence that cannot settle the question. Gross recovered still accounts
+for every dollar — $93,200 = $5,500 counted + $4,300 unclassified + $83,400 refused.
+
+**Two defects in my own change, both caught by running things rather than reading them.** Gating
+`recoveryRate` on provability put the portfolio at **0.5 instead of 0.875** — saying *seven recoveries
+failed* when the cash arrived in every one; *cannot be proven* and *did not recover* are different
+facts, so `isClassifiedRecovery` answers the operational question and `isCounted` the monetary one. And
+the guided-demo idempotence guard broke on its **own second run**: it keyed on the END STATE, which
+**cannot work when the end state is a REFUSAL**, because a refusal writes nothing — so it re-ran the
+writes and the append-only evidence table answered 409. Writes are now guarded by the ingested evidence
+and the approval attempt is deliberately **unguarded**, since a refused approval writes nothing and
+re-establishing the 403 every run beats inheriting it. **The CI #335 failure's cause was the same
+family:** my sandbox held `PF-RE-1014` approved **2026-11-08 under `UsageActivation`**, two days before
+the gate, so the old guard reused it and the 403 never fired locally — *a test that has only run
+against a dirty database is not a guard against a clean one*, for the second time. The guard now asks
+the **gate's** question: a stored proof is reusable only if its reason could still be approved today.
+
+**Negative tests cover BOTH doors in ONE file**, because the defect was the two answering differently
+with nothing comparing them — same refusal **code** and same mechanism named on each side, with the
+channel-less set **derived** from `CORRECTION_CHANNELS` rather than hand-listed, and `BillingCorrection`
+driven to a real 201 and a real frozen `Proof` as the positive control, since *a build that refused
+everything would satisfy every negative assertion and be useless*. A comment in `proofService.ts` that
+said `CORRECTION_CHANNEL_NOT_DECLARED` *"is reported rather than enforced"* — true when written, false
+once the owner decided — was corrected with its history kept.
+
+**What this does NOT do.** The seven mechanisms stay unprovable: declaring a channel means naming a
+source that can attest it, which is a governance decision with an owner. `unprovenRevenue` is now
+$0.00 and the `LowConfidence` bucket is empty, so the seed can no longer demonstrate *counted but not
+proof-grade* — **reported and deliberately not fixed by inventing a low-confidence billing case**,
+because a corrective charge billing attests does not plausibly carry a confidence of 58 and incoherent
+synthetic data is worse than a missing bucket. Contract **2.0.0**, both extracts, every
+`*_VERSION`/`*_SCHEME` constant, `OBLIGATION_IDENTITY_FIELDS = []` and every frozen artefact are
+unmoved; `prisma/` is untouched. Every figure is synthetic, and **no observed amount became Revenue
+Returned.**
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

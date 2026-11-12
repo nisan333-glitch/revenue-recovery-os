@@ -18,6 +18,7 @@ import { makeEvidence, type Evidence } from "../../src/domain/evidence";
 import { money } from "../../src/domain/money";
 import { CURRENT_POLICY } from "../../src/domain/policy";
 import type { Actor } from "../../src/domain/authority";
+import type { LeakageType } from "../../src/domain/types";
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 
@@ -29,7 +30,7 @@ const WITH_CHANNEL = CORRECTION_CHANNELS.filter((c) => c.permitted.length > 0).m
 
 const APPROVER: Actor = { id: "cfo@company", displayName: "CFO", roles: ["proofApprover"] };
 
-const baselineFor = (leakType: string) =>
+const baselineFor = (leakType: LeakageType) =>
   lockBaseline(
     establishBaseline({
       baselineId: "BL-doors",
