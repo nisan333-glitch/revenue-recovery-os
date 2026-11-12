@@ -400,12 +400,22 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
   // supply nothing that changes which channel applies to it.
   const chosenCorrection = caseEvidence.find((e) => e.evidenceId === correction.correctionEvidenceId);
   //
-  // WHICH REFUSALS BLOCK is declared in `BLOCKING_MAPPING_CODES`, not decided here. Two are decidable
-  // from the record and block; the third — seven of eight reasons having no correction channel at all —
-  // is a governance decision and is reported rather than enforced, because enforcing it would take that
-  // decision by implementation. Measured on this tree: enforcing it gives 41 failed / 905 passed against
-  // 946 passed, and 905 + 41 = 946, so nothing else moves. See `docs/CORRECTION_TYPE_MAPPING_V1.md` §6,
-  // which states what the 41 bodies do and do not individually evidence.
+  // WHICH REFUSALS BLOCK is declared in `BLOCKING_MAPPING_CODES`, not decided here. ALL THREE BLOCK as
+  // of the owner's D3 decision (2026-11-10), so a mapping verdict that is not `ok` cannot mint Revenue
+  // Returned by any route.
+  //
+  // THIS COMMENT SAID THE OPPOSITE UNTIL 2026-11-10, and the correction is recorded rather than quietly
+  // applied. It read that `CORRECTION_CHANNEL_NOT_DECLARED` — seven of eight reasons having no channel
+  // at all — "is reported rather than enforced, because enforcing it would take that decision by
+  // implementation". That was true when written and became false the moment the owner took the
+  // decision and the code added it to the blocking set. A comment describing the opposite of the gate
+  // beside it is worse than no comment: a reader reasoning about what this route permits would have
+  // concluded, from the authoritative-looking prose, that an unattestable mechanism still reaches
+  // PROVEN here. Measured at the time: enforcing it gave 41 failed / 905 passed against 946 passed,
+  // and 905 + 41 = 946, so nothing else moved. See `docs/CORRECTION_TYPE_MAPPING_V1.md` §6.
+  //
+  // The same gate now also runs in `src/domain/approval.ts`, from these same two functions, so the
+  // governed route and the pure approval path cannot answer one claim differently.
   const mapping = correctionMapping(req.recoveryReason, chosenCorrection?.evidenceType ?? null);
   if (mappingBlocksApproval(mapping)) {
     throw new ForbiddenError(
