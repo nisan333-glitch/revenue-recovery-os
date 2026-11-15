@@ -165,16 +165,32 @@ describe.skipIf(!HAS_DB)("EP-17 · purging an execution input", () => {
       ...GOVERNED_TERMS_FIELDS,
       provenance: SYNTHETIC_PROVENANCE,
     };
-    expect(
-      (await app.inject({
-        method: "POST", url: "/pilot/datasets", headers: OPERATOR,
-        payload: { ...base, admissionPolicyId: policy.policyId },
-      })).json().admission.outcome,
-    ).toBe("ADMISSIBLE");
+    // THE STATUS IS ASSERTED BEFORE THE BODY IS READ, which is the pattern the two governed calls
+    // above already follow and which these two did not. CI #337 failed on the next line as
+    // `TypeError: Cannot read properties of undefined (reading 'outcome')` — a refused request read
+    // as if it had succeeded, naming neither the status code nor the reason. The test was destroying
+    // the evidence needed to diagnose it. The assertion message carries the response body, because a
+    // bare `expected 400 to be 200` names the status and still does not name the reason.
+    //
+    // 200, NOT 201, and the admission outcome stays a SEPARATE assertion: a dataset whose rows were
+    // rejected is a valid answer at this route, so "the route answered" and "what it answered" are
+    // two different claims. Folding them together would let a refusal pass as a transport failure or
+    // the reverse.
+    const submitted = await app.inject({
+      method: "POST", url: "/pilot/datasets", headers: OPERATOR,
+      payload: { ...base, admissionPolicyId: policy.policyId },
+    });
+    expect(submitted.statusCode, submitted.body.slice(0, 600)).toBe(200);
+    expect(submitted.json().admission.outcome).toBe("ADMISSIBLE");
 
-    const out = (await app.inject({
+    // 201 only when a NEW execution was created. A fresh boundary and a fresh dataset id cannot be
+    // an idempotent repeat, and a refusal is a 200 carrying a deterministic NH-AX-#### code — so
+    // `scheduled` stays its own assertion rather than being inferred from the status.
+    const scheduleRes = await app.inject({
       method: "POST", url: "/pilot/assessments", headers: OPERATOR, payload: scheduleRequestFrom(base),
-    })).json();
+    });
+    expect(scheduleRes.statusCode, scheduleRes.body.slice(0, 600)).toBe(201);
+    const out = scheduleRes.json();
     expect(out.scheduled).toBe(true);
 
     if (options.freezePolicy) {
