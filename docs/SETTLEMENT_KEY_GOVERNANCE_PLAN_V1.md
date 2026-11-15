@@ -270,3 +270,32 @@ on this path, and a public key needs integrity and provenance rather than secrec
 **What is still true and must not be rounded up:** nothing here makes any figure real. Every fact in
 every test is synthetic. **No Recovery Case has ever originated from real customer data, nothing reaches
 `AUTHORITY_VERIFIED`, and no observed amount became Revenue Returned.**
+
+---
+
+## 11 · ERRATUM E1 · the challenge-response was overstated (owner, 2026-11-15)
+
+**The prose above is preserved unchanged.** A superseded conclusion is corrected and preserved, never
+deleted and never silently rewritten.
+
+§4 ends: *"C3 is the only cryptographic step and it is what makes the rest more than a form."* The
+owner's instruction corrects the second half: **do not assume a challenge-response alone proves the
+institution's identity.** That is right, and the distinction is sharper than my wording allowed:
+
+> **A CHALLENGE-RESPONSE PROVES CONTROL OF A KEY. IT PROVES NOTHING ABOUT WHO HOLDS IT.** Anyone can
+> generate an Ed25519 pair and answer a nonce challenge perfectly. So C3 establishes that *the party we
+> are talking to holds this private key*, and C2 — the independent identity check — is the only step
+> that establishes *who that party is*. **Neither substitutes for the other, and C3 is not the
+> load-bearing one.**
+
+What stands: C3 is the only **cryptographic** step, and without it the ceremony is paperwork about a key
+nobody has demonstrated control of. What is withdrawn: the implication that it is what makes the rest
+more than a form. **The rest is what makes C3 mean anything**, because control of an unidentified key is
+not provenance.
+
+**Made structural in G1 rather than left as prose.** `KeyRegistrationEvidence` declares four separately
+required booleans — `channelIndependentlyVerified`, `institutionIdentityVerified`,
+`keyControlDemonstrated`, `ceremonyRecorded` — rather than one `verified` flag, `keyRegistrationRefusals`
+returns **every** unmet condition rather than the first, and a test supplies challenge-response **alone**
+and asserts activation is refused with the other three named. A single flag would have let control wear
+identity's guarantee, which is the *stay distinguishable* rule applied to a ceremony.
