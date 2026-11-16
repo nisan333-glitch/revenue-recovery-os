@@ -36,6 +36,10 @@ export default defineConfig({
       "scripts/orchestrator/**/*.test.ts",
       "scripts/typecheck/**/*.test.ts",
       "scripts/pilot-acceptance/**/*.test.ts",
+      // `scripts/k5` renders the institution-key evidence checklist from the governed catalogue, and
+      // its drift test is the only thing that makes "generated" a property rather than a label. Added
+      // here when the directory was created, because a test CI never runs is not a guard.
+      "scripts/k5/**/*.test.ts",
     ],
   },
 });
