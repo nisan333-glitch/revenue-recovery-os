@@ -33,13 +33,79 @@ export interface SettlementLedgerSql {
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
   $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
 }
+import { createHmac } from "node:crypto";
 import { settlementIdentity, type ExternalSettlementFact } from "../../src/domain/externalSettlement";
 import { sha256Hex } from "../../src/assessment/fingerprint";
 import type { ArrivalRestingOnKey } from "../../src/contract/settlementCompromiseReport";
 
-/** `sha256:<64 hex>` over the canonical settlement identity. A digest for uniqueness, not a pseudonym. */
-export async function settlementDigest(fact: ExternalSettlementFact): Promise<string> {
-  return `sha256:${await sha256Hex(settlementIdentity(fact))}`;
+// ── G8 · THE DIGEST IS KEYED, BECAUSE A PLAIN ONE CONFIRMS GUESSES ──────────────────────────────
+//
+// THE EXPOSURE, STATED PLAINLY. The canonical settlement identity is
+// `scheme \0 boundaryId \0 sourceSystem \0 externalSettlementRef`, and an external settlement
+// reference is a BANK OR PSP PAYMENT IDENTIFIER — frequently structured, frequently sequential, and
+// always drawn from a small space. A plain `sha256` of that is deterministic and therefore
+// CONFIRMABLE: an attacker holding the database enumerates candidate references, hashes each, and
+// learns exactly which payments a tenant received. The scheme, the boundary and the source system are
+// all low-entropy too, so there is nothing in the preimage to make the search expensive.
+//
+// A DIGEST IS NOT A PSEUDONYM UNLESS IT IS KEYED. The repository already drew this distinction and
+// already has the mechanism: `accountSourceRef` in `reconciliationObserver.ts` is an HMAC under a
+// deployment secret, precisely so a stable reference cannot be recovered from stored values. The
+// ledger's own schema comment named this as the outstanding decision — "it requires the same keyed
+// treatment `sourceRef` gets — a deployment secret and a key-management decision". This is that
+// decision taken.
+//
+// WHAT KEYING DOES NOT CHANGE, which is why it is safe for the controls built on top: the digest is
+// still DETERMINISTIC (one identity, one value) and still GLOBALLY UNIQUE per identity, so the
+// one-arrival-counted-once index and the idempotent-retry derivation behave exactly as before.
+//
+// AND THE HARD CONSTRAINT THAT FALLS OUT, which must be stated rather than discovered:
+//
+//   THE DIGEST KEY CAN NEVER BE ROTATED IN PLACE. The table is append-only by trigger, so no row can
+//   be re-derived; under a new key the SAME arrival hashes to a DIFFERENT value, the unique index does
+//   not recognise it, and every past arrival silently becomes claimable a second time. A rotation
+//   would therefore destroy the exact guarantee this table exists to hold.
+//
+// So rotation is not forbidden by a comment — it is DETECTED. Every row records a fingerprint of the
+// key that produced its digest, and a claim whose fingerprint disagrees with what the boundary already
+// holds FAILS CLOSED. The remedy for a genuinely compromised digest key is a governed rebuild, which
+// is a decision with an owner; what this refuses is the silent version.
+
+const DIGEST_KEY_ENV = "NH_SETTLEMENT_DIGEST_KEY";
+const DIGEST_KEY_MIN_LENGTH = 32;
+
+/**
+ * The deployment secret the digest is keyed with. FAIL CLOSED: absent or short is a refusal, never a
+ * fallback to an unkeyed digest — a silent downgrade would reintroduce the confirmable identifier and
+ * nothing would report it.
+ */
+export function settlementDigestKey(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  const key = env[DIGEST_KEY_ENV];
+  if (typeof key !== "string" || key.length < DIGEST_KEY_MIN_LENGTH) {
+    throw new Error(
+      `${DIGEST_KEY_ENV} must be a deployment secret of at least ${DIGEST_KEY_MIN_LENGTH} characters; ` +
+        "an unkeyed settlement digest confirms guessed payment references and is refused",
+    );
+  }
+  return key;
+}
+
+/**
+ * A fingerprint of the digest key, so a rotation is VISIBLE rather than silent.
+ *
+ * DERIVED UNDER THE KEY ITSELF rather than stored as `sha256(key)`: the fingerprint sits in the same
+ * database as the digests, and a plain hash of the secret would let anyone holding that database
+ * verify a guessed key. An HMAC over a fixed label is equally stable and gives a guesser nothing.
+ */
+export function settlementDigestKeyFingerprint(key: string): string {
+  return `hmac-sha256:${createHmac("sha256", key).update("nh-settlement-digest-key-v1").digest("hex").slice(0, 32)}`;
+}
+
+/** `hmac-sha256:<64 hex>` over the canonical settlement identity. A keyed pseudonym, not a bare hash. */
+export function settlementDigest(fact: ExternalSettlementFact, key: string): string {
+  return `hmac-sha256:${createHmac("sha256", key).update(settlementIdentity(fact)).digest("hex")}`;
 }
 
 export type ClaimOutcome =
@@ -58,6 +124,14 @@ export interface SettlementLedgerRecord {
   readonly settlementDigest: string;
   readonly attestationNonce: string;
   readonly keyId: string;
+  /**
+   * G8 · which digest key produced `settlementDigest`, so a ROTATION IS VISIBLE.
+   *
+   * Under a new key the same arrival hashes to a different value, the unique index does not recognise
+   * it, and every past arrival silently becomes claimable again. Recording the fingerprint is what
+   * turns that from a silent loss of the guarantee into a refusal.
+   */
+  readonly digestKeyFingerprint: string;
   /**
    * G6 · when the INSTITUTION SIGNED the attestation, as a normalised ISO-8601 instant.
    *
@@ -95,6 +169,27 @@ export class PostgresSettlementLedger {
    * problem is that they sent the same signature twice.
    */
   async claim(record: SettlementLedgerRecord): Promise<ClaimOutcome> {
+    // G8 · THE DIGEST KEY MAY NOT CHANGE UNDER A BOUNDARY THAT ALREADY HOLDS ARRIVALS.
+    //
+    // Checked BEFORE the insert and deliberately as a THROW rather than a `ClaimOutcome`: the outcomes
+    // are answers about THIS arrival, and this is a statement that the ledger's uniqueness guarantee no
+    // longer holds for the whole tenant. Reporting it as "already counted" or "recorded" would file a
+    // broken invariant as an ordinary result.
+    const existing = await this.prisma.$queryRawUnsafe<{ digest_key_fingerprint: string }[]>(
+      `SELECT "digest_key_fingerprint" FROM "settlement_consumptions"
+         WHERE "boundary_id" = $1 LIMIT 1`,
+      record.boundaryId,
+    );
+    const held = existing[0]?.digest_key_fingerprint;
+    if (held !== undefined && held !== record.digestKeyFingerprint) {
+      throw new Error(
+        "settlement ledger: the settlement digest key has changed for this boundary. The table is " +
+          "append-only, so existing rows cannot be re-derived, and under a new key the same arrival " +
+          "would hash to a new value and be counted a second time. Refusing the claim; rotating this " +
+          "key requires a governed rebuild, not a deploy.",
+      );
+    }
+
     const consumptionId = `sc-${await sha256Hex(
       `${record.boundaryId}\u0000${record.claimRef}\u0000${record.settlementDigest}`,
     )}`;
@@ -105,11 +200,11 @@ export class PostgresSettlementLedger {
     const inserted = await this.prisma.$executeRawUnsafe(
       `INSERT INTO "settlement_consumptions"
          ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id",
-          "attestation_issued_at")
-       VALUES ($1,$2,$3,$4,$5,$6,$7::timestamp)
+          "attestation_issued_at","digest_key_fingerprint")
+       VALUES ($1,$2,$3,$4,$5,$6,$7::timestamp,$8)
        ON CONFLICT DO NOTHING`,
       consumptionId, record.boundaryId, record.claimRef, record.settlementDigest,
-      record.attestationNonce, record.keyId, record.attestationIssuedAt,
+      record.attestationNonce, record.keyId, record.attestationIssuedAt, record.digestKeyFingerprint,
     );
 
     // `inserted` IS USED FOR THE ONE THING IT GENUINELY TELLS US — whether OUR insert landed — and is
@@ -241,6 +336,7 @@ export class PostgresSettlementLedger {
  */
 export function settlementLedgerPort(
   ledger: PostgresSettlementLedger,
+  digestKey: string = settlementDigestKey(),
 ): import("../services/externalSettlementGate").SettlementLedger {
   return {
     async nonceAlreadyUsed(boundaryId, nonces) {
@@ -250,9 +346,11 @@ export function settlementLedgerPort(
     async identitiesSubstantiatingOtherClaims(boundaryId, claimRef, identities) {
       if (identities.length === 0) return Object.freeze([]);
       // Hash each identity, ask the table, and map the hits BACK to the identities the caller gave us.
+      // KEYED HERE TOO, under the same secret the stored digests were made with. An unkeyed hash here
+      // would simply never match a stored row — a check that cannot match is worse than no check.
       const byDigest = new Map<string, string>();
       for (const identity of identities) {
-        byDigest.set(`sha256:${await sha256Hex(identity)}`, identity);
+        byDigest.set(`hmac-sha256:${createHmac("sha256", digestKey).update(identity).digest("hex")}`, identity);
       }
       const taken = await ledger.digestsTakenByOtherClaims(boundaryId, claimRef, [...byDigest.keys()]);
       return Object.freeze(taken.map((d) => byDigest.get(d)!).filter((x) => x !== undefined));

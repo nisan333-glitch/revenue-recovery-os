@@ -13,6 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { claimCitedSettlements } from "./settlementClaim";
 import { splitSqlStatements } from "../persistence/obligationAttributionMigration.postgres.test";
 import { settlementDigest } from "../persistence/settlementLedgerStore";
+
+const DIGEST_KEY = "nh-test-settlement-digest-key-0123456789abcdef";
 import type { ExternalSettlementFact } from "../../src/domain/externalSettlement";
 import type { SettlementReceipt } from "./settlementVerification";
 
@@ -54,7 +56,9 @@ async function approvalTransaction(
   thenFail?: Error,
 ): Promise<readonly string[]> {
   return db.$transaction(async (tx) => {
-    const claimed = await claimCitedSettlements(tx, { boundaryId: "b-alpha", claimRef, cited, receipts });
+    const claimed = await claimCitedSettlements(
+      tx, { boundaryId: "b-alpha", claimRef, cited, receipts }, DIGEST_KEY,
+    );
     if (thenFail) throw thenFail; // stands in for a halt, a kernel refusal or a crash after the claim
     return claimed.map((c) => c.settlementDigest);
   });
@@ -88,7 +92,7 @@ afterAll(async () => {
 describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction", () => {
   it("is the positive control: a committed approval holds its arrival", async () => {
     const f = fact();
-    const digest = await settlementDigest(f);
+    const digest = settlementDigest(f, DIGEST_KEY);
     await approvalTransaction("claim-ok", [{ fact: f }], [receipt()]);
     expect((await rowsFor(digest)).map((r) => r.claim_ref)).toEqual(["claim-ok"]);
   });
@@ -99,7 +103,7 @@ describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction
     await approvalTransaction("claim-signed", [{ fact: f }], [receipt({ issuedAt: signed })]);
     const [row] = await db.$queryRawUnsafe<{ attestation_issued_at: Date; key_id: string }[]>(
       `SELECT "attestation_issued_at","key_id" FROM "settlement_consumptions" WHERE "settlement_digest" = $1`,
-      await settlementDigest(f),
+      settlementDigest(f, DIGEST_KEY),
     );
     // The receipt is the only source of this. Taking it from the request would let a caller place an
     // arrival outside a future exposure window by saying so.
@@ -112,7 +116,7 @@ describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction
   it("an idempotent RETRY of the same claim records nothing new", async () => {
     const f = fact();
     const r = receipt();
-    const digest = await settlementDigest(f);
+    const digest = settlementDigest(f, DIGEST_KEY);
     await approvalTransaction("claim-retry", [{ fact: f }], [r]);
     await approvalTransaction("claim-retry", [{ fact: f }], [r]); // replayed verbatim
     expect(await rowsFor(digest)).toHaveLength(1);
@@ -123,7 +127,7 @@ describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction
     await approvalTransaction("claim-first", [{ fact: f }], [receipt()]);
     await expect(approvalTransaction("claim-second", [{ fact: f }], [receipt()]))
       .rejects.toThrow(/SETTLEMENT_ALREADY_COUNTED_BY_ANOTHER_CLAIM/);
-    expect((await rowsFor(await settlementDigest(f))).map((r) => r.claim_ref)).toEqual(["claim-first"]);
+    expect((await rowsFor(settlementDigest(f, DIGEST_KEY))).map((r) => r.claim_ref)).toEqual(["claim-first"]);
   });
 
   it("a REPLAYED nonce is refused under its own distinct code — the attestation, not the money", async () => {
@@ -148,7 +152,7 @@ describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction
     // consumed by a proof that does not exist — unclaimable forever, which is WORSE than the double
     // count the claim exists to prevent.
     const f = fact();
-    const digest = await settlementDigest(f);
+    const digest = settlementDigest(f, DIGEST_KEY);
     await expect(
       approvalTransaction("claim-doomed", [{ fact: f }], [receipt()], new Error("case halted after claim")),
     ).rejects.toThrow(/case halted after claim/);
@@ -170,7 +174,7 @@ describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction
 
     // The first arrival was claimed before the second was refused. Without the shared transaction it
     // would now be consumed by an approval that produced no proof.
-    expect(await rowsFor(await settlementDigest(fresh))).toHaveLength(0);
+    expect(await rowsFor(settlementDigest(fresh, DIGEST_KEY))).toHaveLength(0);
   });
 
   it("TWO SIMULTANEOUS APPROVALS ON DIFFERENT CLAIMS: exactly one wins, and the database holds one row", async () => {
@@ -179,7 +183,7 @@ describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction
     // at all. Both would read "not substantiating anything" and both would write a proof. Only the
     // unique index decides it, and only because the claim shares the proof's transaction.
     const f = fact();
-    const digest = await settlementDigest(f);
+    const digest = settlementDigest(f, DIGEST_KEY);
     const results = await Promise.allSettled([
       approvalTransaction("claim-race-A", [{ fact: f }], [receipt()]),
       approvalTransaction("claim-race-B", [{ fact: f }], [receipt()]),
@@ -202,7 +206,7 @@ describe.skipIf(!HAS_DB)("G7 · claiming arrivals inside the proof's transaction
     // retrying under load must not be told its money was already counted.
     const f = fact();
     const r = receipt();
-    const digest = await settlementDigest(f);
+    const digest = settlementDigest(f, DIGEST_KEY);
     const results = await Promise.allSettled([
       approvalTransaction("claim-same", [{ fact: f }], [r]),
       approvalTransaction("claim-same", [{ fact: f }], [r]),

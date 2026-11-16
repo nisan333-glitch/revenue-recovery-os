@@ -79,6 +79,20 @@ CREATE TABLE "settlement_consumptions" (
     -- payload or an unwired route from handing the reader a row without the field.
     "attestation_issued_at" TIMESTAMP(3) NOT NULL,
 
+    -- G8 · WHICH DIGEST KEY PRODUCED `settlement_digest`.
+    --
+    -- The digest is an HMAC under a deployment secret, not a bare hash, because a settlement reference
+    -- is a bank or PSP payment identifier drawn from a small, often sequential space: a plain SHA-256
+    -- of it is CONFIRMABLE by anyone holding this database. Keying it makes the stored value a
+    -- pseudonym rather than a checkable fingerprint of the payment.
+    --
+    -- AND THAT CREATES A HARD CONSTRAINT THIS COLUMN EXISTS TO POLICE. The table is append-only, so no
+    -- row can be re-derived; under a rotated key the SAME arrival hashes to a DIFFERENT value, the
+    -- unique index below does not recognise it, and every past arrival silently becomes claimable a
+    -- second time. A rotation would therefore destroy the one guarantee this table holds. Recording
+    -- the key's fingerprint per row turns that from a silent loss into a refusal the store raises.
+    "digest_key_fingerprint" TEXT NOT NULL,
+
     "consumed_at"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     -- A new table, so `seq` is NOT NULL with a sequence default: there are no pre-existing rows whose
     -- append order would have to be fabricated by a backfill.
@@ -89,12 +103,12 @@ CREATE TABLE "settlement_consumptions" (
 
 ALTER TABLE "settlement_consumptions"
     ADD CONSTRAINT "settlement_consumptions_digest_shape"
-        CHECK ("settlement_digest" ~ '^sha256:[a-f0-9]{64}$'),
+        CHECK ("settlement_digest" ~ '^hmac-sha256:[a-f0-9]{64}$'),
     ADD CONSTRAINT "settlement_consumptions_nonce_shape"
         CHECK ("attestation_nonce" ~ '^[A-Za-z0-9_-]{16,128}$'),
     ADD CONSTRAINT "settlement_consumptions_nonblank"
         CHECK (length(btrim("boundary_id")) > 0 AND length(btrim("claim_ref")) > 0
-               AND length(btrim("key_id")) > 0);
+               AND length(btrim("key_id")) > 0 AND length(btrim("digest_key_fingerprint")) > 0);
 
 -- ── ONE ARRIVAL OF MONEY IS COUNTED ONCE ────────────────────────────────────────────────────────
 --

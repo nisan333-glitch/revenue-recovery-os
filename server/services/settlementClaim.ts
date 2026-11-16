@@ -31,6 +31,8 @@
 import { ForbiddenError } from "../http/errors";
 import {
   settlementDigest,
+  settlementDigestKey,
+  settlementDigestKeyFingerprint,
   PostgresSettlementLedger,
   type SettlementLedgerSql,
 } from "../persistence/settlementLedgerStore";
@@ -75,6 +77,12 @@ export interface SettlementClaimInput {
 export async function claimCitedSettlements(
   sql: SettlementLedgerSql,
   input: SettlementClaimInput,
+  /**
+   * The deployment secret the stored digests are keyed with. RESOLVED HERE, not passed from a request:
+   * a caller who could choose the key could choose which arrivals collide, which is choosing whether
+   * their own money has already been counted.
+   */
+  digestKey: string = settlementDigestKey(),
 ): Promise<readonly ClaimedArrival[]> {
   if (input.cited.length !== input.receipts.length) {
     // NOT AN ASSERTION ABOUT THE CALLER'S MANNERS. A mismatch means a receipt would be paired with the
@@ -86,11 +94,12 @@ export async function claimCitedSettlements(
   }
 
   const ledger = new PostgresSettlementLedger(sql);
+  const digestKeyFingerprint = settlementDigestKeyFingerprint(digestKey);
   const claimed: ClaimedArrival[] = [];
 
   for (const [index, { fact }] of input.cited.entries()) {
     const receipt = input.receipts[index]!;
-    const digest = await settlementDigest(fact);
+    const digest = settlementDigest(fact, digestKey);
     const outcome = await ledger.claim({
       boundaryId: input.boundaryId,
       claimRef: input.claimRef,
@@ -98,6 +107,7 @@ export async function claimCitedSettlements(
       attestationNonce: receipt.nonce,
       keyId: receipt.keyId,
       attestationIssuedAt: receipt.issuedAt,
+      digestKeyFingerprint,
     });
 
     switch (outcome.outcome) {

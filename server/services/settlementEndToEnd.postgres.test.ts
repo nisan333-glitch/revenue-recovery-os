@@ -41,6 +41,8 @@ import {
   settlementDigest,
   settlementLedgerPort,
 } from "../persistence/settlementLedgerStore";
+
+const DIGEST_KEY = "nh-test-settlement-digest-key-0123456789abcdef";
 import { settlementSigningPayload, SettlementVerifier } from "./settlementVerification";
 import type { SettlementAttestation, SettlementReceipt } from "./settlementVerification";
 import type { ExternalSettlementFact } from "../../src/domain/externalSettlement";
@@ -182,7 +184,7 @@ async function approveWithSettlement(
       keyId: cited[0]!.attestation.keyId, boundaryId: BOUNDARY, sourceSystem: "acme-bank",
       sourceKind: "bank", publicKey: BANK.pem,
     }], () => Date.parse(now)),
-    settlementLedgerPort(ledger),
+    settlementLedgerPort(ledger, DIGEST_KEY),
   );
   const verdict = outcome.verdict;
   if (!verdict.sufficient) throw new Error(`${verdict.code}: ${verdict.reason}`);
@@ -195,7 +197,7 @@ async function approveWithSettlement(
   //     what is being proved is that the claim and the write share a transaction, not what the row is.
   const proofId = `PF-${claimRef}`;
   await db.$transaction(async (tx) => {
-    await claimCitedSettlements(tx, { boundaryId: BOUNDARY, claimRef, cited, receipts });
+    await claimCitedSettlements(tx, { boundaryId: BOUNDARY, claimRef, cited, receipts }, DIGEST_KEY);
     await tx.$executeRawUnsafe(
       `INSERT INTO "e2e_proof" ("proof_id","claim_ref","collected_minor") VALUES ($1,$2,$3)`,
       proofId, claimRef, settledMinor,
@@ -254,7 +256,7 @@ describe.skipIf(!HAS_DB)("G7 · end to end · an external attestation becomes a 
     const [row] = await db.$queryRawUnsafe<{ key_id: string; claim_ref: string; attestation_issued_at: Date }[]>(
       `SELECT "key_id","claim_ref","attestation_issued_at" FROM "settlement_consumptions"
          WHERE "settlement_digest" = $1`,
-      await settlementDigest(fact),
+      settlementDigest(fact, DIGEST_KEY),
     );
     expect(row).toMatchObject({ key_id: keyId, claim_ref: "claim-e2e-1" });
     expect(row!.attestation_issued_at.toISOString()).toBe(t.signedAt);
@@ -414,7 +416,7 @@ describe.skipIf(!HAS_DB)("G7 · end to end · an external attestation becomes a 
     expect(await proofCount()).toBe(before + 1);
     const [c] = await db.$queryRawUnsafe<{ c: bigint }[]>(
       `SELECT count(*) AS c FROM "settlement_consumptions" WHERE "settlement_digest" = $1`,
-      await settlementDigest(fact),
+      settlementDigest(fact, DIGEST_KEY),
     );
     expect(Number(c!.c)).toBe(1);
   }, 60_000);

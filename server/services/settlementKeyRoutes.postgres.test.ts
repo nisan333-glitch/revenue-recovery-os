@@ -359,10 +359,14 @@ describe.skipIf(!HAS_DB)("G6 routes · the compromise report", () => {
       seeded.$executeRawUnsafe(
         `INSERT INTO "settlement_consumptions"
            ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce",
-            "key_id","attestation_issued_at")
-         VALUES ($1,'b-routes',$2,$3,$4,$5,$6::timestamp)`,
-        `sc-${randomUUID()}`, ref, `sha256:${randomUUID().replace(/-/g, "").padEnd(64, "0").slice(0, 64)}`,
+            "key_id","attestation_issued_at","digest_key_fingerprint")
+         VALUES ($1,'b-routes',$2,$3,$4,$5,$6::timestamp,$7)`,
+        `sc-${randomUUID()}`, ref,
+        // G8 · the stored digest is a KEYED pseudonym; a bare `sha256:` value no longer satisfies the
+        // column's shape check, which is the constraint doing its job on a fixture that predates it.
+        `hmac-sha256:${randomUUID().replace(/-/g, "").padEnd(64, "0").slice(0, 64)}`,
         `nonce-${randomUUID().replace(/-/g, "").slice(0, 20)}`, key.keyId, issuedAt,
+        `hmac-sha256:${"e".repeat(32)}`,
       );
     await insert("claim-before", "2026-03-01T00:00:00.000Z");
     await insert("claim-inside", "2026-06-01T00:00:00.000Z");

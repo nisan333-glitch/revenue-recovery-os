@@ -169,6 +169,12 @@ describe.skipIf(!HAS_DB)("G7 · the ledger migration against the product's real 
     expect(col).toBeDefined();
     expect(col).toMatch(/null=NO/);
 
+    // The rotation check reads this column; a nullable one would let it read `undefined` and wave the
+    // next key through, so its nullability is asserted beside the signing instant's.
+    const fp = withLedger.columns.find((c) => c.startsWith("settlement_consumptions.digest_key_fingerprint"));
+    expect(fp).toBeDefined();
+    expect(fp).toMatch(/null=NO/);
+
     expect(withLedger.triggers.filter(OWN)).toHaveLength(3); // update, delete, truncate
   });
 

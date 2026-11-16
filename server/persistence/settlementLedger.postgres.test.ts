@@ -6,23 +6,26 @@
 // THE CONCURRENCY TESTS ARE THE POINT OF THIS FILE. Everything else here could be satisfied by a
 // read-then-check; only two simultaneous claims can tell whether the rule is a control or merely a
 // decision.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  ledgerArrivalReader, PostgresSettlementLedger, settlementDigest, settlementLedgerPort,
-  type SettlementLedgerRecord,
+  ledgerArrivalReader, PostgresSettlementLedger, settlementDigest, settlementDigestKey,
+  settlementDigestKeyFingerprint, settlementLedgerPort, type SettlementLedgerRecord,
 } from "./settlementLedgerStore";
 import { splitSqlStatements } from "./obligationAttributionMigration.postgres.test";
 import { settlementIdentity, type ExternalSettlementFact } from "../../src/domain/externalSettlement";
+import { sha256Hex } from "../../src/assessment/fingerprint";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
 const UP = readFileSync(resolve(REPO, "scripts/migration-design/settlement-ledger-up.sql"), "utf8");
 
+const DIGEST_KEY = "nh-test-settlement-digest-key-0123456789abcdef";
+const FP = settlementDigestKeyFingerprint(DIGEST_KEY);
 const BASE = process.env.DATABASE_URL ?? "";
 const HAS_DB = BASE.length > 0;
 const DB_NAME = `nh_synthetic_ledger_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
@@ -43,11 +46,12 @@ let n = 0;
 const rec = async (over: Partial<SettlementLedgerRecord> = {}): Promise<SettlementLedgerRecord> => ({
   boundaryId: "b-alpha",
   claimRef: `claim-${(n += 1)}`,
-  settlementDigest: await settlementDigest({ ...FACT, externalSettlementRef: `CR-${n}` }),
+  settlementDigest: settlementDigest({ ...FACT, externalSettlementRef: `CR-${n}` }, DIGEST_KEY),
   attestationNonce: `nonce-${String(n).padStart(16, "0")}`,
   keyId: "k-bank-01",
   // A DISTINCT instant per record, so a round-trip assertion cannot pass by every row sharing one.
   attestationIssuedAt: new Date(Date.UTC(2026, 2, 1, 0, 0, n)).toISOString(),
+  digestKeyFingerprint: FP,
   ...over,
 });
 
@@ -146,8 +150,8 @@ describe.skipIf(!HAS_DB)("G5 · claiming an arrival of money", () => {
   it("holds one-arrival-counted-once ACROSS tenants without a scoping clause", async () => {
     // The canonical identity already contains the boundary, so the digest differs per tenant by
     // construction — asserted rather than assumed, because the index has no boundary column.
-    const a = await settlementDigest(FACT);
-    const b = await settlementDigest({ ...FACT, boundaryId: "b-beta" });
+    const a = settlementDigest(FACT, DIGEST_KEY);
+    const b = settlementDigest({ ...FACT, boundaryId: "b-beta" }, DIGEST_KEY);
     expect(a).not.toBe(b);
     expect(settlementIdentity(FACT)).toContain("b-alpha");
   });
@@ -157,11 +161,11 @@ describe.skipIf(!HAS_DB)("G5 · concurrency · the constraint is the control", (
   // THE TEST THIS FILE EXISTS FOR. A read-then-check passes both of these; only a constraint stops
   // the second one landing.
   it("lets exactly ONE of two simultaneous claims on one arrival win", async () => {
-    const digest = await settlementDigest({ ...FACT, externalSettlementRef: `CR-conc-${(n += 1)}` });
+    const digest = settlementDigest({ ...FACT, externalSettlementRef: `CR-conc-${(n += 1)}` }, DIGEST_KEY);
     const a: SettlementLedgerRecord = {
       boundaryId: "b-alpha", claimRef: "claim-A", settlementDigest: digest,
       attestationNonce: "nonce-aaaaaaaaaaaaaaaa", keyId: "k-bank-01",
-      attestationIssuedAt: "2026-03-01T00:00:00.000Z",
+      attestationIssuedAt: "2026-03-01T00:00:00.000Z", digestKeyFingerprint: FP,
     };
     const b: SettlementLedgerRecord = { ...a, claimRef: "claim-B", attestationNonce: "nonce-bbbbbbbbbbbbbbbb" };
 
@@ -180,12 +184,12 @@ describe.skipIf(!HAS_DB)("G5 · concurrency · the constraint is the control", (
     const nonce = "nonce-cccccccccccccccc";
     const a: SettlementLedgerRecord = {
       boundaryId: "b-alpha", claimRef: "claim-N1", attestationNonce: nonce, keyId: "k-bank-01",
-      attestationIssuedAt: "2026-03-01T00:01:00.000Z",
-      settlementDigest: await settlementDigest({ ...FACT, externalSettlementRef: `CR-n1-${(n += 1)}` }),
+      attestationIssuedAt: "2026-03-01T00:01:00.000Z", digestKeyFingerprint: FP,
+      settlementDigest: settlementDigest({ ...FACT, externalSettlementRef: `CR-n1-${(n += 1)}` }, DIGEST_KEY),
     };
     const b: SettlementLedgerRecord = {
       ...a, claimRef: "claim-N2",
-      settlementDigest: await settlementDigest({ ...FACT, externalSettlementRef: `CR-n2-${(n += 1)}` }),
+      settlementDigest: settlementDigest({ ...FACT, externalSettlementRef: `CR-n2-${(n += 1)}` }, DIGEST_KEY),
     };
     const [ra, rb] = await Promise.all([ledger.claim(a), ledger.claim(b)]);
     expect([ra.outcome, rb.outcome].sort()).toEqual(["NONCE_ALREADY_USED", "RECORDED"]);
@@ -281,15 +285,15 @@ describe.skipIf(!HAS_DB)("G5 · the gate port over the durable ledger", () => {
   // unable to ever match. A check that cannot match is worse than no check: it reports a rule as
   // enforced while passing everything. This asserts the round trip identity -> digest -> identity.
   it("returns the caller's own IDENTITY strings, not digests, so the core's check can match", async () => {
-    const port = settlementLedgerPort(ledger);
+    const port = settlementLedgerPort(ledger, DIGEST_KEY);
     const fact = { ...FACT, externalSettlementRef: `CR-port-${(n += 1)}` };
     const identity = settlementIdentity(fact);
-    const digest = await settlementDigest(fact);
+    const digest = settlementDigest(fact, DIGEST_KEY);
 
     await ledger.claim({
       boundaryId: "b-alpha", claimRef: "claim-owner", settlementDigest: digest,
       attestationNonce: `nonce-port${String(n).padStart(6, "0")}`, keyId: "k-bank-01",
-      attestationIssuedAt: "2026-03-01T00:02:00.000Z",
+      attestationIssuedAt: "2026-03-01T00:02:00.000Z", digestKeyFingerprint: FP,
     });
 
     const taken = await port.identitiesSubstantiatingOtherClaims("b-alpha", "claim-other", [identity]);
@@ -300,25 +304,25 @@ describe.skipIf(!HAS_DB)("G5 · the gate port over the durable ledger", () => {
   });
 
   it("excludes the asking claim's own arrivals, so a retry is not a double count", async () => {
-    const port = settlementLedgerPort(ledger);
+    const port = settlementLedgerPort(ledger, DIGEST_KEY);
     const fact = { ...FACT, externalSettlementRef: `CR-self-${(n += 1)}` };
     await ledger.claim({
-      boundaryId: "b-alpha", claimRef: "claim-self", settlementDigest: await settlementDigest(fact),
+      boundaryId: "b-alpha", claimRef: "claim-self", settlementDigest: settlementDigest(fact, DIGEST_KEY),
       attestationNonce: `nonce-self${String(n).padStart(6, "0")}`, keyId: "k-bank-01",
-      attestationIssuedAt: "2026-03-01T00:03:00.000Z",
+      attestationIssuedAt: "2026-03-01T00:03:00.000Z", digestKeyFingerprint: FP,
     });
     expect(await port.identitiesSubstantiatingOtherClaims("b-alpha", "claim-self", [settlementIdentity(fact)]))
       .toEqual([]);
   });
 
   it("reports only the nonces that are actually used, and is bounded by its input", async () => {
-    const port = settlementLedgerPort(ledger);
+    const port = settlementLedgerPort(ledger, DIGEST_KEY);
     const used = `nonce-used${String((n += 1)).padStart(6, "0")}`;
     await ledger.claim({
       boundaryId: "b-alpha", claimRef: `claim-nonce-${n}`,
-      settlementDigest: await settlementDigest({ ...FACT, externalSettlementRef: `CR-nu-${n}` }),
+      settlementDigest: settlementDigest({ ...FACT, externalSettlementRef: `CR-nu-${n}` }, DIGEST_KEY),
       attestationNonce: used, keyId: "k-bank-01",
-      attestationIssuedAt: "2026-03-01T00:04:00.000Z",
+      attestationIssuedAt: "2026-03-01T00:04:00.000Z", digestKeyFingerprint: FP,
     });
     expect(await port.nonceAlreadyUsed("b-alpha", [used, "nonce-neverseen00000"])).toEqual([used]);
     // Empty in, empty out — never a full scan standing in for an answer.
@@ -327,13 +331,13 @@ describe.skipIf(!HAS_DB)("G5 · the gate port over the durable ledger", () => {
   });
 
   it("is tenant-scoped on both questions", async () => {
-    const port = settlementLedgerPort(ledger);
+    const port = settlementLedgerPort(ledger, DIGEST_KEY);
     const fact = { ...FACT, externalSettlementRef: `CR-tenant-${(n += 1)}` };
     const nonce = `nonce-ten${String(n).padStart(7, "0")}`;
     await ledger.claim({
-      boundaryId: "b-alpha", claimRef: "claim-t", settlementDigest: await settlementDigest(fact),
+      boundaryId: "b-alpha", claimRef: "claim-t", settlementDigest: settlementDigest(fact, DIGEST_KEY),
       attestationNonce: nonce, keyId: "k-bank-01",
-      attestationIssuedAt: "2026-03-01T00:05:00.000Z",
+      attestationIssuedAt: "2026-03-01T00:05:00.000Z", digestKeyFingerprint: FP,
     });
     expect(await port.nonceAlreadyUsed("b-beta", [nonce])).toEqual([]);
     expect(await port.identitiesSubstantiatingOtherClaims("b-beta", "claim-x", [settlementIdentity(fact)]))
@@ -377,9 +381,10 @@ describe.skipIf(!HAS_DB)("G6 · the attestation's signing instant survives the r
     await expect(
       db.$executeRawUnsafe(
         `INSERT INTO "settlement_consumptions"
-           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id")
-         VALUES ($1,'b-alpha','claim-null',$2,'nonce-nullnullnull01','k-bank-01')`,
-        `sc-null-${randomUUID()}`, `sha256:${"a".repeat(64)}`,
+           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id",
+            "digest_key_fingerprint")
+         VALUES ($1,'b-alpha','claim-null',$2,'nonce-nullnullnull01','k-bank-01',$3)`,
+        `sc-null-${randomUUID()}`, `hmac-sha256:${"a".repeat(64)}`, FP,
       ),
     ).rejects.toThrow();
   });
@@ -442,9 +447,10 @@ describe.skipIf(!HAS_DB)("G6 · the nullable path, simulated as a real upgrade r
       );
       await c.$executeRawUnsafe(
         `INSERT INTO "settlement_consumptions"
-           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id")
-         VALUES ('sc-legacy','b-alpha','claim-legacy',$1,'nonce-legacylegacy01','k-legacy')`,
-        `sha256:${"b".repeat(64)}`,
+           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id",
+            "digest_key_fingerprint")
+         VALUES ('sc-legacy','b-alpha','claim-legacy',$1,'nonce-legacylegacy01','k-legacy',$2)`,
+        `hmac-sha256:${"b".repeat(64)}`, FP,
       );
       const [found] = await new PostgresSettlementLedger(c).consumptionsForKey("k-legacy");
       expect(found!.attestationIssuedAt).toBeNull();
@@ -455,5 +461,97 @@ describe.skipIf(!HAS_DB)("G6 · the nullable path, simulated as a real upgrade r
       await c.$disconnect();
       await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${own}" WITH (FORCE)`);
     }
+  });
+});
+
+// ── G8 · the digest is a KEYED PSEUDONYM, and a key rotation is refused rather than silent ───────
+
+describe("G8 · the settlement digest resists an attacker holding the database", () => {
+  it("is NOT a plain hash of the identity — the confirmable-guess attack is closed", async () => {
+    // THE ATTACK THIS EXISTS TO STOP. A settlement reference is a bank or PSP payment identifier from a
+    // small, often sequential space. Against a plain `sha256` an attacker holding this database
+    // enumerates candidates, hashes each, and learns exactly which payments a tenant received. The
+    // assertion is concrete: the stored value is NOT what that attacker would compute.
+    const f = { ...FACT, externalSettlementRef: "CR-GUESSABLE-00001" };
+    const guessable = `sha256:${await sha256Hex(settlementIdentity(f))}`;
+    const stored = settlementDigest(f, DIGEST_KEY);
+    expect(stored).not.toBe(guessable);
+    expect(stored).toMatch(/^hmac-sha256:[a-f0-9]{64}$/);
+  });
+
+  it("is deterministic under one key and different under another — a pseudonym, not a fingerprint", () => {
+    const f = { ...FACT, externalSettlementRef: "CR-DETERMINISM" };
+    expect(settlementDigest(f, DIGEST_KEY)).toBe(settlementDigest(f, DIGEST_KEY));
+    expect(settlementDigest(f, `${DIGEST_KEY}-other`)).not.toBe(settlementDigest(f, DIGEST_KEY));
+    // Determinism is what the one-arrival-once index rests on; keying must not cost it.
+  });
+
+  it("FAILS CLOSED without a deployment secret, and never falls back to an unkeyed digest", () => {
+    for (const env of [{}, { NH_SETTLEMENT_DIGEST_KEY: "" }, { NH_SETTLEMENT_DIGEST_KEY: "too-short" }]) {
+      expect(() => settlementDigestKey(env)).toThrow(/at least 32 characters/);
+    }
+    expect(settlementDigestKey({ NH_SETTLEMENT_DIGEST_KEY: DIGEST_KEY })).toBe(DIGEST_KEY);
+  });
+
+  it("the key FINGERPRINT is derived under the key, so holding the database does not verify a guess", () => {
+    // A stored `sha256(key)` would let anyone with this database check a guessed secret. An HMAC over a
+    // fixed label is equally stable for detecting a rotation and gives a guesser nothing.
+    expect(FP).not.toContain(DIGEST_KEY);
+    expect(FP).not.toBe(`sha256:${createHash("sha256").update(DIGEST_KEY).digest("hex")}`);
+    expect(settlementDigestKeyFingerprint(DIGEST_KEY)).toBe(FP);
+    expect(settlementDigestKeyFingerprint(`${DIGEST_KEY}-other`)).not.toBe(FP);
+  });
+
+  it("REFUSES A CLAIM UNDER A ROTATED KEY, because the table cannot be re-derived", async () => {
+    // THE HARD CONSTRAINT, ENFORCED RATHER THAN DOCUMENTED. The table is append-only, so under a new
+    // key the SAME arrival hashes to a NEW value, the unique index does not recognise it, and every
+    // past arrival silently becomes claimable a second time. Refusing is the only honest answer.
+    const boundaryId = `b-rot-${randomUUID().slice(0, 8)}`;
+    await ledger.claim({
+      boundaryId, claimRef: "claim-rot-1", settlementDigest: settlementDigest(FACT, DIGEST_KEY),
+      attestationNonce: `nonce-rot${randomUUID().replace(/-/g, "").slice(0, 11)}`, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:00:00.000Z", digestKeyFingerprint: FP,
+    });
+
+    const rotated = `${DIGEST_KEY}-ROTATED`;
+    await expect(ledger.claim({
+      boundaryId,
+      claimRef: "claim-rot-2",
+      settlementDigest: settlementDigest({ ...FACT, externalSettlementRef: "CR-ROT-2" }, rotated),
+      attestationNonce: `nonce-rot${randomUUID().replace(/-/g, "").slice(0, 11)}`, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:00:00.000Z",
+      digestKeyFingerprint: settlementDigestKeyFingerprint(rotated),
+    })).rejects.toThrow(/digest key has changed for this boundary/);
+  });
+
+  it("the COLUMN refuses a row with no key fingerprint — the rotation check needs something to read", async () => {
+    // Found by a surviving mutation: dropping NOT NULL here was caught by nothing, because the store
+    // always supplies the value. A fingerprint-less row would make the rotation check above read
+    // `undefined` and wave the next key through, so the constraint is part of the control and is now
+    // measured rather than assumed.
+    await expect(
+      db.$executeRawUnsafe(
+        `INSERT INTO "settlement_consumptions"
+           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id",
+            "attestation_issued_at")
+         VALUES ($1,'b-nofp','claim-nofp',$2,'nonce-nofpnofpnofp01','k-bank-01','2026-03-01T00:00:00')`,
+        `sc-nofp-${randomUUID()}`, `hmac-sha256:${"d".repeat(64)}`,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("a DIFFERENT boundary may legitimately hold a different key — the refusal is per tenant", async () => {
+    // Scoped deliberately: the guarantee the fingerprint protects is per-boundary uniqueness, so a
+    // tenant onboarded later under a new secret is not a rotation and must not be refused.
+    const fresh = `b-fresh-${randomUUID().slice(0, 8)}`;
+    const other = `${DIGEST_KEY}-tenant-two`;
+    const out = await ledger.claim({
+      boundaryId: fresh, claimRef: "claim-fresh",
+      settlementDigest: settlementDigest({ ...FACT, boundaryId: fresh }, other),
+      attestationNonce: `nonce-fr${randomUUID().replace(/-/g, "").slice(0, 12)}`, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:00:00.000Z",
+      digestKeyFingerprint: settlementDigestKeyFingerprint(other),
+    });
+    expect(out.outcome).toBe("RECORDED");
   });
 });
