@@ -45,10 +45,17 @@ const cite = (fact = FACT, nonce = "nonce-aaaaaaaaaaaaaaaa") => {
   };
 };
 
+// THE FAKE MOVED WITH THE PORT, AND IT IS NOW CLAIM-AWARE AND BOUNDED. G5 reshaped `SettlementLedger`
+// because the stage-8 shape had two defects: it had no notion of WHICH claim was asking, so an
+// idempotent retry read as a double count, and it returned a whole tenant's history for the caller to
+// scan. Both questions are now asked about exactly the values cited in the request.
 const ledger = (seen: string[] = [], used: string[] = []) => ({
-  seenNonces: vi.fn(async () => seen),
-  identitiesAlreadySubstantiating: vi.fn(async () => used),
-}) satisfies SettlementLedger & { seenNonces: ReturnType<typeof vi.fn> };
+  nonceAlreadyUsed: vi.fn(async (_b: string, nonces: readonly string[]) =>
+    nonces.filter((x) => seen.includes(x))),
+  identitiesSubstantiatingOtherClaims: vi.fn(async (
+    _b: string, _claimRef: string, identities: readonly string[],
+  ) => identities.filter((x) => used.includes(x))),
+}) satisfies SettlementLedger & { nonceAlreadyUsed: ReturnType<typeof vi.fn> };
 
 const INPUT = {
   enabled: true,
@@ -58,6 +65,9 @@ const INPUT = {
   caseCorrectiveInvoiceRef: "CN-9120",
   casePayerExternalRef: "PAYER-7781",
   correctionRaisedAt: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+  // REQUIRED, not optional: without it the ledger cannot tell a retry from a double count, and an
+  // optional field would let an existing caller keep the claim-blind behaviour by saying nothing.
+  claimRef: "claim-under-test",
   cited: [cite()],
 };
 
@@ -78,8 +88,8 @@ describe("stage 8 · the gate end to end on signed synthetic data", () => {
     const out = await runExternalSettlementGate({ ...INPUT, enabled: false }, new SettlementVerifier(KEYS), l);
     expect(out.verdict).toMatchObject({ sufficient: false, code: "EXTERNAL_SETTLEMENT_NOT_ENABLED" });
     expect(out.receipts).toEqual([]);
-    expect(l.seenNonces).not.toHaveBeenCalled();
-    expect(l.identitiesAlreadySubstantiating).not.toHaveBeenCalled();
+    expect(l.nonceAlreadyUsed).not.toHaveBeenCalled();
+    expect(l.identitiesSubstantiatingOtherClaims).not.toHaveBeenCalled();
   });
 
   it("throws on a forged attestation BEFORE any arithmetic or ledger read", async () => {
@@ -94,7 +104,7 @@ describe("stage 8 · the gate end to end on signed synthetic data", () => {
     const l = ledger();
     await expect(runExternalSettlementGate({ ...INPUT, cited: [forged] }, new SettlementVerifier(KEYS), l))
       .rejects.toThrow(/does not verify/);
-    expect(l.seenNonces).not.toHaveBeenCalled();
+    expect(l.nonceAlreadyUsed).not.toHaveBeenCalled();
   });
 
   it("refuses a replayed nonce the ledger already holds", async () => {
@@ -161,6 +171,10 @@ describe("stage 8 / G4 · who may import the settlement modules, in both directi
     "server/services/settlementVerification.ts",
     "server/services/externalSettlementGate.ts",
     "server/services/registerBackedSettlementVerification.ts",
+    // G5 · the durable ledger. It imports `settlementIdentity` to digest an arrival, and the port's
+    // TYPE (a type-only dynamic import) to implement it. Added DELIBERATELY, which is what a closed
+    // permitted set is for: the guard refused it first, and that refusal is the mechanism working.
+    "server/persistence/settlementLedgerStore.ts",
     "src/domain/externalSettlement.ts",
   ]);
   // The surfaces that must NOT reach a settlement module. A proof minted from an unwired mechanism

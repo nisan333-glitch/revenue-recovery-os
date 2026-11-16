@@ -24,6 +24,7 @@
 import { ForbiddenError } from "../http/errors";
 import {
   externalSettlementSufficiency,
+  settlementIdentity,
   type ExternalSettlementFact,
   type ExternalSettlementVerdict,
 } from "../../src/domain/externalSettlement";
@@ -32,14 +33,41 @@ import type { SettlementAttestation, SettlementReceipt, SettlementVerifier } fro
 /**
  * The persisted state the decision needs and cannot derive.
  *
- * A PORT, not a table, because this slice adds no schema. Its implementation is the next slice's work,
- * and until it exists the only implementations are in tests — which is why the guard above exists.
+ * G5 RESHAPED THIS PORT, AND BOTH CHANGES FIX REAL DEFECTS IN THE STAGE-8 VERSION.
+ *
+ *   IT WAS CLAIM-BLIND. `identitiesAlreadySubstantiating(boundaryId)` had no notion of WHICH claim was
+ *   asking, so an idempotent retry of the very claim that recorded an arrival would have been refused
+ *   as a double count. The claim reference is now an input and the answer excludes it.
+ *
+ *   IT WAS UNBOUNDED. Both methods returned a whole tenant's history so the caller could run
+ *   `includes()` over it. The question is never "give me every nonce you have ever seen", it is "has
+ *   THIS nonce been seen", and at any real volume the first shape is a different kind of defect.
+ *
+ * AND WHAT IT STILL IS NOT: a control. These reads are a DIAGNOSIS — they let a refusal name which
+ * rule failed before the database has to raise. The control is the unique index, because a
+ * read-then-check has a window between the read and the write that two simultaneous claims both pass.
+ * `PostgresSettlementLedger.claim` is where the arrival is actually taken.
  */
 export interface SettlementLedger {
-  /** Nonces of attestations already presented, for this tenant. */
-  seenNonces(boundaryId: string): Promise<readonly string[]>;
-  /** Settlement identities already substantiating another claim, for this tenant. */
-  identitiesAlreadySubstantiating(boundaryId: string): Promise<readonly string[]>;
+  /** Which of these nonces have already been presented in this tenant. Bounded by the input. */
+  nonceAlreadyUsed(boundaryId: string, nonces: readonly string[]): Promise<readonly string[]>;
+  /**
+   * Which of these settlement IDENTITIES already substantiate a claim OTHER than `claimRef`.
+   *
+   * Excluding the caller's own claim is what makes an idempotent retry legible rather than refused.
+   *
+   * IN IDENTITY TERMS, NOT DIGEST TERMS, AND THE FIRST VERSION OF THIS SIGNATURE GOT IT WRONG. The
+   * ledger stores a digest of the canonical identity, so my first shape returned digests — which the
+   * pure core then compared against raw `settlementIdentity(...)` strings. Type-compatible, and
+   * semantically unable to ever match: A CHECK THAT CANNOT MATCH IS WORSE THAN NO CHECK, because it
+   * reports a rule as enforced while passing everything. The storage form belongs to the store; the
+   * decision stays in the terms it reasons about.
+   */
+  identitiesSubstantiatingOtherClaims(
+    boundaryId: string,
+    claimRef: string,
+    identities: readonly string[],
+  ): Promise<readonly string[]>;
 }
 
 export interface CitedSettlement {
@@ -59,6 +87,12 @@ export interface ExternalSettlementGateInput {
   readonly casePayerExternalRef: string;
   /** When the correction was raised, from the case's own record. */
   readonly correctionRaisedAt: string;
+  /**
+   * WHICH CLAIM IS ASKING. Required, not optional: the ledger cannot tell an idempotent retry from a
+   * double count without it, and an optional field would let an existing caller keep the old,
+   * claim-blind behaviour by saying nothing — which is how the stage-8 defect would have survived.
+   */
+  readonly claimRef: string;
   readonly cited: readonly CitedSettlement[];
 }
 
@@ -115,9 +149,12 @@ export async function runExternalSettlementGate(
     receipts.push(verifier.verify(fact, attestation));
   }
 
+  // BOUNDED BY WHAT WAS CITED. Both questions are asked about exactly the values in this request.
+  const citedNonces = receipts.map((r) => r.nonce);
+  const citedIdentities = input.cited.map((c) => settlementIdentity(c.fact));
   const [seenNonces, identitiesAlreadySubstantiating] = await Promise.all([
-    ledger.seenNonces(input.boundaryId),
-    ledger.identitiesAlreadySubstantiating(input.boundaryId),
+    ledger.nonceAlreadyUsed(input.boundaryId, citedNonces),
+    ledger.identitiesSubstantiatingOtherClaims(input.boundaryId, input.claimRef, citedIdentities),
   ]);
 
   const verdict = externalSettlementSufficiency({
