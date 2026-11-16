@@ -12,8 +12,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PostgresSettlementLedger, settlementDigest, settlementLedgerPort, type SettlementLedgerRecord }
-  from "./settlementLedgerStore";
+import {
+  ledgerArrivalReader, PostgresSettlementLedger, settlementDigest, settlementLedgerPort,
+  type SettlementLedgerRecord,
+} from "./settlementLedgerStore";
 import { splitSqlStatements } from "./obligationAttributionMigration.postgres.test";
 import { settlementIdentity, type ExternalSettlementFact } from "../../src/domain/externalSettlement";
 
@@ -44,6 +46,8 @@ const rec = async (over: Partial<SettlementLedgerRecord> = {}): Promise<Settleme
   settlementDigest: await settlementDigest({ ...FACT, externalSettlementRef: `CR-${n}` }),
   attestationNonce: `nonce-${String(n).padStart(16, "0")}`,
   keyId: "k-bank-01",
+  // A DISTINCT instant per record, so a round-trip assertion cannot pass by every row sharing one.
+  attestationIssuedAt: new Date(Date.UTC(2026, 2, 1, 0, 0, n)).toISOString(),
   ...over,
 });
 
@@ -157,6 +161,7 @@ describe.skipIf(!HAS_DB)("G5 · concurrency · the constraint is the control", (
     const a: SettlementLedgerRecord = {
       boundaryId: "b-alpha", claimRef: "claim-A", settlementDigest: digest,
       attestationNonce: "nonce-aaaaaaaaaaaaaaaa", keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:00:00.000Z",
     };
     const b: SettlementLedgerRecord = { ...a, claimRef: "claim-B", attestationNonce: "nonce-bbbbbbbbbbbbbbbb" };
 
@@ -175,6 +180,7 @@ describe.skipIf(!HAS_DB)("G5 · concurrency · the constraint is the control", (
     const nonce = "nonce-cccccccccccccccc";
     const a: SettlementLedgerRecord = {
       boundaryId: "b-alpha", claimRef: "claim-N1", attestationNonce: nonce, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:01:00.000Z",
       settlementDigest: await settlementDigest({ ...FACT, externalSettlementRef: `CR-n1-${(n += 1)}` }),
     };
     const b: SettlementLedgerRecord = {
@@ -283,6 +289,7 @@ describe.skipIf(!HAS_DB)("G5 · the gate port over the durable ledger", () => {
     await ledger.claim({
       boundaryId: "b-alpha", claimRef: "claim-owner", settlementDigest: digest,
       attestationNonce: `nonce-port${String(n).padStart(6, "0")}`, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:02:00.000Z",
     });
 
     const taken = await port.identitiesSubstantiatingOtherClaims("b-alpha", "claim-other", [identity]);
@@ -298,6 +305,7 @@ describe.skipIf(!HAS_DB)("G5 · the gate port over the durable ledger", () => {
     await ledger.claim({
       boundaryId: "b-alpha", claimRef: "claim-self", settlementDigest: await settlementDigest(fact),
       attestationNonce: `nonce-self${String(n).padStart(6, "0")}`, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:03:00.000Z",
     });
     expect(await port.identitiesSubstantiatingOtherClaims("b-alpha", "claim-self", [settlementIdentity(fact)]))
       .toEqual([]);
@@ -310,6 +318,7 @@ describe.skipIf(!HAS_DB)("G5 · the gate port over the durable ledger", () => {
       boundaryId: "b-alpha", claimRef: `claim-nonce-${n}`,
       settlementDigest: await settlementDigest({ ...FACT, externalSettlementRef: `CR-nu-${n}` }),
       attestationNonce: used, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:04:00.000Z",
     });
     expect(await port.nonceAlreadyUsed("b-alpha", [used, "nonce-neverseen00000"])).toEqual([used]);
     // Empty in, empty out — never a full scan standing in for an answer.
@@ -324,9 +333,127 @@ describe.skipIf(!HAS_DB)("G5 · the gate port over the durable ledger", () => {
     await ledger.claim({
       boundaryId: "b-alpha", claimRef: "claim-t", settlementDigest: await settlementDigest(fact),
       attestationNonce: nonce, keyId: "k-bank-01",
+      attestationIssuedAt: "2026-03-01T00:05:00.000Z",
     });
     expect(await port.nonceAlreadyUsed("b-beta", [nonce])).toEqual([]);
     expect(await port.identitiesSubstantiatingOtherClaims("b-beta", "claim-x", [settlementIdentity(fact)]))
       .toEqual([]);
+  });
+});
+
+// ── G6 · the signing instant, which is what makes the exposure query answerable ──────────────────
+
+describe.skipIf(!HAS_DB)("G6 · the attestation's signing instant survives the round trip", () => {
+  it("returns the instant the attestation was SIGNED, not the instant NH recorded it", async () => {
+    const keyId = `k-signed-${randomUUID().slice(0, 8)}`;
+    const signed = "2026-02-14T09:30:15.250Z";
+    await ledger.claim(await rec({ keyId, claimRef: "claim-sig", attestationIssuedAt: signed }));
+
+    const [found] = await ledger.consumptionsForKey(keyId);
+    // EXACT, to the millisecond. A column that silently truncated or shifted the instant would move
+    // arrivals across an exposure boundary, and the whole report is a comparison against that
+    // boundary.
+    expect(found!.attestationIssuedAt).toBe(signed);
+    // And the two times stay DISTINGUISHABLE: `consumedAt` is stamped by the database clock at insert
+    // and is a fact about NH, never a stand-in for when the institution signed.
+    expect(found!.consumedAt).not.toBe(signed);
+    expect(Date.parse(found!.consumedAt)).toBeGreaterThan(Date.parse(signed));
+  });
+
+  it("distinct instants are preserved per row, so a round trip cannot pass by sharing one value", async () => {
+    const keyId = `k-many-${randomUUID().slice(0, 8)}`;
+    const a = "2026-01-05T00:00:00.000Z";
+    const b = "2026-06-20T23:59:59.999Z";
+    await ledger.claim(await rec({ keyId, claimRef: "claim-m1", attestationIssuedAt: a }));
+    await ledger.claim(await rec({ keyId, claimRef: "claim-m2", attestationIssuedAt: b }));
+    const found = await ledger.consumptionsForKey(keyId);
+    expect(found.map((f) => f.attestationIssuedAt)).toEqual([a, b]);
+  });
+
+  it("the column REFUSES a row with no signing instant — the constraint is the control", async () => {
+    // Not a decision made in TypeScript. An arrival whose signing instant is absent cannot be placed
+    // in an exposure window, so the database is what makes its absence impossible for a row this
+    // build writes.
+    await expect(
+      db.$executeRawUnsafe(
+        `INSERT INTO "settlement_consumptions"
+           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id")
+         VALUES ($1,'b-alpha','claim-null',$2,'nonce-nullnullnull01','k-bank-01')`,
+        `sc-null-${randomUUID()}`, `sha256:${"a".repeat(64)}`,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("a malformed signing instant is refused by the column rather than stored as text", async () => {
+    await expect(
+      ledger.claim(await rec({ keyId: "k-bad", attestationIssuedAt: "not-an-instant" })),
+    ).rejects.toThrow();
+  });
+});
+
+describe.skipIf(!HAS_DB)("G6 · the arrival reader classifies on failure, never before it", () => {
+  it("is the positive control: with the table present it reports AVAILABLE with the rows", async () => {
+    const keyId = `k-avail-${randomUUID().slice(0, 8)}`;
+    await ledger.claim(await rec({ keyId, claimRef: "claim-av" }));
+    const out = await ledgerArrivalReader(ledger, db).enumerate(keyId);
+    expect(out.available).toBe(true);
+    expect(out.available && out.arrivals.map((a) => a.claimRef)).toEqual(["claim-av"]);
+  });
+
+  it("reports NOT PROVISIONED against a real database that has no consumptions table", async () => {
+    // `admin` is connected to `postgres`, which this suite never migrates. A genuine instance of the
+    // state a healthy deployment can be in, rather than a stub pretending to be one.
+    const out = await ledgerArrivalReader(new PostgresSettlementLedger(admin), admin).enumerate("k-any");
+    expect(out.available).toBe(false);
+    expect(out.available === false && out.reason).toBe("ledger_not_provisioned");
+    // AND IT SAYS WHAT IT IS NOT. An operator must not read this as "the key signed nothing".
+    expect(out.available === false && out.detail).toMatch(/NOT a finding that the key signed nothing/);
+  });
+
+  it("RE-THROWS a genuine failure when the table IS present — an outage is not a tidy state", async () => {
+    // The mutation this guards against is `catch { return unavailable }`, which would turn every
+    // database fault into a calm "we could not look" and hide a real one forever.
+    const broken = {
+      consumptionsForKey: async () => { throw new Error("connection reset by peer"); },
+    } as unknown as PostgresSettlementLedger;
+    await expect(ledgerArrivalReader(broken, db).enumerate("k-any")).rejects.toThrow(/connection reset/);
+  });
+});
+
+describe.skipIf(!HAS_DB)("G6 · the nullable path, simulated as a real upgrade rather than imagined", () => {
+  it("a row whose signing instant is NULL reads back as null, and is never filled in from consumedAt", async () => {
+    // WHY THIS EXISTS AT ALL when the column is NOT NULL. The store's `?? null` would otherwise be an
+    // unreachable branch that no mutation could falsify, and the comment beside it claims a property
+    // — that a row arriving without the field is reported as absent rather than substituted. Dropping
+    // the constraint in a disposable database is the only honest way to test the state an older
+    // build, a restored dump or a future nullable migration can produce. Simulating the upgrade is
+    // the same method the execution-event `seq` backfill was verified by.
+    const own = `nh_synthetic_nullable_${randomUUID().replace(/-/g, "").slice(0, 8)}`;
+    await admin.$executeRawUnsafe(`CREATE DATABASE "${own}"`);
+    const c = new PrismaClient({ datasources: { db: { url: urlFor(own) } } });
+    try {
+      await c.$executeRawUnsafe(
+        `CREATE OR REPLACE FUNCTION nh_reject_mutation() RETURNS trigger AS $$
+         BEGIN RAISE EXCEPTION 'append-only'; END; $$ LANGUAGE plpgsql;`,
+      );
+      for (const statement of splitSqlStatements(UP)) await c.$executeRawUnsafe(statement);
+      await c.$executeRawUnsafe(
+        `ALTER TABLE "settlement_consumptions" ALTER COLUMN "attestation_issued_at" DROP NOT NULL`,
+      );
+      await c.$executeRawUnsafe(
+        `INSERT INTO "settlement_consumptions"
+           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id")
+         VALUES ('sc-legacy','b-alpha','claim-legacy',$1,'nonce-legacylegacy01','k-legacy')`,
+        `sha256:${"b".repeat(64)}`,
+      );
+      const [found] = await new PostgresSettlementLedger(c).consumptionsForKey("k-legacy");
+      expect(found!.attestationIssuedAt).toBeNull();
+      // And emphatically NOT quietly filled in from the time we recorded it.
+      expect(found!.consumedAt).not.toBeNull();
+      expect(found!.attestationIssuedAt).not.toBe(found!.consumedAt);
+    } finally {
+      await c.$disconnect();
+      await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${own}" WITH (FORCE)`);
+    }
   });
 });

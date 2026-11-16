@@ -2042,6 +2042,60 @@ synthetic data is worse than a missing bucket. Contract **2.0.0**, both extracts
 unmoved; `prisma/` is untouched. Every figure is synthetic, and **no observed amount became Revenue
 Returned.**
 
+**Settlement-compromise reporting decision (2026-11-16, G6).** G1 could say whether ONE attestation fell
+inside an exposure window; G5's ledger carried a `key_id` whose own comment promised it was there *"so a
+later compromise can find every arrival that rests on it."* Together they still could not answer *we have
+just revoked this key; what did it touch?* — because placing an arrival needs the instant it was **signed**
+and no column held it. The row carried `consumed_at`, which is when NH recorded the arrival. The governing
+rules are now:
+
+> **THE FOUR OUTCOMES STAY DISTINGUISHABLE** — *no compromise declared*, *outside the window*, *inside
+> it*, and *the signing instant was never recorded*. An unplaceable arrival is **counted, never zeroed and
+> never read as unaffected** ("not computed is not zero", applied to a row), and an unrevoked key yields
+> `NOT_APPLICABLE`, which is **the absence of a declaration and not a clean bill**.
+
+> **A CONSERVATIVE WRONG ANSWER IS STILL WRONG, AND IT READS AS MEASURED.** Substituting `consumed_at`
+> could only ever move an arrival INTO a window and never out of one — and it is refused anyway, because
+> *when did we record this* is a fact about NH while an exposure window is about when an institution's key
+> was in the wrong hands.
+
+> **AN UNREACHABLE LEDGER YIELDS `null`, NEVER AN EMPTY REPORT.** Zero arrivals asserts the ledger was read
+> and held nothing; `null` asserts it was not read. The absence is in the TYPE, so the compiler refuses the
+> confusion, and the adapter **classifies on failure, never before it** — a genuine outage is re-thrown
+> rather than filed as a tidy state.
+
+**Built 2026-11-16** ([`docs/SETTLEMENT_COMPROMISE_REPORT_V1.md`](docs/SETTLEMENT_COMPROMISE_REPORT_V1.md)),
+**16/16 mutations caught**, 45 new tests, every source file byte-identical afterwards. The read deliberately
+**does not require the witness to match** — `resolveForUse` refuses a tampered row because it must JUDGE
+nothing, but this read does not judge, and refusing would blind an investigator to the exposure of the very
+key they just found tampered with; `recordIntegrity` is reported BESIDE the answer and the report itself is
+proven identical either way. The schema was **AMENDED rather than ALTERed** on a premise proved three ways
+(nothing in `prisma/migrations/` creates the table, its only consumer is a disposable per-test database,
+`claim()` has no caller outside its own test) — *a schema design nobody has applied is **machinery**, not a
+frozen record of data* — and **the licence ends the moment any durable database holds it**. `NOT NULL` with
+no default follows from the same fact, and **the nullable branch is built and tested anyway**, by dropping
+the constraint in a disposable database, because a column constraint protects rows *this build* writes and
+says nothing about an older server, a restored dump or a future migration.
+
+**The defect was in my own instrument, and it generalises.** The first mutation pass reported four
+survivors; they had not survived — the runner invoked the pure tests under the ep2 config, whose include is
+`server/**/*.test.ts`, so the file was **never collected** and the run printed *"No test files found"*,
+which a grep for `failed` read as a pass. **A mutation run that collects no test is not a surviving
+mutation, it is a broken measurement**, and the two are identical in a one-line summary; the re-run asserts
+an unmutated control is collected and passes before any result is believed. Separately, making the field
+required broke **six** test record literals that `tsc` would have named instantly — it did not, because
+`tsconfig.server.json` excludes `server/**/*.test.ts`, which is the recorded *a type nobody checks is not a
+guard* finding demonstrated live and still owned by someone else.
+
+**What it does NOT do.** `claim()` still has no production caller, so the question is now **answerable**
+and not yet **asked**; no production migration; the **PROVEN gate is untouched** and a flagged arrival
+reverses no proof, recomputes nothing and reduces no figure by one cent — stated on the payload, not only
+in prose; the report **carries no money at all**, structurally, because the ledger holds no amount; and
+**no institution is verified — not one**, so a compromise report over these keys is a report about our own
+records. Contract **2.0.0**, both extracts, every `*_VERSION`/`*_SCHEME` constant,
+`OBLIGATION_IDENTITY_FIELDS = []` and every frozen artefact are unmoved; `prisma/schema.prisma` is
+untouched; and **no observed amount became Revenue Returned.**
+
 **Non-negotiable learning constraint:** the Learning Layer must optimize for **durable,
 independently verified, post-reversal auditable outcomes** — never for claimed recovery,
 raw counted recovery, or short-term proof volume.

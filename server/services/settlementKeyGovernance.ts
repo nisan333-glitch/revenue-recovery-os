@@ -91,8 +91,16 @@ export async function resolveForUse(
   return row;
 }
 
-/** Resolve for a GOVERNANCE transition. Deliberately does NOT require the witness to match. */
-async function resolveForGovernance(
+/**
+ * Resolve for a GOVERNANCE transition. Deliberately does NOT require the witness to match.
+ *
+ * EXPORTED FOR G6's INVESTIGATION READ as well, under this same name rather than an alias: a second
+ * name for one function is a second thing that can drift from it. The property an incident read needs
+ * is exactly the property this one states — a row whose witness fails must still be REACHABLE, or an
+ * investigator could not see the exposure of the very key they have just found tampered with. The
+ * caller reports the witness status beside the answer instead of refusing to answer.
+ */
+export async function resolveForGovernance(
   register: SettlementKeyRegister,
   keyId: string,
 ): Promise<RegisteredSettlementKey> {

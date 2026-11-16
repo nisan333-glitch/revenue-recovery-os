@@ -17,6 +17,19 @@
 -- SO THE CONSTRAINT IS THE CONTROL AND THE READ IS A DIAGNOSIS. The unique indexes below are what make
 -- the rule true; the pure core's check is what makes the refusal legible before the database has to
 -- raise. Both are kept: the decision names WHICH rule failed, and the constraint guarantees it held.
+--
+-- ── AMENDED BY G6, AND THE PREMISE THAT LICENSES AMENDING RATHER THAN ALTERING ──────────────────
+--
+-- `attestation_issued_at` was ADDED TO THIS CREATE TABLE rather than appended as a second migration
+-- file. That is normally the wrong move, so the premise is proved here rather than asserted: at the
+-- time of the change this table existed in NO durable database. Three independent checks say so —
+-- nothing in `prisma/migrations/` creates it, this script's only consumer is a disposable per-test
+-- database that recreates it from these bytes on every run, and `PostgresSettlementLedger.claim()` has
+-- no caller outside its own test file. There is no deployed instance to migrate, so an ALTER would have
+-- described a migration that never happens and left the one real artefact — the CREATE — permanently
+-- incomplete. The same reasoning the billing-extract rename used: the fix is cheapest before the thing
+-- has reached anyone, and a schema design nobody has applied is MACHINERY, not a frozen record of data.
+-- The moment any durable database holds this table, that licence ends and the correct form is an ALTER.
 
 CREATE SEQUENCE "settlement_consumptions_seq";
 
@@ -44,6 +57,27 @@ CREATE TABLE "settlement_consumptions" (
     "attestation_nonce" TEXT NOT NULL,
     -- Which registered key verified it, so a later compromise can find every arrival that rests on it.
     "key_id"            TEXT NOT NULL,
+
+    -- G6 · WHEN THE INSTITUTION SIGNED THE ATTESTATION, and the reason this column exists is that
+    -- without it the sentence two lines above was not true. `key_id` finds the arrivals; placing one
+    -- inside or outside an exposure window needs the SIGNING instant, and nothing else in this row is
+    -- it.
+    --
+    -- `consumed_at` IS NOT A SUBSTITUTE, and not because it would be unsafe. An arrival is consumed at
+    -- or after it is signed, so substituting it could only ever move an arrival INTO a window and never
+    -- out of one — it errs conservatively. It is refused because it answers a DIFFERENT QUESTION: when
+    -- NH recorded something is a fact about NH, and an exposure window is about when an institution's
+    -- key was in the wrong hands. A conservative wrong answer is still wrong, and reads as measured.
+    --
+    -- NOT NULL, NO DEFAULT, AND THAT IS ONLY HONEST BECAUSE THERE IS NO POPULATION TO BACKFILL — the
+    -- same ground `seq` states for itself four lines below. A default would stamp an invented signing
+    -- instant onto every row that lacked one, which is the `BIGSERIAL` trap the execution-event log
+    -- already met: a fabricated chronology committed to disk. Had any durable database held this table,
+    -- the correct form would have been an ALTER adding it NULLABLE with no default, leaving legacy rows
+    -- NULL, and `settlementCompromiseReport` would place those as NOT_ESTABLISHABLE. That branch is
+    -- built and tested regardless, because a NOT NULL column does not stop an older server, a cached
+    -- payload or an unwired route from handing the reader a row without the field.
+    "attestation_issued_at" TIMESTAMP(3) NOT NULL,
 
     "consumed_at"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     -- A new table, so `seq` is NOT NULL with a sequence default: there are no pre-existing rows whose

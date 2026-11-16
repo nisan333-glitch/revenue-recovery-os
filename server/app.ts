@@ -68,12 +68,14 @@ import { SourceVerifier, sourceTrustKeysFromEnvironment } from "./services/sourc
 import { syntheticDemoFromEnvironment, type SyntheticDemo } from "./demo/syntheticDemo";
 import { postgresSyntheticDemoPorts } from "./demo/syntheticDemoPorts";
 import { postgresSettlementKeyRegister } from "./persistence/settlementKeyStore";
+import { ledgerArrivalReader, PostgresSettlementLedger } from "./persistence/settlementLedgerStore";
 import {
   activateSettlementKey, proposeSettlementKey, revokeSettlementKeyAsCompromised,
 } from "./services/settlementKeyGovernance";
+import { readSettlementCompromise } from "./services/settlementCompromiseRead";
 import {
   activateSettlementKeySchema, proposeSettlementKeySchema, revokeSettlementKeySchema,
-  type KeyCeremonyBody, type SettlementKeyBody,
+  settlementKeyParamsSchema, type KeyCeremonyBody, type SettlementKeyBody,
 } from "./http/schemas";
 
 // EP-10 · Requests that arrived with a leading "/api" and were rewritten below — kept so
@@ -355,6 +357,30 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         revoked: true,
         exposureStartKnown: req.body.exposureFrom !== null,
       });
+    },
+  );
+
+  // G6 · WHAT DID THIS KEY TOUCH? A governed, READ-ONLY investigation surface.
+  //
+  // GET, AuditRead-gated, no body and no query: the exposure window, the boundary and the arrival set
+  // are every one of them read from records. A request that could state the window would be choosing
+  // which arrivals get flagged, and the party asking is the party a smaller answer flatters.
+  //
+  // Deliberately NOT on `/audit/*`: that family is case-shaped, and this answers about a KEY. It sits
+  // beside the three governed key routes it shares a subject with, and carries the same capability.
+  app.get<{ Params: { keyId: string } }>(
+    "/settlement-keys/:keyId/compromise-report",
+    { schema: settlementKeyParamsSchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      return reply.send(
+        await readSettlementCompromise(
+          settlementKeys(),
+          ledgerArrivalReader(new PostgresSettlementLedger()),
+          actor,
+          req.params.keyId,
+        ),
+      );
     },
   );
 

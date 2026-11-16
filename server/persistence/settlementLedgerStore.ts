@@ -22,6 +22,7 @@ import { PrismaClient } from "@prisma/client";
 import { prisma as sharedClient } from "../db";
 import { settlementIdentity, type ExternalSettlementFact } from "../../src/domain/externalSettlement";
 import { sha256Hex } from "../../src/assessment/fingerprint";
+import type { ArrivalRestingOnKey } from "../../src/contract/settlementCompromiseReport";
 
 /** `sha256:<64 hex>` over the canonical settlement identity. A digest for uniqueness, not a pseudonym. */
 export async function settlementDigest(fact: ExternalSettlementFact): Promise<string> {
@@ -44,6 +45,17 @@ export interface SettlementLedgerRecord {
   readonly settlementDigest: string;
   readonly attestationNonce: string;
   readonly keyId: string;
+  /**
+   * G6 · when the INSTITUTION SIGNED the attestation, as a normalised ISO-8601 instant.
+   *
+   * REQUIRED, not optional, and that is the point. An optional field would let an existing caller keep
+   * its old behaviour by saying nothing — which is how the proof bypass arose — and an arrival with no
+   * recorded signing instant cannot be placed inside or outside a later exposure window. The shape of
+   * the value is NOT re-validated here: the column is `TIMESTAMP(3)` and Postgres refuses anything that
+   * is not an instant, which is the constraint-is-the-control answer rather than a second copy of the
+   * check `verifySettlementAttestation` already performs.
+   */
+  readonly attestationIssuedAt: string;
 }
 
 interface Row {
@@ -79,11 +91,12 @@ export class PostgresSettlementLedger {
     // its own: zero rows could mean either unique index fired, and the two are different answers.
     const inserted = await this.prisma.$executeRawUnsafe(
       `INSERT INTO "settlement_consumptions"
-         ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id")
-       VALUES ($1,$2,$3,$4,$5,$6)
+         ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce","key_id",
+          "attestation_issued_at")
+       VALUES ($1,$2,$3,$4,$5,$6,$7::timestamp)
        ON CONFLICT DO NOTHING`,
       consumptionId, record.boundaryId, record.claimRef, record.settlementDigest,
-      record.attestationNonce, record.keyId,
+      record.attestationNonce, record.keyId, record.attestationIssuedAt,
     );
 
     // `inserted` IS USED FOR THE ONE THING IT GENUINELY TELLS US — whether OUR insert landed — and is
@@ -178,20 +191,25 @@ export class PostgresSettlementLedger {
    * in an exposure window; this says WHICH ARRIVALS to ask it about. Without it, revoking a key would
    * be an act with no way to enumerate what it touched.
    */
-  async consumptionsForKey(keyId: string): Promise<readonly {
-    readonly boundaryId: string; readonly claimRef: string; readonly settlementDigest: string;
-    readonly consumedAt: string;
-  }[]> {
+  async consumptionsForKey(keyId: string): Promise<readonly ArrivalRestingOnKey[]> {
     const rows = await this.prisma.$queryRawUnsafe<{
       boundary_id: string; claim_ref: string; settlement_digest: string; consumed_at: Date;
+      attestation_issued_at: Date | null;
     }[]>(
-      `SELECT "boundary_id","claim_ref","settlement_digest","consumed_at"
+      `SELECT "boundary_id","claim_ref","settlement_digest","consumed_at","attestation_issued_at"
          FROM "settlement_consumptions" WHERE "key_id" = $1 ORDER BY "seq" ASC`,
       keyId,
     );
     return Object.freeze(rows.map((r) => Object.freeze({
       boundaryId: r.boundary_id, claimRef: r.claim_ref,
       settlementDigest: r.settlement_digest, consumedAt: r.consumed_at.toISOString(),
+      // `?? null` IS NOT DEFENSIVE CLUTTER against a NOT NULL column. It is the one place the reader
+      // can express *the signing instant is not here*, and `settlementCompromiseReport` places such a
+      // row as NOT_ESTABLISHABLE rather than as unaffected. A column constraint protects rows this
+      // build writes; it says nothing about a row an older build, a restored dump or a future nullable
+      // migration hands back — and reading that silence as "nothing to warn about" is how a deploy skew
+      // deletes a warning.
+      attestationIssuedAt: r.attestation_issued_at?.toISOString() ?? null,
     })));
   }
 }
@@ -225,6 +243,47 @@ export function settlementLedgerPort(
       }
       const taken = await ledger.digestsTakenByOtherClaims(boundaryId, claimRef, [...byDigest.keys()]);
       return Object.freeze(taken.map((d) => byDigest.get(d)!).filter((x) => x !== undefined));
+    },
+  };
+}
+
+/**
+ * G6 · the ledger as an ARRIVAL READER, with "the table is not here" expressed as a value.
+ *
+ * WHY THIS ADAPTER EXISTS. The consumptions table lives in `scripts/migration-design/` and
+ * deliberately not in `prisma/migrations/`, so a healthy deployment can hold the key register and no
+ * ledger at all. Without this translation the governed read would raise a raw Postgres error and the
+ * operator would get a 500 that names a relation — a crash where the honest answer is *we could not
+ * look*.
+ *
+ * IT CLASSIFIES ON FAILURE, NEVER BEFORE IT. The happy path is one query. Only when that query fails
+ * does it ASK the catalogue whether the table exists, and the distinction matters both ways: probing
+ * first would be a read-then-check whose answer could be stale, and assuming "not provisioned" from
+ * any failure would swallow a genuine outage as a tidy state. A failure with the table present is
+ * RE-THROWN unchanged — fail closed, and let it be seen.
+ */
+export function ledgerArrivalReader(
+  ledger: PostgresSettlementLedger,
+  client: PrismaClient = sharedClient,
+): import("../services/settlementCompromiseRead").SettlementArrivalReader {
+  return {
+    async enumerate(keyId) {
+      try {
+        return Object.freeze({ available: true as const, arrivals: await ledger.consumptionsForKey(keyId) });
+      } catch (error) {
+        const present = await client.$queryRawUnsafe<{ reg: string | null }[]>(
+          `SELECT to_regclass('"settlement_consumptions"')::text AS reg`,
+        );
+        if (present[0]?.reg != null) throw error;
+        return Object.freeze({
+          available: false as const,
+          reason: "ledger_not_provisioned" as const,
+          detail:
+            "the settlement consumptions table does not exist in this database, so the arrivals " +
+            "resting on this key could not be enumerated; this is NOT a finding that the key signed " +
+            "nothing — the ledger's schema is a migration design that has not been applied here",
+        });
+      }
     },
   };
 }

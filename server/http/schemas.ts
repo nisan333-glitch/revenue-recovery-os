@@ -665,6 +665,22 @@ export const revokeSettlementKeySchema = {
   },
 } as const;
 
+/**
+ * G6 · the compromise-report read. PARAMS ONLY, and that is deliberate.
+ *
+ * There is no body and no query at all: the exposure window, the boundary and the arrival set are
+ * every one of them read from records, never named by the caller. A request that could state the
+ * window would be choosing which arrivals are flagged, and the party asking is the party a smaller
+ * answer flatters — the same reason `attested` is refused as a readiness request key.
+ */
+export const settlementKeyParamsSchema = {
+  params: {
+    type: "object",
+    required: ["keyId"],
+    properties: { keyId: { type: "string", minLength: 1, maxLength: 256 } },
+  },
+} as const;
+
 /** The propose body's key object, shaped so the route's generic stays readable. */
 export interface SettlementKeyBody {
   readonly keyId: string;

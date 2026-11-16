@@ -282,3 +282,100 @@ describe.skipIf(!HAS_DB)("G2 routes · error handling", () => {
     expect(again.body).not.toContain("SECRETMATERIAL");
   });
 });
+
+// ── G6 · the compromise-report route, through the real app ──────────────────────────────────────
+//
+// THIS DATABASE HOLDS THE KEY REGISTER AND NO LEDGER, which is not a shortcut in the fixture: it is
+// exactly the state a healthy deployment is in today, because the consumptions table lives in
+// `scripts/migration-design/` and deliberately not in `prisma/migrations/`. So the route is exercised
+// first in that state, and then again after the ledger is applied to the same database.
+describe.skipIf(!HAS_DB)("G6 routes · the compromise report", () => {
+  const AUDIT = APPROVER; // holds AuditRead; an author/operator does not
+
+  const revokedKey = async (exposureFrom: string | null) => {
+    const key = keyBody();
+    await propose(key);
+    await app.inject({
+      method: "POST", url: "/settlement-keys/activate", headers: STEWARD,
+      payload: { keyId: key.keyId, rationale: "reviewed" },
+    });
+    await app.inject({
+      method: "POST", url: "/settlement-keys/revoke", headers: STEWARD,
+      payload: { keyId: key.keyId, rationale: "forensics", exposureFrom },
+    });
+    return key;
+  };
+
+  it("refuses a role without AuditRead, and refuses an unauthenticated caller", async () => {
+    const key = await revokedKey("2026-02-01T00:00:00.000Z");
+    const url = `/settlement-keys/${key.keyId}/compromise-report`;
+    expect((await app.inject({ method: "GET", url, headers: OPERATOR })).statusCode).toBe(403);
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+  });
+
+  it("404s an unknown key for an authorized caller", async () => {
+    const res = await app.inject({
+      method: "GET", url: "/settlement-keys/k-does-not-exist/compromise-report", headers: AUDIT,
+    });
+    expect(res.statusCode, res.body.slice(0, 400)).toBe(404);
+  });
+
+  it("with NO ledger provisioned: 200, report NULL, a named reason, and the declaration intact", async () => {
+    const key = await revokedKey("2026-02-01T00:00:00.000Z");
+    const res = await app.inject({
+      method: "GET", url: `/settlement-keys/${key.keyId}/compromise-report`, headers: AUDIT,
+    });
+    expect(res.statusCode, res.body.slice(0, 600)).toBe(200);
+    const body = res.json();
+    // NOT a 500 naming a relation, and NOT a zero-arrival report. Both would be wrong in opposite
+    // directions: one is a crash where the honest answer is "we could not look", the other is success
+    // reported having examined nothing.
+    expect(body.report).toBeNull();
+    expect(body.arrivalsUnavailable.reason).toBe("ledger_not_provisioned");
+    expect(body.compromise).toMatchObject({ declared: true, exposureFrom: "2026-02-01T00:00:00.000Z" });
+    expect(body.recordIntegrity).toBe("WITNESS_VERIFIED");
+    expect(body.stateNow).toBe("REVOKED_COMPROMISED");
+  });
+
+  it("an UNREVOKED key reports NO_COMPROMISE_DECLARED rather than reading as clean", async () => {
+    const key = keyBody();
+    await propose(key);
+    const body = (await app.inject({
+      method: "GET", url: `/settlement-keys/${key.keyId}/compromise-report`, headers: AUDIT,
+    })).json();
+    expect(body.compromise).toMatchObject({ declared: false });
+    expect(body.compromise.detail).toMatch(/ABSENCE of a declaration/);
+  });
+
+  // LAST IN THE FILE ON PURPOSE: it provisions the ledger into the shared database, so anything
+  // running after it would no longer be exercising the register-only state the tests above assert.
+  it("once the ledger IS provisioned the same route places real arrivals against the window", async () => {
+    const LEDGER_UP = readFileSync(resolve(REPO, "scripts/migration-design/settlement-ledger-up.sql"), "utf8");
+    const seeded = new PrismaClient({ datasources: { db: { url: urlFor(DB_NAME) } } });
+    for (const statement of splitSqlStatements(LEDGER_UP)) await seeded.$executeRawUnsafe(statement);
+
+    const key = await revokedKey("2026-05-01T00:00:00.000Z");
+    const insert = async (ref: string, issuedAt: string | null) =>
+      seeded.$executeRawUnsafe(
+        `INSERT INTO "settlement_consumptions"
+           ("consumption_id","boundary_id","claim_ref","settlement_digest","attestation_nonce",
+            "key_id","attestation_issued_at")
+         VALUES ($1,'b-routes',$2,$3,$4,$5,$6::timestamp)`,
+        `sc-${randomUUID()}`, ref, `sha256:${randomUUID().replace(/-/g, "").padEnd(64, "0").slice(0, 64)}`,
+        `nonce-${randomUUID().replace(/-/g, "").slice(0, 20)}`, key.keyId, issuedAt,
+      );
+    await insert("claim-before", "2026-03-01T00:00:00.000Z");
+    await insert("claim-inside", "2026-06-01T00:00:00.000Z");
+    await seeded.$disconnect();
+
+    const body = (await app.inject({
+      method: "GET", url: `/settlement-keys/${key.keyId}/compromise-report`, headers: AUDIT,
+    })).json();
+    expect(body.arrivalsUnavailable).toBeNull();
+    expect(body.report).toMatchObject({
+      arrivalsExamined: 2, unaffected: 1, flagged: 1, notEstablishable: 0, coverage: "COMPLETE",
+    });
+    expect(body.report.findings.map((f: { claimRef: string }) => f.claimRef))
+      .toEqual(["claim-before", "claim-inside"]);
+  });
+});
