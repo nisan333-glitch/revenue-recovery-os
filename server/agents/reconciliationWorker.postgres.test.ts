@@ -38,7 +38,7 @@ describe.skipIf(!process.env.DATABASE_URL)("reconciliation worker controlled ope
     };
     const worker = createAgentProcessFromEnvironment(env, configuredAgentHandlers(env));
     const store = createPostgresAgentTaskStore();
-    const enqueue = (p: unknown) => store.enqueueIfAbsent({
+    const enqueue = (p: Readonly<Record<string, unknown>>) => store.enqueueIfAbsent({
       taskId: randomUUID(), boundaryId, agentId: RECONCILIATION_AGENT_ID,
       idempotencyKey: randomUUID(), now: Date.now(), payload: p,
     });

@@ -132,13 +132,22 @@ export interface TraceStage {
  * wrote. None of these exists today; the day one is recorded, `attestationVerdict` upgrades with no edit
  * here — which is the whole reason it is a list and not a boolean.
  */
-export const HOLDER_INDEPENDENCE_FIELDS: readonly string[] = Object.freeze([
+// TYPED AS A CONST TUPLE, NOT `readonly string[]`, AND THAT IS LOAD-BEARING.
+//
+// `financialTraceRead.postgres.test.ts` asserts at the TYPE level that neither `SourceReceipt` nor
+// `SourceTrustKey` carries any of these fields, via
+// `Extract<keyof T, (typeof HOLDER_INDEPENDENCE_FIELDS)[number]>`. While this was `readonly string[]`
+// that index resolved to `string`, so the Extract selected EVERY key of the type and the assertion
+// failed for every type — it was not a weak guard, it was an assertion that could never hold, and
+// nobody saw it because no tsconfig included that file. Widening this back to `readonly string[]`
+// silently restores that, so the narrow type is part of the guard.
+export const HOLDER_INDEPENDENCE_FIELDS = Object.freeze([
   "keyHolder",
   "keyHolderIndependentOfBeneficiary",
   "provenanceChannel",
   "attestationChannel",
   "issuedBySystemOfRecord",
-]);
+] as const);
 
 export type AttestationCode =
   /** A signature verified, but nothing in the record says whose key it was. */

@@ -16,7 +16,11 @@ describe("public auth configuration", () => {
     const c = readPublicAuthConfig({ NODE_ENV: "production" });
     expect(c.mode).toBe("oidc");
     expect(c).toMatchObject({ configured: false });
-    expect((c as { missing: string[] }).missing).toEqual(expect.arrayContaining([
+    // NARROWED, NOT CAST. The cast asserted a shape; this asserts the config really is the
+    // unconfigured-oidc arm and then reads `missing` as that arm genuinely declares it, so a future
+    // arm losing the field fails here instead of reading `undefined` through a cast.
+    if (c.mode !== "oidc" || c.configured) throw new Error(`expected unconfigured oidc, got ${c.mode}`);
+    expect(c.missing).toEqual(expect.arrayContaining([
       "NH_OIDC_ISSUER", "NH_OIDC_AUDIENCE", "NH_OIDC_JWKS_URI", "NH_OIDC_CLIENT_ID",
       "NH_OIDC_AUTHORIZATION_ENDPOINT", "NH_OIDC_TOKEN_ENDPOINT",
     ]));

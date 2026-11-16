@@ -15,7 +15,13 @@ class Client implements AgentTaskSqlClient {
   constructor(private readonly rowCount = 1) {}
   async query<Row extends Record<string, unknown>>(text: string, values: readonly unknown[]): Promise<AgentTaskQueryResult<Row>> {
     this.calls.push({ text, values });
-    return { rows: this.rowCount ? [{ candidate_id: values[0] }] as Row[] : [], rowCount: this.rowCount };
+    // A DOUBLE CANNOT MINT AN ARBITRARY `Row`: the caller chooses that parameter, so no concrete object
+    // satisfies it. The double returns the shape the production code reads and says so explicitly —
+    // which is what TypeScript's own message asks for, and is not a relaxed assertion.
+    return {
+      rows: this.rowCount ? ([{ candidate_id: values[0] }] as unknown as Row[]) : [],
+      rowCount: this.rowCount,
+    };
   }
 }
 

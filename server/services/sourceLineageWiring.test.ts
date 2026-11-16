@@ -6,7 +6,7 @@ import { prisma } from "../db";
 import { SOURCE_NAMESPACE_RESOLUTION_AVAILABLE, leakInstanceIdentityStatus } from "../../src/contract/leakInstanceIdentity";
 import { deriveExecutionId, hashExecutionBinding, type ExecutionBinding } from "../../src/contract/assessmentExecution";
 import { createExecutionIfAbsent } from "../persistence/pilotExecutionStore";
-import { sourceResolutionHash } from "../../src/contract/sourceNamespace";
+import { sourceResolutionHash, type SourceResolutionLineage } from "../../src/contract/sourceNamespace";
 import { projectExecutionInput } from "../../src/contract/assessmentExecution";
 import type { ExpectationCycle } from "../../src/assessment/types";
 import { money } from "../../src/domain/money";
@@ -52,7 +52,7 @@ describe("Step 5/7 · source lineage on the execution", () => {
       sourceNamespaceId: "ns-billing-primary", sourceNamespaceVersion: "1.0.0",
       sourceBindingMode: "inherited", sourcePermittedSetId: "set-a", sourcePermittedSetVersion: "1",
       sourceBindingRevision: null,
-    };
+    } satisfies SourceResolutionLineage;
     const first = await createExecutionIfAbsent({
       executionId, binding: b, bindingHash, inputHash: `sha256:${"b".repeat(64)}`,
       input: projectedInput(),

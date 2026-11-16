@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { PostgresAgentTaskStore, type AgentTaskSqlClient, type AgentTaskSqlDatabase } from "./postgresTaskStore";
+import {
+  PostgresAgentTaskStore,
+  type AgentTaskQueryResult,
+  type AgentTaskSqlClient,
+  type AgentTaskSqlDatabase,
+} from "./postgresTaskStore";
 import type { CandidateSignal } from "./types";
 
 const SIGNAL: CandidateSignal = {
@@ -11,18 +16,25 @@ const SIGNAL: CandidateSignal = {
 
 function database(order: string[]): AgentTaskSqlDatabase {
   const client: AgentTaskSqlClient = {
-    async query(text, values) {
+    // A DOUBLE CANNOT MINT AN ARBITRARY `Row`: the production caller chooses that type parameter, so no
+    // concrete literal satisfies it. The double returns the exact column shapes the store reads and
+    // says so, rather than widening `AgentTaskSqlClient` to accommodate a test — which would weaken the
+    // type every production implementation is held to. No assertion is relaxed by this.
+    async query<Row extends Record<string, unknown>>(
+      text: string,
+      values: readonly unknown[],
+    ): Promise<AgentTaskQueryResult<Row>> {
       if (/UPDATE agent_tasks/.test(text)) {
         order.push("task");
         return { rowCount: 1, rows: [{
           task_id: "task-1", boundary_id: "tenant-1", agent_id: "detector", idempotency_key: "source-1",
           payload: {}, status: "succeeded", attempt: 1, fencing_epoch: 1, not_before_ms: 0,
           lease_owner: null, lease_token: null, lease_expires_at_ms: null, result: [SIGNAL], last_error: null,
-        }] };
+        }] } as unknown as AgentTaskQueryResult<Row>;
       }
       if (/INSERT INTO agent_task_events/.test(text)) {
         order.push("event");
-        return { rowCount: 1, rows: [{ event_id: values[0] }] };
+        return { rowCount: 1, rows: [{ event_id: values[0] }] } as unknown as AgentTaskQueryResult<Row>;
       }
       throw new Error("unexpected SQL");
     },

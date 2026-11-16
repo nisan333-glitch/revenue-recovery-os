@@ -1,9 +1,10 @@
 {
   "_what": "The measured typecheck debt in server/**/*.test.ts and server/test/** under tsconfig.server.test.json.",
-  "_measuredAt": "2026-11-10",
-  "_measuredOn": "aba7cac (+ the debt-reduction change in the same commit)",
-  "_was": "33 errors across 19 files when the ratchet was introduced. Lowered to 9 across 8 by fixing real defects \u2014 never by weakening a compiler flag or adding a suppression. The 24 that went: 8 unused symbols (one of which became a RESTORED assertion), 12 from one over-narrowed test helper whose type accepted only its own defaults, and 4 individually.",
+  "_measuredAt": "2026-11-16",
+  "_measuredOn": "a369ed1 (+ the debt-closing change in the same commit)",
+  "_was": "33 errors across 19 files when the ratchet was introduced, then 9 across 8. NOW ZERO. The last 9 went by fixing real defects — never by weakening a compiler flag or adding a suppression. The sharpest was NOT a type error at all: financialTraceRead.postgres.test.ts carried a type-level guard claiming it 'stops compiling the day either type gains a holder field', but HOLDER_INDEPENDENCE_FIELDS was typed readonly string[], so Extract<keyof T, string> selected EVERY key and the assertion could never hold for ANY type. It was not a weak guard, it was no guard, and nothing noticed because no tsconfig included the file. Fixed by making the array a const tuple, which is what makes the guard real. The other 8: one union indexed without narrowing (now taken through the runtime's own agentRunOutcome normaliser), two generic test doubles that cannot mint an arbitrary Row (declared explicitly rather than widening the production interface to suit a test), one unknown payload parameter given its real type, one union cast replaced by a genuine narrowing that strengthens the assertion, one needless cast around toHaveProperty, and one object literal now checked by `satisfies` against the type it claims to be.",
   "_notABudget": "This records a known debt so a REGRESSION is detectable. It is not an allowance to spend, and it is never raised to make a new error pass.",
-  "errors": 9,
-  "files": 8
+  "_atZero": "Pinned at zero, the ratchet IS a hard zero-error gate: the exact-match rule fails on any error, and the 'IMPROVED' branch is unreachable because there is nothing below zero. That is the destination docs/CI_SERVER_TYPECHECK_V1.md named, reached by fixing every error rather than by changing the rule. The code is unchanged and no flag moved.",
+  "errors": 0,
+  "files": 0
 }

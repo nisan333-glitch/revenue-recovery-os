@@ -249,7 +249,7 @@ describe("execution event ordering · the ordering fact enters no identity", () 
     const [event] = await executionEvents(executionId, BOUNDARY);
     expect(event).toBeDefined();
     expect(Object.keys(event!).sort()).toEqual(["at", "byId", "code", "transition"]);
-    expect(event as Record<string, unknown>).not.toHaveProperty("seq");
+    expect(event!).not.toHaveProperty("seq");
 
     // ...and the same for the audit/history surface, which returns these verbatim over the API.
     const status = await executionStatus(executionId, BOUNDARY);
