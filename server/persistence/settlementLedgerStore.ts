@@ -18,8 +18,21 @@
 // count. The ledger records `claim_ref`, so "already consumed BY ME" and "already consumed BY ANOTHER"
 // are different answers.
 
-import { PrismaClient } from "@prisma/client";
 import { prisma as sharedClient } from "../db";
+
+/**
+ * EXACTLY THE TWO METHODS THIS STORE CALLS, and nothing else.
+ *
+ * WHY NOT `PrismaClient`. The claim must run INSIDE the proof's own transaction (see
+ * `settlementClaim.ts`), and a `Prisma.TransactionClient` is deliberately NOT a `PrismaClient` — it has
+ * no `$transaction`, no `$connect`. Demanding the wider type would have forced a cast at the one call
+ * site where atomicity is the whole point, so the dependency is declared as the capability actually
+ * used. A port is the methods you call.
+ */
+export interface SettlementLedgerSql {
+  $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
+  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
+}
 import { settlementIdentity, type ExternalSettlementFact } from "../../src/domain/externalSettlement";
 import { sha256Hex } from "../../src/assessment/fingerprint";
 import type { ArrivalRestingOnKey } from "../../src/contract/settlementCompromiseReport";
@@ -71,7 +84,7 @@ interface Row {
  * future caller tried.
  */
 export class PostgresSettlementLedger {
-  constructor(private readonly prisma: PrismaClient = sharedClient) {}
+  constructor(private readonly prisma: SettlementLedgerSql = sharedClient) {}
 
   /**
    * Claim one arrival of money for one claim.
@@ -264,7 +277,7 @@ export function settlementLedgerPort(
  */
 export function ledgerArrivalReader(
   ledger: PostgresSettlementLedger,
-  client: PrismaClient = sharedClient,
+  client: SettlementLedgerSql = sharedClient,
 ): import("../services/settlementCompromiseRead").SettlementArrivalReader {
   return {
     async enumerate(keyId) {

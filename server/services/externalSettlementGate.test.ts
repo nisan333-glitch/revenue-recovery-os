@@ -175,10 +175,19 @@ describe("stage 8 / G4 · who may import the settlement modules, in both directi
     // TYPE (a type-only dynamic import) to implement it. Added DELIBERATELY, which is what a closed
     // permitted set is for: the guard refused it first, and that refusal is the mechanism working.
     "server/persistence/settlementLedgerStore.ts",
+    // G7 · the atomic claim. It is itself a settlement module — it imports the fact type and the
+    // receipt type to pair them — and it is the seam where an arrival is CONSUMED. Added deliberately,
+    // for the third time, which is exactly what a closed set is for: the guard refused it first.
+    "server/services/settlementClaim.ts",
     "src/domain/externalSettlement.ts",
   ]);
   // The surfaces that must NOT reach a settlement module. A proof minted from an unwired mechanism
   // would be a proof resting on a gate nothing enforces.
+  //
+  // `proofService.ts` STAYS HERE AFTER G7, AND THAT IS THE LOAD-BEARING PART. The atomic claim exists
+  // and is proven, but the live approval route does NOT import it — so this assertion is the checkable
+  // statement that the PROVEN gate is unwired, rather than a sentence in a report. Wiring it is a
+  // governance decision with an owner, and the day it is taken, this guard fires first.
   const FORBIDDEN_CONSUMERS = [
     "server/services/proofService.ts",
     "src/domain/invariants.ts",
