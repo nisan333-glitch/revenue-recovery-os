@@ -11,6 +11,7 @@
 // the event rows this returns, which is also what lets the answer depend on the instant asked about.
 
 import type { PrismaClient } from "@prisma/client";
+import { prisma as sharedClient } from "../db";
 import type { SettlementKeyEvent, SettlementKeyFacts } from "../../src/contract/settlementKeyLifecycle";
 import type { RegisteredSettlementKey, SettlementKeyRegister } from "../services/settlementKeyGovernance";
 
@@ -39,7 +40,16 @@ interface EventRow {
   readonly exposure_from: Date | null;
 }
 
-export function postgresSettlementKeyRegister(prisma: PrismaClient): SettlementKeyRegister {
+/**
+ * THE CLIENT DEFAULTS HERE, NOT AT THE CALL SITE, and that is an architectural rule rather than a
+ * convenience. `api.test.ts` asserts that `server/app.ts` contains no `prisma` and no import of
+ * `./db` — route handlers must reach persistence through a service or a store, never hold a client
+ * themselves. My first version passed the client in from `app.ts` and tripped that guard, which was
+ * working exactly as intended. Every other store in this directory takes the same default.
+ */
+export function postgresSettlementKeyRegister(
+  prisma: PrismaClient = sharedClient,
+): SettlementKeyRegister {
   return {
     async read(keyId: string): Promise<RegisteredSettlementKey | null> {
       const keys = await prisma.$queryRawUnsafe<KeyRow[]>(

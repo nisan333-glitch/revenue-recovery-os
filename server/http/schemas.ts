@@ -572,3 +572,114 @@ export const policyGovernanceQuerySchema = {
     },
   },
 } as const;
+
+// ── G2 · the settlement-key register ────────────────────────────────────────────────────────────
+//
+// `additionalProperties: false` ON EVERY OBJECT, which is how an injected field becomes a 400 rather
+// than a silent strip — the treatment EP-26b gave the `policy` object and the reference-first decision
+// gave `declaredVersion`.
+//
+// FOUR FIELDS THE REQUEST MAY NOT CARRY, each for a stated reason:
+//   · `keyWitness` — the server computes it. A caller that could state its own row's witness could
+//     state one for values it did not write.
+//   · `state` — derived from the event log; there is no column to set.
+//   · anything in SELF_ASSERTED_AUTHORITY_PARAMETERS (`authoritative`, `verified`, `trusted`, …) —
+//     a caller may hand over a declaration and never a verdict.
+//   · `boundaryId` on the activate and revoke bodies — it comes from the key's own row, checked
+//     against the actor's boundaries. A request that could name the tenant could name another's.
+export const proposeSettlementKeySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["key", "evidence", "rationale"],
+    properties: {
+      rationale: { type: "string", minLength: 1, maxLength: 2000 },
+      key: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "keyId", "boundaryId", "sourceSystem", "sourceKind", "publicKey", "validFrom", "validUntil",
+        ],
+        properties: {
+          keyId: { type: "string", minLength: 1, maxLength: 256 },
+          boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+          sourceSystem: { type: "string", minLength: 1, maxLength: 256 },
+          // The kind decides what the source may ASSERT, so it is an enum rather than free text.
+          sourceKind: { type: "string", enum: ["bank", "psp"] },
+          publicKey: { type: "string", minLength: 1, maxLength: 4096 },
+          validFrom: { type: "string", minLength: 1, maxLength: 64 },
+          validUntil: { type: "string", minLength: 1, maxLength: 64 },
+        },
+      },
+      // FOUR SEPARATE BOOLEANS, ALL REQUIRED. Never one `verified` flag: a challenge-response proves
+      // CONTROL of a key and nothing about who holds it, so `keyControlDemonstrated` may not stand in
+      // for `institutionIdentityVerified`. Required rather than defaulted, because an omitted
+      // ceremony fact is a claim the caller has not made and must not be read as `false` by accident
+      // either — the caller states each one.
+      evidence: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "channelIndependentlyVerified", "institutionIdentityVerified",
+          "keyControlDemonstrated", "ceremonyRecorded",
+        ],
+        properties: {
+          channelIndependentlyVerified: { type: "boolean" },
+          institutionIdentityVerified: { type: "boolean" },
+          keyControlDemonstrated: { type: "boolean" },
+          ceremonyRecorded: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;
+
+export const activateSettlementKeySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["keyId", "rationale"],
+    properties: {
+      keyId: { type: "string", minLength: 1, maxLength: 256 },
+      rationale: { type: "string", minLength: 1, maxLength: 2000 },
+    },
+  },
+} as const;
+
+// `exposureFrom` IS REQUIRED AND NULLABLE, which is the whole point of its shape.
+//
+// An omitted field and a stated "we do not know" are different claims, and the caller must make one.
+// `null` means UNKNOWN, and the pure core then treats the WHOLE of the key's life as the compromise
+// window — never the revocation date, which would silently clear every attestation the key ever
+// signed. An optional field would let a caller omit it and get the benefit of an unstated claim.
+export const revokeSettlementKeySchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["keyId", "rationale", "exposureFrom"],
+    properties: {
+      keyId: { type: "string", minLength: 1, maxLength: 256 },
+      rationale: { type: "string", minLength: 1, maxLength: 2000 },
+      exposureFrom: { type: ["string", "null"], maxLength: 64 },
+    },
+  },
+} as const;
+
+/** The propose body's key object, shaped so the route's generic stays readable. */
+export interface SettlementKeyBody {
+  readonly keyId: string;
+  readonly boundaryId: string;
+  readonly sourceSystem: string;
+  readonly sourceKind: "bank" | "psp";
+  readonly publicKey: string;
+  readonly validFrom: string;
+  readonly validUntil: string;
+}
+
+/** The four ceremony facts, all required. See `proposeSettlementKeySchema` for why never one flag. */
+export interface KeyCeremonyBody {
+  readonly channelIndependentlyVerified: boolean;
+  readonly institutionIdentityVerified: boolean;
+  readonly keyControlDemonstrated: boolean;
+  readonly ceremonyRecorded: boolean;
+}

@@ -67,6 +67,14 @@ import { PostgresCandidateReviewStore } from "./agents/postgresCandidateReviewSt
 import { SourceVerifier, sourceTrustKeysFromEnvironment } from "./services/sourceVerification";
 import { syntheticDemoFromEnvironment, type SyntheticDemo } from "./demo/syntheticDemo";
 import { postgresSyntheticDemoPorts } from "./demo/syntheticDemoPorts";
+import { postgresSettlementKeyRegister } from "./persistence/settlementKeyStore";
+import {
+  activateSettlementKey, proposeSettlementKey, revokeSettlementKeyAsCompromised,
+} from "./services/settlementKeyGovernance";
+import {
+  activateSettlementKeySchema, proposeSettlementKeySchema, revokeSettlementKeySchema,
+  type KeyCeremonyBody, type SettlementKeyBody,
+} from "./http/schemas";
 
 // EP-10 · Requests that arrived with a leading "/api" and were rewritten below — kept so
 // the production server's SPA-fallback handler can tell "an unmatched /api/* call" (must
@@ -281,6 +289,75 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // EP-14 · Register a versioned pilot admission policy for a boundary. The thresholds a dataset is
   // judged against are the customer's commercial decision; this is how they state them. Append-only
   // per (boundary, id, version) — a change is a new version, never an edit.
+  // ── G2 · the settlement-key register ──────────────────────────────────────────────────────────
+  //
+  // THREE ROUTES, ONE PROPOSE/ACTIVATE SPLIT, AND NO NEW ROLE. The customer side may propose which
+  // external key its settlements are signed with; only governance puts one in force or takes it out.
+  // A key you register for yourself is the first input to a number you benefit from — the same reason
+  // an admission policy is proposed by one identity and activated by another.
+  //
+  // THE TENANT IS NEVER A REQUEST FIELD ON ACTIVATE OR REVOKE. It is read from the key's own row and
+  // checked against the actor's verified boundaries, so a request cannot name another tenant's key
+  // and have the call proceed. On propose it IS in the body, because the key is being created and
+  // there is no row to read it from — and `requireBoundaryAccess` checks it against the actor there.
+  //
+  // 201 ON PROPOSE, 200 ON THE TRANSITIONS, matching the admission-policy routes exactly rather than
+  // inventing a second convention: a proposal creates a resource, a transition moves one.
+  //
+  // THE REGISTER IS BUILT PER REQUEST AND OWNS ITS OWN CLIENT. `api.test.ts` check 7 asserts that this
+  // file names no database client and does not import `./db` — a route handler reaches persistence
+  // through a service or a store and never holds a client itself. The store defaults the client
+  // internally, as every other store in `server/persistence/` does.
+  //
+  // THE WORDING HERE IS DELIBERATE: that guard matches the RAW SOURCE, so even naming the client in a
+  // comment trips it. Reported rather than silently loosened — it is a pre-existing control and its
+  // subject is code, so the general remedy is to strip comments before matching, which is the lesson
+  // this repository has recorded a dozen times. Not changed inside a slice about settlement keys.
+  const settlementKeys = () => postgresSettlementKeyRegister();
+
+  app.post<{ Body: { key: SettlementKeyBody; evidence: KeyCeremonyBody; rationale: string } }>(
+    "/settlement-keys",
+    { schema: proposeSettlementKeySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      const result = await proposeSettlementKey(settlementKeys(), actor, {
+        facts: req.body.key,
+        evidence: req.body.evidence,
+        rationale: req.body.rationale,
+      });
+      // The witness is returned because the caller needs it to verify later that the row it proposed
+      // is the row that is stored — it is a server-computed fact, never one the request supplied.
+      return reply.code(201).send(result);
+    },
+  );
+
+  app.post<{ Body: { keyId: string; rationale: string } }>(
+    "/settlement-keys/activate",
+    { schema: activateSettlementKeySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      await activateSettlementKey(settlementKeys(), actor, req.body);
+      return reply.code(200).send({ keyId: req.body.keyId, activated: true });
+    },
+  );
+
+  app.post<{ Body: { keyId: string; rationale: string; exposureFrom: string | null } }>(
+    "/settlement-keys/revoke",
+    { schema: revokeSettlementKeySchema },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      await revokeSettlementKeyAsCompromised(settlementKeys(), actor, req.body);
+      // `exposureStartKnown` is ECHOED BACK rather than left implicit, so an operator can see which
+      // claim the server recorded. `null` means the whole of the key's life is the compromise window,
+      // and a caller who meant to state a date must be able to notice that they did not.
+      return reply.code(200).send({
+        keyId: req.body.keyId,
+        revoked: true,
+        exposureStartKnown: req.body.exposureFrom !== null,
+      });
+    },
+  );
+
   app.post<{ Body: RegisterAdmissionPolicyRequest }>(
     "/pilot/admission-policies",
     { schema: admissionPolicySchema },
