@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -142,13 +142,37 @@ describe("stage 8 · the gate end to end on signed synthetic data", () => {
   });
 });
 
-describe("stage 8 · the deliberate absence of a production consumer", () => {
+// G4 · THE GUARD MOVED WITH ITS CONSUMER, EXACTLY AS ITS OWN COMMENT INSTRUCTED.
+//
+// Stage 8 shipped this as "NO production importer", because the mechanism was complete and deliberately
+// unwired, and the module said: *it must MOVE WITH ITS CONSUMER when the schema slice lands, never be
+// deleted*. G4 is that consumer — `registerBackedSettlementVerification.ts` resolves a key from the
+// governed register and verifies against it — so the guard is NARROWED TO THE PROPERTY IT WAS
+// PROTECTING rather than dropped. That is the same treatment the expectation-extract importer guard
+// got when its own consumer shipped.
+//
+// AND IT IS NOW STRICTLY STRONGER THAN BEFORE. The permitted set is CLOSED and asserted in both
+// directions: exactly these four files may import the settlement modules, and the monetary, proof and
+// reconciliation surfaces are named and asserted to reach none of them. "Nobody imports it" was only
+// ever a proxy for "the money path does not"; this says the real thing.
+describe("stage 8 / G4 · who may import the settlement modules, in both directions", () => {
   const MODULES = ["externalSettlement", "settlementVerification", "externalSettlementGate"];
   const PERMITTED = new Set([
     "server/services/settlementVerification.ts",
     "server/services/externalSettlementGate.ts",
+    "server/services/registerBackedSettlementVerification.ts",
     "src/domain/externalSettlement.ts",
   ]);
+  // The surfaces that must NOT reach a settlement module. A proof minted from an unwired mechanism
+  // would be a proof resting on a gate nothing enforces.
+  const FORBIDDEN_CONSUMERS = [
+    "server/services/proofService.ts",
+    "src/domain/invariants.ts",
+    "src/domain/metrics.ts",
+    "src/domain/outcomeEvidence.ts",
+    "src/domain/approval.ts",
+    "src/benchmark/reconciliationCore.ts",
+  ];
 
   const walk = (dir: string, out: string[] = []): string[] => {
     for (const name of readdirSync(dir)) {
@@ -181,11 +205,37 @@ describe("stage 8 · the deliberate absence of a production consumer", () => {
     return hits;
   };
 
-  it("has NO production importer, because the two schema dependencies do not exist yet", () => {
-    // Wiring this into the live gate today would mean passing values nothing authoritative supplies —
-    // an external payer reference on the case, and a persisted settlement ledger. A gate that reads
-    // fabricated inputs reports enforcement that is not happening.
+  it("is imported ONLY by the four named files", () => {
+    // Every importer outside the permitted set is reported. The set is closed: a new consumer must be
+    // added here deliberately, which is the point — an import that reaches the money path should
+    // require someone to write it down.
     expect(importers()).toEqual([]);
+  });
+
+  it("is reached by NO monetary, proof or reconciliation surface", () => {
+    // THE PROPERTY THE ORIGINAL "nobody imports it" WAS A PROXY FOR. G4 wires verification to the
+    // register; it does NOT wire the result into the PROVEN gate, and the two remaining schema
+    // dependencies — an external payer reference on the case, and a persisted settlement ledger —
+    // still do not exist. A gate that read fabricated inputs would report enforcement that is not
+    // happening.
+    const offenders: string[] = [];
+    for (const rel of FORBIDDEN_CONSUMERS) {
+      let source: string;
+      try { source = readFileSync(resolve(REPO, rel), "utf8"); } catch { continue; }
+      for (const m of source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
+        const spec = m[1]!;
+        if (MODULES.some((mod) => spec === mod || spec.endsWith(`/${mod}`))) offenders.push(`${rel} → ${spec}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("names every forbidden consumer as a file that actually exists, so the list cannot rot", () => {
+    // A guard listing files that are gone checks nothing. Found the hard way elsewhere in this
+    // repository: a structural guard must be asserted to have a subject.
+    for (const rel of FORBIDDEN_CONSUMERS) {
+      expect(existsSync(resolve(REPO, rel)), rel).toBe(true);
+    }
   });
 
   it("fires on a real importer, so the guard is not vacuous", () => {
