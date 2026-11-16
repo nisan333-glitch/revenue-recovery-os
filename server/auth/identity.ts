@@ -36,7 +36,15 @@ export type GovernedAction =
   | "ProposeBoundarySourceSet"
   | "ActivateBoundarySourceSet"
   | "ProposeDatasetSourceBinding"
-  | "ActivateDatasetSourceBinding";
+  | "ActivateDatasetSourceBinding"
+  // G2 · the settlement-key register. The SAME propose/activate split as source authority, and NO new
+  // role: the customer side may propose which external key its settlements are signed with, and only
+  // governance puts one in force. A key you register for yourself is the first input to a number you
+  // benefit from. Revocation sits with governance for the same reason, and because a beneficiary who
+  // could revoke could erase the evidence that their own proof rests on a compromised key.
+  | "ProposeSettlementKey"
+  | "ActivateSettlementKey"
+  | "RevokeSettlementKey";
 
 // Least-privilege matrix: which role may perform which governed action. There is no
 // "admin"/superuser role — nothing here grants a separation-of-duties bypass.
@@ -61,11 +69,13 @@ const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
     "Author", "EstablishBaseline", "Intervene", "IngestEvidence", "SubmitPilotDataset",
     "ProposePilotPolicy", "SchedulePilotAssessment", "ReadPilotAssessment",
     "ProposeSourceNamespace", "ProposeBoundarySourceSet", "ProposeDatasetSourceBinding",
+    "ProposeSettlementKey",
   ],
   operator: [
     "Author", "EstablishBaseline", "Intervene", "IngestEvidence", "PromoteCandidate",
     "SubmitPilotDataset", "ProposePilotPolicy", "SchedulePilotAssessment", "ReadPilotAssessment",
     "ProposeSourceNamespace", "ProposeBoundarySourceSet", "ProposeDatasetSourceBinding",
+    "ProposeSettlementKey",
   ],
   approver: ["Approve", "AuditRead", "ReadPilotAssessment"],
   verifier: ["Verify", "AuditRead", "ReadPilotAssessment"],
@@ -78,6 +88,9 @@ const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
     // Step 5 · the steward decides which source authority is in force. It still cannot count, so this adds
     // authority over provenance and no path to a number.
     "ActivateSourceNamespace", "ActivateBoundarySourceSet", "ActivateDatasetSourceBinding",
+    // G2 · governance puts a settlement key in force and takes it out. The steward still cannot count,
+    // so this adds authority over provenance and no path to a number.
+    "ActivateSettlementKey", "RevokeSettlementKey",
   ],
 };
 
