@@ -45,6 +45,22 @@ import {
 import { authorityFor } from "../auth/authorityStore";
 import { assertCaseNotHalted, withCaseHalt, withGovernedCaseMutation } from "./caseGuard";
 import { SourceVerifier, type SourceAttestation } from "./sourceVerification";
+import {
+  caseSettlementContext,
+  type CasePayerReferenceSource,
+  noRecordedPayerReference,
+} from "./caseSettlementContext";
+import { runExternalSettlementGate, type CitedSettlement } from "./externalSettlementGate";
+import { claimCitedSettlements } from "./settlementClaim";
+import {
+  externalSettlementEnabled,
+  SettlementVerifier,
+  settlementTrustKeysFromEnvironment,
+  type SettlementReceipt,
+} from "./settlementVerification";
+import { verifySettlementAgainstRegister } from "./registerBackedSettlementVerification";
+import { postgresSettlementKeyRegister } from "../persistence/settlementKeyStore";
+import { PostgresSettlementLedger, settlementLedgerPort } from "../persistence/settlementLedgerStore";
 
 export interface ApproveProofRequest {
   proofId: string;
@@ -60,6 +76,12 @@ export interface ApproveProofRequest {
   // and version are read from that snapshot, never from this request.
   baselineId: string;
   confidenceUsed: number;
+  /**
+   * G9 · OPTIONAL externally attested settlements. Omitting it leaves the approval byte-for-byte as it
+   * was; supplying it ADDS a gate that can only refuse. See `approveProofSchema` for what the request
+   * may and may not state.
+   */
+  citedSettlements?: readonly CitedSettlement[];
 }
 
 export interface ReviseProofRequest {
@@ -185,7 +207,11 @@ export async function ingestCaseEvidence(
 }
 
 /** Approve a governed proof. Authorization + separation + trust gates run before the kernel. */
-export async function approve(actor: ActorContext, req: ApproveProofRequest): Promise<Proof> {
+export async function approve(
+  actor: ActorContext,
+  req: ApproveProofRequest,
+  deps: ApprovalSettlementDeps = {},
+): Promise<Proof> {
   requireCan(actor, "Approve");
 
   // EP-11 · Halted cases are refused before the (expensive) trust-gate chain runs. This is the
@@ -445,12 +471,41 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
     confidenceUsed: req.confidenceUsed, // kept, but never alone sufficient — see the gate above
     approvedBy: actor.actorId, // identity from authentication, never from the body
   };
+  // G9 · STAGE 8, WHEN AND ONLY WHEN THE REQUEST CITES AN EXTERNAL SETTLEMENT.
+  //
+  // VERIFIED AND DECIDED HERE, OUTSIDE THE TRANSACTION; CLAIMED INSIDE IT. Verification is
+  // cryptography and the decision is pure, so neither needs to hold a database lock — but the CLAIM
+  // must share the proof's transaction, because `withGovernedCaseMutation` locks THE CASE and two
+  // approvals on two DIFFERENT cases citing one arrival take different locks and never serialise.
+  // See `settlementClaim.ts`.
+  const settlement = await prepareCitedSettlements(req, deps);
+
   // EP-11 · halt re-check + proof row + authority record are written atomically in ONE
   // transaction, under the per-case lock. A Halt committed before this point rejects the
   // approval and leaves NO row behind; a Halt arriving after it commits does not reach back
   // into an approved proof (immutability).
-  return withGovernedCaseMutation(req.recoveryCaseId, "Approve", (tx) =>
-    approveProof(
+  return withGovernedCaseMutation(req.recoveryCaseId, "Approve", async (tx) => {
+    // BEFORE THE PROOF, IN THE SAME TRANSACTION. A refusal here rolls the whole approval back, so an
+    // arrival can never be consumed by a proof that does not exist, and a proof can never exist
+    // without its arrivals being claimed. Both orderings of the alternative are worse: claiming
+    // earlier burns the arrival on a failed approval, claiming later meets a frozen proof.
+    if (settlement !== null) {
+      await claimCitedSettlements(
+        tx,
+        {
+          boundaryId: settlement.boundaryId,
+          // THE CLAIM REFERENCE IS THE PROOF ID, so an idempotent retry of this exact approval is
+          // recognised as its own and a different proof citing the same money is refused.
+          claimRef: req.proofId,
+          cited: settlement.cited,
+          receipts: settlement.receipts,
+        },
+        // ONE KEY FOR BOTH HALVES. `undefined` falls through to the module's own fail-closed resolver,
+        // so production still refuses without a deployment secret.
+        ...(settlement.digestKey === undefined ? [] : [settlement.digestKey] as const),
+      );
+    }
+    return approveProof(
       input,
       {
         recoveryCaseId: req.recoveryCaseId,
@@ -460,8 +515,104 @@ export async function approve(actor: ActorContext, req: ApproveProofRequest): Pr
         policyVersion: AUTHORITY_POLICY_VERSION,
       },
       tx,
-    ),
+    );
+  });
+}
+
+/** Seams, so the wired path can be exercised without pretending a missing fact exists. */
+export interface ApprovalSettlementDeps {
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly payerSource?: CasePayerReferenceSource;
+  readonly digestKey?: string;
+}
+
+interface PreparedSettlement {
+  readonly boundaryId: string;
+  readonly cited: readonly CitedSettlement[];
+  readonly receipts: readonly SettlementReceipt[];
+  /**
+   * The digest key BOTH halves must use, carried rather than resolved twice.
+   *
+   * Found by a test rather than by reading: the gate's ledger READ took `deps.digestKey` while the
+   * CLAIM fell back to its own default from the environment. Two keys for one comparison means the
+   * diagnosis looks at different digests than the control writes — the port-returns-digests defect in
+   * another costume, and a check that cannot match is worse than no check.
+   */
+  readonly digestKey: string | undefined;
+}
+
+/**
+ * Verify every cited attestation and decide sufficiency, or refuse the approval.
+ *
+ * `null` MEANS NOTHING WAS CITED — the existing path, untouched. It does NOT mean "cited and found
+ * wanting": every one of those is a throw, because a settlement the caller asked NH to rely on and
+ * which failed must never be silently dropped from a proof that then counts the money anyway.
+ */
+async function prepareCitedSettlements(
+  req: ApproveProofRequest,
+  deps: ApprovalSettlementDeps,
+): Promise<PreparedSettlement | null> {
+  const cited = req.citedSettlements;
+  if (cited === undefined || cited.length === 0) return null;
+
+  const env = deps.env ?? process.env;
+  if (!externalSettlementEnabled(env)) {
+    // A REQUEST MAY NOT CARRY A FIELD THIS BUILD CANNOT HONOUR. Silently ignoring it would let a caller
+    // believe their settlement was relied upon when it was discarded — the treatment EP-26b gave the
+    // `policy` object and reference-first scheduling gave `declaredVersion`. Omitting the field
+    // entirely is still the unchanged path; this refuses only the contradiction.
+    throw new ForbiddenError(
+      "EXTERNAL_SETTLEMENT_NOT_ENABLED: this build does not enable external settlement attestation, so " +
+        "citedSettlements cannot be relied upon. It is refused rather than ignored, because a dropped " +
+        "citation would leave a proof counting money nothing verified",
+    );
+  }
+
+  // EVERY COMPARISON TARGET COMES FROM A RECORD. The request supplies the institution's signed
+  // artefacts and nothing else.
+  const context = await caseSettlementContext(
+    req.recoveryCaseId,
+    deps.payerSource ?? noRecordedPayerReference,
   );
+  if (!context.available) {
+    throw new ForbiddenError(`${context.code}: ${context.detail}`);
+  }
+
+  // VERIFY FIRST, AND IT THROWS. An unverifiable attestation is not weak evidence to be weighed
+  // against the rest — it is not evidence at all, and continuing to the arithmetic would let a forged
+  // record's amount reach a sum. The key comes from the GOVERNED REGISTER, and the two questions
+  // "was it in force when it signed" and "is it still permitted" are answered separately, in order.
+  const register = postgresSettlementKeyRegister();
+  const receipts: SettlementReceipt[] = [];
+  const now = new Date().toISOString();
+  for (const { fact, attestation } of cited) {
+    receipts.push((await verifySettlementAgainstRegister(register, fact, attestation, now)).receipt);
+  }
+
+  const ledger = new PostgresSettlementLedger();
+  const outcome = await runExternalSettlementGate(
+    {
+      enabled: true,
+      boundaryId: context.boundaryId,
+      claimedCollectedMinor: req.collectedMinor,
+      currency: req.currency,
+      caseCorrectiveInvoiceRef: context.caseCorrectiveInvoiceRef,
+      casePayerExternalRef: context.casePayerExternalRef,
+      correctionRaisedAt: context.correctionRaisedAt,
+      claimRef: req.proofId,
+      cited,
+    },
+    new SettlementVerifier(settlementTrustKeysFromEnvironment(env)),
+    settlementLedgerPort(ledger, deps.digestKey),
+  );
+  const verdict = outcome.verdict;
+  if (!verdict.sufficient) {
+    throw new ForbiddenError(
+      `PROVEN requires sufficient external settlement evidence — ${verdict.code}: ${verdict.reason}`,
+    );
+  }
+
+  return { boundaryId: context.boundaryId, cited, receipts: outcome.receipts, digestKey: deps.digestKey };
 }
 
 /** Create a linked correction/revision (an approver action; original never overwritten). */

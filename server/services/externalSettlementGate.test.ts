@@ -179,17 +179,29 @@ describe("stage 8 / G4 · who may import the settlement modules, in both directi
     // receipt type to pair them — and it is the seam where an arrival is CONSUMED. Added deliberately,
     // for the third time, which is exactly what a closed set is for: the guard refused it first.
     "server/services/settlementClaim.ts",
+    // G9 · THE LIVE APPROVAL ROUTE. The guard refused it first and that refusal was the mechanism
+    // working — stage 8's own header said this entry "must MOVE WITH ITS CONSUMER when the schema
+    // slice lands, never be deleted", and `proofService` is now that consumer: it verifies cited
+    // attestations against the governed register, decides sufficiency, and claims the arrivals inside
+    // the proof's transaction. Added on the owner's authorisation, not by loosening a failing test.
+    "server/services/proofService.ts",
     "src/domain/externalSettlement.ts",
   ]);
   // The surfaces that must NOT reach a settlement module. A proof minted from an unwired mechanism
   // would be a proof resting on a gate nothing enforces.
   //
-  // `proofService.ts` STAYS HERE AFTER G7, AND THAT IS THE LOAD-BEARING PART. The atomic claim exists
-  // and is proven, but the live approval route does NOT import it — so this assertion is the checkable
-  // statement that the PROVEN gate is unwired, rather than a sentence in a report. Wiring it is a
-  // governance decision with an owner, and the day it is taken, this guard fires first.
+  // WHAT THIS LIST PROTECTS NOW THAT `proofService` IS WIRED, and it is a STRONGER property than the
+  // one it replaced. "Nobody imports it" was a proxy for "the money path does not reach an unwired
+  // mechanism"; the mechanism is wired, so the proxy is spent. What must still hold is that THE PURE
+  // KERNEL DOES NOT DEPEND ON IT: `invariants`, `approval`, `outcomeEvidence` and `metrics` decide
+  // what Revenue Returned IS, and a kernel that reached a settlement module would make the ledger's
+  // definition of money conditional on an external attestation mechanism being present. The
+  // orchestration may cite a settlement; the arithmetic may not know one exists.
+  //
+  // `proofService.ts` is deliberately NO LONGER here, and the behavioural half of what it used to
+  // guarantee moved to `proofServiceSettlement.postgres.test.ts`: citing a settlement can only ever
+  // REFUSE, never relax, and omitting the field leaves the approval byte-for-byte as it was.
   const FORBIDDEN_CONSUMERS = [
-    "server/services/proofService.ts",
     "src/domain/invariants.ts",
     "src/domain/metrics.ts",
     "src/domain/outcomeEvidence.ts",
@@ -228,7 +240,7 @@ describe("stage 8 / G4 · who may import the settlement modules, in both directi
     return hits;
   };
 
-  it("is imported ONLY by the four named files", () => {
+  it("is imported ONLY by the named files, and the set stays closed", () => {
     // Every importer outside the permitted set is reported. The set is closed: a new consumer must be
     // added here deliberately, which is the point — an import that reaches the money path should
     // require someone to write it down.

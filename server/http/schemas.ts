@@ -51,6 +51,64 @@ export const approveProofSchema = {
       // method, and version are read from that snapshot, never from this body.
       baselineId: { type: "string", minLength: 1 },
       confidenceUsed: { type: "number" },
+      /**
+       * G9 · OPTIONAL externally attested settlements supporting the collected figure.
+       *
+       * OPTIONAL BY DESIGN AND NOT A NEW REQUIREMENT. Omitting it leaves the approval exactly as it was
+       * — the PROVEN gate is unchanged for every existing caller — while supplying it ADDS a gate that
+       * can only refuse. Nothing here can make a proof easier to obtain.
+       *
+       * WHAT THE REQUEST MAY AND MAY NOT SAY. It carries the institution's own signed artefacts: the
+       * settlement fact and the attestation over it. It cannot carry the comparison targets — the
+       * payer, the corrective invoice reference and the instant the correction was raised are read from
+       * records by `caseSettlementContext`, because a caller who could state them would state whatever
+       * the attestation says and the check would compare the caller against himself. A forged artefact
+       * is useless: `verifySettlementAgainstRegister` verifies the signature against a key the
+       * GOVERNED REGISTER holds and the submitter does not.
+       */
+      citedSettlements: {
+        type: "array",
+        minItems: 1,
+        maxItems: 50,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["fact", "attestation"],
+          properties: {
+            fact: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "boundaryId", "sourceSystem", "sourceKind", "externalSettlementRef", "finality",
+                "amountMinor", "currency", "valueDate", "correctiveInvoiceRef", "payerExternalRef",
+              ],
+              properties: {
+                boundaryId: { type: "string", minLength: 1, maxLength: 256 },
+                sourceSystem: { type: "string", minLength: 1, maxLength: 256 },
+                sourceKind: { type: "string", minLength: 1, maxLength: 64 },
+                externalSettlementRef: { type: "string", minLength: 1, maxLength: 256 },
+                finality: { type: "string", minLength: 1, maxLength: 64 },
+                amountMinor: { type: "integer", minimum: 0 },
+                currency: { type: "string", enum: SUPPORTED_CURRENCY_CODES },
+                valueDate: { type: "string", minLength: 1, maxLength: 64 },
+                correctiveInvoiceRef: { type: "string", minLength: 1, maxLength: 256 },
+                payerExternalRef: { type: "string", minLength: 1, maxLength: 256 },
+              },
+            },
+            attestation: {
+              type: "object",
+              additionalProperties: false,
+              required: ["keyId", "issuedAt", "nonce", "signature"],
+              properties: {
+                keyId: { type: "string", minLength: 1, maxLength: 256 },
+                issuedAt: { type: "string", minLength: 1, maxLength: 64 },
+                nonce: { type: "string", minLength: 16, maxLength: 128 },
+                signature: { type: "string", minLength: 1, maxLength: 1024 },
+              },
+            },
+          },
+        },
+      },
     },
   },
 } as const;
