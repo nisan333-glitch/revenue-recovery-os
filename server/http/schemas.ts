@@ -207,6 +207,16 @@ export const ingestEvidenceSchema = {
       observedAt: { type: "string", minLength: 1 },
       amountMinor: { type: "integer", minimum: 0 },
       currency: { type: "string", enum: SUPPORTED_CURRENCY_CODES },
+      /**
+       * G10 · the payer as the SOURCE SYSTEM names them, in the external world's own terms.
+       *
+       * IT IS IN THE BODY BECAUSE IT IS IN THE SIGNED PAYLOAD, not because the caller is trusted with
+       * it. Supplying it switches the signing scheme to `nh-evidence-v2`, so a value the source did
+       * not sign over makes the attestation fail to verify — the caller transports it and cannot
+       * author it. An unattested claim carrying this field simply produces an evidence record with no
+       * verification, which contributes no payer reference at all.
+       */
+      payerExternalRef: { type: "string", minLength: 1, maxLength: 256 },
       note: { type: "string" },
     },
   },

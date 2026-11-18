@@ -46,9 +46,9 @@ import { authorityFor } from "../auth/authorityStore";
 import { assertCaseNotHalted, withCaseHalt, withGovernedCaseMutation } from "./caseGuard";
 import { SourceVerifier, type SourceAttestation } from "./sourceVerification";
 import {
+  attestedPayerReference,
   caseSettlementContext,
   type CasePayerReferenceSource,
-  noRecordedPayerReference,
 } from "./caseSettlementContext";
 import { runExternalSettlementGate, type CitedSettlement } from "./externalSettlementGate";
 import { claimCitedSettlements } from "./settlementClaim";
@@ -112,6 +112,12 @@ export interface IngestEvidenceRequest {
   observedAt: string;
   amountMinor?: number;
   currency?: string;
+  /**
+   * G10 · the payer the SOURCE SYSTEM names. Transported by the caller, AUTHORED by the source: it is
+   * inside the `nh-evidence-v2` signed payload, so a value the source did not sign over makes the
+   * attestation fail to verify and reaches no record.
+   */
+  payerExternalRef?: string;
   note?: string;
 }
 
@@ -570,9 +576,12 @@ async function prepareCitedSettlements(
 
   // EVERY COMPARISON TARGET COMES FROM A RECORD. The request supplies the institution's signed
   // artefacts and nothing else.
+  // G10 · THE PAYER COMES FROM A SOURCE SYSTEM'S SIGNATURE, which is what closes dependency 1. The
+  // seam stays so a test can supply one without a signing ceremony; production resolves it from the
+  // case's own verified evidence and establishes nothing when none carries it.
   const context = await caseSettlementContext(
     req.recoveryCaseId,
-    deps.payerSource ?? noRecordedPayerReference,
+    deps.payerSource ?? attestedPayerReference(),
   );
   if (!context.available) {
     throw new ForbiddenError(`${context.code}: ${context.detail}`);

@@ -78,17 +78,61 @@ export interface CasePayerReferenceSource {
   Promise<string | null>;
 }
 
+/** Why an attested payer reference could not be established from a case's evidence. */
+export type AttestedPayerProblem = "PAYER_REFERENCES_DISAGREE";
+
 /**
- * The production source. Returns `null` for every case, because no model holds the fact.
+ * G10 · THE PRODUCTION SOURCE: the payer a SOURCE SYSTEM signed for, read from this case's evidence.
  *
- * NOT A STUB AND NOT A TODO — it is the correct answer to the question as the schema stands, and it is
- * the reason `SETTLEMENT_CASE_PAYER_NOT_RECORDED` is reachable on the live path. A version that
- * returned the pseudonymous `sourceRef` here would be the single worst change available in this file:
- * the comparison would run, almost always fail, and occasionally pass for reasons nobody could explain.
+ * WHY THIS ORIGIN AND NOT ANY OTHER. Three candidates were considered and two are refused outright.
+ * The request cannot supply it — the caller is the beneficiary of a larger number and would state
+ * whatever the attestation says. The detector cannot supply it — its raw `payerRef` comes from the
+ * CUSTOMER'S OWN EXTRACT, which is the same party one step removed, and it is pseudonymised under NH's
+ * HMAC key before anything is stored. What remains is a claim SIGNED by the billing or ERP system
+ * under a key NH holds only the public half of and the customer's team does not hold at all.
+ *
+ * SO STAGE 8's CHECK BECOMES A COMPARISON OF TWO INDEPENDENT INSTITUTIONAL STATEMENTS — billing's and
+ * the bank's — rather than an attestation against a string NH was handed. That is the shape the Trust
+ * Invariant asks for, and it is the reason this is a closure of dependency 1 rather than a workaround.
+ *
+ * IT READS ONLY VERIFIED RECORDS, structurally. `attestedPayerExternalRef` lives INSIDE
+ * `sourceVerification`, which exists only after a signature verified, so there is no stored shape in
+ * which an unattested payer could be read back. An unsigned evidence record contributes nothing.
+ *
+ * DISAGREEMENT IS A REFUSAL, NEVER A CHOICE. Two signed records naming different payers is a
+ * contradiction about who this case concerns; picking one — the earliest, the latest, the correction's
+ * — would be NH deciding an identity question on an arbitrary rule. It returns `null`, and the
+ * approval refuses.
  */
-export const noRecordedPayerReference: CasePayerReferenceSource = Object.freeze({
-  payerExternalRefFor: async () => null,
-});
+export function attestedPayerReference(
+  onProblem?: (problem: AttestedPayerProblem, detail: string) => void,
+): CasePayerReferenceSource {
+  return {
+    async payerExternalRefFor(root) {
+      const evidence = await getEvidenceForCase(root.recoveryCaseId);
+      const refs = new Set<string>();
+      for (const item of evidence) {
+        const v = item.sourceVerification;
+        if (v === null || typeof v !== "object") continue;
+        const ref = (v as { attestedPayerExternalRef?: unknown }).attestedPayerExternalRef;
+        if (typeof ref === "string" && ref.trim().length > 0) refs.add(ref);
+      }
+      if (refs.size === 0) return null;
+      if (refs.size > 1) {
+        // The COUNT is reported, never the values: a refusal reaches an operator, and payer
+        // references are customer identifiers — the codes-only rule the extract faults already follow.
+        onProblem?.(
+          "PAYER_REFERENCES_DISAGREE",
+          `${refs.size} source-attested payer references disagree for this case; which payer the case ` +
+            "concerns is an identity question, and choosing one of them on an arbitrary rule would be " +
+            "NH deciding it",
+        );
+        return null;
+      }
+      return [...refs][0]!;
+    },
+  };
+}
 
 /**
  * Resolve what stage 8 must compare an attestation against, from records only.
@@ -99,7 +143,7 @@ export const noRecordedPayerReference: CasePayerReferenceSource = Object.freeze(
  */
 export async function caseSettlementContext(
   recoveryCaseId: string,
-  payerSource: CasePayerReferenceSource = noRecordedPayerReference,
+  payerSource: CasePayerReferenceSource = attestedPayerReference(),
 ): Promise<CaseSettlementContext> {
   const root = await getRecoveryCase(recoveryCaseId);
   if (root === null) {
@@ -144,11 +188,12 @@ export async function caseSettlementContext(
   if (payer === null || payer.trim().length === 0) {
     return unavailable(
       "SETTLEMENT_CASE_PAYER_NOT_RECORDED",
-      "this case holds no EXTERNAL payer reference — only NH's own pseudonymous sourceRef, which a bank " +
-        "cannot name. Stage 8 compares the attestation's payer against the case's, and NH will neither " +
-        "invent that mapping nor accept it from the request. Recording a governed external payer " +
-        "reference is a schema decision with an owner; until it exists no cited settlement can support " +
-        "a proof, which is the correct answer rather than a missing feature",
+      "no SOURCE-ATTESTED external payer reference is recorded for this case. Stage 8 compares the " +
+        "bank's attestation against the payer this case concerns, and the only acceptable origin for " +
+        "that value is a claim a source system SIGNED — not the request, which is the beneficiary, and " +
+        "not the detector, whose payer comes from the customer's own extract. Ingest signed evidence " +
+        "carrying `payerExternalRef`, or the settlement cannot support a proof; that is the correct " +
+        "answer rather than a missing feature",
     );
   }
 

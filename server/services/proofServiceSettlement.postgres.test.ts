@@ -24,6 +24,8 @@ import { prisma } from "../db";
 import { approve, type ApproveProofRequest } from "./proofService";
 import type { CasePayerReferenceSource } from "./caseSettlementContext";
 import { settlementSigningPayload } from "./settlementVerification";
+import { attestedPayerReference } from "./caseSettlementContext";
+import { attestFixture } from "../test/sourceFixture";
 import { settlementDigest } from "../persistence/settlementLedgerStore";
 import {
   activateSettlementKey, proposeSettlementKey, revokeSettlementKeyAsCompromised,
@@ -76,8 +78,17 @@ const env = (over: Record<string, string | undefined> = {}) => ({
 const plus = (iso: string, ms: number): string => new Date(Date.parse(iso) + ms).toISOString();
 const DAY = 24 * 60 * 60_000;
 
-/** A provable BillingCorrection case with a KNOWN corrective invoice reference. */
-async function provableCase(opts: { boundaryId?: string; invoiceRef?: string } = {}): Promise<{
+/**
+ * A provable BillingCorrection case with a KNOWN corrective invoice reference.
+ *
+ * `attestPayer` seeds the correction evidence through the REAL route with a SOURCE-SIGNED
+ * `payerExternalRef`, which is how a case comes to hold an attested payer in production. The fixture
+ * signs as the billing system because that is who signs in production; it cannot shortcut the
+ * signature, because an unsigned or mis-signed claim is refused at ingestion.
+ */
+async function provableCase(
+  opts: { boundaryId?: string; invoiceRef?: string; attestPayer?: string } = {},
+): Promise<{
   caseId: string; baselineId: string; evidenceId: string; boundaryId: string; invoiceRef: string;
 }> {
   const caseId = `RC-${uid()}`;
@@ -89,10 +100,21 @@ async function provableCase(opts: { boundaryId?: string; invoiceRef?: string } =
   // The correction is seeded with a KNOWN `sourceRecordId`, because that is what stage 8 compares the
   // attestation's `correctiveInvoiceRef` against — and the default fixture picks a random one.
   await seedIntervention(app, caseId, { noCorrectionRecord: true });
-  const corr = await seedEvidence(app, caseId, {
-    sourceSystem: "billing", evidenceType: "corrective_invoice_issued", sourceRecordId: invoiceRef,
+
+  const correctionClaim = {
+    evidenceId: `EV-CORR-${uid()}`,
+    sourceSystem: "billing",
+    sourceRecordId: invoiceRef,
+    evidenceType: "corrective_invoice_issued",
+    observedAt: "2026-07-25T00:00:00.000Z",
+    ...(opts.attestPayer === undefined ? {} : { payerExternalRef: opts.attestPayer }),
+  };
+  const corr = await app.inject({
+    method: "POST", url: `/cases/${caseId}/evidence`, headers: AUTHOR,
+    payload: attestFixture(caseId, correctionClaim),
   });
-  if (corr.res.statusCode !== 201) throw new Error(`correction seed failed: ${corr.res.body}`);
+  if (corr.statusCode !== 201) throw new Error(`correction seed failed: ${corr.body}`);
+
   const out = await seedEvidence(app, caseId, { amountMinor: 1_320_000, currency: "USD" });
   if (out.res.statusCode !== 201) throw new Error(`outcome seed failed: ${out.res.body}`);
   return { caseId, baselineId, evidenceId: out.evidenceId, boundaryId, invoiceRef };
@@ -211,11 +233,11 @@ describe.skipIf(!HAS_DB)("G9 · supplying the field can only REFUSE", () => {
     expect(await proofCount(c.caseId)).toBe(0);
   }, 60_000);
 
-  it("DEPENDENCY 1 · the production route refuses: no case holds an external payer reference", async () => {
-    // THE REAL BEHAVIOUR OF THE SHIPPED PATH, through HTTP, with no seam substituted. `prisma/schema.
-    // prisma` holds no external payer reference on any model, so `noRecordedPayerReference` returns null
-    // for every case and the approval is refused. That is the correct answer rather than a missing
-    // feature: NH will neither invent the pseudonym-to-payer mapping nor accept it from the request.
+  it("the production route refuses a case whose evidence carries NO source-attested payer", async () => {
+    // THE REAL BEHAVIOUR OF THE SHIPPED PATH, through HTTP, with no seam substituted. This case's
+    // evidence was ingested without a signed `payerExternalRef`, so the production resolver finds
+    // nothing and the approval is refused. Absence is the safe state by construction: NH will neither
+    // invent the pseudonym-to-payer mapping nor accept one from the request.
     const c = await provableCase();
     const { keyId, signedAt } = await activeKeyFor(c.boundaryId);
     const fact = factFor(c.boundaryId, c.invoiceRef);
@@ -455,6 +477,116 @@ describe.skipIf(!HAS_DB)("G9 · the wired success path, and what it makes imposs
     expect(await consumptions(settlementDigest(fact, DIGEST_KEY))).toHaveLength(1);
     expect(await proofCount(a.caseId) + await proofCount(b.caseId)).toBe(1);
   }, 120_000);
+
+  it("G10 · DEPENDENCY 1 CLOSED: a SOURCE-ATTESTED payer carries the live route to PROVEN", async () => {
+    // THE WHOLE POINT OF THIS SLICE, through the production resolver with no seam substituted. The
+    // payer reference was signed by the billing system at evidence ingestion; `attestedPayerReference`
+    // reads it back from the verified record; stage 8 compares it against what the BANK signed. Two
+    // independent institutional statements, neither of which NH or the customer's team can author.
+    const payer = `PAYER-ATTESTED-${uid()}`;
+    const c = await provableCase({ attestPayer: payer });
+    const { keyId, signedAt } = await activeKeyFor(c.boundaryId);
+    const fact = factFor(c.boundaryId, c.invoiceRef, { payerExternalRef: payer });
+    const proofId = `PF-${uid()}`;
+
+    const proof = await approve(
+      APPROVER_CTX,
+      { ...body({ ...c, proofId, evidenceIds: [c.evidenceId] }),
+        citedSettlements: [{ fact, attestation: attest(fact, keyId, signedAt) }] },
+      // NO `payerSource` — the production resolver runs.
+      { env: trustKeysEnv(keyId, c.boundaryId), digestKey: DIGEST_KEY },
+    );
+    expect(proof.proofId).toBe(proofId);
+    expect((await consumptions(settlementDigest(fact, DIGEST_KEY))).map((r) => r.claim_ref)).toEqual([proofId]);
+  }, 60_000);
+
+  it("G10 · a bank naming a DIFFERENT payer is refused, even though both are attested", async () => {
+    // The control that makes the comparison worth performing. Both statements are signed; they
+    // disagree about who paid, and a settlement from another payer cannot substantiate this case.
+    const c = await provableCase({ attestPayer: `PAYER-A-${uid()}` });
+    const { keyId, signedAt } = await activeKeyFor(c.boundaryId);
+    const fact = factFor(c.boundaryId, c.invoiceRef, { payerExternalRef: `PAYER-B-${uid()}` });
+    await expect(approve(
+      APPROVER_CTX,
+      { ...body({ ...c, proofId: `PF-${uid()}`, evidenceIds: [c.evidenceId] }),
+        citedSettlements: [{ fact, attestation: attest(fact, keyId, signedAt) }] },
+      { env: trustKeysEnv(keyId, c.boundaryId), digestKey: DIGEST_KEY },
+    )).rejects.toThrow(/SETTLEMENT_PAYER_MISMATCH/);
+    expect(await proofCount(c.caseId)).toBe(0);
+  }, 60_000);
+
+  it("G10 · a case whose evidence carries NO attested payer still refuses — absence is the safe state", async () => {
+    const c = await provableCase(); // no attestPayer
+    const { keyId, signedAt } = await activeKeyFor(c.boundaryId);
+    const fact = factFor(c.boundaryId, c.invoiceRef);
+    await expect(approve(
+      APPROVER_CTX,
+      { ...body({ ...c, proofId: `PF-${uid()}`, evidenceIds: [c.evidenceId] }),
+        citedSettlements: [{ fact, attestation: attest(fact, keyId, signedAt) }] },
+      { env: trustKeysEnv(keyId, c.boundaryId), digestKey: DIGEST_KEY },
+    )).rejects.toThrow(/SETTLEMENT_CASE_PAYER_NOT_RECORDED/);
+    expect(await proofCount(c.caseId)).toBe(0);
+  }, 60_000);
+
+  it("G10 · TWO ATTESTED PAYERS THAT DISAGREE establish nothing — NH does not pick one", async () => {
+    // Which payer a case concerns is an identity question. Choosing the earliest, the latest or the
+    // correction's would be NH deciding it on an arbitrary rule, so the resolver returns nothing and
+    // the approval refuses for the ordinary reason.
+    const c = await provableCase({ attestPayer: `PAYER-ONE-${uid()}` });
+    const second = await app.inject({
+      method: "POST", url: `/cases/${c.caseId}/evidence`, headers: AUTHOR,
+      payload: attestFixture(c.caseId, {
+        evidenceId: `EV-SUP-${uid()}`, sourceSystem: "billing", sourceRecordId: `OTHER-${uid()}`,
+        evidenceType: "credit_note_issued", observedAt: "2026-07-25T00:00:00.000Z",
+        payerExternalRef: `PAYER-TWO-${uid()}`,
+      }),
+    });
+    expect(second.statusCode, second.body.slice(0, 300)).toBe(201);
+
+    const problems: string[] = [];
+    const resolved = await attestedPayerReference((code) => problems.push(code))
+      .payerExternalRefFor({ recoveryCaseId: c.caseId, boundaryId: c.boundaryId });
+    expect(resolved).toBeNull();
+    expect(problems).toEqual(["PAYER_REFERENCES_DISAGREE"]);
+  }, 60_000);
+
+  it("G10 · a persisted evidence row has NO top-level payer field — the only one is inside the receipt", async () => {
+    // THE STRUCTURAL CLAIM, ASSERTED RATHER THAN DESCRIBED. A mutation that made the resolver read a
+    // payer from the evidence row itself changed nothing, and that is the property holding rather than
+    // a guard missing: there is no such field to read. This fails the day one is added, which is when
+    // the "only inside a verified receipt" rule would quietly stop being structural.
+    const payer = `PAYER-SHAPE-${uid()}`;
+    const c = await provableCase({ attestPayer: payer });
+    const [row] = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT * FROM "EvidenceRecord" WHERE "recoveryCaseId" = $1 AND "evidenceType" = $2`,
+      c.caseId, "corrective_invoice_issued",
+    );
+    expect(row).toBeDefined();
+    for (const key of Object.keys(row!)) {
+      expect(key.toLowerCase(), `a top-level payer column exists: ${key}`).not.toContain("payer");
+    }
+    // And the value IS there, inside the verification object the signature produced.
+    expect((row!.sourceVerification as { attestedPayerExternalRef?: string }).attestedPayerExternalRef)
+      .toBe(payer);
+  }, 60_000);
+
+  it("G10 · an UNSIGNED claim carrying a payer contributes nothing, so it cannot be a comparison target", async () => {
+    // The structural half. `attestedPayerExternalRef` lives inside `sourceVerification`, which exists
+    // only after a signature verified — so a caller who posts the field without an attestation creates
+    // an evidence record with no verification and no payer at all.
+    const c = await provableCase();
+    const res = await app.inject({
+      method: "POST", url: `/cases/${c.caseId}/evidence`, headers: AUTHOR,
+      payload: {
+        evidenceId: `EV-UNSIGNED-${uid()}`, sourceSystem: "manual", sourceRecordId: `M-${uid()}`,
+        evidenceType: "note", observedAt: "2026-07-25T00:00:00.000Z",
+        payerExternalRef: "PAYER-SELF-ASSERTED",
+      },
+    });
+    expect(res.statusCode, res.body.slice(0, 300)).toBe(201);
+    expect(await attestedPayerReference()
+      .payerExternalRefFor({ recoveryCaseId: c.caseId, boundaryId: c.boundaryId })).toBeNull();
+  }, 60_000);
 
   it("the digest stored is the KEYED pseudonym, so the ledger holds no confirmable payment identifier", async () => {
     const c = await provableCase();
