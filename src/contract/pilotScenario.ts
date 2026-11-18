@@ -115,6 +115,10 @@ export const PILOT_CRITERIA: readonly PilotCriterion[] = Object.freeze([
     evidence: Object.freeze([
       "src/contract/institutionAuthority.test.ts",
       "src/contract/sourceFactAuthority.ts",
+      // The register that enforces the ladder's non-cryptographic conditions, including the one the
+      // server derives rather than accepts: a verifier may not be the proposer.
+      "server/services/institutionGovernance.test.ts",
+      "server/persistence/institutionRegister.postgres.test.ts",
     ]),
     decidedBy: Object.freeze([]),
     blocker: "",
@@ -256,9 +260,15 @@ export const PILOT_CRITERIA: readonly PilotCriterion[] = Object.freeze([
     evidence: Object.freeze([]),
     decidedBy: Object.freeze([]),
     blocker:
-      "Seven of the eight conditions need evidence from outside this system, and no provenance " +
-      "channel that could reach AUTHORITY_VERIFIED is implemented. Until then a pilot figure is " +
-      "PROVISIONAL at a SOURCE_ATTESTED ceiling, however many tests are green.",
+      "THE MECHANISM EXISTS AND THE EVIDENCE DOES NOT, and those are different blockers. The " +
+      "governed institution register enforces propose-not-verify by database trigger, resolves key " +
+      "control against the key register, and refuses a bare tick by making a blank citation " +
+      "unwritable — so SIX of the eight conditions are now a matter of gathering out-of-band " +
+      "evidence rather than of building anything. The two NH establishes itself are done. But no " +
+      "institution is registered, no provenance channel reaching AUTHORITY_VERIFIED is implemented, " +
+      "and until a real counterparty supplies a registry extract, a regulator entry, a signatory " +
+      "schedule, a published channel, an out-of-band fingerprint and a recorded ceremony, a pilot " +
+      "figure stays PROVISIONAL at a SOURCE_ATTESTED ceiling however many tests are green.",
     blockerOwnedBy: "the owner — it needs a real institution and a decision to onboard one",
   }),
   Object.freeze({

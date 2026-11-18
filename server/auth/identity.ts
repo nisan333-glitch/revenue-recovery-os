@@ -44,7 +44,20 @@ export type GovernedAction =
   // could revoke could erase the evidence that their own proof rests on a compromised key.
   | "ProposeSettlementKey"
   | "ActivateSettlementKey"
-  | "RevokeSettlementKey";
+  | "RevokeSettlementKey"
+  // K5 · the institution register. TWO CAPABILITIES AND NO NEW ROLE, like every governed object before
+  // it — but UNLIKE the settlement key, the customer side may not propose one, and that difference is
+  // deliberate. A proposed key is a customer preference about which key their settlements are signed
+  // with; a proposed INSTITUTION carries NH's own findings from an independent registry — the legal
+  // entity, the jurisdiction, the registry identifier. Letting the beneficiary author those would hand
+  // them the identity claim the register exists to establish.
+  //
+  // SO BOTH SIT WITH GOVERNANCE, AND THE SEPARATION IS BY IDENTITY RATHER THAN BY ROLE: the identity
+  // that proposes an institution may not be the one that verifies it. That is what the ceremony's
+  // `secondPersonApproval` condition MEANS, which is why it is derived from the event log and refused
+  // as an input.
+  | "ProposeInstitution"
+  | "VerifyInstitution";
 
 // Least-privilege matrix: which role may perform which governed action. There is no
 // "admin"/superuser role — nothing here grants a separation-of-duties bypass.
@@ -91,6 +104,10 @@ const PERMISSIONS: Record<BackendRole, GovernedAction[]> = {
     // G2 · governance puts a settlement key in force and takes it out. The steward still cannot count,
     // so this adds authority over provenance and no path to a number.
     "ActivateSettlementKey", "RevokeSettlementKey",
+    // K5 · governance proposes an institution from its own registry findings and a SECOND governance
+    // identity verifies it. The steward still cannot count, so this adds authority over provenance and
+    // no path to a number.
+    "ProposeInstitution", "VerifyInstitution",
   ],
 };
 
