@@ -25,7 +25,6 @@ interface KeyRow {
   readonly valid_until: Date;
   readonly key_witness: string;
   readonly channel_independently_verified: boolean;
-  readonly institution_identity_verified: boolean;
   readonly key_control_demonstrated: boolean;
   readonly ceremony_recorded: boolean;
   readonly registered_by_actor_id: string;
@@ -82,7 +81,6 @@ export function postgresSettlementKeyRegister(
         witness: row.key_witness,
         evidence: Object.freeze({
           channelIndependentlyVerified: row.channel_independently_verified,
-          institutionIdentityVerified: row.institution_identity_verified,
           keyControlDemonstrated: row.key_control_demonstrated,
           ceremonyRecorded: row.ceremony_recorded,
         }),
@@ -110,12 +108,17 @@ export function postgresSettlementKeyRegister(
           `INSERT INTO "settlement_signing_keys"
              ("key_id","boundary_id","source_system","source_kind","public_key","valid_from",
               "valid_until","key_witness","channel_independently_verified",
-              "institution_identity_verified","key_control_demonstrated","ceremony_recorded",
+              "key_control_demonstrated","ceremony_recorded",
               "registered_by_actor_id","registered_by_role")
-           VALUES ($1,$2,$3,$4,$5,$6::timestamp,$7::timestamp,$8,$9,$10,$11,$12,$13,$14)`,
+           VALUES ($1,$2,$3,$4,$5,$6::timestamp,$7::timestamp,$8,$9,$10,$11,$12,$13)`,
           input.facts.keyId, input.facts.boundaryId, input.facts.sourceSystem, input.facts.sourceKind,
           input.facts.publicKey, input.facts.validFrom, input.facts.validUntil, input.witness,
-          input.evidence.channelIndependentlyVerified, input.evidence.institutionIdentityVerified,
+          // B3 · `institution_identity_verified` IS NOT WRITTEN BECAUSE IT NO LONGER EXISTS. The
+          // column was removed from the design script rather than left to carry a meaningless value:
+          // `true` would assert an operator claim nobody makes any more, `false` would assert they
+          // declined, and both are claims. The institution condition is derived from the governed
+          // institution register at activation. See `src/contract/senderAuthority.ts`.
+          input.evidence.channelIndependentlyVerified,
           input.evidence.keyControlDemonstrated, input.evidence.ceremonyRecorded,
           input.actor.actorId, input.actor.role,
         ),

@@ -50,7 +50,7 @@ async function registerWith(
 ): Promise<SettlementKeyRegister> {
   const row: RegisteredSettlementKey = {
     facts, witness: witnessOverride ?? (await hashSettlementKey(facts)),
-    evidence: { channelIndependentlyVerified: true, institutionIdentityVerified: true,
+    evidence: { channelIndependentlyVerified: true,
       keyControlDemonstrated: true, ceremonyRecorded: true },
     registeredByActorId: "op-1", events,
   };

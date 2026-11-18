@@ -85,6 +85,27 @@ export function postgresInstitutionRegister(
   prisma: PrismaClient = sharedClient,
 ): InstitutionRegister {
   return {
+    async findBySender(boundaryId: string, sourceSystem: string): Promise<RegisteredInstitution | null> {
+      // RESOLVED TO AN ID AND THEN READ THROUGH THE SAME PATH, never a second assembly of the row.
+      // Two readers of one table is two things that can drift, and the one that disagreed would be the
+      // one a key's activation consulted.
+      const rows = await prisma.$queryRawUnsafe<{ institution_id: string }[]>(
+        `SELECT "institution_id" FROM "governed_institutions"
+          WHERE "boundary_id" = $1 AND "source_system" = $2`,
+        boundaryId, sourceSystem,
+      );
+      if (rows.length === 0) return null;
+      if (rows.length > 1) {
+        // UNREACHABLE WHILE THE UNIQUE INDEX EXISTS, and asserted rather than assumed: silently taking
+        // the first would let a second row decide which legal entity authorises a sender, by position.
+        throw new Error(
+          `institution register: ${rows.length} institutions claim sender '${sourceSystem}' in this ` +
+            "boundary; the unique index that forbids this is missing or was dropped",
+        );
+      }
+      return this.read(rows[0]!.institution_id);
+    },
+
     async read(institutionId: string): Promise<RegisteredInstitution | null> {
       const rows = await prisma.$queryRawUnsafe<InstitutionRow[]>(
         `SELECT * FROM "governed_institutions" WHERE "institution_id" = $1`, institutionId,

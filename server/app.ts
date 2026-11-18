@@ -68,6 +68,8 @@ import { SourceVerifier, sourceTrustKeysFromEnvironment } from "./services/sourc
 import { syntheticDemoFromEnvironment, type SyntheticDemo } from "./demo/syntheticDemo";
 import { postgresSyntheticDemoPorts } from "./demo/syntheticDemoPorts";
 import { postgresSettlementKeyRegister } from "./persistence/settlementKeyStore";
+import { postgresInstitutionRegister } from "./persistence/institutionStore";
+import { institutionSenderAuthority } from "./services/institutionSenderAuthority";
 import { ledgerArrivalReader, PostgresSettlementLedger } from "./persistence/settlementLedgerStore";
 import {
   activateSettlementKey, proposeSettlementKey, revokeSettlementKeyAsCompromised,
@@ -316,6 +318,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // subject is code, so the general remedy is to strip comments before matching, which is the lesson
   // this repository has recorded a dozen times. Not changed inside a slice about settlement keys.
   const settlementKeys = () => postgresSettlementKeyRegister();
+  // B3 · the institution register, read ONLY through `institutionSenderAuthority`, which exposes one
+  // question. The key-governance service holds a narrow port and never the register itself, so it
+  // cannot reach an institution's legal entity, citations, governance log or witness.
+  const institutions = () => postgresInstitutionRegister();
 
   app.post<{ Body: { key: SettlementKeyBody; evidence: KeyCeremonyBody; rationale: string } }>(
     "/settlement-keys",
@@ -338,7 +344,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     { schema: activateSettlementKeySchema },
     async (req, reply) => {
       const actor = await resolveActor(req, options.identityResolver);
-      await activateSettlementKey(settlementKeys(), actor, req.body);
+      // B3 · THE INSTITUTION CONDITION IS WIRED HERE, where the two governed registers meet. The
+      // activation gate now derives it instead of trusting a boolean the proposing party set — and
+      // the proposing party is `author` or `operator`, which is the beneficiary side.
+      await activateSettlementKey(
+        settlementKeys(),
+        institutionSenderAuthority(institutions()),
+        actor,
+        req.body,
+      );
       return reply.code(200).send({ keyId: req.body.keyId, activated: true });
     },
   );

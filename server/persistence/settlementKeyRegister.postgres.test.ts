@@ -19,6 +19,16 @@ import { splitSqlStatements } from "./obligationAttributionMigration.postgres.te
 import {
   activateSettlementKey, proposeSettlementKey, resolveForUse, revokeSettlementKeyAsCompromised,
 } from "../services/settlementKeyGovernance";
+// B3 · THE REAL COMPOSITION, WITH NO DOUBLE. This is the suite that stands behind every permissive
+// `senderVerified()` elsewhere: the key register and the institution register, both on this database,
+// joined by the production adapter. If the doubles were the only thing behind the gate, the gate
+// would be a convention.
+import { institutionSenderAuthority } from "../services/institutionSenderAuthority";
+import { postgresInstitutionRegister } from "./institutionStore";
+import {
+  proposeInstitution, verifyInstitution, withdrawInstitution,
+  revokeInstitutionIdentityDoubted, DECLARED_CONDITIONS,
+} from "../services/institutionGovernance";
 import { compromiseAssessment, stateAt, validAt, type SettlementKeyFacts }
   from "../../src/contract/settlementKeyLifecycle";
 import type { ActorContext } from "../auth/identity";
@@ -26,6 +36,9 @@ import type { ActorContext } from "../auth/identity";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
 const UP = readFileSync(resolve(REPO, "scripts/migration-design/settlement-key-register-up.sql"), "utf8");
+const INSTITUTION_UP = readFileSync(
+  resolve(REPO, "scripts/migration-design/institution-register-up.sql"), "utf8",
+);
 
 const BASE = process.env.DATABASE_URL ?? "";
 const HAS_DB = BASE.length > 0;
@@ -45,7 +58,7 @@ const FACTS: SettlementKeyFacts = Object.freeze({
   validFrom: "2026-01-01T00:00:00.000Z", validUntil: "2027-01-01T00:00:00.000Z",
 });
 const COMPLETE = Object.freeze({
-  channelIndependentlyVerified: true, institutionIdentityVerified: true,
+  channelIndependentlyVerified: true,
   keyControlDemonstrated: true, ceremonyRecorded: true,
 });
 const OPERATOR: ActorContext = { actorId: "op-1", role: "operator", boundaryIds: ["b-alpha"] };
@@ -65,7 +78,13 @@ beforeAll(async () => {
   for (const statement of splitSqlStatements(UP)) {
     await db.$executeRawUnsafe(statement);
   }
-}, 60_000);
+  // B3 · the institution register lives on this database too, because the activation gate now joins
+  // the two. Its own constraints are tested in `institutionRegister.postgres.test.ts`; here it is the
+  // real answer behind a real activation.
+  for (const statement of splitSqlStatements(INSTITUTION_UP)) {
+    await db.$executeRawUnsafe(statement);
+  }
+}, 90_000);
 
 afterAll(async () => {
   if (!HAS_DB) return;
@@ -75,6 +94,68 @@ afterAll(async () => {
 }, 60_000);
 
 const reg = () => postgresSettlementKeyRegister(db);
+const institutions = () => postgresInstitutionRegister(db);
+/**
+ * Admitted ONCE for the whole suite, because the register's unique index on
+ * `(boundary_id, source_system)` forbids a second institution for this sender — which is the property
+ * that makes "the institution for this sender" a well-formed question in the first place.
+ */
+let senderAdmitted = false;
+async function ensureVerifiedSender(): Promise<void> {
+  if (senderAdmitted) return;
+  // The institution's own verification names a key whose control was demonstrated. It is proposed
+  // first and NOT activated: the institution is verified before the keys it authorises go into force,
+  // which is the correct order and also avoids a circular dependency.
+  await proposeSettlementKey(reg(), OPERATOR, {
+    facts: freshKey("k-control-witness"), evidence: COMPLETE, rationale: "challenge-response recorded",
+  });
+  await verifiedSender(FACTS.sourceSystem, "k-control-witness");
+  senderAdmitted = true;
+}
+const senders = () => institutionSenderAuthority(institutions());
+
+/** Governance identities for the institution register. Proposer ≠ verifier, by identity. */
+const GOV_A: ActorContext = { actorId: "gov-a", role: "steward", boundaryIds: ["b-alpha"] };
+const GOV_B: ActorContext = { actorId: "gov-b", role: "steward", boundaryIds: ["b-alpha"] };
+
+/**
+ * Admit and verify the institution that owns `acme-bank` in `b-alpha`, so the keys below have a
+ * sender whose identity is established rather than ticked.
+ *
+ * SYNTHETIC. The legal entity names itself as not real, and the jurisdiction is `ZZ`.
+ */
+async function verifiedSender(sourceSystem = FACTS.sourceSystem, keyForControl = "k-live"): Promise<string> {
+  const institutionId = `inst-${sourceSystem}`;
+  await proposeInstitution(institutions(), GOV_A, {
+    facts: {
+      institutionId, boundaryId: "b-alpha", sourceSystem, sourceKind: "bank",
+      legalEntityName: "Synthetic Test Bank (NOT A REAL INSTITUTION)",
+      jurisdiction: "ZZ", registryIdentifier: `ZZ-SYNTHETIC-${sourceSystem}`,
+    },
+    rationale: "registry lookup completed",
+  });
+  const citations: Record<string, string> = {};
+  for (const c of DECLARED_CONDITIONS) citations[c] = `SYNTHETIC-DOC · ${c}`;
+  await verifyInstitution(institutions(), senders0(), GOV_B, {
+    institutionId, citations, keyControlDemonstratedByKeyId: keyForControl,
+    rationale: "second-person verification",
+  });
+  return institutionId;
+}
+
+/**
+ * The key-control source the INSTITUTION's own verification needs — a key that is registered and in
+ * force. Deliberately a small local implementation rather than the key register itself: the
+ * institution's verification happens before the key it authorises is activated, so asking the key
+ * register whether that key is in force would be circular.
+ */
+const senders0 = () => ({
+  async keyInForce(keyId: string) {
+    const row = await reg().read(keyId);
+    if (row === null) return null;
+    return { boundaryId: row.facts.boundaryId, sourceSystem: row.facts.sourceSystem, inForce: true };
+  },
+});
 const freshKey = (id: string): SettlementKeyFacts => ({ ...FACTS, keyId: id });
 
 /**
@@ -97,7 +178,8 @@ describe.skipIf(!HAS_DB)("G2 · the register on a real database", () => {
     const facts = freshKey("k-live");
     await proposeSettlementKey(reg(), OPERATOR, { facts, evidence: COMPLETE, rationale: "ceremony done" });
     const t0 = await bornAt("k-live");
-    await activateSettlementKey(reg(), STEWARD, { keyId: "k-live", rationale: "reviewed", at: after(t0, 1000) });
+    await ensureVerifiedSender();
+    await activateSettlementKey(reg(), senders(), STEWARD, { keyId: "k-live", rationale: "reviewed", at: after(t0, 1000) });
 
     const row = await resolveForUse(reg(), "k-live");
     expect(row.facts).toEqual(facts);
@@ -113,7 +195,8 @@ describe.skipIf(!HAS_DB)("G2 · the register on a real database", () => {
   it("stores an UNKNOWN exposure as NULL and the pure core flags the whole lifetime", async () => {
     await proposeSettlementKey(reg(), OPERATOR, { facts: freshKey("k-unk"), evidence: COMPLETE, rationale: "r" });
     const t0 = await bornAt("k-unk");
-    await activateSettlementKey(reg(), STEWARD, { keyId: "k-unk", rationale: "r", at: after(t0, 1000) });
+    await ensureVerifiedSender();
+    await activateSettlementKey(reg(), senders(), STEWARD, { keyId: "k-unk", rationale: "r", at: after(t0, 1000) });
     await revokeSettlementKeyAsCompromised(reg(), STEWARD, {
       keyId: "k-unk", rationale: "suspected", exposureFrom: null, at: after(t0, 10_000),
     });
@@ -129,8 +212,9 @@ describe.skipIf(!HAS_DB)("G2 · the register on a real database", () => {
   it("round-trips a KNOWN exposure start", async () => {
     await proposeSettlementKey(reg(), OPERATOR, { facts: freshKey("k-known"), evidence: COMPLETE, rationale: "r" });
     const t0 = await bornAt("k-known");
+    await ensureVerifiedSender();
     const exposure = after(t0, 5000);
-    await activateSettlementKey(reg(), STEWARD, { keyId: "k-known", rationale: "r", at: after(t0, 1000) });
+    await activateSettlementKey(reg(), senders(), STEWARD, { keyId: "k-known", rationale: "r", at: after(t0, 1000) });
     await revokeSettlementKeyAsCompromised(reg(), STEWARD, {
       keyId: "k-known", rationale: "forensics", exposureFrom: exposure, at: after(t0, 10_000),
     });
@@ -182,7 +266,8 @@ describe.skipIf(!HAS_DB)("G2 · append-only by trigger, not by convention", () =
       `INSERT INTO "settlement_signing_key_events" ("event_id","key_id","transition","actor_id","actor_role","rationale")
        VALUES ('e-x','k-two','PROPOSED','a','operator','r')`,
     )).rejects.toThrow();
-    await activateSettlementKey(reg(), STEWARD, { keyId: "k-two", rationale: "r", at: after(await bornAt("k-two"), 1000) });
+    await ensureVerifiedSender();
+    await activateSettlementKey(reg(), senders(), STEWARD, { keyId: "k-two", rationale: "r", at: after(await bornAt("k-two"), 1000) });
     await expect(db.$executeRawUnsafe(
       `INSERT INTO "settlement_signing_key_events" ("event_id","key_id","transition","actor_id","actor_role","rationale")
        VALUES ('e-y','k-two','ACTIVATED','b','steward','r')`,
@@ -207,10 +292,10 @@ describe.skipIf(!HAS_DB)("G2 · the constraints restate the contract in the data
     return db.$executeRawUnsafe(
       `INSERT INTO "settlement_signing_keys"
          ("key_id","boundary_id","source_system","source_kind","public_key","valid_from","valid_until",
-          "key_witness","channel_independently_verified","institution_identity_verified",
+          "key_witness","channel_independently_verified",
           "key_control_demonstrated","ceremony_recorded","registered_by_actor_id","registered_by_role")
        VALUES (${v.key_id},${v.boundary_id},${v.source_system},${v.source_kind},${v.public_key},
-               ${v.valid_from},${v.valid_until},${v.key_witness},true,true,true,true,'a','operator')`,
+               ${v.valid_from},${v.valid_until},${v.key_witness},true,true,true,'a','operator')`,
     );
   };
 
@@ -256,8 +341,149 @@ describe.skipIf(!HAS_DB)("G2 · a key cannot be activated before it was proposed
   it("refuses an activation dated before the birth event", async () => {
     await proposeSettlementKey(reg(), OPERATOR, { facts: freshKey("k-early"), evidence: COMPLETE, rationale: "r" });
     const t0 = await bornAt("k-early");
-    await expect(activateSettlementKey(reg(), STEWARD, {
+    // THE SENDER IS AUTHORISED ON PURPOSE, so the refusal this asserts is the ordering one rather
+    // than the institution one. A test that passes for a reason other than the one it names cannot
+    // detect the removal of the mechanism it claims to prove.
+    await ensureVerifiedSender();
+    await expect(activateSettlementKey(reg(), senders(), STEWARD, {
       keyId: "k-early", rationale: "r", at: after(t0, -60_000),
     })).rejects.toThrow(/KEY_ILLEGAL_TRANSITION: ACTIVATED may not be applied from null/);
+  });
+});
+
+describe.skipIf(!HAS_DB)("B3 · the institution condition, through the REAL composition", () => {
+  // NO DOUBLE ANYWHERE IN THIS SUITE. The key register, the institution register and the production
+  // adapter, all on this database. Everything a `senderVerified()` double asserts elsewhere rests on
+  // what happens here.
+  it("refuses activation when NOTHING is registered for the sender", async () => {
+    // A sender with no institution at all, and declared conditions complete — which is exactly the
+    // state that activated a key before B3, on an operator's tick.
+    const facts = { ...freshKey("k-b3-none"), sourceSystem: "nobody-bank" };
+    await proposeSettlementKey(reg(), OPERATOR, { facts, evidence: COMPLETE, rationale: "r" });
+    const t0 = await bornAt("k-b3-none");
+    await expect(activateSettlementKey(reg(), senders(), STEWARD, {
+      keyId: "k-b3-none", rationale: "r", at: after(t0, 1000),
+    })).rejects.toThrow(/KEY_SENDER_NOT_AUTHORISED.*KEY_INSTITUTION_NOT_REGISTERED/s);
+    const row = (await reg().read("k-b3-none"))!;
+    expect(row.events.map((e) => e.transition)).toEqual(["PROPOSED"]);
+  });
+
+  it("refuses when the institution is registered but only PROPOSED — nobody verified it", async () => {
+    const sourceSystem = "proposed-only-bank";
+    const facts = { ...freshKey("k-b3-proposed"), sourceSystem };
+    await proposeSettlementKey(reg(), OPERATOR, { facts, evidence: COMPLETE, rationale: "r" });
+    await proposeInstitution(institutions(), GOV_A, {
+      facts: {
+        institutionId: `inst-${sourceSystem}`, boundaryId: "b-alpha", sourceSystem, sourceKind: "bank",
+        legalEntityName: "Synthetic Proposed Bank (NOT A REAL INSTITUTION)",
+        jurisdiction: "ZZ", registryIdentifier: "ZZ-SYNTHETIC-PROP",
+      },
+      rationale: "proposed, not yet verified",
+    });
+    const t0 = await bornAt("k-b3-proposed");
+    await expect(activateSettlementKey(reg(), senders(), STEWARD, {
+      keyId: "k-b3-proposed", rationale: "r", at: after(t0, 1000),
+    })).rejects.toThrow(/KEY_INSTITUTION_NOT_VERIFIED/);
+  });
+
+  it("permits activation once a SECOND governance identity has verified it", async () => {
+    // THE POSITIVE CONTROL FOR THE WHOLE SLICE, end to end with no double: propose the institution,
+    // verify it as a different identity, then put the key in force.
+    const sourceSystem = "verified-bank";
+    const facts = { ...freshKey("k-b3-ok"), sourceSystem };
+    await proposeSettlementKey(reg(), OPERATOR, { facts, evidence: COMPLETE, rationale: "r" });
+    await verifiedSender(sourceSystem, "k-b3-ok");
+    const t0 = await bornAt("k-b3-ok");
+    await activateSettlementKey(reg(), senders(), STEWARD, {
+      keyId: "k-b3-ok", rationale: "reviewed", at: after(t0, 1000),
+    });
+    const row = (await reg().read("k-b3-ok"))!;
+    expect(stateAt(row.events, after(t0, 60_000))).toEqual({ ok: true, state: "ACTIVE" });
+  });
+
+  it("a WITHDRAWN institution cannot put a further key in force", async () => {
+    const sourceSystem = "withdrawn-bank";
+    await proposeSettlementKey(reg(), OPERATOR, {
+      facts: { ...freshKey("k-b3-w1"), sourceSystem }, evidence: COMPLETE, rationale: "r",
+    });
+    const institutionId = await verifiedSender(sourceSystem, "k-b3-w1");
+    await withdrawInstitution(institutions(), GOV_B, {
+      institutionId, rationale: "relationship ended",
+    });
+    await proposeSettlementKey(reg(), OPERATOR, {
+      facts: { ...freshKey("k-b3-w2"), sourceSystem }, evidence: COMPLETE, rationale: "r",
+    });
+    const t0 = await bornAt("k-b3-w2");
+    await expect(activateSettlementKey(reg(), senders(), STEWARD, {
+      keyId: "k-b3-w2", rationale: "r", at: after(t0, 1000),
+    })).rejects.toThrow(/KEY_INSTITUTION_AUTHORITY_WITHDRAWN/);
+  });
+
+  it("an institution whose IDENTITY is doubted refuses under its OWN code, not the withdrawal's", async () => {
+    // THE TWO MUST STAY DISTINGUISHABLE. A withdrawal says we no longer rely on this institution; a
+    // doubted identity says we are not sure who we were talking to, which raises a question about
+    // everything it ever signed. One code for both would hide which happened.
+    const sourceSystem = "doubted-bank";
+    await proposeSettlementKey(reg(), OPERATOR, {
+      facts: { ...freshKey("k-b3-d1"), sourceSystem }, evidence: COMPLETE, rationale: "r",
+    });
+    const institutionId = await verifiedSender(sourceSystem, "k-b3-d1");
+    await revokeInstitutionIdentityDoubted(institutions(), GOV_B, {
+      institutionId, rationale: "the entity was impersonated",
+    });
+    await proposeSettlementKey(reg(), OPERATOR, {
+      facts: { ...freshKey("k-b3-d2"), sourceSystem }, evidence: COMPLETE, rationale: "r",
+    });
+    const t0 = await bornAt("k-b3-d2");
+    await expect(activateSettlementKey(reg(), senders(), STEWARD, {
+      keyId: "k-b3-d2", rationale: "r", at: after(t0, 1000),
+    })).rejects.toThrow(/KEY_INSTITUTION_IDENTITY_DOUBTED/);
+  });
+
+  it("an institution row that no longer matches its witness authorises NOTHING", async () => {
+    // Modelled by inserting the row the tamper would have produced, because the append-only trigger
+    // forbids an UPDATE — which is the guarantee. A restore or a migration could still produce one.
+    const sourceSystem = "tampered-bank";
+    await proposeSettlementKey(reg(), OPERATOR, {
+      facts: { ...freshKey("k-b3-t"), sourceSystem }, evidence: COMPLETE, rationale: "r",
+    });
+    await db.$executeRawUnsafe(
+      `INSERT INTO "governed_institutions"
+         ("institution_id","boundary_id","source_system","source_kind","legal_entity_name",
+          "jurisdiction","registry_identifier","institution_witness","proposed_by_actor_id",
+          "proposed_by_role","proposal_rationale")
+       VALUES ('inst-tampered','b-alpha',$1,'bank','Attacker Entity (SYNTHETIC)','ZZ','ZZ-9',$2,
+               'gov-a','steward','a restored row')`,
+      sourceSystem, `sha256:${"c".repeat(64)}`,
+    );
+    await db.$executeRawUnsafe(
+      `INSERT INTO "governed_institution_events"
+         ("event_id","institution_id","transition","actor_id","actor_role","rationale")
+       VALUES ('e-t-b','inst-tampered','PROPOSE','gov-a','steward','restored')`,
+    );
+    await db.$executeRawUnsafe(
+      `INSERT INTO "governed_institution_events"
+         ("event_id","institution_id","transition","actor_id","actor_role","rationale")
+       VALUES ('e-t-v','inst-tampered','VERIFY','gov-b','steward','restored')`,
+    );
+    const t0 = await bornAt("k-b3-t");
+    // IT READS AS VERIFIED AND IS STILL REFUSED, which is the point: "this row changed" outranks
+    // whatever state the row claims to be in.
+    await expect(activateSettlementKey(reg(), senders(), STEWARD, {
+      keyId: "k-b3-t", rationale: "r", at: after(t0, 1000),
+    })).rejects.toThrow(/KEY_INSTITUTION_RECORD_UNREADABLE/);
+  });
+
+  it("the retired column is GONE from the table, so no row can carry the old claim", async () => {
+    const cols = await db.$queryRawUnsafe<{ column_name: string }[]>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'settlement_signing_keys'`,
+    );
+    const names = cols.map((c) => c.column_name);
+    expect(names).not.toContain("institution_identity_verified");
+    // And the three DECLARED conditions are still there, each in its own column — never one flag.
+    expect(names).toContain("channel_independently_verified");
+    expect(names).toContain("key_control_demonstrated");
+    expect(names).toContain("ceremony_recorded");
   });
 });

@@ -15,6 +15,12 @@ import { splitSqlStatements } from "../persistence/obligationAttributionMigratio
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
 const UP = readFileSync(resolve(REPO, "scripts/migration-design/settlement-key-register-up.sql"), "utf8");
+// B3 · the activation route now joins both registers, so this database holds both. The
+// register-NOT-installed case gets its own database at the bottom of this file, because it is a real
+// deployment state and a test for it cannot share a schema with the happy path.
+const INSTITUTION_UP = readFileSync(
+  resolve(REPO, "scripts/migration-design/institution-register-up.sql"), "utf8",
+);
 
 const BASE = process.env.DATABASE_URL ?? "";
 const HAS_DB = BASE.length > 0;
@@ -42,7 +48,7 @@ const keyBody = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 const CEREMONY = {
-  channelIndependentlyVerified: true, institutionIdentityVerified: true,
+  channelIndependentlyVerified: true,
   keyControlDemonstrated: true, ceremonyRecorded: true,
 };
 
@@ -60,6 +66,36 @@ beforeAll(async () => {
        USING ERRCODE = 'restrict_violation'; END; $$ LANGUAGE plpgsql;`,
   );
   for (const statement of splitSqlStatements(UP)) await seeded.$executeRawUnsafe(statement);
+  for (const statement of splitSqlStatements(INSTITUTION_UP)) await seeded.$executeRawUnsafe(statement);
+
+  // B3 · AN ADMITTED, VERIFIED INSTITUTION FOR THIS SENDER, inserted directly because the institution
+  // routes do not exist — the register has no HTTP surface in this slice, by design. The rows are the
+  // ones the governance service would write, including the VERIFY event by a SECOND identity, which
+  // the table's own trigger would refuse if it were the same one.
+  await seeded.$executeRawUnsafe(
+    `INSERT INTO "governed_institutions"
+       ("institution_id","boundary_id","source_system","source_kind","legal_entity_name",
+        "jurisdiction","registry_identifier","institution_witness","proposed_by_actor_id",
+        "proposed_by_role","proposal_rationale")
+     VALUES ('inst-routes','b-routes','acme-bank','bank',
+             'Synthetic Routes Bank (NOT A REAL INSTITUTION)','ZZ','ZZ-SYNTHETIC-ROUTES',$1,
+             'gov-a','steward','registry lookup completed')`,
+    await institutionWitnessFor(),
+  );
+  await seeded.$executeRawUnsafe(
+    `INSERT INTO "governed_institution_events"
+       ("event_id","institution_id","transition","actor_id","actor_role","rationale")
+     VALUES ('e-r-propose','inst-routes','PROPOSE','gov-a','steward','proposed'),
+            ('e-r-verify','inst-routes','VERIFY','gov-b','steward','second-person verification')`,
+  );
+  await seeded.$executeRawUnsafe(
+    `INSERT INTO "governed_institution_verifications"
+       ("institution_id","verified_by_actor_id","verified_by_role","key_control_key_id",
+        "legal_entity_citation","regulatory_standing_citation","signatories_citation",
+        "channel_citation","fingerprint_citation","ceremony_citation")
+     SELECT 'inst-routes','gov-b','steward',$1,'a','b','c','d','e','f'`,
+    await seedControlKey(seeded),
+  );
   await seeded.$disconnect();
 
   // The shared client in `server/db` reads DATABASE_URL at import time, so it is pointed here BEFORE
@@ -253,15 +289,17 @@ describe.skipIf(!HAS_DB)("G2 routes · error handling", () => {
 
   it("refuses activating a key whose ceremony is incomplete, naming every unmet condition", async () => {
     const key = keyBody();
-    await propose(key, { ...CEREMONY, institutionIdentityVerified: false, ceremonyRecorded: false });
+    await propose(key, { ...CEREMONY, channelIndependentlyVerified: false, ceremonyRecorded: false });
     const res = await app.inject({
       method: "POST", url: "/settlement-keys/activate", headers: STEWARD,
       payload: { keyId: key.keyId, rationale: "r" },
     });
     expect(res.statusCode).toBe(403);
-    expect(res.body).toMatch(/KEY_INSTITUTION_NOT_VERIFIED/);
+    expect(res.body).toMatch(/KEY_CHANNEL_NOT_AUTHORITATIVE/);
     expect(res.body).toMatch(/KEY_CEREMONY_RECORD_MISSING/);
     expect(res.body).toMatch(/proves nothing about who holds it/);
+    // B3 · and the institution is NOT among the conditions this refusal can name any more.
+    expect(res.body).not.toMatch(/KEY_INSTITUTION_NOT_VERIFIED/);
   });
 
   it("refuses a second activation", async () => {
@@ -273,6 +311,55 @@ describe.skipIf(!HAS_DB)("G2 routes · error handling", () => {
       payload: { keyId: key.keyId, rationale: "r" } });
     expect(twice.statusCode).toBe(403);
     expect(twice.body).toMatch(/KEY_ILLEGAL_TRANSITION/);
+  });
+
+  it("B3 · a propose carrying the RETIRED institution boolean is a 400, not a silent strip", async () => {
+    // THE TIGHTENING, MEASURED AT THE WIRE. A caller who sends it believes they have stated that the
+    // institution is verified. A strip would leave them believing it while NH ignored it, which is
+    // worse than a refusal — the same reason EP-26b refuses an injected `policy` object and G10
+    // refuses an injected `declaredVersion`.
+    const key = keyBody();
+    const res = await app.inject({
+      method: "POST", url: "/settlement-keys", headers: OPERATOR,
+      payload: {
+        key,
+        evidence: { ...CEREMONY, institutionIdentityVerified: true },
+        rationale: "ceremony complete",
+      },
+    });
+    expect(res.statusCode, res.body.slice(0, 300)).toBe(400);
+    // AND NO KEY WAS CREATED. A 400 that still wrote the row would be the worst of both.
+    const activated = await app.inject({
+      method: "POST", url: "/settlement-keys/activate", headers: STEWARD,
+      payload: { keyId: key.keyId, rationale: "r" },
+    });
+    expect(activated.statusCode).toBe(404);
+  });
+
+  it("B3 · NO input that previously refused now passes — the change is strictly tightening", async () => {
+    // THE COMPATIBILITY QUESTION, ANSWERED BY CASES RATHER THAN BY ASSERTION.
+    //
+    //   `institutionIdentityVerified: true`  — used to pass propose, now a 400.
+    //   `institutionIdentityVerified: false` — used to pass propose and refuse activation, now a 400.
+    //   field omitted                        — used to be a 400 (required), now 201, and the refusal
+    //                                          has MOVED to activation where it is derived.
+    //
+    // The third is the only direction of loosening and it is at the propose step only, which creates
+    // no key in force: activation is where a key becomes usable, and that is strictly stronger.
+    for (const value of [true, false]) {
+      const res = await app.inject({
+        method: "POST", url: "/settlement-keys", headers: OPERATOR,
+        payload: {
+          key: keyBody(), evidence: { ...CEREMONY, institutionIdentityVerified: value },
+          rationale: "r",
+        },
+      });
+      expect(res.statusCode, `institutionIdentityVerified: ${value}`).toBe(400);
+    }
+    // Omitted: propose succeeds, and the key is NOT in force until the sender is verified — which the
+    // happy path above proves requires an admitted institution.
+    const ok = await propose(keyBody());
+    expect(ok.statusCode).toBe(201);
   });
 
   it("never echoes the public key or the rationale back in a refusal", async () => {
@@ -381,5 +468,123 @@ describe.skipIf(!HAS_DB)("G6 routes · the compromise report", () => {
     });
     expect(body.report.findings.map((f: { claimRef: string }) => f.claimRef))
       .toEqual(["claim-before", "claim-inside"]);
+  });
+});
+
+/**
+ * The witness the governance service would compute for the routes' institution.
+ *
+ * COMPUTED BY THE REAL HASH FUNCTION, never written as a literal: a hardcoded witness would pass the
+ * table's shape constraint and fail the adapter's `resolveForUse` check, so the fixture would be
+ * testing the tamper path while claiming to test the happy one.
+ */
+async function institutionWitnessFor(): Promise<string> {
+  const { hashInstitution } = await import("../../src/contract/institutionIdentity");
+  return hashInstitution({
+    institutionId: "inst-routes", boundaryId: "b-routes", sourceSystem: "acme-bank",
+    sourceKind: "bank", legalEntityName: "Synthetic Routes Bank (NOT A REAL INSTITUTION)",
+    jurisdiction: "ZZ", registryIdentifier: "ZZ-SYNTHETIC-ROUTES",
+  });
+}
+
+/** A registered key for the institution's own key-control condition, which the FK requires. */
+async function seedControlKey(client: PrismaClient): Promise<string> {
+  const keyId = "k-routes-control-witness";
+  await client.$executeRawUnsafe(
+    `INSERT INTO "settlement_signing_keys"
+       ("key_id","boundary_id","source_system","source_kind","public_key","valid_from","valid_until",
+        "key_witness","channel_independently_verified","key_control_demonstrated","ceremony_recorded",
+        "registered_by_actor_id","registered_by_role")
+     VALUES ($1,'b-routes','acme-bank','bank','PUBKEY','2026-01-01'::timestamp,
+             '2027-01-01'::timestamp,$2,true,true,true,'gov-a','steward')`,
+    keyId, `sha256:${"a".repeat(64)}`,
+  );
+  return keyId;
+}
+
+// ── B3 · the deployment that has the key register and NOT the institution register ──────────────
+//
+// A REAL AND REACHABLE STATE, not a contrivance: the two schemas are separate design scripts and
+// neither is in `prisma/migrations/`, so a deployment can hold one without the other. Before B3 this
+// produced an internal error from a missing relation; a gate that 500s is not failing closed, it is
+// failing confusingly.
+//
+// TESTED AT THE ADAPTER, NOT THROUGH A SECOND APP, AND MY FIRST ATTEMPT IS WHY. I built a second
+// database without the institution tables and re-imported `../app` with a cache-busting query string,
+// expecting a fresh module registry and therefore a fresh shared client. Vitest gave me the module
+// that was already loaded, so the "second" app spoke to the FIRST database — which has the institution
+// register and a verified institution — and the activation returned 200. The test did not detect a
+// missing refusal; it tested the wrong database and said so by passing the happy path.
+//
+// So this exercises the REAL adapter over the REAL register against a database that genuinely lacks
+// the tables. The route's 403 does not need re-proving: every other refusal in this file already shows
+// that `KEY_SENDER_NOT_AUTHORISED` surfaces as 403, and the verdict below is what produces it.
+describe.skipIf(!HAS_DB)("B3 · the institution register is NOT installed", () => {
+  const OTHER_DB = `${DB_NAME}_noinst`;
+  let client: PrismaClient;
+
+  beforeAll(async () => {
+    await admin.$executeRawUnsafe(`CREATE DATABASE "${OTHER_DB}"`);
+    client = new PrismaClient({ datasources: { db: { url: urlFor(OTHER_DB) } } });
+    await client.$executeRawUnsafe(
+      `CREATE OR REPLACE FUNCTION nh_reject_mutation() RETURNS trigger AS $$
+       BEGIN RAISE EXCEPTION 'append-only'; END; $$ LANGUAGE plpgsql;`,
+    );
+    // THE KEY REGISTER ONLY. No institution tables at all.
+    for (const statement of splitSqlStatements(UP)) await client.$executeRawUnsafe(statement);
+  }, 90_000);
+
+  afterAll(async () => {
+    await client?.$disconnect();
+    await admin?.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${OTHER_DB}" WITH (FORCE)`);
+  }, 90_000);
+
+  it("the tables really are absent, so this test is about what it claims", async () => {
+    // THE PREMISE, ASSERTED FIRST. The failure above came from a test whose premise was false and
+    // which passed anyway.
+    const tables = await client.$queryRawUnsafe<{ table_name: string }[]>(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name LIKE 'governed_institution%'`,
+    );
+    expect(tables).toEqual([]);
+    const keys = await client.$queryRawUnsafe<{ table_name: string }[]>(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'settlement_signing_keys'`,
+    );
+    expect(keys).toHaveLength(1);
+  });
+
+  it("yields a NAMED refusal rather than throwing a missing-relation error", async () => {
+    const { institutionSenderAuthority } = await import("./institutionSenderAuthority");
+    const { postgresInstitutionRegister } = await import("../persistence/institutionStore");
+    const verdict = await institutionSenderAuthority(postgresInstitutionRegister(client))
+      .senderAuthority({ boundaryId: "b-routes", sourceSystem: "acme-bank", at: new Date().toISOString() });
+
+    expect(verdict.authorised).toBe(false);
+    if (verdict.authorised) throw new Error("unreachable");
+    expect(verdict.code).toBe("KEY_INSTITUTION_REGISTER_UNAVAILABLE");
+    expect(verdict.detail).toMatch(/not installed in this deployment/);
+    // NOTHING INSTALLED AND NOTHING REGISTERED ARE DIFFERENT POSITIONS with different remedies, and
+    // collapsing them would hide which half is missing.
+    expect(verdict.code).not.toBe("KEY_INSTITUTION_NOT_REGISTERED");
+  });
+
+  it("a genuine outage is RE-THROWN, never filed as this tidy state", async () => {
+    // THE OTHER HALF, AND THE ONE THAT KEEPS THE CLASSIFICATION HONEST. A catch that returned a
+    // refusal for every failure would report an answer nobody computed. Driven by a register whose
+    // read fails for an unrelated reason.
+    const { institutionSenderAuthority } = await import("./institutionSenderAuthority");
+    const broken = {
+      async read() { throw new Error("unreachable"); },
+      async findBySender() { throw new Error("connection terminated unexpectedly"); },
+      async insertInstitution() { throw new Error("unreachable"); },
+      async appendEvent() { throw new Error("unreachable"); },
+      async recordVerification() { throw new Error("unreachable"); },
+    };
+    await expect(
+      institutionSenderAuthority(broken).senderAuthority({
+        boundaryId: "b", sourceSystem: "s", at: new Date().toISOString(),
+      }),
+    ).rejects.toThrow(/connection terminated unexpectedly/);
   });
 });

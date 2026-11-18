@@ -4,7 +4,7 @@ import {
   SETTLEMENT_KEY_STATES,
   SETTLEMENT_KEY_TRANSITIONS,
   compromiseAssessment,
-  keyMayBeActivated,
+  keyDeclaredConditionsComplete,
   keyRegistrationRefusals,
   stateAt,
   validAt,
@@ -242,40 +242,54 @@ describe("G1 · retroactive compromise · unknown is NOT the revocation date", (
 describe("G1 · K5 · control of a key is not the identity of its holder", () => {
   const ALL: KeyRegistrationEvidence = Object.freeze({
     channelIndependentlyVerified: true,
-    institutionIdentityVerified: true,
     keyControlDemonstrated: true,
     ceremonyRecorded: true,
   });
 
-  it("is the positive control: all four conditions permit activation", () => {
+  it("is the positive control: every DECLARED condition is complete", () => {
     expect(keyRegistrationRefusals(ALL)).toEqual([]);
-    expect(keyMayBeActivated(ALL)).toBe(true);
+    expect(keyDeclaredConditionsComplete(ALL)).toBe(true);
   });
 
-  // THE OWNER'S CORRECTION, MADE STRUCTURAL. Anyone can generate a keypair and answer a nonce
-  // challenge perfectly, so control may NEVER stand in for identity.
-  it("refuses a key whose control is proved but whose INSTITUTION is not verified", () => {
-    const controlOnly: KeyRegistrationEvidence = { ...ALL, institutionIdentityVerified: false };
-    expect(keyMayBeActivated(controlOnly)).toBe(false);
-    expect(keyRegistrationRefusals(controlOnly)).toEqual(["KEY_INSTITUTION_NOT_VERIFIED"]);
+  // B3 · THE SHARPEST ASSERTION IN THIS FILE, AND IT IS NOW ABOUT WHAT THIS FUNCTION DOES NOT ANSWER.
+  //
+  // It used to read: all four declared conditions true ⇒ `keyMayBeActivated` is `true`. That sentence
+  // was the defect in miniature — the institution's identity was one of the four booleans, so a
+  // complete-looking tick list was the whole gate. The identity condition has left this type; what
+  // these three establish is that the OPERATOR-DECLARED half is complete, and an activation needs the
+  // institution register as well. A caller treating this as the whole answer would put a key in force
+  // for a sender nobody has verified.
+  it("complete DECLARED conditions do NOT mean a key may be activated", () => {
+    expect(keyDeclaredConditionsComplete(ALL)).toBe(true);
+    // Asserted on the union itself: there is no longer any institution refusal this function can
+    // return, so no amount of reading it answers the institution question.
+    expect(keyRegistrationRefusals(ALL).join(" ")).not.toMatch(/INSTITUTION/);
+    const everyPossible: readonly string[] = [
+      "KEY_CHANNEL_NOT_AUTHORITATIVE", "KEY_OWNERSHIP_NOT_DEMONSTRATED", "KEY_CEREMONY_RECORD_MISSING",
+    ];
+    const none: KeyRegistrationEvidence = {
+      channelIndependentlyVerified: false, keyControlDemonstrated: false, ceremonyRecorded: false,
+    };
+    expect([...keyRegistrationRefusals(none)]).toEqual(everyPossible);
   });
 
-  it("refuses challenge-response ALONE, with all three other conditions absent", () => {
+  // THE OWNER'S CORRECTION, STILL STRUCTURAL. Anyone can generate a keypair and answer a nonce
+  // challenge perfectly, so control may NEVER stand in for identity — and that is now enforced by the
+  // identity living in a different governed object entirely rather than beside it as a peer boolean.
+  it("refuses challenge-response ALONE, with the other declared conditions absent", () => {
     const alone: KeyRegistrationEvidence = {
       channelIndependentlyVerified: false,
-      institutionIdentityVerified: false,
       keyControlDemonstrated: true,
       ceremonyRecorded: false,
     };
-    expect(keyMayBeActivated(alone)).toBe(false);
+    expect(keyDeclaredConditionsComplete(alone)).toBe(false);
     expect(keyRegistrationRefusals(alone)).toEqual([
-      "KEY_CHANNEL_NOT_AUTHORITATIVE", "KEY_INSTITUTION_NOT_VERIFIED", "KEY_CEREMONY_RECORD_MISSING",
+      "KEY_CHANNEL_NOT_AUTHORITATIVE", "KEY_CEREMONY_RECORD_MISSING",
     ]);
   });
 
   it.each([
     ["channelIndependentlyVerified", "KEY_CHANNEL_NOT_AUTHORITATIVE"],
-    ["institutionIdentityVerified", "KEY_INSTITUTION_NOT_VERIFIED"],
     ["keyControlDemonstrated", "KEY_OWNERSHIP_NOT_DEMONSTRATED"],
     ["ceremonyRecorded", "KEY_CEREMONY_RECORD_MISSING"],
   ])("refuses when %s is missing, each by its own code", (field, code) => {
@@ -283,13 +297,45 @@ describe("G1 · K5 · control of a key is not the identity of its holder", () =>
     expect(keyRegistrationRefusals(one)).toEqual([code]);
   });
 
-  // ALL FOUR, NEVER A SUBSET: a registration blocked on two grounds must say so, or closing one would
-  // look like closing both.
+  // EVERY DECLARED FIELD IS COVERED, DERIVED FROM THE TYPE rather than counted by hand, so a fourth
+  // declared condition added to `KeyRegistrationEvidence` and forgotten above fails here.
+  it("the per-field cases cover every field of the evidence type", () => {
+    expect(Object.keys(ALL).sort()).toEqual([
+      "ceremonyRecorded", "channelIndependentlyVerified", "keyControlDemonstrated",
+    ]);
+  });
+
+  // ALL OF THEM, NEVER A SUBSET: a registration blocked on two grounds must say so, or closing one
+  // would look like closing both.
   it("reports every unmet condition rather than only the first", () => {
     const none: KeyRegistrationEvidence = {
-      channelIndependentlyVerified: false, institutionIdentityVerified: false,
+      channelIndependentlyVerified: false,
       keyControlDemonstrated: false, ceremonyRecorded: false,
     };
-    expect(keyRegistrationRefusals(none)).toHaveLength(4);
+    expect(keyRegistrationRefusals(none)).toHaveLength(3);
+  });
+
+  // B3 · THE RETIRED FIELD IS GONE FROM THE TYPE AND FROM THE REFUSAL UNION, asserted on the source
+  // rather than inferred from a passing compile — a reader of this suite should be able to see that
+  // the boolean is not merely unused but absent, and that no code in the union names it.
+  it("neither the evidence type nor the refusal union mentions the retired boolean", () => {
+    const src = readLifecycleSource();
+    const typeBlock = src.slice(
+      src.indexOf("export interface KeyRegistrationEvidence {"),
+      src.indexOf("export type KeyRegistrationRefusal ="),
+    );
+    expect(typeBlock).not.toMatch(/readonly institutionIdentityVerified/);
+    const unionBlock = src.slice(
+      src.indexOf("export type KeyRegistrationRefusal ="),
+      src.indexOf("export function keyRegistrationRefusals"),
+    );
+    expect(unionBlock).not.toMatch(/KEY_INSTITUTION_NOT_VERIFIED/);
   });
 });
+
+function readLifecycleSource(): string {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const { resolve } = require("node:path") as typeof import("node:path");
+  return readFileSync(resolve(__dirname, "settlementKeyLifecycle.ts"), "utf8");
+}

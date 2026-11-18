@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { postgresInstitutionRegister } from "./institutionStore";
+import { institutionSenderAuthority } from "../services/institutionSenderAuthority";
 import { splitSqlStatements } from "./obligationAttributionMigration.postgres.test";
 import {
   DECLARED_CONDITIONS,
@@ -114,10 +115,10 @@ beforeAll(async () => {
   await db.$executeRawUnsafe(
     `INSERT INTO "settlement_signing_keys"
        ("key_id","boundary_id","source_system","source_kind","public_key","valid_from","valid_until",
-        "key_witness","channel_independently_verified","institution_identity_verified",
+        "key_witness","channel_independently_verified",
         "key_control_demonstrated","ceremony_recorded","registered_by_actor_id","registered_by_role")
      VALUES ($1,$2,$3,'bank','PUBKEY','2026-01-01'::timestamp,'2027-01-01'::timestamp,
-             $4,true,true,true,true,'gov-alice','steward')`,
+             $4,true,true,true,'gov-alice','steward')`,
     KEY_ID, BOUNDARY, FACTS.sourceSystem, `sha256:${"a".repeat(64)}`,
   );
 }, 90_000);
@@ -130,6 +131,8 @@ afterAll(async () => {
 }, 60_000);
 
 const reg = () => postgresInstitutionRegister(db);
+/** The same register, named for the adapter's call sites so the two reads are visibly one store. */
+const reg2 = () => postgresInstitutionRegister(db);
 const fresh = (id: string): InstitutionFacts => ({ ...FACTS, institutionId: id, sourceSystem: `src-${id}` });
 
 const bornAt = async (id: string): Promise<string> => (await reg().read(id))!.events[0]!.at;
@@ -505,6 +508,79 @@ describe.skipIf(!HAS_DB)("governance can still stop what it has found", () => {
         institutionId: "inst-tampered", rationale: "witness mismatch found", at: after(t0, 3000),
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe.skipIf(!HAS_DB)("B3 · an institution whose governance LOG is unusable authorises nothing", () => {
+  // THE GAP A MUTATION FOUND. Nothing exercised the adapter's `!derived.ok` branch, so replacing it
+  // with `if (false)` left 167 tests green: the verdict still refused, but with an undefined code and
+  // a meaningless message. *A refusal that cannot say why is a refusal nobody can act on.*
+  //
+  // AND "UNREADABLE" IS NOT A STATE OF THE INSTITUTION. Reporting an unusable log as "not verified"
+  // would say somebody looked at the lifecycle and found it incomplete, when in fact the lifecycle
+  // cannot be read at all — two different things to go and fix.
+  it("a log whose first event is not a birth yields RECORD_UNREADABLE, not a state", async () => {
+    const facts = fresh("inst-nolog");
+    // Written directly, because the governance service cannot produce this: it always writes PROPOSE
+    // first. A restore, a partial migration or a bug could. The `one_birth` index does not require a
+    // PROPOSE to exist, only that there is at most one.
+    await db.$executeRawUnsafe(
+      `INSERT INTO "governed_institutions"
+         ("institution_id","boundary_id","source_system","source_kind","legal_entity_name",
+          "jurisdiction","registry_identifier","institution_witness","proposed_by_actor_id",
+          "proposed_by_role","proposal_rationale")
+       VALUES ($1,$2,$3,'bank',$4,$5,$6,$7,'gov-alice','steward','restored without its birth')`,
+      facts.institutionId, facts.boundaryId, facts.sourceSystem, facts.legalEntityName,
+      facts.jurisdiction, facts.registryIdentifier, await hashInstitution(facts),
+    );
+    await db.$executeRawUnsafe(
+      `INSERT INTO "governed_institution_events"
+         ("event_id","institution_id","transition","actor_id","actor_role","rationale")
+       VALUES ('e-nolog','inst-nolog','WITHDRAW','gov-bob','steward','no birth precedes this')`,
+    );
+
+    const verdict = await institutionSenderAuthority(reg2()).senderAuthority({
+      boundaryId: facts.boundaryId, sourceSystem: facts.sourceSystem,
+      at: new Date().toISOString(),
+    });
+    expect(verdict.authorised).toBe(false);
+    if (verdict.authorised) throw new Error("unreachable");
+    expect(verdict.code).toBe("KEY_INSTITUTION_RECORD_UNREADABLE");
+    // THE CODE IS DEFINED AND THE DETAIL NAMES THE PROBLEM — which is what the surviving mutation
+    // destroyed while still refusing.
+    expect(verdict.detail).toMatch(/unusable governance log/);
+    expect(verdict.detail).toMatch(/inst-nolog/);
+    // And it is not reported as any of the four institution STATES.
+    expect(verdict.code).not.toBe("KEY_INSTITUTION_NOT_VERIFIED");
+    expect(verdict.code).not.toBe("KEY_INSTITUTION_AUTHORITY_WITHDRAWN");
+  });
+
+  it("the witness is checked BEFORE the log, so a changed row reports the change", async () => {
+    // ORDER INSIDE THE ADAPTER: *"this row changed" outranks anything the row claims to be.* A row
+    // that is BOTH tampered and missing its birth must report the tamper.
+    const facts = fresh("inst-both");
+    await db.$executeRawUnsafe(
+      `INSERT INTO "governed_institutions"
+         ("institution_id","boundary_id","source_system","source_kind","legal_entity_name",
+          "jurisdiction","registry_identifier","institution_witness","proposed_by_actor_id",
+          "proposed_by_role","proposal_rationale")
+       VALUES ($1,$2,$3,'bank',$4,$5,$6,$7,'gov-alice','steward','tampered and birthless')`,
+      facts.institutionId, facts.boundaryId, facts.sourceSystem, facts.legalEntityName,
+      facts.jurisdiction, facts.registryIdentifier, `sha256:${"d".repeat(64)}`,
+    );
+    await db.$executeRawUnsafe(
+      `INSERT INTO "governed_institution_events"
+         ("event_id","institution_id","transition","actor_id","actor_role","rationale")
+       VALUES ('e-both','inst-both','WITHDRAW','gov-bob','steward','no birth precedes this')`,
+    );
+    const verdict = await institutionSenderAuthority(reg2()).senderAuthority({
+      boundaryId: facts.boundaryId, sourceSystem: facts.sourceSystem,
+      at: new Date().toISOString(),
+    });
+    if (verdict.authorised) throw new Error("unreachable");
+    expect(verdict.code).toBe("KEY_INSTITUTION_RECORD_UNREADABLE");
+    expect(verdict.detail).toMatch(/no longer hashes to its stored witness/);
+    expect(verdict.detail).not.toMatch(/unusable governance log/);
   });
 });
 

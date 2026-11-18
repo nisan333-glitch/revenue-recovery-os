@@ -6,23 +6,44 @@
 // pilot-intake package already follows, for the reason it was introduced: a hand-authored list drifts
 // from the code silently, and whoever is doing the ceremony discovers it afterwards.
 //
-// THE ONE THING THIS FILE MUST NOT DO IS FLATTER THE CEREMONY. `KeyRegistrationEvidence` is four
-// booleans, and `keyMayBeActivated` refuses until all four are true — but every one of them ARRIVES
-// FROM THE NH OPERATOR, and the server validates only that it is `true`. Under the Trust Invariant's
-// standing test that is a gate whose input is supplied by the side that benefits from passing it. So
-// each item below carries what NH can ACTUALLY do with it, and three of the four conditions are
-// `UNCORROBORATED_CLAIM` by construction. Denying all three leaves the register's integrity standing;
-// what it does not leave standing is the sentence "the institution is verified".
+// THE ONE THING THIS FILE MUST NOT DO IS FLATTER THE CEREMONY. `KeyRegistrationEvidence` is now THREE
+// booleans and `keyDeclaredConditionsComplete` refuses until all three are true — but every one of
+// them ARRIVES FROM THE NH OPERATOR, and the server validates only that it is `true`. Under the Trust
+// Invariant's standing test that is a gate whose input is supplied by the side that benefits from
+// passing it. So each item below carries what NH can ACTUALLY do with it, and most are
+// `UNCORROBORATED_CLAIM` by construction. Denying them leaves the register's integrity standing; what
+// it does not leave standing is the sentence "the institution is verified".
+//
+// B3 · AND THAT SENTENCE IS NO LONGER A BOOLEAN AT ALL. The institution's identity left
+// `KeyRegistrationEvidence` on 2026-11-18 and is derived from the governed institution register, where
+// K5-E3 and K5-E4 are cited conditions a second governance identity must verify. The items did not
+// change; what refuses when they are missing did.
 //
 // NO IMPORTS BUT THE TYPES IT CLASSIFIES. The catalogue is a statement about the lifecycle's own
 // conditions, so it is tied to them by the compiler rather than by a naming convention.
 import type { KeyRegistrationEvidence } from "./settlementKeyLifecycle";
+import type { InstitutionAuthorityCondition } from "./institutionAuthority";
 
 /** Version of this catalogue. A change in what the ceremony demands is a NEW id, never a silent edit. */
-export const K5_EVIDENCE_CATALOGUE_VERSION = "k5-evidence-2026.1";
+export const K5_EVIDENCE_CATALOGUE_VERSION = "k5-evidence-2026.2";
 
-/** Which of the four governed conditions an item supports. Keyed to the type, not to a string. */
-export type K5Condition = keyof KeyRegistrationEvidence;
+/**
+ * Which governed condition an item supports. Keyed to the TYPES, never to a string.
+ *
+ * ── B3 · THE CEREMONY NOW SPANS TWO GOVERNED OBJECTS, 2026-11-18 ─────────────────────────────────
+ *
+ * It used to be `keyof KeyRegistrationEvidence` alone, which was accurate while all four conditions
+ * were booleans on a key-registration request. The institution's identity left that type: it is now
+ * derived from the governed institution register, where it is six separately cited conditions plus two
+ * the server establishes itself.
+ *
+ * SO THIS UNION IS THE HONEST SHAPE, and widening it rather than re-pointing everything at one object
+ * is deliberate: K5-E1 and K5-E2 really are facts a KEY registration declares, while K5-E3 and K5-E4
+ * really are facts an INSTITUTION's admission establishes. Collapsing them would lose which governed
+ * object refuses when an item is missing — and that is the only half of the answer that says where to
+ * go and look.
+ */
+export type K5Condition = keyof KeyRegistrationEvidence | InstitutionAuthorityCondition;
 
 /**
  * What NH can do with the item once it is in hand.
@@ -90,7 +111,11 @@ export const K5_EVIDENCE_ITEMS: readonly K5EvidenceItem[] = Object.freeze([
   // ── C2 · the institution's identity ─────────────────────────────────────────────────────────
   Object.freeze({
     id: "K5-E3",
-    supports: "institutionIdentityVerified" as const,
+    // B3 · re-pointed from the key's retired boolean to the institution register's own condition. The
+    // artefact did not change: a registry or regulator entry is exactly what
+    // `legalEntityVerifiedIndependently` is cited for, and the register now REQUIRES a non-blank
+    // citation for it rather than accepting a tick.
+    supports: "legalEntityVerifiedIndependently" as const,
     artefact:
       "The legal entity's identity from an authority that is NOT a party to this exchange: company " +
       "registration number and legal name from the companies registry, or the licence entry from the " +
@@ -106,7 +131,10 @@ export const K5_EVIDENCE_ITEMS: readonly K5EvidenceItem[] = Object.freeze([
   }),
   Object.freeze({
     id: "K5-E4",
-    supports: "institutionIdentityVerified" as const,
+    // B3 · the sender being an agent of a real entity is `authorisedSignatoriesEstablished`, which is
+    // a separate condition in the register — so "the entity is real" and "this sender speaks for it"
+    // can no longer be satisfied by one boolean, which is what K5-E4's own `why` always said.
+    supports: "authorisedSignatoriesEstablished" as const,
     artefact:
       "Confirmation that the individual or system supplying the key is authorised by the institution to " +
       "do so, obtained through the channel from K5-E1 and NOT through the sender's own reply path.",
@@ -133,11 +161,17 @@ export const K5_EVIDENCE_ITEMS: readonly K5EvidenceItem[] = Object.freeze([
       "proves the responder holds the private half of the key about to be registered.",
     doesNotEstablish:
       "WHO holds it. This item may never substitute for K5-E3 or K5-E4, which is why the lifecycle " +
-      "declares `keyControlDemonstrated` as a field separate from `institutionIdentityVerified`.",
+      "declares `keyControlDemonstrated` separately, and why the institution's identity is now a " +
+      "governed register entry rather than a boolean on the same request.",
   }),
   Object.freeze({
     id: "K5-E6",
-    supports: "keyControlDemonstrated" as const,
+    // B3 · re-pointed. The artefact is unchanged and was always the fingerprint confirmation; the
+    // institution register names that condition explicitly, so filing it under key CONTROL was the
+    // old type's limitation rather than a judgement. K5-E5 is now the only key-control item, which is
+    // exactly right: the challenge-response is the control, and the fingerprint is what stops a
+    // substituted key answering it.
+    supports: "keyFingerprintConfirmedOutOfBand" as const,
     artefact:
       "The public key's fingerprint, read back to the institution through the K5-E1 channel and " +
       "confirmed there, so the value NH registers is the value the institution meant to publish.",
@@ -169,16 +203,52 @@ export const K5_EVIDENCE_ITEMS: readonly K5EvidenceItem[] = Object.freeze([
   }),
   Object.freeze({
     id: "K5-E8",
-    supports: "ceremonyRecorded" as const,
+    // B3 · re-pointed AND UPGRADED, and the upgrade is the one thing in this file that must not be
+    // taken on trust, because `WELL_FORMED` → `CORROBORATED` is exactly the quiet flattery the
+    // catalogue exists to prevent. It is justified because the proposition became MECHANICAL: the
+    // institution register's verification table has NO COLUMN for a second person, and a
+    // `BEFORE INSERT` trigger reads the institution's own stored `proposed_by_actor_id` and raises
+    // `INSTITUTION_PROPOSER_MAY_NOT_VERIFY`. So NH does not check that a record of two identities is
+    // complete — it derives the fact from an append-only ledger and the database refuses the
+    // alternative. A test asserts the trigger exists, so this label rests on a mechanism rather than
+    // on this comment.
+    supports: "secondPersonApproval" as const,
     artefact:
-      "A documented approval by a second authorised NH identity, distinct from whoever performed " +
-      "K5-E1 to K5-E6, recorded before activation.",
-    issuedBy: "the second NH identity (the activator)",
-    checkability: "WELL_FORMED",
+      "The institution register's own event ledger: a PROPOSE event by one governance identity and a " +
+      "VERIFY event by a different one, with the verification row the database only accepts when the " +
+      "two differ. Nobody submits this item — NH derives it.",
+    issuedBy: "NH's own append-only governance ledger",
+    checkability: "CORROBORATED",
     why:
-      "No beneficiary may be the sole author, approver or verifier of their own claim. The register " +
-      "refuses a proposer who tries to activate, so this item is what that refusal is protecting.",
-    doesNotEstablish: "independence of judgement — only that two identities were involved.",
+      "No beneficiary may be the sole author, approver or verifier of their own claim. Until B3 this " +
+      "was a record NH checked for completeness; it is now a fact the database will not let be false, " +
+      "which is the difference between a control and an account of one.",
+    doesNotEstablish:
+      "independence of JUDGEMENT — only that two distinct identities acted. Two colleagues who agree " +
+      "without looking satisfy it, which is why the six cited conditions exist alongside it.",
+  }),
+
+  // ── C2c · the regulator's own register ──────────────────────────────────────────────────────
+  Object.freeze({
+    id: "K5-E9",
+    // B3 · NEW. The institution register governs `regulatoryStandingVerified` as a condition in its
+    // own right, and it had no evidence item — a governed condition with nothing to collect is an
+    // unaskable gate, which is precisely what the coverage test refuses.
+    supports: "regulatoryStandingVerified" as const,
+    artefact:
+      "The entity's entry in the register of the authority that supervises it — a licence or " +
+      "authorisation number, the permissions it covers, and its current status, read from the " +
+      "regulator's own published register rather than from anything the institution sent us.",
+    issuedBy: "the financial regulator that supervises the entity",
+    checkability: "UNCORROBORATED_CLAIM",
+    why:
+      "A real legal entity is not necessarily one permitted to hold client money or settle payments, " +
+      "and K5-E3 establishes only that the company exists. A registry extract and a licence entry are " +
+      "different facts from different authorities, and conflating them would let a dissolved or " +
+      "unlicensed entity pass on the strength of having once been incorporated.",
+    doesNotEstablish:
+      "that the licence covers THIS arrangement, or that it is still in force on any later date — a " +
+      "standing check is a snapshot, and the register records when it was taken.",
   }),
 ]);
 
@@ -186,9 +256,15 @@ export const K5_EVIDENCE_ITEMS: readonly K5EvidenceItem[] = Object.freeze([
  * Which conditions have at least one item NH can verify MECHANICALLY.
  *
  * Returned as a derivation rather than a constant, so it can never disagree with the catalogue. It
- * exists to make the central K5 finding checkable rather than rhetorical: **three of the four governed
- * conditions have no corroborated evidence at all**, so four green booleans are four RECORDED CLAIMS
- * and exactly one measurement.
+ * exists to make the central K5 finding checkable rather than rhetorical: **most governed conditions
+ * have no corroborated evidence at all**, so a complete tick list is a set of RECORDED CLAIMS and a
+ * small number of measurements.
+ *
+ * B3 MOVED THIS COUNT, WHICH IS THE POINT RATHER THAN A SIDE EFFECT. It was 1 of 4 when the
+ * institution's identity was a boolean an operator ticked. It is now 2 of 8: the challenge-response,
+ * and the second governance identity — the latter because the institution register's verification
+ * table has no column for it and a database trigger refuses a row where the verifier is the proposer.
+ * The remaining six are still claims NH records and cannot check, and that is the honest shape.
  */
 export function k5MechanicallyVerifiableConditions(): readonly K5Condition[] {
   const verifiable = new Set<K5Condition>();
@@ -208,11 +284,14 @@ export function k5MechanicallyVerifiableConditions(): readonly K5Condition[] {
 export function k5HonestStatement(): string {
   const verifiable = k5MechanicallyVerifiableConditions().length;
   const total = new Set(K5_EVIDENCE_ITEMS.map((i) => i.supports)).size;
+  // THE MECHANICAL ONES ARE NAMED, NOT COUNTED. A bare "NH verifies 2 mechanically" invites the
+  // reader to guess which two, and the flattering guess is always the identity.
+  const named = k5MechanicallyVerifiableConditions().join(" and ");
   return (
     `Of the ${total} governed registration conditions, NH can verify ${verifiable} mechanically ` +
-    `(challenge-response over a nonce NH chose). The other ${total - verifiable} are recorded claims ` +
-    "by the NH operator: NH refuses to activate until they are claimed and makes the claim auditable, " +
-    "and it establishes none of them itself. A registered key is therefore NOT a verified institution, " +
-    "and no readiness level above SOURCE_ATTESTED is reachable from this ceremony."
+    `(${named}). The other ${total - verifiable} are recorded claims: NH refuses to put a key in ` +
+    "force until they are cited and makes the citation auditable, and it establishes none of them " +
+    "itself. A registered key is therefore NOT a verified institution, and no readiness level above " +
+    "SOURCE_ATTESTED is reachable from this ceremony."
   );
 }

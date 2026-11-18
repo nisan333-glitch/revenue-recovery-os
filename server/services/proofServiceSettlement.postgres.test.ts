@@ -30,6 +30,9 @@ import { settlementDigest } from "../persistence/settlementLedgerStore";
 import {
   activateSettlementKey, proposeSettlementKey, revokeSettlementKeyAsCompromised,
 } from "./settlementKeyGovernance";
+import {
+  senderUnregistered, senderVerified, senderVerifiedRecording,
+} from "../test/senderAuthorityDoubles";
 import { postgresSettlementKeyRegister } from "../persistence/settlementKeyStore";
 import { splitSqlStatements } from "../persistence/obligationAttributionMigration.postgres.test";
 import {
@@ -61,7 +64,7 @@ const OPERATOR: ActorContext = { actorId: "op@company", role: "operator", bounda
 const STEWARD_CTX: ActorContext = { actorId: "gov@company", role: "steward", boundaryIds: ["*"] };
 const APPROVER_CTX: ActorContext = { actorId: "cfo@company", role: "approver", boundaryIds: ["*"] };
 const CEREMONY = {
-  channelIndependentlyVerified: true, institutionIdentityVerified: true,
+  channelIndependentlyVerified: true,
   keyControlDemonstrated: true, ceremonyRecorded: true,
 };
 
@@ -132,7 +135,11 @@ async function activeKeyFor(boundaryId: string): Promise<{ keyId: string; signed
     evidence: CEREMONY,
     rationale: "g9 synthetic ceremony",
   });
-  await activateSettlementKey(register, STEWARD_CTX, { keyId, rationale: "reviewed" });
+  // B3 · THE SENDER-AUTHORITY PORT IS SUPPLIED BY A DOUBLE HERE, because this suite is about what a
+  // CITED SETTLEMENT may do to a proof, not about institution admission. The refusing case is
+  // exercised below, so the gate is demonstrated rather than merely tolerated in this file, and the
+  // real composition over the real register is tested in `institutionRegister.postgres.test.ts`.
+  await activateSettlementKey(register, senderVerified(), STEWARD_CTX, { keyId, rationale: "reviewed" });
   const row = await register.read(keyId);
   const activatedAt = row!.events.find((e) => e.transition === "ACTIVATED")!.at;
   // SIGNED EXACTLY AT ACTIVATION, and both halves of that matter.
@@ -192,6 +199,67 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => { if (HAS_DB) await app?.close(); }, 60_000);
+
+describe.skipIf(!HAS_DB)("B3 · the sender-authority gate is NOT vacuous in this suite", () => {
+  // THE RULE THAT COMES WITH A PERMISSIVE DOUBLE. Every active key above is activated through
+  // `senderVerified()`, which would let the new gate be removed entirely without this file noticing.
+  // So the refusing case runs here, on the same real register and the same real proposal path.
+  it("a key whose sender has NO registered institution cannot be activated at all", async () => {
+    const register = postgresSettlementKeyRegister();
+    const keyId = `k-b3-${randomUUID().slice(0, 8)}`;
+    await proposeSettlementKey(register, OPERATOR, {
+      facts: {
+        keyId, boundaryId: "pb-b3-unregistered", sourceSystem: "acme-bank", sourceKind: "bank",
+        publicKey: BANK.pem,
+        validFrom: plus(new Date().toISOString(), -30 * DAY),
+        validUntil: plus(new Date().toISOString(), 365 * DAY),
+      },
+      evidence: CEREMONY,
+      rationale: "declared conditions complete, institution unknown",
+    });
+
+    // The DECLARED conditions are complete — that is the whole point. Before B3 this was the entire
+    // gate and the key would have gone into force on an operator's tick.
+    await expect(
+      activateSettlementKey(register, senderUnregistered(), STEWARD_CTX, {
+        keyId, rationale: "reviewed",
+      }),
+    ).rejects.toThrow(/KEY_SENDER_NOT_AUTHORISED.*KEY_INSTITUTION_NOT_REGISTERED/s);
+
+    // AND NOTHING WAS WRITTEN. A refused activation must leave the key in DRAFT, or a second attempt
+    // through a permissive path would find it already active.
+    const row = await register.read(keyId);
+    expect(row!.events.map((e) => e.transition)).toEqual(["PROPOSED"]);
+  });
+
+  it("the gate asks about the KEY'S OWN sender, taken from the stored row", async () => {
+    // THE PROPERTY A PERMISSIVE DOUBLE HIDES. The sender must come from the witness-verified key row
+    // rather than from anything a caller names, or an activation could be pointed at a different
+    // institution's admission.
+    const register = postgresSettlementKeyRegister();
+    const keyId = `k-b3-${randomUUID().slice(0, 8)}`;
+    const boundaryId = "pb-b3-asked";
+    await proposeSettlementKey(register, OPERATOR, {
+      facts: {
+        keyId, boundaryId, sourceSystem: "zeta-psp", sourceKind: "psp", publicKey: BANK.pem,
+        validFrom: plus(new Date().toISOString(), -30 * DAY),
+        validUntil: plus(new Date().toISOString(), 365 * DAY),
+      },
+      evidence: CEREMONY,
+      rationale: "recording what the gate asks",
+    });
+    const recorder = senderVerifiedRecording();
+    await activateSettlementKey(register, recorder, STEWARD_CTX, { keyId, rationale: "reviewed" });
+    expect(recorder.asked).toHaveLength(1);
+    expect(recorder.asked[0]!.boundaryId).toBe(boundaryId);
+    expect(recorder.asked[0]!.sourceSystem).toBe("zeta-psp");
+    // Asked AS OF the activation's own instant, so the answer is a property of the moment.
+    const row = await register.read(keyId);
+    expect(recorder.asked[0]!.at).toBe(
+      row!.events.find((e) => e.transition === "ACTIVATED")!.at,
+    );
+  });
+});
 
 describe.skipIf(!HAS_DB)("G9 · backward compatibility — the field is optional and its absence changes nothing", () => {
   it("THE POSITIVE CONTROL: omitting citedSettlements still mints a proof, and consumes nothing", async () => {

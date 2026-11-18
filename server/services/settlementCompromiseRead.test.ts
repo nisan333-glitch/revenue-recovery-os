@@ -45,7 +45,7 @@ async function registerOf(
     facts: FACTS,
     witness: await hashSettlementKey(FACTS),
     evidence: {
-      channelIndependentlyVerified: true, institutionIdentityVerified: true,
+      channelIndependentlyVerified: true,
       keyControlDemonstrated: true, ceremonyRecorded: true,
     },
     registeredByActorId: "author-1",

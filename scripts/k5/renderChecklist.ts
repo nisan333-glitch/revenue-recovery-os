@@ -17,11 +17,20 @@ import {
   type K5Condition,
 } from "../../src/contract/k5EvidenceCatalogue";
 
+// B3 · TITLES FOR EVERY CONDITION THE CATALOGUE CAN NOW NAME, across both governed objects. A
+// `Record<K5Condition, string>` is exhaustive by the compiler, so a condition added to either object
+// and forgotten here fails `typecheck:scripts` rather than rendering a checklist with a gap in it.
 const CONDITION_TITLE: Readonly<Record<K5Condition, string>> = Object.freeze({
+  // Declared on the KEY's registration.
   channelIndependentlyVerified: "C1 · the channel is the institution's own, found independently",
-  institutionIdentityVerified: "C2 · the institution is who it says it is",
   keyControlDemonstrated: "C3 · the responder controls the key being registered",
   ceremonyRecorded: "C4 · the ceremony is recorded, by two identities",
+  // Established on the INSTITUTION's admission — what C2 became when it stopped being a boolean.
+  legalEntityVerifiedIndependently: "C2a · the legal entity is real, per an independent registry",
+  authorisedSignatoriesEstablished: "C2b · this sender speaks for that entity",
+  regulatoryStandingVerified: "C2c · the regulator's own register says it is licensed",
+  keyFingerprintConfirmedOutOfBand: "C2d · the fingerprint was confirmed on a second channel",
+  secondPersonApproval: "C2e · a second governance identity verified the admission",
 });
 
 const CHECKABILITY_LABEL: Readonly<Record<K5Checkability, string>> = Object.freeze({
@@ -31,12 +40,29 @@ const CHECKABILITY_LABEL: Readonly<Record<K5Checkability, string>> = Object.free
 });
 
 export function renderK5Checklist(): string {
+  // CEREMONY ORDER. The order is a human judgement — it is the sequence someone actually performs —
+  // but its COMPLETENESS is not left to judgement: the assertion below refuses to render a checklist
+  // that silently drops a condition the catalogue carries evidence for. *A dropped item is a step
+  // nobody performs*, and my first B3 draft of this array dropped three.
   const order: readonly K5Condition[] = [
     "channelIndependentlyVerified",
-    "institutionIdentityVerified",
+    "legalEntityVerifiedIndependently",
+    "regulatoryStandingVerified",
+    "authorisedSignatoriesEstablished",
     "keyControlDemonstrated",
+    "keyFingerprintConfirmedOutOfBand",
     "ceremonyRecorded",
+    "secondPersonApproval",
   ];
+  const withItems = new Set(K5_EVIDENCE_ITEMS.map((i) => i.supports));
+  const dropped = [...withItems].filter((c) => !order.includes(c));
+  if (dropped.length > 0) {
+    throw new Error(
+      `K5 checklist: the catalogue carries evidence for ${dropped.join(", ")}, which this render order ` +
+        "omits. A checklist missing a condition tells whoever performs the ceremony to collect nothing " +
+        "for it, which is worse than having no checklist",
+    );
+  }
   const lines: string[] = [];
 
   lines.push("# K5 · evidence checklist for registering a real institution's signing key");
@@ -51,17 +77,23 @@ export function renderK5Checklist(): string {
   lines.push("");
   lines.push("---");
   lines.push("");
-  lines.push("## What four green booleans actually mean");
+  lines.push("## What the green ticks actually mean");
   lines.push("");
   lines.push(`> ${k5HonestStatement()}`);
   lines.push("");
   lines.push(
-    "`keyMayBeActivated` refuses to activate a key until all four conditions are claimed, and " +
+    "`keyDeclaredConditionsComplete` refuses until every DECLARED condition is claimed, and " +
       "`keyRegistrationRefusals` returns **every** unmet one rather than the first — so a registration " +
-      "blocked on two grounds says so. But the booleans arrive from the NH operator and the server " +
-      "validates only that they are `true`. The register's integrity is strong; **its input is a human " +
-      "claim**, and a pilot brief presenting four ticks as four verified facts would overstate exactly " +
-      "what this checklist exists to prevent.",
+      "blocked on two grounds says so. But those booleans arrive from the NH operator and the server " +
+      "validates only that they are `true`. The register's integrity is strong; **their input is a " +
+      "human claim**, and a pilot brief presenting ticks as verified facts would overstate exactly " +
+      "what this checklist exists to prevent.\n\n" +
+      "**B3, 2026-11-18 · the institution's identity is no longer one of those ticks.** It left the " +
+      "key-registration request entirely and is DERIVED at activation from the governed institution " +
+      "register, where it is six separately cited conditions plus two the server establishes itself — " +
+      "a second governance identity, enforced by a database trigger, and key control resolved against " +
+      "the key register rather than asserted. The conditions marked **C2a–C2e** below are that " +
+      "register's, not a boolean on this form.",
   );
   lines.push("");
   lines.push(

@@ -29,13 +29,32 @@ CREATE TABLE "settlement_signing_keys" (
     -- USE, never trusted as stored — the register tamper-evidence rule.
     "key_witness"   TEXT NOT NULL,
 
-    -- K5 · the ceremony, as FOUR separate facts.
+    -- K5 · the ceremony's DECLARED facts, as THREE separate columns.
     --
     -- Never one `verified` flag. A challenge-response proves CONTROL OF A KEY and nothing about who
-    -- holds it, so `key_control_demonstrated` may never stand in for `institution_identity_verified`.
-    -- Four columns make that substitution unrepresentable rather than merely discouraged.
+    -- holds it, so `key_control_demonstrated` may never stand in for the institution's identity.
+    -- Separate columns make that substitution unrepresentable rather than merely discouraged.
+    --
+    -- ── B3 · `institution_identity_verified` WAS REMOVED FROM THIS CREATE TABLE, 2026-11-18 ──────
+    --
+    -- It was a BOOLEAN supplied by whoever proposed the key, and `ProposeSettlementKey` is held by
+    -- `author` and `operator` — the BENEFICIARY side. Not unchecked (a different identity activates)
+    -- but UNEVIDENCED: an activator had nothing to check the claim against. It is now DERIVED from
+    -- `governed_institutions` at activation by `senderAuthorityFromState`, which is strictly
+    -- stronger — see `src/contract/senderAuthority.ts` and `docs/K5_INSTITUTION_ADMISSION_V1.md`.
+    --
+    -- REMOVED RATHER THAN LEFT INERT, on the premise this file already states and which still holds,
+    -- proved three ways: nothing in `prisma/migrations/` creates this table, its only consumers are
+    -- disposable per-test databases that recreate it from these bytes on every run, and there is no
+    -- deployed instance to migrate. So there are no historical rows whose value would need
+    -- preserving. A retained column would have to carry a value on every new row, and both
+    -- candidates are claims nobody makes: `true` asserts an operator verification that no longer
+    -- happens, `false` asserts they declined. The honest form is no column.
+    --
+    -- THE MOMENT ANY DURABLE DATABASE HOLDS THIS TABLE, that licence ends: the correct form is then
+    -- an ALTER that leaves historical values in place and relabels them, exactly as
+    -- `ADMISSION_CALC_VERSION` was retained because stored rows carry it.
     "channel_independently_verified" BOOLEAN NOT NULL,
-    "institution_identity_verified"  BOOLEAN NOT NULL,
     "key_control_demonstrated"       BOOLEAN NOT NULL,
     "ceremony_recorded"              BOOLEAN NOT NULL,
 

@@ -1,7 +1,7 @@
 # K5 · Institution admission — the half a signature cannot supply
 
-**Status:** built, unwired, and populated by nothing.
-**Date:** 2026-11-18.
+**Status:** built, **wired into key activation (B3, same day)**, and populated by nothing.
+**Date:** 2026-11-18. See §10 for the B3 wiring, which supersedes §6's "not patched".
 **Everything below is synthetic or prospective.** No real financial institution is named, proposed,
 verified, or in any way recorded in this repository, and **no observed amount became Revenue
 Returned.**
@@ -160,7 +160,13 @@ sender.
 
 ---
 
-## 6 · The defect this register uncovered, reported and NOT patched
+## 6 · The defect this register uncovered — *reported here, CLOSED in §10*
+
+> **SUPERSEDED IN PART, 2026-11-18.** This section is preserved as written because it is the record of
+> what was found and why it mattered. Its last paragraph said the remedy was an owner's decision and
+> that three tests pinned today's behaviour so the finding could not be forgotten. **The owner approved
+> it the same day and it is built**; the pins failed exactly as designed and were inverted rather than
+> deleted. §10 is the decision record. Nothing below is re-written.
 
 Building it surfaced a finding in the **existing** key register.
 
@@ -192,10 +198,12 @@ slice lands** — which is the point: a finding nothing asserts is free to be fo
   reaches `VERIFIED` here, which needs a real institution and an owner's decision to onboard one. A
   test asserts that no channel reaching `AUTHORITY_VERIFIED` is implemented, so the rung cannot open by
   an edit to one flag.
-- **Nothing imports the register in production.** Asserted on **import specifiers** — a prose mention
-  is not an import and a string literal is not a dependency. The only importers are its own tests. The
-  day a proof path reads it, that is a wiring slice with its own evidence, per the `obligation_ref`
-  revert rule: *the slice that makes a field load-bearing ships its consumer with it.*
+- **Nothing imports the register in production.** *Superseded by §10:* the register now has exactly
+  two production importers — its Postgres store and `institutionSenderAuthority`, the adapter that is
+  the only module joining it to the key register. The property that **survives** is the stronger one:
+  no proof, monetary, reconciliation or domain module reaches it, asserted on **import specifiers**
+  against a named list of files proved to exist. A prose mention is not an import and a string literal
+  is not a dependency.
 - **No production migration.** The schema lives in `scripts/migration-design/`, never in
   `prisma/migrations/` — a file there is applied by `prisma migrate deploy` on every deploy, so
   committing one would *be* the production schema change. It has been applied only to databases a test
@@ -252,3 +260,102 @@ stays `SOURCE_ATTESTED` and every readiness level stays **PROVISIONAL**.
 6. **The store's verification INSERT omitted a `NOT NULL` column** (`verified_by_role`). Caught by the
    positive control against the real database, not by a reading — which is why a store without a
    Postgres-backed positive control is not tested.
+
+---
+
+## 10 · B3 · the institution condition is now DERIVED (decision record, 2026-11-18)
+
+**Approved by the owner for local development the same day §6 was written.** The governing rule:
+
+> **A gate's input may not come from the party who benefits from passing it.** The institution's
+> identity is a fact about NH's counterparty, not a preference of the customer's, so it is read from a
+> governed register at the moment a key is put in force — never asserted on the request that proposes
+> the key.
+
+### What changed
+
+| | before | after |
+|---|---|---|
+| where the claim lives | `KeyRegistrationEvidence.institutionIdentityVerified`, a required boolean on `POST /settlement-keys` | derived at activation from `governed_institutions` for the key's own `(boundaryId, sourceSystem)` |
+| who states it | `author` or `operator` — the **beneficiary side** | nobody states it; the server derives it |
+| what backs it | nothing | six cited conditions, a resolved key, a second governance identity enforced by a trigger |
+| negative answers | one (`KEY_INSTITUTION_NOT_VERIFIED`) | **five**, each distinguishable |
+| an injected field | accepted | **400** — `additionalProperties: false`, never a silent strip |
+
+### The five negative answers, and why they do not collapse
+
+`KEY_INSTITUTION_NOT_REGISTERED` · `KEY_INSTITUTION_NOT_VERIFIED` ·
+`KEY_INSTITUTION_AUTHORITY_WITHDRAWN` · `KEY_INSTITUTION_IDENTITY_DOUBTED` ·
+`KEY_INSTITUTION_REGISTER_UNAVAILABLE`, plus `KEY_INSTITUTION_RECORD_UNREADABLE` from the adapter.
+
+Four are states of the institution; two are states of the *register*. Each has a different remedy, and
+one code for all of them would hide the only half of the answer that says what to go and get.
+
+### Order of the gates, and a defect a test found
+
+Witness → boundary → separation of duties → declared conditions → **transition legality** → sender.
+
+**My first version asked the institution before checking the transition's legality.** A test activating
+a key with an instant *before the key's birth* then came back `KEY_INSTITUTION_NOT_REGISTERED` — because
+the institution's lifecycle has no event in force that early either, so `institutionStateAt` answers
+`null` and `null` is a refusal. The institution was verified; the request was backdated. **The gate
+blamed the bank.** That is the `NH-AX-1009` mistake in miniature — blaming the data for a claim the
+caller made — and neither order is less safe, since both refuse and neither writes. Only one is honest.
+
+### A deployment state that used to be a 500
+
+A deployment can hold the key register and **not** the institution register: the two are separate design
+scripts and neither is in `prisma/migrations/`. Before B3 that produced an internal error from a missing
+relation. **A gate that 500s is not failing closed, it is failing confusingly.** So
+`KEY_INSTITUTION_REGISTER_UNAVAILABLE` is raised for **exactly** SQLSTATE 42P01 on the institution
+tables, and every other database failure is **re-thrown** — filing a genuine outage as a tidy state
+would report an answer nobody computed.
+
+### Backward compatibility, stated plainly
+
+**There is none, and that is the correct answer.** This is a tightening change:
+
+- A propose-key request carrying the old field is a **400**, not a strip. A caller who sends it
+  believes they stated something.
+- **Every key proposed from now on refuses activation** until a `VERIFIED` institution exists for its
+  sender. The register is empty, so that refusal fires on every key today.
+- **Keys already ACTIVE are unaffected.** `activateSettlementKey` runs once; the verification path reads
+  the key's lifecycle, not its evidence. No historical key is re-judged and no proof moves.
+- The column `institution_identity_verified` is **removed from the design script**, not left inert, on
+  the premise this repository already proves three ways for these tables: nothing in
+  `prisma/migrations/` creates them, their only consumers are disposable per-test databases, and there
+  is no deployed instance. So there are **no historical rows** whose value needs preserving, and a
+  retained column would have to carry a value on every new row — `true` asserts a verification that no
+  longer happens, `false` asserts an operator declined. Both are claims nobody makes.
+  **The moment any durable database holds this table that licence ends**, and the correct form is an
+  `ALTER` that leaves historical values in place and relabels them.
+
+### What it does NOT touch
+
+- **`PROVEN` is unchanged.** This decides whether a KEY may be put in force. The settlement
+  verification path is not consulted here, because `institutionAuthorityCeiling` answers historically
+  and a later withdrawal must change future decisions only. A revocation **reverses no proof,
+  recomputes nothing, and reduces no figure by one cent** — asserted on the code: neither the gate nor
+  the adapter names a proof store, and the only transition the gate can cause is an activation.
+- **Retirement and revocation never consult the sender.** A key whose institution is revoked is exactly
+  the key worth revoking, so requiring an authorised sender there would make the register unstoppable
+  at the moment it matters most. Those functions take no port at all, by signature.
+- **The layering holds.** `settlementKeyGovernance` declares a one-question **port** and does not import
+  the register — it cannot read an institution's legal entity, citations, governance log or witness. The
+  composition happens in `server/app.ts`.
+
+### The evidence catalogue moved with it
+
+`k5-evidence-2026.1` → **`k5-evidence-2026.2`**: one item added (`regulatoryStandingVerified`, which the
+register governs and nothing collected), two re-pointed to the register's own conditions, and one
+**upgraded** from `WELL_FORMED` to `CORROBORATED` — the second-person approval, because the proposition
+became mechanical rather than merely recorded.
+
+**That upgrade is the one claim in this slice that must not be taken on trust**, since
+`WELL_FORMED → CORROBORATED` is exactly the quiet flattery the catalogue exists to prevent. It is tied
+to the mechanism: a test asserts the trigger exists, asserts the refusal it raises, and asserts the
+verification table has **no column** a verifier could assert it with.
+
+**Mechanically verifiable conditions went from 1 of 4 to 2 of 8.** The flattering reading is that one of
+the two is now the identity. It is not — the second is the separation of duties — and the test asserts
+that negatively as well, condition by condition, so the reading cannot creep in.

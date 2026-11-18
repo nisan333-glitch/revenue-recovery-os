@@ -61,6 +61,22 @@ class MemoryRegister implements InstitutionRegister {
     return row === undefined ? null : { ...row, events: [...row.events] };
   }
 
+  /**
+   * B3 · lookup by SENDER, which is how a settlement key finds its own institution.
+   *
+   * THE DOUBLE ENFORCES THE UNIQUE INDEX'S PROPERTY rather than assuming it: more than one row for a
+   * sender throws, exactly as the store does, so a test cannot pass here on behaviour the real
+   * database would refuse. A double more permissive than its subject is how a wrong design survives.
+   */
+  async findBySender(boundaryId: string, sourceSystem: string): Promise<RegisteredInstitution | null> {
+    const hits = [...this.rows.values()].filter(
+      (r) => r.facts.boundaryId === boundaryId && r.facts.sourceSystem === sourceSystem,
+    );
+    if (hits.length > 1) throw new Error("more than one institution claims this sender");
+    const row = hits[0];
+    return row === undefined ? null : { ...row, events: [...row.events] };
+  }
+
   async insertInstitution(input: {
     facts: InstitutionFacts; witness: string; actor: ActorContext; rationale: string;
   }): Promise<void> {
@@ -432,46 +448,72 @@ describe("withdrawal and identity doubt never collapse", () => {
   });
 });
 
-describe("THE FINDING THIS REGISTER UNCOVERED, reported and deliberately not patched", () => {
-  // THE STRONGEST CLAIM IN THE EXISTING K5 CEREMONY IS A BOOLEAN THE PROPOSING PARTY SUPPLIES.
+describe("THE FINDING THIS REGISTER UNCOVERED — NOW CLOSED, and the pin inverted", () => {
+  // THE PIN DID ITS JOB. The three assertions that stood here described the pre-B3 state and were
+  // written to FAIL when the wiring landed: *a finding nothing asserts is free to be forgotten.* The
+  // wiring landed on 2026-11-18 with the owner's approval, so they are rewritten to assert the new
+  // state rather than deleted — a closed finding whose assertions simply disappear leaves nothing
+  // guarding the thing that was fixed.
   //
-  // `KeyRegistrationEvidence.institutionIdentityVerified` means *the institution's identity,
-  // established independently of whoever supplied the key*. It arrives over HTTP as a required
-  // boolean on the propose-key request, with no citation, no legal entity, no jurisdiction, no
-  // registry identifier, no second person and no lifecycle of its own — and `ProposeSettlementKey` is
-  // held by `author` and `operator`, which is the BENEFICIARY side.
-  //
-  // The activator is a different identity and can refuse the whole registration, so this is not
-  // unchecked; it is UNEVIDENCED. An activator looking at that row has nothing to check the claim
-  // against, which is the Trust Invariant's standing test answered the wrong way: the party who
-  // benefits from a larger recovery number authors a fact about who they were talking to.
-  //
-  // THIS REGISTER IS THE REMEDY, AND WIRING IT IS A SEPARATE SLICE. The correct end state is that
-  // `institutionIdentityVerified` is DERIVED — is there a VERIFIED institution for this boundary and
-  // source system? — and REFUSED as an input, exactly as this module refuses the two conditions it
-  // establishes itself. That changes the HTTP contract and every existing caller, so it is an owner's
-  // decision rather than something to slip in beside the register that revealed it.
-  //
-  // PINNED SO IT STAYS VISIBLE. These assertions describe today's behaviour. When the wiring slice
-  // lands they FAIL, which is the point: a finding nothing asserts is free to be forgotten.
-  it("the key-registration schema still accepts the institution claim from the caller", () => {
+  // WHAT THE DEFECT WAS. `KeyRegistrationEvidence.institutionIdentityVerified` meant *the
+  // institution's identity, established independently of whoever supplied the key*, and it arrived
+  // over HTTP as a required boolean on the propose-key request — no citation, no legal entity, no
+  // jurisdiction, no registry identifier, no second person, no lifecycle. `ProposeSettlementKey` is
+  // held by `author` and `operator`: the BENEFICIARY side. Not unchecked, since a different identity
+  // activates, but UNEVIDENCED — an activator had nothing to check the claim against.
+  it("the key-registration schema NO LONGER accepts an institution claim from the caller", () => {
     const schemas = readRepoFile("server/http/schemas.ts");
-    expect(schemas).toMatch(/institutionIdentityVerified: \{ type: "boolean" \}/);
+    expect(schemas).not.toMatch(/institutionIdentityVerified: \{ type: "boolean" \}/);
+    // AND AN INJECTED ONE IS A 400 RATHER THAN A SILENT STRIP, which is why the field had to leave the
+    // schema rather than merely be ignored downstream: a caller who sends it believes they stated
+    // something. `additionalProperties: false` is what makes that true.
+    const evidenceBlock = schemas.slice(
+      schemas.indexOf("      evidence: {"),
+      schemas.indexOf("export const activateSettlementKeySchema"),
+    );
+    expect(evidenceBlock).toMatch(/additionalProperties: false/);
+    expect(evidenceBlock).not.toMatch(/institutionIdentityVerified/);
   });
 
-  it("and the beneficiary side still holds the capability that submits it", () => {
+  it("the key's evidence type no longer has a field for it, so no caller can supply one", () => {
+    const lifecycle = readRepoFile("src/contract/settlementKeyLifecycle.ts");
+    const typeBlock = lifecycle.slice(
+      lifecycle.indexOf("export interface KeyRegistrationEvidence {"),
+      lifecycle.indexOf("export type KeyRegistrationRefusal ="),
+    );
+    expect(typeBlock).not.toMatch(/institutionIdentityVerified/);
+    // ABSENT, NOT OPTIONAL. An optional field lets an existing caller keep its old behaviour by
+    // saying nothing, which is how the proof bypass arose.
+    expect(typeBlock).not.toMatch(/institutionIdentityVerified\?/);
+  });
+
+  it("the beneficiary side still proposes KEYS, which is correct and is not the defect", () => {
+    // UNCHANGED ON PURPOSE. Which key a customer's settlements are signed with is a customer
+    // preference, and governance still activates. What was wrong was that the same request also
+    // asserted who the institution IS — a fact about NH's counterparty, not a preference.
     const identity = readRepoFile("server/auth/identity.ts");
     const authorBlock = identity.slice(identity.indexOf("  author: ["), identity.indexOf("  operator: ["));
     expect(authorBlock).toMatch(/ProposeSettlementKey/);
+    // And the institution capabilities are NOT held by the beneficiary side.
+    expect(authorBlock).not.toMatch(/ProposeInstitution|VerifyInstitution/);
+    const operatorBlock = identity.slice(
+      identity.indexOf("  operator: ["), identity.indexOf("  approver: ["),
+    );
+    expect(operatorBlock).not.toMatch(/ProposeInstitution|VerifyInstitution/);
   });
 
-  it("nothing yet derives it from this register — asserted on imports, not on prose", () => {
-    const lifecycle = readRepoFile("src/contract/settlementKeyLifecycle.ts");
-    // `settlementKeyLifecycle` must not import the institution register: the pure key contract has no
-    // business reaching a persistence-backed register, and the derivation belongs in the service.
-    expect(lifecycle).not.toMatch(/from "\.\/institutionIdentity"/);
+  it("the activation gate reads the register, and the layering is still a PORT", () => {
     const keyGov = readRepoFile("server/services/settlementKeyGovernance.ts");
+    // It consults a sender-authority source, required rather than optional.
+    expect(keyGov).toMatch(/institutions: SenderAuthoritySource/);
+    expect(keyGov).toMatch(/KEY_SENDER_NOT_AUTHORISED/);
+    // AND IT STILL DOES NOT IMPORT THE REGISTER. A key-governance module that could reach the
+    // register directly could read an institution's legal entity, its citations, its governance log
+    // or its witness, none of which is its business. The composition happens at the call site.
     expect(keyGov).not.toMatch(/from "\.\/institutionGovernance"/);
+    expect(keyGov).not.toMatch(/from "\.\.\/persistence\/institutionStore"/);
+    const adapter = readRepoFile("server/services/institutionSenderAuthority.ts");
+    expect(adapter).toMatch(/from "\.\/institutionGovernance"/);
   });
 });
 
@@ -483,12 +525,11 @@ describe("what this register does NOT do", () => {
     expect(FACTS.jurisdiction).toBe("ZZ");
   });
 
-  it("is reachable from no proof, gate or route — asserted on IMPORT SPECIFIERS, not on prose", () => {
-    // THE GUARD READS THE CONSTRUCT IT IS ASKING ABOUT. The first form grepped the bare module name
-    // and expected the module itself in the result — but a file does not contain its own filename as
-    // an import, so the scan returned one entry and the assertion was wrong about its own subject.
-    // *A term is not a claim, a prose mention is not an import, and a string literal is not a
-    // dependency*, for the twelfth recorded time.
+  it("is imported by a NAMED, CLOSED set — asserted on import specifiers, not on prose", () => {
+    // B3 · THE SET GREW BY EXACTLY TWO, AND THAT IS WHY THIS IS A LIST RATHER THAN A COUNT. Before the
+    // wiring this suite asserted the register had no production importer at all. It now has the
+    // adapter and the route composition, and each had to be added here deliberately — an assertion
+    // that silently tracked whatever imports appeared would guard nothing.
     const importers = execSyncSafe(
       "grep -rlE \"from \\\"[^\\\"]*institutionGovernance\\\"\" --include=*.ts server src || true",
     )
@@ -496,27 +537,40 @@ describe("what this register does NOT do", () => {
       .filter((l) => l.length > 0)
       .map((l) => l.replace(/^\.\//, ""))
       .sort();
-    // THE SET IS NAMED AND CLOSED: the port's own Postgres implementation and the two test files.
-    // The first form of this assertion expected only this test, which was true when it was written
-    // and false the moment the store existed — so it failed in the full suite while passing in a
-    // single-file run. A closed list that must be edited deliberately is the point; an assertion that
-    // silently tracked whatever imports appeared would guard nothing.
     expect(importers).toEqual([
-      "server/persistence/institutionRegister.postgres.test.ts",
+      // PRODUCTION: the store, and the adapter — which is the ONLY module that joins the two
+      // registers. Nothing else reaches it, and `server/app.ts` composes them without importing the
+      // governance service itself.
       "server/persistence/institutionStore.ts",
+      "server/services/institutionSenderAuthority.ts",
+      // TESTS: this suite, the register's own Postgres suite, and the key register's suite — which
+      // runs the REAL composition and is what stands behind every `senderVerified()` double.
+      "server/persistence/institutionRegister.postgres.test.ts",
+      "server/persistence/settlementKeyRegister.postgres.test.ts",
       "server/services/institutionGovernance.test.ts",
-    ]);
+    ].sort());
   });
 
-  it("NO proof, monetary, reconciliation or route module reaches it, even transitively by name", () => {
+  it("the importer scan is not vacuous — it finds a real importer when there is one", () => {
+    // A GUARD THAT CANNOT FIRE IS NO GUARD. Proved on a module that certainly has importers, so a
+    // pattern that silently matched nothing could not pass as "no importers".
+    const known = execSyncSafe(
+      "grep -rlE \"from \\\"[^\\\"]*settlementKeyGovernance\\\"\" --include=*.ts server src || true",
+    ).trim();
+    expect(known.length).toBeGreaterThan(0);
+  });
+
+  it("NO proof, monetary, reconciliation or domain module reaches it", () => {
     // THE PROPERTY THE LIST ABOVE EXISTS TO PROTECT, asserted on its own rather than inferred from a
-    // count. A fourth importer could be added to the list by hand; it could not be one of these.
+    // count. B3 · `server/app.ts` LEFT this list, because wiring the activation route is exactly the
+    // consumer the owner approved; everything that touches MONEY is still forbidden, and that is the
+    // line the register must not cross. The institution's authority decides whether a key may be put
+    // in force — it does not decide a figure, recompute a proof, or reverse one.
     const forbidden = [
       "server/services/proofService.ts",
       "server/services/externalSettlementGate.ts",
       "server/services/settlementClaim.ts",
       "server/persistence/proofStore.ts",
-      "server/app.ts",
       "src/domain/approval.ts",
       "src/domain/invariants.ts",
       "src/domain/outcomes.ts",
@@ -528,19 +582,22 @@ describe("what this register does NOT do", () => {
       expect(existsSyncSafe(file), `${file} does not exist; the forbidden list has rotted`).toBe(true);
       const src = readRepoFile(file);
       expect(
-        /from "[^"]*institution(Governance|Identity|Store)"/.test(src),
-        `${file} imports the institution register — that is a wiring slice with its own evidence`,
+        /from "[^"]*institution(Governance|Identity|Store|SenderAuthority)"/.test(src),
+        `${file} imports the institution register — a monetary surface must not decide authority`,
       ).toBe(false);
     }
   });
 
-  it("the importer scan is not vacuous — it finds a real importer when there is one", () => {
-    // A GUARD THAT CANNOT FIRE IS NO GUARD. Proved on a module that certainly has importers, so a
-    // pattern that silently matched nothing could not pass as "no importers".
-    const known = execSyncSafe(
-      "grep -rlE \"from \\\"[^\\\"]*settlementKeyGovernance\\\"\" --include=*.ts server src || true",
-    ).trim();
-    expect(known.length).toBeGreaterThan(0);
+  it("the register reverses no proof: the ceiling is historical and nothing recomputes", () => {
+    // STATED ON THE CODE. A revocation must change FUTURE decisions only, so no monetary figure can
+    // move because governance learned something today.
+    const adapter = readRepoFile("server/services/institutionSenderAuthority.ts");
+    const keyGov = readRepoFile("server/services/settlementKeyGovernance.ts");
+    for (const src of [adapter, keyGov]) {
+      expect(src).not.toMatch(/proofStore|recomputeProof|revokeProof|provenRevenue/);
+    }
+    // And the only transition the gate can cause is an ACTIVATION, never a reversal.
+    expect(keyGov).toMatch(/transition: "ACTIVATED"/);
   });
 });
 

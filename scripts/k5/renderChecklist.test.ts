@@ -25,11 +25,31 @@ describe("K5 checklist · generated, not authored", () => {
     }
   });
 
-  it("says plainly that exactly one condition is verified and the rest are recorded claims", () => {
+  it("says plainly which conditions NH verifies and that the rest are recorded claims", () => {
     const out = renderK5Checklist();
     expect(out).toContain("**NH VERIFIES THIS**");
     expect(out).toContain("NH RECORDS IT AND ESTABLISHES NOTHING");
-    expect(out).toMatch(/its input is a human claim/);
+    expect(out).toMatch(/their input is a human claim/);
+  });
+
+  it("B3 · tells the reader the institution's identity is NOT a tick on this form", () => {
+    // THE ONE SENTENCE A PILOT BRIEF WOULD OTHERWISE GET WRONG. The checklist is handed to whoever
+    // performs the ceremony, and until B3 it listed the institution's identity beside three
+    // operator-declared booleans as if it were one of them.
+    const out = renderK5Checklist();
+    expect(out).toMatch(/no longer one of those ticks/);
+    expect(out).toMatch(/DERIVED at activation/);
+    expect(out).toMatch(/C2a/);
+    expect(out).toMatch(/second governance identity/);
+    // And the retired boolean is not named as something to collect.
+    expect(out).not.toMatch(/C2 · the institution is who it says it is/);
+  });
+
+  it("names BOTH mechanical conditions and neither of them is an identity", () => {
+    const out = renderK5Checklist();
+    expect(out).toMatch(/Mechanically verifiable conditions: \*\*keyControlDemonstrated, secondPersonApproval\*\*/);
+    const line = out.split("\n").find((l) => l.startsWith("Mechanically verifiable conditions:"))!;
+    expect(line).not.toMatch(/legalEntity|regulatoryStanding|authorisedSignatories/);
   });
 
   it("does not claim AUTHORITY_VERIFIED is reachable, and keeps the unwelcome item", () => {

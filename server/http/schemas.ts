@@ -679,21 +679,32 @@ export const proposeSettlementKeySchema = {
           validUntil: { type: "string", minLength: 1, maxLength: 64 },
         },
       },
-      // FOUR SEPARATE BOOLEANS, ALL REQUIRED. Never one `verified` flag: a challenge-response proves
+      // THREE SEPARATE BOOLEANS, ALL REQUIRED. Never one `verified` flag: a challenge-response proves
       // CONTROL of a key and nothing about who holds it, so `keyControlDemonstrated` may not stand in
-      // for `institutionIdentityVerified`. Required rather than defaulted, because an omitted
-      // ceremony fact is a claim the caller has not made and must not be read as `false` by accident
-      // either — the caller states each one.
+      // for the institution's identity. Required rather than defaulted, because an omitted ceremony
+      // fact is a claim the caller has not made and must not be read as `false` by accident either —
+      // the caller states each one.
+      //
+      // ── B3 · `institutionIdentityVerified` IS NO LONGER ACCEPTED HERE, 2026-11-18 ───────────────
+      //
+      // It was a required boolean on this request, and `ProposeSettlementKey` is held by `author` and
+      // `operator` — the BENEFICIARY side. The institution's identity is now DERIVED at activation
+      // from the governed institution register; see `src/contract/senderAuthority.ts`.
+      //
+      // `additionalProperties: false` MAKES AN INJECTED ONE A 400 RATHER THAN A SILENT STRIP, and
+      // that is the whole reason the field is removed here rather than merely ignored downstream: a
+      // caller who sends it believes they have stated something. The same treatment EP-26b gave the
+      // `policy` object and G10 gave `declaredVersion` — there is now no wire format in which a
+      // propose-key request can assert that an institution is verified.
       evidence: {
         type: "object",
         additionalProperties: false,
         required: [
-          "channelIndependentlyVerified", "institutionIdentityVerified",
+          "channelIndependentlyVerified",
           "keyControlDemonstrated", "ceremonyRecorded",
         ],
         properties: {
           channelIndependentlyVerified: { type: "boolean" },
-          institutionIdentityVerified: { type: "boolean" },
           keyControlDemonstrated: { type: "boolean" },
           ceremonyRecorded: { type: "boolean" },
         },
@@ -760,10 +771,16 @@ export interface SettlementKeyBody {
   readonly validUntil: string;
 }
 
-/** The four ceremony facts, all required. See `proposeSettlementKeySchema` for why never one flag. */
+/**
+ * The DECLARED ceremony facts, all required. See `proposeSettlementKeySchema` for why never one flag.
+ *
+ * B3 · the institution's identity is absent from this type, not optional in it. An optional field
+ * would let an existing caller keep its old behaviour by saying nothing, which is how the proof bypass
+ * arose; a field that does not exist cannot be sent, and `additionalProperties: false` turns an
+ * injected one into a 400.
+ */
 export interface KeyCeremonyBody {
   readonly channelIndependentlyVerified: boolean;
-  readonly institutionIdentityVerified: boolean;
   readonly keyControlDemonstrated: boolean;
   readonly ceremonyRecorded: boolean;
 }

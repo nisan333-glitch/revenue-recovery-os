@@ -31,6 +31,7 @@ import {
   proposeSettlementKey,
   revokeSettlementKeyAsCompromised,
 } from "./settlementKeyGovernance";
+import { senderUnregistered, senderVerified } from "../test/senderAuthorityDoubles";
 import { verifySettlementAgainstRegister } from "./registerBackedSettlementVerification";
 import { runExternalSettlementGate } from "./externalSettlementGate";
 import { claimCitedSettlements } from "./settlementClaim";
@@ -80,7 +81,7 @@ const STEWARD: ActorContext = { actorId: "pilot-steward@company", role: "steward
 const AUDITOR: ActorContext = { actorId: "pilot-approver@company", role: "approver", boundaryIds: [BOUNDARY] };
 
 const CEREMONY = {
-  channelIndependentlyVerified: true, institutionIdentityVerified: true,
+  channelIndependentlyVerified: true,
   keyControlDemonstrated: true, ceremonyRecorded: true,
 };
 
@@ -147,7 +148,9 @@ async function registerAndActivateKey(keyId: string, pem: string): Promise<KeyTi
     rationale: "synthetic pilot ceremony",
   });
   // THE PROPOSER MAY NOT ACTIVATE. A different identity, enforced by the register, not by this test.
-  await activateSettlementKey(register, STEWARD, { keyId, rationale: "reviewed" });
+  // B3 · a double for the sender-authority port; the refusing case is exercised below so this file
+  // does not quietly make the new gate vacuous.
+  await activateSettlementKey(register, senderVerified(), STEWARD, { keyId, rationale: "reviewed" });
 
   const row = await register.read(keyId);
   const activatedAt = row!.events.find((e) => e.transition === "ACTIVATED")!.at;
@@ -237,6 +240,30 @@ afterAll(async () => {
   await admin?.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${DB_NAME}" WITH (FORCE)`);
   await admin?.$disconnect();
 }, 90_000);
+
+describe.skipIf(!HAS_DB)("B3 · the sender-authority gate is NOT vacuous in this suite", () => {
+  // Every key activated above goes through `senderVerified()`, so without this the new gate could be
+  // deleted and this file would stay green. The refusal runs on the same real register.
+  it("a key whose sender has no registered institution never reaches ACTIVE", async () => {
+    const register = postgresSettlementKeyRegister();
+    const keyId = `k-b3-e2e-${randomUUID().slice(0, 8)}`;
+    await proposeSettlementKey(register, OPERATOR, {
+      facts: {
+        keyId, boundaryId: BOUNDARY, sourceSystem: "unknown-bank", sourceKind: "bank",
+        publicKey: BANK.pem,
+        validFrom: plus(new Date().toISOString(), -30 * DAY),
+        validUntil: plus(new Date().toISOString(), 365 * DAY),
+      },
+      evidence: CEREMONY,
+      rationale: "declared conditions complete, institution unknown",
+    });
+    await expect(
+      activateSettlementKey(register, senderUnregistered(), STEWARD, { keyId, rationale: "reviewed" }),
+    ).rejects.toThrow(/KEY_INSTITUTION_NOT_REGISTERED/);
+    const row = await register.read(keyId);
+    expect(row!.events.map((e) => e.transition)).toEqual(["PROPOSED"]);
+  });
+});
 
 describe.skipIf(!HAS_DB)("G7 · end to end · an external attestation becomes a counted arrival, once", () => {
   it("THE POSITIVE CONTROL: ceremony → signature → verification → decision → claim → proof", async () => {

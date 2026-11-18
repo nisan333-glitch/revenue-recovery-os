@@ -102,16 +102,44 @@ export interface SettlementKeyFacts {
 //   A CHALLENGE-RESPONSE PROVES CONTROL OF A KEY. IT PROVES NOTHING ABOUT WHO HOLDS IT.
 //
 // Anyone can generate an Ed25519 pair and answer a nonce challenge perfectly. So `keyControlDemonstrated`
-// may NEVER substitute for `institutionIdentityVerified`, and the four conditions below are four
-// separate required booleans rather than one. An earlier draft of the plan called the challenge-response
-// "the only step that makes the rest more than a form", which overstated it: it is the only
-// CRYPTOGRAPHIC step, and the identity check is the one that says whose key it is.
+// may NEVER substitute for the institution's identity, and the conditions below are separate required
+// booleans rather than one. An earlier draft of the plan called the challenge-response "the only step
+// that makes the rest more than a form", which overstated it: it is the only CRYPTOGRAPHIC step, and
+// the identity check is the one that says whose key it is.
+//
+// B3 MADE THAT SEPARATION STRUCTURAL RATHER THAN NOMINAL. The identity is no longer a peer boolean
+// beside control on the same request — it is a different governed object, with its own lifecycle, its
+// own witness and its own second-person rule. A substitution is now unrepresentable rather than merely
+// discouraged, which is what the paragraph below records.
+
+// ── B3 · THE INSTITUTION CONDITION LEFT THIS TYPE, 2026-11-18 ────────────────────────────────────
+//
+// `institutionIdentityVerified` WAS THE SECOND FIELD HERE and it is gone. It is not relaxed and it is
+// not optional — it is answered somewhere stronger. The reasoning is recorded in full in
+// `src/contract/senderAuthority.ts`; the short form is that it arrived over HTTP as a required boolean
+// on the propose-key request, from `author` or `operator`, which is the BENEFICIARY side, with nothing
+// an activator could check it against.
+//
+// IT IS NOW DERIVED from the governed institution register, at ACTIVATION, by
+// `senderAuthorityFromState` over the institution registered for this key's own
+// `(boundaryId, sourceSystem)`. That is strictly stronger: a legal entity verified against an
+// independent registry, a regulator entry, a signatory schedule, a published channel, an out-of-band
+// fingerprint, a recorded ceremony, key control resolved rather than asserted, and a second governance
+// identity enforced by a database trigger — in place of one tick.
+//
+// WHY IT IS REMOVED RATHER THAN SERVER-COMPUTED INTO THE SAME FIELD. Two representations of one fact
+// is two things that can disagree, and the one a caller could still send is the one that would be
+// read. Removing it makes the COMPILER name every site, which is what `recoveryType` being required
+// rather than optional did for the proof-bypass closure: an optional field lets an existing caller
+// keep its old behaviour by saying nothing, and that is how the bypass arose.
+//
+// `KEY_INSTITUTION_NOT_VERIFIED` ALSO LEFT THIS UNION, and deliberately did not simply move: the
+// institution question now has FOUR distinguishable negative answers, in
+// `SenderAuthorityRefusal`. One code for all four would hide which half is missing.
 
 export interface KeyRegistrationEvidence {
   /** C1 · the key arrived through a channel the institution controls and publishes. */
   readonly channelIndependentlyVerified: boolean;
-  /** C2 · the institution's identity, established independently of whoever supplied the key. */
-  readonly institutionIdentityVerified: boolean;
   /** C3 · challenge-response over a nonce NH chose. Control of the key, and nothing more. */
   readonly keyControlDemonstrated: boolean;
   /** C4 · the ceremony is recorded: channel, who confirmed, fingerprint, window, receipt. */
@@ -120,29 +148,39 @@ export interface KeyRegistrationEvidence {
 
 export type KeyRegistrationRefusal =
   | "KEY_CHANNEL_NOT_AUTHORITATIVE"
-  | "KEY_INSTITUTION_NOT_VERIFIED"
   | "KEY_OWNERSHIP_NOT_DEMONSTRATED"
   | "KEY_CEREMONY_RECORD_MISSING";
 
 /**
- * Every unmet registration condition, in ceremony order. Empty means the ceremony is complete.
+ * Every unmet DECLARED registration condition, in ceremony order. Empty means the operator-declared
+ * part of the ceremony is complete — **not** that the key may be activated.
  *
- * ALL FOUR, NEVER A SUBSET. Returning the full list rather than the first failure is deliberate: a
+ * ALL OF THEM, NEVER A SUBSET. Returning the full list rather than the first failure is deliberate: a
  * registration blocked on two grounds should say so, or closing one would look like closing both.
+ *
+ * THIS FUNCTION NO LONGER ANSWERS THE INSTITUTION QUESTION, and its name is now exact rather than
+ * convenient: these are the conditions a person DECLARES. The institution's verification is derived
+ * from a register by `senderAuthorityFromState`, and `activateSettlementKey` requires both.
  */
 export function keyRegistrationRefusals(
   evidence: KeyRegistrationEvidence,
 ): readonly KeyRegistrationRefusal[] {
   const refusals: KeyRegistrationRefusal[] = [];
   if (!evidence.channelIndependentlyVerified) refusals.push("KEY_CHANNEL_NOT_AUTHORITATIVE");
-  if (!evidence.institutionIdentityVerified) refusals.push("KEY_INSTITUTION_NOT_VERIFIED");
   if (!evidence.keyControlDemonstrated) refusals.push("KEY_OWNERSHIP_NOT_DEMONSTRATED");
   if (!evidence.ceremonyRecorded) refusals.push("KEY_CEREMONY_RECORD_MISSING");
   return Object.freeze(refusals);
 }
 
-/** May this key be activated at all? Fail-closed: anything short of all four conditions is no. */
-export function keyMayBeActivated(evidence: KeyRegistrationEvidence): boolean {
+/**
+ * Are the DECLARED conditions complete?
+ *
+ * NOT RENAMED TO SOMETHING WEAKER, AND NOT LEFT MEANING WHAT IT USED TO. It answers one half, and a
+ * caller that treated it as the whole answer would be activating a key for a sender nobody has
+ * verified — so `activateSettlementKey` consults the register as well, and a test asserts this
+ * function has no production caller that activates on its own.
+ */
+export function keyDeclaredConditionsComplete(evidence: KeyRegistrationEvidence): boolean {
   return keyRegistrationRefusals(evidence).length === 0;
 }
 

@@ -116,6 +116,16 @@ export interface RegisteredInstitution {
 /** The persistence port. Its Postgres implementation is `institutionStore.ts`. */
 export interface InstitutionRegister {
   read(institutionId: string): Promise<RegisteredInstitution | null>;
+  /**
+   * B3 · the institution registered for a SENDER, which is how a settlement key finds its own.
+   *
+   * ONE ROW OR NONE, GUARANTEED BY THE DATABASE rather than by this signature: the unique index on
+   * `(boundary_id, source_system)` is what makes "the institution for this sender" a well-formed
+   * question. Without it two rows could claim one sender and the answer would depend on which was
+   * read first — which is precisely how a competing legal entity would be introduced for a sender
+   * that is already verified.
+   */
+  findBySender(boundaryId: string, sourceSystem: string): Promise<RegisteredInstitution | null>;
   insertInstitution(input: {
     readonly facts: InstitutionFacts;
     readonly witness: string;
