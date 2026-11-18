@@ -164,6 +164,21 @@ export const PROVENANCE_CHANNELS: readonly ProvenanceChannelSpec[] = Object.free
     channel: "THIRD_PARTY_RECONCILIATION" as const,
     whatItWouldEstablish: "That a settled amount agrees with an independent record such as a payment processor or bank.",
     whyTheBeneficiaryCannotAlterIt: "The third party is not party to the recovery claim.",
+    // STILL FALSE, AND THE REASON IS NOW PRECISE RATHER THAN "UNBUILT". The MECHANISM this channel
+    // needs exists: G1-G10 register an external key under governance, verify an Ed25519 attestation
+    // against it, decide sufficiency from server-held facts and claim the arrival inside the proof's
+    // own transaction. What is missing is not machinery — it is the channel's own defining property.
+    //
+    //   "THE THIRD PARTY IS NOT PARTY TO THE RECOVERY CLAIM" IS A STATEMENT ABOUT WHO SIGNED. A
+    //   signature establishes control of a key and never the identity of its holder, so no amount of
+    //   verifying signatures can establish that the signer is a bank rather than the beneficiary with
+    //   a freshly generated keypair.
+    //
+    // `institutionAuthority.ts` is the missing half: eight conditions, of which exactly ONE is
+    // cryptographic, and `signatureAloneLeavesRefusals()` derives the proof that satisfying it leaves
+    // the rest outstanding. This flag may turn true only when an institution reaches VERIFIED there —
+    // which needs a registry, a regulator, a published channel and two people at NH, none of which is
+    // a cryptographic operation and none of which NH can perform on its own behalf.
     implemented: false,
     reaches: "AUTHORITY_VERIFIED" as const,
     submitterStillControls: Object.freeze([]),
