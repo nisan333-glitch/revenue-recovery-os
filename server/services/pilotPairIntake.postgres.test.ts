@@ -19,7 +19,7 @@ import { createAgentProcessFromEnvironment } from "../agents/bootstrap";
 import { configuredAgentHandlers } from "../agents/activationDetector";
 import { createPostgresAgentTaskStore } from "../agents/prismaTaskDatabase";
 import { PostgresCandidateReviewStore } from "../agents/postgresCandidateReviewStore";
-import { RECONCILIATION_AGENT_ID, RECONCILIATION_RECOVERY_TYPE } from "../agents/reconciliationObserver";
+import { RECONCILIATION_RECOVERY_TYPE } from "../agents/reconciliationObserver";
 import { submitPilotPair } from "./pilotPairIntakeService";
 import {
   BILLING_COLUMNS,

@@ -364,8 +364,14 @@ model PilotAdmissionPolicyEventRecord {
   /// Why. Required on every transition — a governance decision with no stated reason is not one.
   rationale     String
   at            DateTime @default(now())
+  /// Append order within the log. Database-allocated, strictly increasing, no clock involved — it is
+  /// what makes the order chronological when `at` (millisecond precision) ties. NULL on every row
+  /// appended before this column existed: "no append order was recorded", which is a different fact
+  /// from a number, and is never backfilled. See governed issue #4.
+  seq           BigInt?  @default(dbgenerated("nextval('pilot_admission_policy_events_seq'::regclass)"))
 
   @@index([boundaryId, policyId, policyVersion, at], map: "pilot_policy_events_identity_idx")
+  @@index([boundaryId, policyId, policyVersion, at, seq], map: "pilot_policy_events_order_idx")
 }
 
 /// EP-15 · First sighting of a dataset within a boundary.
@@ -428,8 +434,14 @@ model PilotAnalysisTermsEventRecord {
   /// Why. Required on every transition — a governance decision with no stated reason is not one.
   rationale    String
   at           DateTime @default(now())
+  /// Append order within the log. Database-allocated, strictly increasing, no clock involved — it is
+  /// what makes the order chronological when `at` (millisecond precision) ties. NULL on every row
+  /// appended before this column existed: "no append order was recorded", which is a different fact
+  /// from a number, and is never backfilled. See governed issue #4.
+  seq          BigInt?  @default(dbgenerated("nextval('pilot_analysis_terms_events_seq'::regclass)"))
 
   @@index([boundaryId, termsId, termsVersion, at], map: "pilot_analysis_terms_events_identity_idx")
+  @@index([boundaryId, termsId, termsVersion, at, seq], map: "pilot_analysis_terms_events_order_idx")
   @@map("pilot_analysis_terms_events")
 }
 

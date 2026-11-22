@@ -147,6 +147,71 @@ export async function appendAnalysisTermsEvent(
   });
 }
 
+/**
+ * The ordered rows. ONE query, shared by the two public readers so neither pays for the other.
+ *
+ * `at` ASC stays PRIMARY, and that is deliberate rather than inherited: the log spans the migration
+ * that introduced `seq`, so rows older than it have a real timestamp and no append order. Making `seq`
+ * primary would hoist every legacy row to one end of the log.
+ *
+ * `seq` ASC then resolves same-timestamp ties in TRUE APPEND ORDER. `at` is timestamp(3), so ties are
+ * not rare — and here a reversed PROPOSED/ACTIVATED pair does not merely reorder two rows: `deriveState`
+ * drops an activation that arrives before any state exists, and an ACTIVE definition reads as a DRAFT.
+ *
+ * `id` ASC remains last and is now honest about its job: it keeps the order TOTAL for two legacy rows
+ * that tie on `at` with no sequence between them. That order is arbitrary, it is no longer trusted, and
+ * the governance-state reader reports it as uncertain rather than presenting it as chronology.
+ */
+async function orderedAnalysisTermsEventRows(
+  boundaryId: string,
+  termsId: string,
+  termsVersion: string,
+  client: DbClient,
+): Promise<readonly { transition: string; actorId: string; actorRole: string; rationale: string; at: Date; seq: bigint | null }[]> {
+  return client.pilotAnalysisTermsEventRecord.findMany({
+    where: { boundaryId, termsId, termsVersion },
+    orderBy: [{ at: "asc" }, { seq: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    select: { transition: true, actorId: true, actorRole: true, rationale: true, at: true, seq: true },
+  });
+}
+
+/**
+ * Which timestamps in this log hold two or more events with NO append order between them.
+ *
+ * The uncertainty preserved explicitly rather than resolved retroactively. Note what does NOT count: a
+ * legacy row ALONE at its timestamp is ordered with certainty, because `at` alone decides it. Only a tie
+ * with nothing to break it is uncertain.
+ */
+function uncertainTimestamps(
+  rows: readonly { at: Date; seq: bigint | null }[],
+): readonly string[] {
+  const byAt = new Map<string, { total: number; withoutSeq: number }>();
+  for (const r of rows) {
+    const k = r.at.toISOString();
+    const g = byAt.get(k) ?? { total: 0, withoutSeq: 0 };
+    g.total += 1;
+    if (r.seq === null) g.withoutSeq += 1;
+    byAt.set(k, g);
+  }
+  return Object.freeze(
+    [...byAt.entries()].filter(([, g]) => g.total > 1 && g.withoutSeq > 1).map(([k]) => k).sort(),
+  );
+}
+
+/** One row as a lifecycle event. `seq` is NOT exposed: a sequence number is not a fact any consumer
+ *  needs, and the smallest surface is the right one. What a consumer may need is whether the ORDER can
+ *  be trusted, and that is reported by the governance-state reader where a state is derived from it. */
+const toLifecycleEvent = (r: {
+  transition: string; actorId: string; actorRole: string; rationale: string; at: Date;
+}): PolicyLifecycleEvent =>
+  Object.freeze({
+    transition: r.transition as PolicyTransition,
+    actorId: r.actorId,
+    actorRole: r.actorRole,
+    rationale: r.rationale,
+    at: r.at.toISOString(),
+  });
+
 /** Full lifecycle history, oldest first. Boundary-scoped: another tenant's log is invisible. */
 export async function analysisTermsEvents(
   boundaryId: string,
@@ -154,21 +219,8 @@ export async function analysisTermsEvents(
   termsVersion: string,
   client: DbClient = prisma,
 ): Promise<readonly PolicyLifecycleEvent[]> {
-  const rows = await client.pilotAnalysisTermsEventRecord.findMany({
-    where: { boundaryId, termsId, termsVersion },
-    orderBy: [{ at: "asc" }, { id: "asc" }], // id breaks ties so ordering is total, not merely stable
-  });
-  return Object.freeze(
-    rows.map((r) =>
-      Object.freeze({
-        transition: r.transition as PolicyTransition,
-        actorId: r.actorId,
-        actorRole: r.actorRole,
-        rationale: r.rationale,
-        at: r.at.toISOString(),
-      }),
-    ),
-  );
+  const rows = await orderedAnalysisTermsEventRows(boundaryId, termsId, termsVersion, client);
+  return Object.freeze(rows.map(toLifecycleEvent));
 }
 
 export interface AnalysisTermsGovernanceState {
@@ -179,6 +231,14 @@ export interface AnalysisTermsGovernanceState {
   readonly activatedBy: string | null;
   /** When the CURRENT activation took effect. */
   readonly activatedAt: string | null;
+  /**
+   * False when some timestamp in this log holds two or more events with no append order between them,
+   * which can only be legacy rows written before `seq` existed. The derived state is then the reading of
+   * an ambiguous log, and saying so is the point: it is NOT re-derived, invented or reordered.
+   */
+  readonly orderCertain: boolean;
+  /** The exact timestamps whose internal order is unknown. Empty whenever `orderCertain` is true. */
+  readonly orderUncertainAt: readonly string[];
 }
 
 /**
@@ -194,7 +254,9 @@ export async function analysisTermsGovernanceState(
   termsVersion: string,
   client: DbClient = prisma,
 ): Promise<AnalysisTermsGovernanceState> {
-  const events = await analysisTermsEvents(boundaryId, termsId, termsVersion, client);
+  const rows = await orderedAnalysisTermsEventRows(boundaryId, termsId, termsVersion, client);
+  const events = Object.freeze(rows.map(toLifecycleEvent));
+  const orderUncertainAt = uncertainTimestamps(rows);
   const proposed = events.find((e) => e.transition === "PROPOSED") ?? null;
   const activations = events.filter((e) => e.transition === "ACTIVATED" || e.transition === "UNFROZEN");
   const latestActivation = activations.length > 0 ? activations[activations.length - 1]! : null;
@@ -205,5 +267,7 @@ export async function analysisTermsGovernanceState(
     proposedAt: proposed?.at ?? null,
     activatedBy: latestActivation?.actorId ?? null,
     activatedAt: latestActivation?.at ?? null,
+    orderCertain: orderUncertainAt.length === 0,
+    orderUncertainAt,
   });
 }
