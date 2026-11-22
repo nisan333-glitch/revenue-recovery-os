@@ -92,10 +92,10 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
 
   it("is imported ONLY by the readiness path — named, so a new importer must be justified here", () => {
     expect(importers()).toEqual([
-      // The LOCAL PILOT-PAIR CLI and its core: they read two independently sourced CSV exports through
-      // the real validators and the real readiness evaluator so a real pair can be checked before any
-      // pilot customer exists. Read-only, persist nothing, compute no money.
-      "scripts/data-readiness/assessPairCore.ts",
+      // The LOCAL PILOT-PAIR CLI's control. The CLI's own core no longer appears here: `assessPairFromCsv`
+      // MOVED to `src/contract/pairAssessment.ts` (below) so the pilot-pair intake route runs the SAME
+      // function, and `scripts/data-readiness/assessPairCore.ts` is now a pure re-export that imports
+      // nothing from this extract. Read-only, persists nothing, computes no money.
       "scripts/data-readiness/control.ts",
       // The customer-facing intake package: its emitter renders the request and the dictionary FROM these
       // specs, and its verifier re-derives them to prove the committed documents have not drifted. Both
@@ -117,6 +117,14 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
       "server/agents/reconciliationObserver.ts",
       "src/contract/dataReadiness.test.ts",
       "src/contract/dataReadiness.ts",
+      // PARSE -> VALIDATE -> EVALUATE, in ONE place. It was in `scripts/`, where production code may not
+      // reach it, so wiring the two-extract pilot intake route would have meant a second implementation
+      // of one rule — and *a finite agreement is necessary evidence of equivalence and never a proof of
+      // it*. It moved here instead; the CLI re-exports the same function object and a test asserts the
+      // identity rather than comparing behaviour. Still readiness path: it computes no money, persists
+      // nothing and reaches no ledger. Its server-side caller, `pilotPairIntakeService.ts`, does not
+      // import this extract at all — it consumes this module's report — so it does not appear here.
+      "src/contract/pairAssessment.ts",
       // The provenance attestation's corroborator and its falsifiers: they read the two VALIDATIONS to
       // check a declared row count, coverage window and join against what the files actually contain.
       // Readiness path, pure, and they compute no money.
@@ -130,12 +138,16 @@ describe("expectation extract · its consumer has shipped, and the guard moved w
     // one of each. `assessPairCore.ts` imports the validator; `assessPairCore.test.ts` names it only
     // inside a `resolve(...)` path, to read its source and check which reading terms it declares. The
     // negative half is the one that was broken, so it is the one worth pinning.
-    const read = (f: string): string =>
-      readFileSync(resolve(__dirname, "..", "..", "scripts", "data-readiness", f), "utf8");
-    expect(read("assessPairCore.test.ts")).toContain('"expectationExtractValidator.ts"'); // the premise
-    expect(read("assessPairCore.ts")).toMatch(/from "\.\.\/\.\.\/src\/contract\/expectationExtractValidator"/);
-    expect(importers()).toContain("scripts/data-readiness/assessPairCore.ts");
+    const read = (...f: string[]): string => readFileSync(resolve(__dirname, "..", "..", ...f), "utf8");
+    // The POSITIVE half moved with the function: `pairAssessment.ts` is the importer now. The negative
+    // half is unchanged and is the one that was broken, so it is the one worth pinning.
+    expect(read("scripts", "data-readiness", "assessPairCore.test.ts"))
+      .toContain('"expectationExtractValidator.ts"'); // the premise
+    expect(read("src", "contract", "pairAssessment.ts")).toMatch(/from "\.\/expectationExtractValidator"/);
+    expect(importers()).toContain("src/contract/pairAssessment.ts");
     expect(importers()).not.toContain("scripts/data-readiness/assessPairCore.test.ts");
+    // And the re-export really is one: the CLI core names the extract nowhere in an import specifier.
+    expect(importers()).not.toContain("scripts/data-readiness/assessPairCore.ts");
   });
 
   it("NO monetary, reconciliation or assessment module reaches it — the money path is undisturbed", () => {

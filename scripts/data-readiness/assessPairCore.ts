@@ -14,42 +14,15 @@
  * creates no Recovery Case, opens no network connection, and **cannot establish provenance**: with no
  * attestation it reports `SOURCE_NATIVE` and every level stays PROVISIONAL, which is the honest ceiling.
  */
-import { validateExpectationExtract } from "../../src/contract/expectationExtractValidator";
-import { validateBillingExtract } from "../../src/contract/billingExtractValidator";
-import { evaluateDataReadiness, type ReadinessReport } from "../../src/contract/dataReadiness";
-import { CsvTransportError, parseStrictCsv } from "./csvPairTransport";
-
-/** The governed reading term. Stated by the operator, never inferred from the files. */
-export interface PairTerms {
-  readonly currency: string;
-}
-
-export interface PairAssessment {
-  readonly report: ReadinessReport;
-  /** 0 when both extracts are usable, 2 when either is not. The report is emitted either way. */
-  readonly exitCode: 0 | 2;
-}
-
-/**
- * Read both CSVs through the real governed validators and the real readiness evaluator.
- *
- * It takes the file CONTENTS, not paths: a function that reads the disk could not be tested without
- * fixtures on it, and keeping I/O at the edge is what makes the redaction property checkable.
- */
-export function assessPairFromCsv(
-  expectationCsv: string,
-  billingCsv: string,
-  terms: PairTerms,
-): PairAssessment {
-  const expectation = parseStrictCsv(expectationCsv);
-  const billing = parseStrictCsv(billingCsv);
-  const e = validateExpectationExtract(expectation.header, expectation.rows, { currency: terms.currency });
-  const b = validateBillingExtract(billing.header, billing.rows, { currency: terms.currency });
-  // No attestation and no submission object: nothing here can raise authority, and the evaluator has no
-  // parameter by which this CLI could claim it did.
-  const report = evaluateDataReadiness(e, b);
-  return { report, exitCode: e.usable && b.usable ? 0 : 2 };
-}
+// MOVED, 2026-11-22: `assessPairFromCsv` now lives in `src/contract/pairAssessment.ts` so the
+// two-extract pilot intake route can use the SAME function. Production code may not import from
+// `scripts/`, and copying parse → validate → evaluate into the server would have been a second
+// implementation of one rule. This file re-exports it and keeps the CLI's own argument parsing, which
+// is genuinely a CLI concern. A test asserts the re-export is the same function object.
+export { assessPairFromCsv, type PairAssessment, type PairTerms } from "../../src/contract/pairAssessment";
+export { CsvTransportError } from "./csvPairTransport";
+// Imported as a VALUE as well, because the argument/exit helpers below still catch it.
+import { CsvTransportError } from "./csvPairTransport";
 
 /**
  * Parse the command line. Exported so the refusals are falsifiable rather than merely intended.

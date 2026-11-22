@@ -69,6 +69,8 @@ import { syntheticDemoFromEnvironment, type SyntheticDemo } from "./demo/synthet
 import { postgresSyntheticDemoPorts } from "./demo/syntheticDemoPorts";
 import { postgresSettlementKeyRegister } from "./persistence/settlementKeyStore";
 import { postgresInstitutionRegister } from "./persistence/institutionStore";
+import { submitPilotPair, PAIR_MAX_BYTES } from "./services/pilotPairIntakeService";
+import { createPostgresAgentTaskStore } from "./agents/prismaTaskDatabase";
 import { institutionSenderAuthority } from "./services/institutionSenderAuthority";
 import { ledgerArrivalReader, PostgresSettlementLedger } from "./persistence/settlementLedgerStore";
 import {
@@ -77,6 +79,7 @@ import {
 import { readSettlementCompromise } from "./services/settlementCompromiseRead";
 import {
   activateSettlementKeySchema, proposeSettlementKeySchema, revokeSettlementKeySchema,
+  pilotPairSchema, type PilotPairBody,
   settlementKeyParamsSchema, type KeyCeremonyBody, type SettlementKeyBody,
 } from "./http/schemas";
 
@@ -286,6 +289,28 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       const result = await pilotIntakeService.submitPilotDataset(actor, req.body);
       // 200, not 201: a dataset whose rows were rejected is a VALID answer, not a created resource.
       // The caller branches on `usableForAssessment`, never on the status code alone.
+      return reply.code(200).send(result);
+    },
+  );
+
+  // T1 · TWO-EXTRACT PILOT INTAKE — the door in front of the reconciliation observer.
+  //
+  // The observer is production code that already finds provable money from a contract schedule and a
+  // billing export; until now the only things that enqueued a task for it were the assessment path
+  // and the synthetic demo, so a customer's two files had nowhere to go. This route parses them with
+  // the strict transport, judges them with the REAL validators and the REAL readiness evaluator, and
+  // enqueues ONE reconciliation task.
+  //
+  // IT CREATES NO CASE, NO PROOF AND NO MONETARY CLAIM. Anything it leads to is OBSERVED exposure in
+  // the Revenue Opportunity ledger. 200 with a verdict, like EP-13: a pair whose extracts are
+  // unusable is a valid finding about the data, and the caller branches on `accepted`.
+  const pairUploadTransportLimit = 2 * PAIR_MAX_BYTES + 2 * 1024 * 1024;
+  app.post<{ Body: PilotPairBody }>(
+    "/pilot/pairs",
+    { schema: pilotPairSchema, bodyLimit: pairUploadTransportLimit },
+    async (req, reply) => {
+      const actor = await resolveActor(req, options.identityResolver);
+      const result = await submitPilotPair(createPostgresAgentTaskStore(), actor, req.body);
       return reply.code(200).send(result);
     },
   );

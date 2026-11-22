@@ -655,6 +655,40 @@ export const policyGovernanceQuerySchema = {
 //     a caller may hand over a declaration and never a verdict.
 //   · `boundaryId` on the activate and revoke bodies — it comes from the key's own row, checked
 //     against the actor's boundaries. A request that could name the tenant could name another's.
+// T1 · the two-extract pilot intake.
+//
+// `additionalProperties: false` ON THE BODY IS LOAD-BEARING, not hygiene. `observedAt` and
+// `actionAvailable` are stamped by the server, and `actionAvailable: false` makes the reconciliation
+// observer emit NO signals at all — so a wire format that accepted it would hand the party
+// submitting the data a silent switch for suppressing detection of their own exposure. There is no
+// such field, and an injected one is a 400 rather than a quiet strip.
+//
+// `currency` IS accepted, because it is a governed reading term the operator states: a row in
+// another currency is excluded rather than converted, and inferring it from the file would let the
+// file decide which rows count.
+export const pilotPairSchema = {
+  body: {
+    type: "object",
+    additionalProperties: false,
+    required: ["boundaryId", "expectationCsv", "billingCsv", "currency"],
+    properties: {
+      boundaryId: { type: "string", minLength: 1, maxLength: 128 },
+      // The service enforces the real byte limit and answers with a named code; these bounds only
+      // stop a pathological body before it reaches it.
+      expectationCsv: { type: "string", minLength: 1, maxLength: 12_000_000 },
+      billingCsv: { type: "string", minLength: 1, maxLength: 12_000_000 },
+      currency: { type: "string", minLength: 3, maxLength: 3 },
+    },
+  },
+} as const;
+
+export interface PilotPairBody {
+  readonly boundaryId: string;
+  readonly expectationCsv: string;
+  readonly billingCsv: string;
+  readonly currency: string;
+}
+
 export const proposeSettlementKeySchema = {
   body: {
     type: "object",
