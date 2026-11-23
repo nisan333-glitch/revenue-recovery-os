@@ -8,6 +8,23 @@ blocked, the file and line are named so the claim can be re-checked rather than 
 
 ---
 
+> ## ⚠ SUPERSEDED IN PART · T1 IS CLOSED (2026-11-23)
+>
+> **This page is an audit of `98b63a2` and its T1 finding is no longer true of the code.** The
+> two-extract intake was built in **`636cf46`** — the only commit in `98b63a2..1bdbaa7` that touched
+> `server/app.ts` or `server/services/pilotPairIntakeService.ts`. See **§1 · T1 · ERRATUM** below.
+>
+> The original finding is **preserved unchanged** rather than rewritten: it was accurate when written,
+> and a superseded conclusion is corrected and kept, never deleted. What is corrected is its *status*.
+>
+> **T1 is CLOSED at the code and test level. C1 — switching the path on in a real deployment — is
+> OPEN.** Development complete is not the same claim as running, and this page keeps them apart.
+>
+> **A stale document that contradicts the code is a defect, not noise** — which is why this marker sits
+> above the body and not in a footnote.
+
+---
+
 ## 0 · The headline, because it changes the plan
 
 > **A provable first pilot does NOT require a bank.**
@@ -46,6 +63,66 @@ contract-2.0.0 subscription observations, and feeds the assessment path — not 
 exist, and enqueues one reconciliation task for the boundary. No new detector, no new monetary logic,
 no change to the core, no contract change, no `PROVEN` change. The readiness evaluator and the local
 pair reader already exist (`scripts/pilot-intake/`, `dataReadiness.ts`).
+
+#### T1 · ERRATUM, 2026-11-23 — **CLOSED at the code and test level**
+
+The door exists. Traced link by link at `1bdbaa7`, read-only:
+
+| # | link | reference |
+|---|---|---|
+| 1 | the route that accepts **two** extracts — `POST /pilot/pairs`, closed body of four fields | `server/app.ts:308-316` |
+| 2 | calls `submitPilotPair(createPostgresAgentTaskStore(), actor, req.body)` | `server/app.ts:313` |
+| 3 | **the real validators and the real readiness evaluator** — `validateExpectationExtract`, `validateBillingExtract`, `evaluateDataReadiness` | `pilotPairIntakeService.ts:211` → `src/contract/pairAssessment.ts:62-66` |
+| 4 | enqueues **one** task with `agentId: RECONCILIATION_AGENT_ID` | `pilotPairIntakeService.ts:274-277` |
+| 5 | that id is `"reconciliation-observation-v1"` | `reconciliationObserver.ts:73` |
+| 6 | the worker dispatches by `handler.agentId` | `runtime.ts:26-49`, `worker.ts:83` |
+| 7 | the same id is registered to `reconciliationObserver` behind its opt-in flag | `activationDetector.ts:5, 109` |
+
+**The chain is tested, not merely readable.** `server/services/pilotPairIntake.postgres.test.ts`
+submits two CSV strings through `submitPilotPair` into the real Postgres task store, runs a real
+worker, and reaches **the same three candidates — 60 000 / 100 000 / 150 000 —** that the in-memory
+payload door reaches in `reconciliationWorker.postgres.test.ts`. Had the CSV transport altered one
+cell the figures would differ. It then drives accepted review → **one** Recovery Case, refuses
+promotion without an accepted review, proves a second promotion creates nothing, and asserts the case
+carries **no proof and no evidence**.
+
+Exercised in **CI #352**, job *EP-9 Postgres-backed verification*, `test:ep2` green:
+`https://github.com/nisan333-glitch/revenue-recovery-os/actions/runs/45117376240`
+
+**What T1's closure does and does not establish — the distinction that matters:**
+
+| | |
+|---|---|
+| **DEVELOPMENT · complete** | route, validation, idempotency (content fingerprint, task id, and the store's unique index), five codes-only refusals, enqueue, worker dispatch, candidate, Recovery Case — all present and CI-exercised |
+| **RUNTIME CONFIGURATION · still missing** | the observer is **opt-in and off by default**. It needs `NH_AGENTS_ENABLED=true`, `NH_RECONCILIATION_OBSERVER_ENABLED=true` and `NH_RECONCILER_PSEUDONYM_KEY` (≥32 chars, a deployment secret — without it the handler **cannot be built**, so a misconfigured deployment fails at startup rather than publishing invertible references: `reconciliationObserver.ts:474-477`). No committed deployment manifest sets any of the three. |
+
+> **No new code is required for T1; configuration is.** That is a narrower and more accurate statement
+> than "nothing is missing", and the difference is ownership: the configuration is the owner's, and
+> enabling a flag or registering a secret is not authorised by this document.
+
+Everything measured on this path is **synthetic**. The candidates are OBSERVED exposure in the Revenue
+Opportunity ledger, and no observed amount became Revenue Returned.
+
+### C1 · The reconciliation path is not switched on anywhere. **OPEN.**
+
+T1's closure is a statement about the code and its tests. It is **not** a statement that a running
+deployment would detect anything, and the two must not be read as one.
+
+The observer is **opt-in and off by default** (`activationDetector.ts:109`). Reaching a candidate in a
+real deployment needs three things, none of which any committed manifest sets:
+
+| | |
+|---|---|
+| `NH_AGENTS_ENABLED=true` | the agent runtime does not start otherwise |
+| `NH_RECONCILIATION_OBSERVER_ENABLED=true` | `optIn` returns an empty handler list for `undefined` or `"false"`, and **throws** on any other value — so a typo fails at startup rather than silently disabling detection (`activationDetector.ts:113-121`) |
+| `NH_RECONCILER_PSEUDONYM_KEY` | ≥32 characters, a deployment secret. Without it the handler **cannot be built**, so a misconfigured deployment fails at startup rather than publishing references an operator could invert (`reconciliationObserver.ts:474-477`) |
+
+**STATUS: OPEN until a real deployment is verified to have all three.** Setting them is an operational
+act with an owner and is **not authorised by this document**.
+
+> **Development complete ≠ running.** T1 is CLOSED at the code and test level; C1 stays OPEN until
+> configuration is verified in a real environment. Collapsing the two would be the same error as
+> reading a green CI run as a statement about production.
 
 ### T2 · The assessment path cannot stage a candidate. **Not on the critical path.**
 
@@ -165,9 +242,15 @@ period — all commercial or operational.
 ## 5 · The critical path, in order
 
 ```
-T1  two-extract intake route + enqueue        ← ours, bounded, no PROVEN change
+T1  two-extract intake route + enqueue        ← CLOSED 2026-11-23 (636cf46, CI #352)
  │
-X1  customer's billing system signs twice     ← external, small, documented payload
+C1  runtime configuration: two flags + the    ← OPEN · ours, operational, not code
+    pseudonym secret                             (see C1 above)
+ │
+X1  customer's billing system signs TWICE —   ← external, small, documented payload
+    two separately signed attestations:
+    the corrective invoice was raised, and
+    the money was collected
  │
 X4  one customer, one case, one finance owner ← commercial
  │
