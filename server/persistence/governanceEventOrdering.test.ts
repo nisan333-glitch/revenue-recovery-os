@@ -89,6 +89,105 @@ const LOGS = [
   },
 ] as const;
 
+/**
+ * A Prisma connection string, rendered as one `psql` ACCEPTS — optionally pointed at another database.
+ *
+ * WHY THIS EXISTS, AND IT IS A DEFECT THIS TEST ALREADY CAUSED. CI sets
+ * `DATABASE_URL=…/ep9_test?schema=public`. `schema` is a PRISMA parameter; libpq does not know it and
+ * `psql` refuses the whole URI — *invalid URI query parameter: "schema"* — so CI #351 failed here while
+ * every local run passed, because a local URL carries no such parameter. **A test whose premise is "my
+ * environment's connection string is psql's" is a test about my environment**, which is the recorded
+ * lesson from the shallow-clone `git show` failure, met again.
+ *
+ * AN ALLOWLIST, NOT "DROP THE QUERY". Stripping every parameter would also discard `sslmode`,
+ * `sslrootcert`, `sslcert`, `sslkey` and the rest — so a TLS-required database would be reached
+ * unencrypted, or not at all. Authentication is in the userinfo and the path, which are preserved
+ * verbatim. Only parameters libpq does not recognise are removed, and they are exactly the ones that
+ * would make psql refuse.
+ */
+const LIBPQ_QUERY_PARAMS: ReadonlySet<string> = new Set([
+  "application_name", "channel_binding", "client_encoding", "connect_timeout", "dbname",
+  "fallback_application_name", "gssdelegation", "gssencmode", "gsslib", "host", "hostaddr",
+  "keepalives", "keepalives_count", "keepalives_idle", "keepalives_interval", "krbsrvname",
+  "load_balance_hosts", "options", "passfile", "password", "port", "replication", "require_auth",
+  "requirepeer", "service", "ssl_max_protocol_version", "ssl_min_protocol_version", "sslcert",
+  "sslcertmode", "sslcompression", "sslcrl", "sslcrldir", "sslkey", "sslmode", "sslpassword",
+  "sslrootcert", "sslsni", "target_session_attrs", "tcp_user_timeout", "user",
+]);
+
+export function psqlUrl(prismaUrl: string, dbName?: string): string {
+  const u = new URL(prismaUrl);
+  for (const key of [...u.searchParams.keys()]) {
+    if (!LIBPQ_QUERY_PARAMS.has(key.toLowerCase())) u.searchParams.delete(key);
+  }
+  if (dbName !== undefined) u.pathname = `/${encodeURIComponent(dbName)}`;
+  return u.toString();
+}
+
+// ── THE HARNESS'S OWN CONNECTION-STRING HANDLING ──────────────────────────────────────────────────
+//
+// NOT gated on DATABASE_URL: it is a pure string function, and the whole point is that it must be
+// correct for a connection string this machine does not have. CI #351 failed because it was not.
+describe("psqlUrl · a Prisma connection string rendered for psql", () => {
+  it("drops Prisma's `schema` — the EXACT string CI sets, which is what broke run #351", () => {
+    // Verbatim from .github/workflows/ci.yml, the EP-9 job.
+    const ci = "postgresql://ep9_test:ep9_test_only@localhost:5432/ep9_test?schema=public";
+    expect(psqlUrl(ci)).toBe("postgresql://ep9_test:ep9_test_only@localhost:5432/ep9_test");
+    expect(psqlUrl(ci, "postgres")).toBe("postgresql://ep9_test:ep9_test_only@localhost:5432/postgres");
+    // The failure was literally this substring reaching psql.
+    expect(psqlUrl(ci)).not.toContain("schema");
+  });
+
+  it("KEEPS every parameter that decides TLS, and the credentials with it", () => {
+    // Stripping the whole query would reach a TLS-required database unencrypted, or not at all — so a
+    // convenience fix here would be a security regression. Authentication lives in the userinfo.
+    const tls = "postgresql://u:p%40ss@db.example.com:5432/app"
+      + "?sslmode=verify-full&sslrootcert=/etc/ssl/ca.pem&sslcert=/etc/ssl/c.pem&sslkey=/etc/ssl/k.pem"
+      + "&schema=public&connection_limit=5&pgbouncer=true&pool_timeout=10";
+    const out = psqlUrl(tls);
+    for (const kept of ["sslmode=verify-full", "sslrootcert=", "sslcert=", "sslkey=", "u:p%40ss@"]) {
+      expect(out, `psqlUrl dropped ${kept}`).toContain(kept);
+    }
+    for (const dropped of ["schema", "connection_limit", "pgbouncer", "pool_timeout"]) {
+      expect(out, `psqlUrl kept Prisma's ${dropped}`).not.toContain(dropped);
+    }
+  });
+
+  it("leaves a URL psql already accepts untouched, and only renames the database when asked", () => {
+    const plain = "postgresql://pgtest@127.0.0.1:5434/rc_test";
+    expect(psqlUrl(plain)).toBe(plain);
+    expect(psqlUrl(plain, "other_test")).toBe("postgresql://pgtest@127.0.0.1:5434/other_test");
+  });
+
+  it("the live-upgrade test does NOT hand a raw DATABASE_URL to psql — asserted on its own source", () => {
+    // The structural half: a future edit that hands the raw URL back to psql fails here rather than in
+    // CI, which is the only place the original defect could appear.
+    //
+    // COMMENTS ARE STRIPPED FIRST, and that is not tidiness — the first form of this guard FAILED on a
+    // correct file because the sentence above names the forbidden call shape, so the guard matched its
+    // own prose. *A term is not a claim, and a prose mention is not a call site* — the recurring lesson
+    // this repository keeps re-learning, now in this instrument too.
+    const src = readFileSync(resolve(REPO, "server/persistence/governanceEventOrdering.test.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "");
+    const calls = [...src.matchAll(/psqlOn\(([A-Za-z]+),/g)].map((m) => m[1]!);
+    // VACUITY CONTROL. A mutation replacing the line above with a hardcoded list survived the first
+    // pass of this guard: it then asserted a constant against a constant and could not fail. So the
+    // derivation is checked against an independent count of the call sites in the same stripped
+    // source — a hardcoded list no longer agrees with it. *A guard that cannot fire is no guard.*
+    // Every occurrence of `psqlOn(` IS a call site — the arrow-function binding reads `psqlOn = (`.
+    // Equality therefore also asserts that every call passes a bare identifier the regex can read.
+    const callSiteCount = (src.match(/psqlOn\(/g) ?? []).length;
+    expect(calls.length, "the call-site derivation stopped reading the source").toBe(callSiteCount);
+    expect(calls.length).toBeGreaterThan(5);
+    for (const target of calls) {
+      expect(["psqlTarget", "adminUrl"], `psqlOn was called with \`${target}\``).toContain(target);
+    }
+    // And the Prisma client still gets the FULL string, because `schema` is meaningful to Prisma.
+    expect(src).toMatch(/new PrismaClient\(\{ datasources: \{ db: \{ url \} \} \}\)/);
+  });
+});
+
 describe.skipIf(!process.env.DATABASE_URL)("governance event ordering", () => {
   afterAll(async () => { await prisma.$disconnect(); });
 
@@ -309,8 +408,11 @@ describe.skipIf(!process.env.DATABASE_URL)("governance event ordering", () => {
       // matters: that `ADD COLUMN seq BIGINT` rewrites no existing row.
       const base = process.env.DATABASE_URL!;
       const dbName = `govupgrade_synthetic_${uid()}`;
-      const adminUrl = base.replace(/\/[^/?]+(\?|$)/, "/postgres$1");
+      // `psqlUrl` drops the parameters libpq refuses and KEEPS the ones that decide TLS. The Prisma
+      // client below still receives the FULL original string, because `schema` is meaningful to it.
+      const adminUrl = psqlUrl(base, "postgres");
       const url = base.replace(/\/[^/?]+(\?|$)/, `/${dbName}$1`);
+      const psqlTarget = psqlUrl(url);
       const psqlOn = (target: string, args: string[]) =>
         execFileSync("psql", [target, "-v", "ON_ERROR_STOP=1", "-At", ...args], { encoding: "utf8" });
 
@@ -325,35 +427,35 @@ describe.skipIf(!process.env.DATABASE_URL)("governance event ordering", () => {
         const b = `pb-upgrade-${uid()}`;
 
         // ── the rollback, proved ───────────────────────────────────────────────────────────────────
-        psqlOn(url, ["-f", down]);
+        psqlOn(psqlTarget, ["-f", down]);
         for (const log of LOGS) {
-          expect(psqlOn(url, ["-c", `select count(*) from information_schema.columns
+          expect(psqlOn(psqlTarget, ["-c", `select count(*) from information_schema.columns
               where table_name='${log.table}' and column_name='seq'`]).trim()).toBe("0");
-          expect(psqlOn(url, ["-c",
+          expect(psqlOn(psqlTarget, ["-c",
             `select count(*) from pg_sequences where sequencename='${log.seqName}'`]).trim()).toBe("0");
           // The identity index and the append-only trigger are untouched by the rollback.
-          expect(psqlOn(url, ["-c",
+          expect(psqlOn(psqlTarget, ["-c",
             `select count(*) from pg_indexes where indexname='${log.identityIndex}'`]).trim()).toBe("1");
         }
 
         // ── rows written by the OLD build, which had no column to write ────────────────────────────
-        psqlOn(url, ["-c", `insert into "pilot_analysis_terms_events"
+        psqlOn(psqlTarget, ["-c", `insert into "pilot_analysis_terms_events"
             (id, boundary_id, terms_id, terms_version, transition, actor_id, actor_role, rationale, at)
           values ('lp-${b}','${b}','t','1.0.0','PROPOSED','op','operator','r','2026-01-01T00:00:00Z'),
                  ('la-${b}','${b}','t','1.0.0','ACTIVATED','gov','steward','r','2026-01-02T00:00:00Z')`]);
-        psqlOn(url, ["-c", `insert into "PilotAdmissionPolicyEventRecord"
+        psqlOn(psqlTarget, ["-c", `insert into "PilotAdmissionPolicyEventRecord"
             (id, boundary_id, policy_id, policy_version, transition, actor_id, actor_role, rationale, at)
           values ('lpp-${b}','${b}','p','1.0.0','PROPOSED','op','operator','r','2026-01-01T00:00:00Z'),
                  ('lpa-${b}','${b}','p','1.0.0','ACTIVATED','gov','steward','r','2026-01-02T00:00:00Z')`]);
 
         // ── the upgrade ───────────────────────────────────────────────────────────────────────────
-        psqlOn(url, ["-f", up]);
+        psqlOn(psqlTarget, ["-f", up]);
 
         // NOT BACKFILLED. The rows written before the column existed still carry no append order,
         // which is the whole reason the column is nullable rather than BIGSERIAL.
         for (const log of LOGS) {
           expect(
-            psqlOn(url, ["-c", `select count(*) from "${log.table}" where boundary_id='${b}' and seq is null`]).trim(),
+            psqlOn(psqlTarget, ["-c", `select count(*) from "${log.table}" where boundary_id='${b}' and seq is null`]).trim(),
             `${log.name} backfilled a pre-existing row`,
           ).toBe("2");
         }
@@ -370,7 +472,7 @@ describe.skipIf(!process.env.DATABASE_URL)("governance event ordering", () => {
         expect(after.events.map((e) => e.transition)).toEqual(["PROPOSED", "ACTIVATED", "FROZEN"]);
         expect(after.state).toBe("FROZEN");
         expect(after.orderCertain).toBe(true);
-        expect(psqlOn(url, ["-c", `select count(*) from "pilot_analysis_terms_events"
+        expect(psqlOn(psqlTarget, ["-c", `select count(*) from "pilot_analysis_terms_events"
             where boundary_id='${b}' and seq is not null`]).trim()).toBe("1");
       } finally {
         await client.$disconnect();
