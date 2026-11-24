@@ -108,17 +108,52 @@ Opportunity ledger, and no observed amount became Revenue Returned.
 T1's closure is a statement about the code and its tests. It is **not** a statement that a running
 deployment would detect anything, and the two must not be read as one.
 
-The observer is **opt-in and off by default** (`activationDetector.ts:109`). Reaching a candidate in a
-real deployment needs three things, none of which any committed manifest sets:
+#### ⚠ CORRECTION, 2026-11-24 — this entry said THREE variables. The real count is **18**.
 
-| | |
-|---|---|
-| `NH_AGENTS_ENABLED=true` | the agent runtime does not start otherwise |
-| `NH_RECONCILIATION_OBSERVER_ENABLED=true` | `optIn` returns an empty handler list for `undefined` or `"false"`, and **throws** on any other value — so a typo fails at startup rather than silently disabling detection (`activationDetector.ts:113-121`) |
-| `NH_RECONCILER_PSEUDONYM_KEY` | ≥32 characters, a deployment secret. Without it the handler **cannot be built**, so a misconfigured deployment fails at startup rather than publishing references an operator could invert (`reconciliationObserver.ts:474-477`) |
+The first form of this entry listed three. A full scan of every environment read in `server/` and
+`src/` found **59 variables**, of which **18 are required** for a production pilot that can reach a
+proof. Two of the three I originally missed **throw at startup**, so a deployment built on the earlier
+list would not have detected anything — it would not have started.
 
-**STATUS: OPEN until a real deployment is verified to have all three.** Setting them is an operational
-act with an owner and is **not authorised by this document**.
+**The lesson, recorded because it recurred three times in two days:** I scanned once and found three,
+again and found five, and only an exhaustive enumeration found eighteen. *A list assembled by reading
+the code path you expected is a list of the variables you expected.* The count below is derived from
+every `env.*` / `process.env.*` read in the tree, not from the detection path alone.
+
+#### Tier A · detection — five, and three of them throw
+
+| # | variable | absent ⇒ | reference |
+|---|---|---|---|
+| 1 | `NH_AGENTS_ENABLED=true` | defaults `false`; the agent runtime never starts | `config.ts:19` |
+| 2 | `NH_AGENT_BOUNDARIES` | **THROWS** — *"required when agents are enabled"* | `config.ts:33` |
+| 3 | `NH_RECONCILIATION_OBSERVER_ENABLED=true` | empty handler list; **THROWS** on any value other than `true`/`false`, so a typo fails at startup rather than silently disabling detection | `activationDetector.ts:109-121` |
+| 4 | `NH_RECONCILER_PSEUDONYM_KEY` | ≥32 chars, a deployment secret. **THROWS** — the handler cannot be built, so a misconfigured deployment fails rather than publishing invertible references | `reconciliationObserver.ts:482-483` |
+| 5 | `NH_AGENT_ADMISSION_POLICIES=RevenueUnderBilled:<threshold>` | **THROWS** — *"agents are enabled but no candidate admission policies are configured"* | `bootstrap.ts:31-36` |
+
+#### Tier B · serving, authentication and transport — eleven
+
+| # | variable | absent ⇒ | reference |
+|---|---|---|---|
+| 6 | `DATABASE_URL` | no store, no queue, no case | Prisma |
+| 7 | `NODE_ENV=production` | also flips 17 on by itself | — |
+| 8 | `NH_AUTH_MODE` | defaults to `oidc` under `NODE_ENV=production`; **THROWS** on any value but `oidc`/`dev-headers` | `verifiedIdentity.ts:32-33` |
+| 9–16 | `NH_OIDC_ISSUER` · `NH_OIDC_AUDIENCE` · `NH_OIDC_JWKS_URI` · `NH_OIDC_CLIENT_ID` · `NH_OIDC_AUTHORIZATION_ENDPOINT` · `NH_OIDC_TOKEN_ENDPOINT` · `NH_OIDC_TOKEN_USE` · `NH_OIDC_SCOPES` | **eight**, each named individually in `missing`; auth reports NOT CONFIGURED | `publicAuthConfig.ts:51-68` |
+| 17 | `NH_TLS_TERMINATION=proxy` | **THROWS** in production — *"production requires TLS termination"*. Plain HTTP is permitted only for a supervised `dev-headers` + `NH_PRIVATE_PILOT=true` private pilot | `transportGuard.ts:35-44` |
+
+`NH_OIDC_ROLE_CLAIM`, `NH_OIDC_BOUNDARY_CLAIM`, `NH_OIDC_CLOCK_SKEW_SECONDS`, `NH_OIDC_JWKS_TTL_SECONDS`
+and `NH_OIDC_TIMEOUT_MS` carry defaults and are **not** required.
+
+#### Tier C · the proof path — one
+
+| # | variable | absent ⇒ | reference |
+|---|---|---|---|
+| 18 | `NH_EVIDENCE_SOURCE_KEYS` | X1 signatures cannot verify, so evidence stays `beneficiary_controlled` and **both** proof gates refuse | `sourceVerification.ts:109-116`; `executedCorrection.ts:105`; `outcomeEvidence.ts:90-115` |
+
+`NH_REQUIRE_RECOVERY_CASE_ROOT` becomes true automatically under `NODE_ENV=production`
+(`recoveryCaseStore.ts:7`), so it needs no action — but it is listed so nobody sets it to `false`.
+
+**STATUS: OPEN until a real deployment is verified to have all eighteen.** Setting them is an
+operational act with an owner and is **not authorised by this document**.
 
 > **Development complete ≠ running.** T1 is CLOSED at the code and test level; C1 stays OPEN until
 > configuration is verified in a real environment. Collapsing the two would be the same error as
@@ -244,8 +279,8 @@ period — all commercial or operational.
 ```
 T1  two-extract intake route + enqueue        ← CLOSED 2026-11-23 (636cf46, CI #352)
  │
-C1  runtime configuration: two flags + the    ← OPEN · ours, operational, not code
-    pseudonym secret                             (see C1 above)
+C1  runtime configuration: 18 variables        ← OPEN · ours, operational, not code
+    across detection, auth/TLS and proof          (see C1 above)
  │
 X1  customer's billing system signs TWICE —   ← external, small, documented payload
     two separately signed attestations:
