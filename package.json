@@ -27,6 +27,8 @@
     "pilot:purge-inputs": "npm run build:server && node dist-server/server/services/pilotInputRetentionCli.js",
     "pilot:synthetic": "npm run build:server && node dist-server/server/agents/syntheticPilotCli.js",
     "pilot:verify": "vite-node scripts/pilot-intake/verify-package.ts",
+    "pilot:config": "node scripts/pilot-config/verify-config-chain.mjs",
+    "pilot:config:use": "vite-node scripts/pilot-config/resolve-point-of-use.ts",
     "prepare": "git config core.hooksPath .githooks || true",
     "preview": "vite preview",
     "readiness:control": "vite-node scripts/data-readiness/control.ts",
