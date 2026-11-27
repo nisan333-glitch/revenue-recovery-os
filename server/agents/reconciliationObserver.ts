@@ -337,22 +337,57 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
         else refusedExpected += u.expectedMinor;
     }
   }
-  // Group by payer. Order is by identity, never by input position: reordering the files must not change
-  // the plan, so units sort by (entitlement, period) and accounts by their reference.
+  // ── EMISSION GRAIN · one candidate per OBLIGATION where its identity is authoritative ───────────
+  //
+  // THIS USED TO GROUP BY PAYER, and that one line was what held 96% of detected exposure out of the
+  // proof path. Measured on the frozen realistic company: $76,458.30 detected, nine payer-grained
+  // candidates, SEVEN of them multi-unit and therefore `ACCOUNT_AGGREGATE`, which `provenEligibility`
+  // refuses by design — so only $3,064.45, 4.01%, could ever reach PROVEN. The three-candidate demo
+  // reached PROVEN only because each of its payers holds exactly one obligation.
+  //
+  // AND THE GRAIN IT USED WAS ONE THIS REPOSITORY HAD ALREADY REJECTED. The benchmark grain study
+  // measured payer×period, recorded $56,858.30 at 66.16% recall, found 12 of 19 cases unattributable
+  // and concluded it must never ship as the reconciliation grain; the production observer reproduced
+  // both figures exactly. The two were never connected because the benchmark core has no production
+  // callers.
+  //
+  // NOTHING DOWNSTREAM NEEDED CHANGING, which is why this is a grouping change and not a migration:
+  // `unitObligationRef` already existed in its own namespace, `coverageForCandidate` already emits
+  // SINGLE_OBLIGATION for a one-unit candidate, and `CANDIDATE_DEDUPE_SCHEME_V2` already keys on the
+  // obligation while preserving the V1 preimage byte-identical. The machinery was waiting for an input
+  // it never received.
+  //
+  // IDENTITY IS NEVER MANUFACTURED. A unit earns its own candidate only when all three facts
+  // `unitObligationRef` hashes are actually present. A unit missing any of them keeps the ACCOUNT-
+  // GRAINED path, stays `ACCOUNT_AGGREGATE` and stays unprovable — which is the correct outcome, not a
+  // gap to fill with a derived value, a row position or an execution id.
+  const obligationGrained: { readonly accountRef: string; readonly unit: PlannedUnit }[] = [];
   const byAccount = new Map<string, PlannedUnit[]>();
-  for (const { accountRef, unit } of units) byAccount.set(accountRef, [...(byAccount.get(accountRef) ?? []), unit]);
-  const byIdentity = (x: PlannedUnit, y: PlannedUnit): number =>
-    `${x.entitlementRef}|${x.periodStart}|${x.periodEnd}`.localeCompare(`${y.entitlementRef}|${y.periodStart}|${y.periodEnd}`);
-  const candidates: PlannedCandidate[] = [...byAccount.entries()]
-    .sort(([x], [y]) => x.localeCompare(y))
-    .map(([accountRef, us]) => {
+  for (const { accountRef, unit } of units) {
+    if (unitHasObligationIdentity(unit)) obligationGrained.push({ accountRef, unit });
+    else byAccount.set(accountRef, [...(byAccount.get(accountRef) ?? []), unit]);
+  }
+  const unitKey = (u: PlannedUnit): string => `${u.entitlementRef}|${u.periodStart}|${u.periodEnd}`;
+  const byIdentity = (x: PlannedUnit, y: PlannedUnit): number => unitKey(x).localeCompare(unitKey(y));
+  // Order is by identity, never by input position: reordering the files must not change the plan. The
+  // two kinds are built separately and then sorted together under ONE comparator, so a mixed book has
+  // a single total order rather than an order that depends on which list a candidate came from.
+  const candidates: PlannedCandidate[] = [
+    ...obligationGrained.map(({ accountRef, unit }) => Object.freeze({
+      accountRef,
+      units: Object.freeze([unit]),
+      residualMinor: unit.residualMinor,
+    })),
+    ...[...byAccount.entries()].map(([accountRef, us]) => {
       const sorted = [...us].sort(byIdentity);
       return Object.freeze({
         accountRef,
         units: Object.freeze(sorted),
         residualMinor: sorted.reduce((n, x) => n + x.residualMinor, 0),
       });
-    });
+    }),
+  ].sort((a, b) =>
+    a.accountRef.localeCompare(b.accountRef) || unitKey(a.units[0]!).localeCompare(unitKey(b.units[0]!)));
 
   return Object.freeze({
     usable: true,
@@ -390,6 +425,25 @@ export function accountSourceRef(key: string, accountRef: string): string {
  * key. The namespace string differs so a unit reference can never collide with an account reference —
  * two different things must not hash to one value just because they share a key.
  */
+/**
+ * Does this unit carry the facts `unitObligationRef` hashes, so an obligation reference can be
+ * DERIVED rather than invented?
+ *
+ * Exported and separate because it is the one predicate that decides whether a unit can ever be
+ * proven, and re-deriving it beside each caller is how two implementations of one rule drift apart —
+ * the same reason `candidateDedupeGrain` is exported.
+ *
+ * ALL THREE, AND NON-BLANK. A blank component would still hash to a stable value, so the reference
+ * would look authoritative while naming nothing: that is manufacturing identity, which the Trust
+ * Invariant forbids. The honest answer for such a unit is that it has no obligation identity, and the
+ * consequence — account-grained, aggregate, unprovable — is correct rather than a gap.
+ */
+export function unitHasObligationIdentity(unit: PlannedUnit): boolean {
+  return unit.entitlementRef.trim() !== ""
+    && unit.periodStart.trim() !== ""
+    && unit.periodEnd.trim() !== "";
+}
+
 export function unitObligationRef(key: string, unit: PlannedUnit): string {
   return `hmac-sha256:${createHmac("sha256", key)
     .update(JSON.stringify(["reconciliation-obligation", unit.entitlementRef, unit.periodStart, unit.periodEnd]))
