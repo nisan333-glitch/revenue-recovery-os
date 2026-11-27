@@ -1,0 +1,20 @@
+{
+  "frozenAt": "2026-11-27",
+  "revision": "PL1",
+  "what": "the production-lane synthetic-company harness",
+  "covers": "the harness scripts only — the data and ground truth are covered by the reconciliation package locks",
+  "order": "freeze the harness -> run NH -> reconcile -> score. A product change may move the RESULT; the ruler may not move with it.",
+  "scripts": {
+    "project.ts": "5c2a4a534f7f7a881da3da8c0630a4dcd1e3ee8ff8a74c7057974666a8638ad1",
+    "run.ts": "692180276df8297b3190b8333fab09405d72d98aa64afe1906b433ce67c39837",
+    "score.ts": "0cad6565ad30eac1cf7b46837239ecd0e702d46929f590989c35b7412b02ae23",
+    "reconcile.ts": "f9a64f19c496a4a348e8493c3fdadb2f5d2be0f3c8879d880523eeb71bf1f505",
+    "probe-plan.ts": "bc5537298dc3ef3ed061949c4cbf337eacc2d9460021f3cbad597f1ad8e5e3c0",
+    "probe-admission.ts": "3775de33ffaa60e69284e1f9cf256f674839707979e824d624e2b5a59a755537"
+  },
+  "compositeSha256": "1daac2abfbbe203379fe9425859998927e82d7031d0cb996c0ab350f6608a23a",
+  "notFrozenHere": {
+    "the frozen data and ground truth": "scripts/reconciliation-synthetic/FREEZE.lock.json and the obligation-ref variant lock",
+    "the 10% baseline fraction": "a HARNESS CONSTANT in run.ts, not a governed baseline method — named in the acceptance plan as a prerequisite, and deliberately unchanged across the before/after runs so the two remain comparable"
+  }
+}

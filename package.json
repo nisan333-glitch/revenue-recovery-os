@@ -31,6 +31,7 @@
     "pilot:company": "vite-node scripts/pilot-synthetic-company/run.ts",
     "pilot:company:score": "vite-node scripts/pilot-synthetic-company/score.ts",
     "pilot:company:reconcile": "vite-node scripts/pilot-synthetic-company/reconcile.ts",
+    "pilot:company:verify": "node scripts/pilot-synthetic-company/verify.mjs",
     "pilot:company:plan": "vite-node scripts/pilot-synthetic-company/probe-plan.ts",
     "pilot:config:use": "vite-node scripts/pilot-config/resolve-point-of-use.ts",
     "prepare": "git config core.hooksPath .githooks || true",
