@@ -107,7 +107,31 @@ export class SourceVerifier {
 }
 
 export function sourceTrustKeysFromEnvironment(env: Readonly<Record<string, string | undefined>>): SourceTrustKey[] {
-  const keys: unknown = JSON.parse(env.NH_EVIDENCE_SOURCE_KEYS ?? "[]");
+  // A BLANK VALUE IS THE SAME OPERATOR INTENT AS AN ABSENT ONE, and before this it was a crash.
+  // `?? "[]"` catches only null and undefined, so a manifest carrying `NH_EVIDENCE_SOURCE_KEYS=""` —
+  // an unset templated variable, the ordinary case — reached `JSON.parse("")` and threw
+  // `Unexpected end of JSON input`: a raw parser message naming no variable, on a configuration
+  // path. Measured by `scripts/pilot-config/resolve-point-of-use.ts`.
+  //
+  // WHY BLANK RESOLVES TO NO KEYS RATHER THAN REFUSING. Absent already resolves to `[]`, because this
+  // variable is optional for a deployment that never reaches a proof. Letting blank crash while
+  // absent does not is an inconsistency, not a safety feature — and `[]` is FAIL-CLOSED where it
+  // matters: with no registered key no attestation can verify, every evidence record stays
+  // `beneficiary_controlled`, and BOTH proof gates refuse. The loud failure happens at the gate,
+  // which is where the money is, rather than at a startup that has nothing to prove yet.
+  const raw = env.NH_EVIDENCE_SOURCE_KEYS;
+  if (raw === undefined || raw.trim().length === 0) return [];
+  let keys: unknown;
+  try {
+    keys = JSON.parse(raw);
+  } catch {
+    // THE DIAGNOSTIC NAMES OUR OWN VARIABLE AND NOTHING ELSE. The parser's message is not echoed,
+    // because the value is a deployment secret's envelope and a parse error can quote its content.
+    throw new Error(
+      "NH_EVIDENCE_SOURCE_KEYS must be a JSON array of {keyId, sourceSystem, publicKey} objects; "
+        + "it could not be parsed as JSON",
+    );
+  }
   if (!Array.isArray(keys)) throw new Error("NH_EVIDENCE_SOURCE_KEYS must be an array");
   return keys;
 }
