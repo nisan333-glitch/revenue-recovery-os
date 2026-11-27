@@ -85,9 +85,26 @@ export function registerErrorHandler(app: FastifyInstance): void {
       });
     }
 
-    // The database append-only triggers raise a message containing 'append-only'.
-    // Map it to a clean conflict without exposing the underlying SQL.
-    if (/append-only/i.test(String(err?.message ?? ""))) {
+    // A ROTATED SETTLEMENT DIGEST KEY, which is NOT an immutability conflict and must not be reported
+    // as one. Recognised by the class's own `name` so this module keeps importing nothing but Fastify
+    // types. Its message is one of OUR constants — never customer data — and it carries the remedy,
+    // which the generic immutability text actively contradicts.
+    if ((err as unknown as { name?: string }).name === "SettlementDigestKeyChangedError") {
+      return reply.code(409).send({
+        error: "settlement_digest_key_changed",
+        message: String(err?.message ?? ""),
+      });
+    }
+
+    // The database append-only triggers raise a message PREFIXED `append-only: ` — see
+    // `nh_reject_mutation()` and its siblings, every one of which raises with that exact prefix.
+    //
+    // THE COLON IS LOAD-BEARING. `/append-only/i` matched the term ANYWHERE, so any error whose prose
+    // merely mentions that a table is append-only was reported to the caller as an immutability
+    // conflict with a remedy — "create a linked revision" — that did not apply to it. The settlement
+    // digest-key refusal above was exactly that case, and it was found by a test that asserted the
+    // route reports the fingerprint guard, not by reading this file.
+    if (/append-only:/i.test(String(err?.message ?? ""))) {
       return reply.code(409).send({
         error: "immutable_record",
         message: "Historical records are immutable; create a linked revision instead.",

@@ -679,3 +679,184 @@ describe.skipIf(!HAS_DB)("G9 · the wired success path, and what it makes imposs
     void createHmac; // the keying lives in the store; this asserts its OUTPUT, not its implementation
   }, 60_000);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// PHASE 5 · THE ACTUAL PRODUCTION ROUTE, WITH NO SEAM SUBSTITUTED.
+//
+// AND FIRST, A CORRECTION OF MY OWN REPORT. `2dee2e1` said the production approval path citing a
+// settlement "remains NOT EXERCISED" and that "the route that would use them is not" tested. That was
+// WRONG, and the error is one already recorded twice in this repository: I observed that the synthetic
+// pilot harness cites no settlement — true — and concluded that nothing drives the route — false. This
+// file was already 44 passing tests over the live `approve()`. *A list assembled by reading the code
+// path you expected is a list of the paths you expected.*
+//
+// WHAT WAS GENUINELY MISSING, measured rather than assumed. Every citation that crosses HTTP above ends
+// in a REFUSAL (`SETTLEMENT_CASE_PAYER_NOT_RECORDED` and friends), and every citation that reaches
+// PROVEN does so through `approve()` with `deps` injected — `env` and `digestKey` at minimum. So the
+// positive path had never crossed the wire, and *a probe refused for a different reason is not a
+// measurement of the thing it names*: those HTTP cases prove the field reaches the service, not that it
+// can carry a proof to PROVEN end to end.
+//
+// These three cases take NO `deps` AT ALL. The flag, the trust keys and the digest key come from the
+// real `process.env` that production reads; the payer comes from the production resolver over
+// source-signed evidence; the body crosses `approveProofSchema`; and the handler is the one
+// `server/app.ts:638` registers. That is the difference between "the gate works" and "the deployment
+// would work".
+describe.skipIf(!HAS_DB)("PHASE 5 · POST /proofs with a cited settlement, through process.env", () => {
+  const SAVED: Record<string, string | undefined> = {};
+  const KEYS = ["NH_EXTERNAL_SETTLEMENT_ENABLED", "NH_SETTLEMENT_SOURCE_KEYS", "NH_SETTLEMENT_DIGEST_KEY"];
+  const setEnv = (over: Record<string, string>) => {
+    for (const k of KEYS) { if (!(k in SAVED)) SAVED[k] = process.env[k]; }
+    for (const [k, v] of Object.entries(over)) process.env[k] = v;
+  };
+  afterAll(() => {
+    // RESTORED, because a suite that leaves the settlement flag ON would silently change the posture
+    // every later file runs under — and this one enables the gate that the rest assert is off.
+    for (const [k, v] of Object.entries(SAVED)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  });
+
+  /** The real deployment variables, set on `process.env` exactly as a pilot would set them. */
+  function productionEnv(keyId: string, boundaryId: string, digestKey = DIGEST_KEY): void {
+    setEnv({
+      NH_EXTERNAL_SETTLEMENT_ENABLED: "true",
+      NH_SETTLEMENT_SOURCE_KEYS: JSON.stringify([
+        { keyId, boundaryId, sourceSystem: "acme-bank", sourceKind: "bank", publicKey: BANK.pem },
+      ]),
+      NH_SETTLEMENT_DIGEST_KEY: digestKey,
+    });
+  }
+
+  const postProof = (payload: unknown) =>
+    app.inject({ method: "POST", url: "/proofs", headers: APPROVER, payload });
+
+  it("P5-1 · THE PRODUCTION ROUTE REACHES PROVEN: 201 over HTTP, no deps, env-supplied digest key", async () => {
+    const payer = `PAYER-ATTESTED-${uid()}`;
+    const c = await provableCase({ attestPayer: payer });
+    const { keyId, signedAt } = await activeKeyFor(c.boundaryId);
+    productionEnv(keyId, c.boundaryId);
+    const fact = factFor(c.boundaryId, c.invoiceRef, { payerExternalRef: payer });
+    const proofId = `PF-P5-${uid()}`;
+
+    const res = await postProof({
+      ...body({ ...c, proofId, evidenceIds: [c.evidenceId] }),
+      citedSettlements: [{ fact, attestation: attest(fact, keyId, signedAt) }],
+    });
+
+    expect(res.statusCode, res.body).toBe(201);
+
+    // A CORRECTION OF MY OWN FIRST FORM, which asserted `status === "PROVEN"` and failed with
+    // `Received: "Approved"`. `src/domain/proof.ts:84` writes `status: "Approved" as const`, and
+    // **PROVEN IS NOT A STORED PROOF STATUS AT ALL** — it is a derived CASE PROGRESS
+    // (`caseLifecycle.ts:206`: `if (input.provenRevenueReturned !== null) return "PROVEN"`), exactly as
+    // the constitution requires: *case status is DERIVED from the append-only history, never stored.*
+    // Asserting a stored "PROVEN" would have been asserting the cached status this repository refuses
+    // to have. So the claim is made in the two places it actually lives.
+    const stored = await prisma.proof.findUnique({ where: { proofId } });
+    expect(stored?.status).toBe("Approved");
+    // THE MONEY, not just the state: Revenue Returned is `Collected − Baseline` and nothing else.
+    expect(stored!.revenueReturnedMinor).toBe(stored!.collectedMinor - stored!.baselineMinor);
+    // And the ledger row names THIS proof — the other half of "the money is substantiated".
+    expect((await consumptions(settlementDigest(fact, DIGEST_KEY))).map((r) => r.claim_ref)).toEqual([proofId]);
+    // THE DIGEST KEY CAME FROM THE ENVIRONMENT, not from a parameter — the row above was found by
+    // recomputing the digest under the env value, which is only possible if the route used it.
+    expect(process.env.NH_SETTLEMENT_DIGEST_KEY).toBe(DIGEST_KEY);
+  }, 120_000);
+
+  it("P5-2 · A ROTATED DIGEST KEY IS REFUSED BY THE ROUTE — the fingerprint guard, not a ledger unit test", async () => {
+    // CONTROL 4, moved to the layer the mandate asks for. The ledger's own suite proves the fingerprint
+    // mismatch refuses; this proves the PRODUCTION ROUTE inherits it, which is a different claim —
+    // the gate could hold while the route swallowed its verdict.
+    const boundaryId = `SYNTHETIC-p5rot-${uid()}`;
+    const payer = `PAYER-ATTESTED-${uid()}`;
+    const first = await provableCase({ boundaryId, attestPayer: payer });
+    const { keyId, signedAt } = await activeKeyFor(boundaryId);
+    productionEnv(keyId, boundaryId, DIGEST_KEY);
+
+    const factA = factFor(boundaryId, first.invoiceRef, { payerExternalRef: payer });
+    const okId = `PF-P5ROT-A-${uid()}`;
+    const ok = await postProof({
+      ...body({ ...first, proofId: okId, evidenceIds: [first.evidenceId] }),
+      citedSettlements: [{ fact: factA, attestation: attest(factA, keyId, signedAt) }],
+    });
+    expect(ok.statusCode, ok.body).toBe(201);
+
+    // ROTATE THE DEPLOYMENT SECRET. Nothing else changes: same boundary, same bank key, a genuinely
+    // NEW arrival. Without the guard every past arrival silently becomes claimable again.
+    const ROTATED = "nh-test-settlement-digest-key-ROTATED-9876543210";
+    const second = await provableCase({ boundaryId, attestPayer: payer });
+    productionEnv(keyId, boundaryId, ROTATED);
+    const factB = factFor(boundaryId, second.invoiceRef, { payerExternalRef: payer });
+    const res = await postProof({
+      ...body({ ...second, proofId: `PF-P5ROT-B-${uid()}`, evidenceIds: [second.evidenceId] }),
+      citedSettlements: [{ fact: factB, attestation: attest(factB, keyId, signedAt) }],
+    });
+
+    // THE REFUSAL HOLDS — no proof, nothing counted.
+    expect(res.statusCode, res.body).toBe(409);
+    expect(await proofCount(second.caseId)).toBe(0);
+
+    // AND IT IS REPORTED AS ITSELF. My first form only asserted "not 201" plus a message match, and it
+    // FAILED with `{"error":"immutable_record"}` — the route refused for a reason it then misstated,
+    // telling the operator to "create a linked revision", which cannot address a rotated deployment
+    // secret. *A probe refused for a different reason is not a measurement of the thing it names*, met
+    // here in my own new test. The over-matching mapper is fixed in `server/http/errors.ts`; this is
+    // the assertion that keeps it fixed.
+    const payload = JSON.parse(res.body) as { error: string; message: string };
+    expect(payload.error).toBe("settlement_digest_key_changed");
+    expect(payload.error).not.toBe("immutable_record");
+    expect(payload.message).toMatch(/digest key has changed/i);
+    expect(payload.message).toMatch(/governed rebuild, not a deploy/i);
+    // AND THE FIRST PROOF IS UNTOUCHED. A refusal must never reach back into a frozen proof.
+    expect((await prisma.proof.findUnique({ where: { proofId: okId } }))?.status).toBe("Approved");
+  }, 150_000);
+
+  it("P5-3 · ROLLBACK THEN RETRY: the released arrival is genuinely re-claimable through the route", async () => {
+    // CONTROL 5's SECOND HALF, which the existing rollback case does not assert. That one proves the
+    // partial claim is RELEASED; it never claims the money afterwards. Release without a successful
+    // retry is indistinguishable from the arrival being burned by a tidier mechanism — and a burned
+    // arrival refuses a legitimate first claim FOREVER, which is the expensive failure here.
+    const boundaryId = `SYNTHETIC-p5retry-${uid()}`;
+    const payer = `PAYER-ATTESTED-${uid()}`;
+    const c = await provableCase({ boundaryId, attestPayer: payer });
+    const { keyId, signedAt } = await activeKeyFor(boundaryId);
+    productionEnv(keyId, boundaryId);
+
+    const half = (over: Partial<ExternalSettlementFact> = {}) =>
+      factFor(boundaryId, c.invoiceRef, { amountMinor: 660_000, payerExternalRef: payer, ...over });
+    const one = half();
+    const two = half();
+    const sharedNonce = `nonce-${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+
+    // THE ABORTED ATTEMPT. Two cited facts share one nonce, which the gate's read cannot see, so the
+    // first arrival is claimed and the second collides mid-transaction.
+    const aborted = await postProof({
+      ...body({ ...c, proofId: `PF-P5RETRY-X-${uid()}`, evidenceIds: [c.evidenceId] }),
+      citedSettlements: [
+        { fact: one, attestation: attest(one, keyId, signedAt, BANK.privateKey, sharedNonce) },
+        { fact: two, attestation: attest(two, keyId, signedAt, BANK.privateKey, sharedNonce) },
+      ],
+    });
+    expect(aborted.statusCode, aborted.body).not.toBe(201);
+    expect(await proofCount(c.caseId)).toBe(0);
+    expect(await consumptions(settlementDigest(one, DIGEST_KEY))).toEqual([]);
+    expect(await consumptions(settlementDigest(two, DIGEST_KEY))).toEqual([]);
+
+    // THE RETRY — the same two arrivals, distinct nonces this time. If the rollback had merely
+    // swallowed the first claim, this 201 would be impossible.
+    const retryId = `PF-P5RETRY-OK-${uid()}`;
+    const retry = await postProof({
+      ...body({ ...c, proofId: retryId, evidenceIds: [c.evidenceId] }),
+      citedSettlements: [
+        { fact: one, attestation: attest(one, keyId, signedAt) },
+        { fact: two, attestation: attest(two, keyId, signedAt) },
+      ],
+    });
+    expect(retry.statusCode, retry.body).toBe(201);
+    expect((await prisma.proof.findUnique({ where: { proofId: retryId } }))?.status).toBe("Approved");
+    // BOTH arrivals are now claimed, by THIS proof.
+    expect((await consumptions(settlementDigest(one, DIGEST_KEY))).map((r) => r.claim_ref)).toEqual([retryId]);
+    expect((await consumptions(settlementDigest(two, DIGEST_KEY))).map((r) => r.claim_ref)).toEqual([retryId]);
+  }, 180_000);
+});

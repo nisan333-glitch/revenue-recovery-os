@@ -71,6 +71,31 @@ import type { ArrivalRestingOnKey } from "../../src/contract/settlementCompromis
 // holds FAILS CLOSED. The remedy for a genuinely compromised digest key is a governed rebuild, which
 // is a decision with an owner; what this refuses is the silent version.
 
+/**
+ * The digest key changed for a boundary that already holds rows. A DISTINCT condition, and it needed a
+ * distinct type.
+ *
+ * WHY IT IS NOT A BARE `Error`. Its message explains that the table is "append-only, so existing rows
+ * cannot be re-derived" — and `server/http/errors.ts` mapped ANY message matching `/append-only/i` to a
+ * 409 `immutable_record` reading "Historical records are immutable; create a linked revision instead".
+ * So the route refused correctly and then told the operator the WRONG REMEDY: this condition requires a
+ * governed rebuild, and no linked revision can address it. The mapper was matching the TERM
+ * "append-only" wherever it appeared, including inside a sentence that merely explains why the table is
+ * append-only — the same defect this repository has recorded against a `/reject/i` scan that fired on
+ * "No row is rejected", a PII scan that read ISO dates as phone numbers, and an importer guard that
+ * counted a prose mention as a dependency. *A guard must read the construct it is asking about.*
+ *
+ * The real database triggers all raise with the prefix `append-only: `, which IS a construct, so the
+ * mapper now keys on that and recognises this class by `name` — no import, and no new coupling from
+ * the error vocabulary back into persistence.
+ */
+export class SettlementDigestKeyChangedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SettlementDigestKeyChangedError";
+  }
+}
+
 const DIGEST_KEY_ENV = "NH_SETTLEMENT_DIGEST_KEY";
 const DIGEST_KEY_MIN_LENGTH = 32;
 
@@ -182,7 +207,7 @@ export class PostgresSettlementLedger {
     );
     const held = existing[0]?.digest_key_fingerprint;
     if (held !== undefined && held !== record.digestKeyFingerprint) {
-      throw new Error(
+      throw new SettlementDigestKeyChangedError(
         "settlement ledger: the settlement digest key has changed for this boundary. The table is " +
           "append-only, so existing rows cannot be re-derived, and under a new key the same arrival " +
           "would hash to a new value and be counted a second time. Refusing the claim; rotating this " +
