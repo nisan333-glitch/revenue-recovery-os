@@ -43,12 +43,33 @@ async function insertCandidateIfAbsent(
   return { candidate: mapRow(existing[0]), created: false };
 }
 
+/**
+ * Does this boundary already hold a candidate under this exact dedupe key?
+ *
+ * READS THE SAME COLUMN THE INSERT DOES, which is UNIQUE and therefore already indexed — so the
+ * cross-case overlap check costs one indexed lookup and needs no schema change. `boundary_id` is in
+ * the predicate as well as the key's preimage, so the query is tenant-scoped by the DATABASE and not
+ * only by a property of a hash.
+ */
+async function candidateExists(
+  client: RawQueryClient, boundaryId: string, dedupeKey: string,
+): Promise<boolean> {
+  const rows = await client.$queryRaw<{ one: number }[]>`
+    SELECT 1 AS one FROM agent_case_candidates
+      WHERE dedupe_key = ${dedupeKey} AND boundary_id = ${boundaryId} LIMIT 1`;
+  return rows.length > 0;
+}
+
 export class PostgresCaseCandidateStore implements CaseCandidateStore {
   constructor(private readonly client: PrismaClient = prisma) {}
 
   async createIfAbsent(candidate: CaseCandidate): Promise<{ readonly candidate: CaseCandidate; readonly created: boolean }> {
     assertCaseCandidateIdentity(candidate);
     return this.client.$transaction(async (tx) => insertCandidateIfAbsent(tx, candidate));
+  }
+
+  async existsByDedupeKey(boundaryId: string, dedupeKey: string): Promise<boolean> {
+    return candidateExists(this.client, boundaryId, dedupeKey);
   }
 }
 
@@ -66,6 +87,13 @@ export class TransactionalCaseCandidateStore implements CaseCandidateStore {
   async createIfAbsent(candidate: CaseCandidate): Promise<{ readonly candidate: CaseCandidate; readonly created: boolean }> {
     assertCaseCandidateIdentity(candidate);
     return insertCandidateIfAbsent(this.tx, candidate);
+  }
+
+  async existsByDedupeKey(boundaryId: string, dedupeKey: string): Promise<boolean> {
+    // INSIDE THE CALLER'S TRANSACTION, deliberately. The governed emitter admits a whole execution's
+    // signals together, so the overlap check must see the same snapshot the inserts will — a read on
+    // a separate connection could miss a row the same transaction is about to write.
+    return candidateExists(this.tx, boundaryId, dedupeKey);
   }
 }
 

@@ -87,6 +87,11 @@ function harness(tag: string) {
       candidateId: r.candidateId, status: r.status,
       amountAtRiskMinor: (r.signal as { amountAtRiskMinor: number }).amountAtRiskMinor,
       sourceRef: (r.signal as { sourceRef: string }).sourceRef,
+      // ADDED 2026-11-27, additively: the coverage is now material to S-DUP-2, where the question is
+      // whether two obligations of one payer stay DISTINGUISHABLE. Projecting only the amount and the
+      // payer reference cannot answer it — two rows would look alike.
+      obligationCoverage: (r.signal as { obligationCoverage?: { kind?: string; obligationRef?: string } })
+        .obligationCoverage,
     }));
   };
   const tasks = async () => prisma.agentTaskRecord.findMany({
@@ -154,12 +159,34 @@ describe.skipIf(!process.env.DATABASE_URL)("pre-registered scenarios, production
         shortfallA: 40_000, shortfallB: 50_000, totalObserved: sum(rows.map((c) => c.amountAtRiskMinor)),
       };
 
-      // REQUIRED OUTCOME: neither amount silently lost. 400.00 + 500.00 = 900.00.
+      // ── REQUIRED OUTCOME · UNCHANGED, and still the first thing asserted ─────────────────────────
+      // "Neither obligation's amount is silently lost" — 400.00 + 500.00 = 900.00.
       expect(sum(rows.map((c) => c.amountAtRiskMinor))).toBe(90_000);
-      // CURRENT BEHAVIOUR, which the frozen knownGap names: one candidate, so per-obligation
-      // attribution is not recoverable from the record. Asserted so a future split is visible.
-      expect(rows).toHaveLength(1);
+
+      // ── CURRENT BEHAVIOUR · UPDATED 2026-11-27 under the owner's grain decision ──────────────────
+      //
+      // This line previously read `expect(rows).toHaveLength(1)` and carried the comment "Asserted so
+      // a future split is visible". IT WORKED: obligation-grained emission made it fail, and it is
+      // updated here only because the owner approved the grain as the intended architecture.
+      //
+      // THE FROZEN `requiredOutcome` IS NOW SATISFIED BY ITS STRONGER DISJUNCT. It reads "...AND the
+      // record either distinguishes the two or states that it cannot." The account-grained build
+      // satisfied the second half; this build satisfies the FIRST. The frozen expectations file is
+      // UNTOUCHED — its `currentBehaviour` records what was true at freeze time, and its `knownGap`
+      // is closed by `OBLIGATION_GRAIN_DECISION`, not by an edit.
+      expect(rows).toHaveLength(2);
+      // BOTH OBLIGATIONS REMAIN DISTINGUISHABLE, which is the whole point of the change: two rows,
+      // two DIFFERENT candidate identities, each stating the single obligation it covers.
+      expect(new Set(rows.map((c) => c.candidateId)).size).toBe(2);
+      const coverages = rows.map((c) => c.obligationCoverage as { kind?: string; obligationRef?: string } | undefined);
+      expect(coverages.every((c) => c?.kind === "SINGLE_OBLIGATION")).toBe(true);
+      expect(new Set(coverages.map((c) => c?.obligationRef)).size).toBe(2);
+      // AND THEY SHARE A PAYER, so the obligation component is doing the work rather than the payer
+      // reference accidentally differing.
+      expect(new Set(rows.map((c) => c.sourceRef)).size).toBe(1);
       expect(rows[0]!.sourceRef).toMatch(/^hmac-sha256:[a-f0-9]{64}$/);
+      // NO DUPLICATE FINANCIAL ATTRIBUTION: the two amounts are the two planted shortfalls, each once.
+      expect(rows.map((c) => c.amountAtRiskMinor).sort((a, b) => a - b)).toEqual([40_000, 50_000]);
     } finally { await h.worker.stop(); }
   }, 40_000);
 

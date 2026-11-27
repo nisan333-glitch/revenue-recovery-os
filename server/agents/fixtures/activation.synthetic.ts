@@ -93,6 +93,10 @@ export async function measureSyntheticRows(): Promise<readonly SyntheticExpected
     const rowNumber = index + 1;
     let duplicateOfRow: number | null = null;
     const store: CaseCandidateStore = {
+      // DELEGATED, NOT STUBBED. This wrapper exists to count rows, not to change admission — a stub
+      // returning `false` would make the overlap check silently inert in the one fixture that drives
+      // the real ingestion path.
+      existsByDedupeKey: (boundaryId, dedupeKey) => underlying.existsByDedupeKey(boundaryId, dedupeKey),
       async createIfAbsent(candidate) {
         const result = await underlying.createIfAbsent(candidate);
         if (result.created) firstRows.set(candidate.candidateId, rowNumber);
@@ -152,6 +156,9 @@ export async function syntheticExpectedResults() {
   try {
     await ingestSecureCsv(syntheticCsv(), {
       async createIfAbsent(candidate) { fullBatchWrites += 1; return { candidate, created: true }; },
+      // This probe has no store behind it: it counts attempted writes and holds no rows, so there is
+      // no aggregate for an overlap check to find. Stated rather than left as a bare `false`.
+      async existsByDedupeKey() { return false; },
     }, SYNTHETIC_OPTIONS);
   } catch (error) {
     if (!(error instanceof Error)) throw error;

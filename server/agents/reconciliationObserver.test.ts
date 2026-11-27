@@ -129,20 +129,41 @@ describe("reconciliation observer · the plan (pure)", () => {
     expect(a.residualMinor).toBe(a.units[0]!.expectedMinor - a.units[0]!.observedMinor);
   });
 
-  it("sums ONE payer's positive units into ONE candidate, and the sum is still positives only", () => {
+  it("splits ONE payer's positive units into ONE CANDIDATE PER OBLIGATION, and the money is conserved", () => {
+    // UPDATED 2026-11-27 under the owner's grain decision. This test previously asserted the
+    // ACCOUNT-GRAINED behaviour — `expect(p1).toHaveLength(1)` with both periods summed into
+    // 100_000 — which was correct until obligation-grained emission. THE FINANCIAL ASSERTIONS ARE
+    // NOT WEAKENED: the same two residuals, the same per-payer total and the same book-wide exposure
+    // are all still asserted, now across two candidates instead of inside one.
+    //
     // PAYER-DEMO-1: February now billed 2000.00 of 2400.00 as well as March 1800.00 of 2400.00.
     const billing = DEMO_BILLING_ROWS.map((r) =>
       r.cells.invoice_ref === "INV-DEMO-0002" ? { ...r, cells: { ...r.cells, invoice_line_amount: "2000.00" } } : r);
     const plan = planReconciliation({ ...demoInput(), billing: { columns: BILLING_COLUMNS, rows: billing } });
     const p1 = plan.candidates.filter((c) => c.accountRef === "PAYER-DEMO-1");
-    expect(p1).toHaveLength(1);
-    expect(p1[0]!.units.map((u) => [u.periodStart, u.residualMinor])).toEqual([
+
+    // TWO obligations, TWO candidates, each covering exactly one unit.
+    expect(p1).toHaveLength(2);
+    expect(p1.every((c) => c.units.length === 1)).toBe(true);
+    // THE SAME TWO RESIDUALS, in the same identity order — nothing was dropped or merged.
+    expect(p1.map((c) => [c.units[0]!.periodStart, c.units[0]!.residualMinor])).toEqual([
       ["2026-02-01", 40_000], ["2026-03-01", 60_000],
     ]);
-    expect(p1[0]!.residualMinor).toBe(100_000);
-    expect(plan.counts).toMatchObject({ candidateUnits: 4, candidates: 3 });
-    // Over-billed units of OTHER payers are still not subtracted from anything.
+    // THE PAYER'S TOTAL IS CONSERVED. It is now a sum ACROSS candidates rather than within one, and
+    // asserting it is what makes "split" different from "lost".
+    expect(p1.reduce((t, c) => t + c.residualMinor, 0)).toBe(100_000);
+    // Each candidate's own residual still equals its unit's arithmetic.
+    expect(p1.every((c) => c.residualMinor === c.units[0]!.expectedMinor - c.units[0]!.observedMinor)).toBe(true);
+    // `candidateUnits` is unchanged — the UNITS did not change, only how they are grouped.
+    expect(plan.counts).toMatchObject({ candidateUnits: 4, candidates: 4 });
+    // Over-billed units of OTHER payers are still not subtracted from anything, and the book-wide
+    // exposure is byte-for-byte the figure the account-grained build produced.
     expect(plan.observedExposureMinor).toBe(100_000 + 150_000 + 100_000);
+    // AND NO UNIT IS COUNTED TWICE. The split must PARTITION the units, not copy them: a duplicated
+    // unit would conserve nothing and inflate the book.
+    const keys = plan.candidates.flatMap((c) => c.units.map((u) => `${u.entitlementRef}|${u.periodStart}`));
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(plan.candidates.reduce((t, c) => t + c.residualMinor, 0)).toBe(plan.observedExposureMinor);
   });
 
   it("withholds an under-billed unit whose contract side names no single payer, rather than choosing one", () => {
