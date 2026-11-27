@@ -27,6 +27,10 @@ describe("secure CSV candidate ingestion", () => {
     let writes = 0;
     const store: CaseCandidateStore = {
       async createIfAbsent(candidate) { writes += 1; return { candidate, created: true }; },
+      // REFUSES rather than answering `false`. This store records no candidate, so it cannot know
+      // whether one overlaps; `false` would assert "no aggregate covers this payer" on no evidence
+      // and silently disable the gate. Unreached today, and loud if a fixture ever reaches it.
+      async existsByDedupeKey(): Promise<boolean> { throw new Error("unexpected overlap probe"); },
     };
     await expect(ingestSecureCsv(`${CSV}\n${invalidRow}`, store, options)).rejects.toThrow(/CSV.*quot/i);
     expect(writes).toBe(0);
@@ -38,6 +42,10 @@ describe("secure CSV candidate ingestion", () => {
     const candidates: CaseCandidate[] = [];
     const store: CaseCandidateStore = {
       async createIfAbsent(candidate) { candidates.push(candidate); return { candidate, created: true }; },
+      // Answered from the candidates this store actually holds — real behaviour, not a stub.
+      async existsByDedupeKey(boundaryId: string, dedupeKey: string) {
+        return candidates.some((c) => c.boundaryId === boundaryId && c.dedupeKey === dedupeKey);
+      },
     };
     // Closing quote at EOF and with a record terminator must both work.
     for (const ending of ["", newline]) {
@@ -48,7 +56,13 @@ describe("secure CSV candidate ingestion", () => {
   });
 
   it("rejects an unterminated quote and an empty quoted required value without writes", async () => {
-    const store: CaseCandidateStore = { async createIfAbsent() { throw new Error("unexpected persistence call"); } };
+    const store: CaseCandidateStore = {
+      async createIfAbsent() { throw new Error("unexpected persistence call"); },
+      // REFUSES rather than answering `false`. This store records no candidate, so it cannot know
+      // whether one overlaps; `false` would assert "no aggregate covers this payer" on no evidence
+      // and silently disable the gate. Unreached today, and loud if a fixture ever reaches it.
+      async existsByDedupeKey(): Promise<boolean> { throw new Error("unexpected overlap probe"); },
+    };
     await expect(ingestSecureCsv(CSV.replace("SYNTHETIC invoice paid", '"SYNTHETIC invoice paid'), store, options))
       .rejects.toThrow("CSV has an unterminated quoted field");
     await expect(ingestSecureCsv(CSV.replace("SYNTHETIC invoice paid", '""'), store, options))
@@ -64,6 +78,9 @@ describe("secure CSV candidate ingestion", () => {
         persisted.push(stored.candidate);
         return stored;
       },
+      // DELEGATED to the real store this wrapper observes, for the same reason as above.
+      existsByDedupeKey: (boundaryId: string, dedupeKey: string) =>
+        underlying.existsByDedupeKey(boundaryId, dedupeKey),
     }, options);
     expect(result).toEqual({ rowsRead: 1, admitted: 1, created: 1, filtered: 0, rawCsvPersisted: false });
     expect(persisted).toHaveLength(1);
@@ -77,6 +94,10 @@ describe("secure CSV candidate ingestion", () => {
       async createIfAbsent(candidate) {
         candidates.push(candidate);
         return { candidate, created: true };
+      },
+      // Answered from the candidates this store actually holds — real behaviour, not a stub.
+      async existsByDedupeKey(boundaryId: string, dedupeKey: string) {
+        return candidates.some((c) => c.boundaryId === boundaryId && c.dedupeKey === dedupeKey);
       },
     };
     await ingestSecureCsv(CSV, store, options);

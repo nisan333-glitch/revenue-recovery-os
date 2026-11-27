@@ -21,8 +21,33 @@ type RawQueryClient = Pick<PrismaClient, "$queryRaw">;
 /**
  * Insert one candidate unless its dedupe key already exists, using whatever client is supplied.
  *
- * Extracted from the class below so the two callers cannot drift: `ON CONFLICT (dedupe_key) DO NOTHING`
- * followed by a `FOR SHARE` read IS the dedup guarantee, and two copies of it would be two guarantees.
+ * Extracted from the class below so the two callers cannot drift: the unarbitrated `ON CONFLICT DO
+ * NOTHING` followed by a `FOR SHARE` read IS the dedup guarantee, and two copies of it would be two
+ * guarantees.
+ *
+ * WHY THE CONFLICT CLAUSE NAMES NO ARBITER, which is a correction rather than a style choice. It read
+ * `ON CONFLICT (dedupe_key) DO NOTHING`, and a comment here called that THE dedup guarantee. It is not:
+ * `agent_case_candidates` carries THREE unique constraints — `PRIMARY KEY (candidate_id)`,
+ * `UNIQUE (dedupe_key)` and `UNIQUE (candidate_id, boundary_id)` — and an ON CONFLICT arbiter covers
+ * exactly ONE index. Every other unique violation is raised, not suppressed. So two concurrent
+ * submissions of the SAME candidate raced into the primary key and a raw Postgres 23505
+ * (`Key (candidate_id)=(CC-…) already exists`) escaped to the caller instead of the idempotent
+ * `created: false` this function promises.
+ *
+ * THE THREE CONSTRAINTS ARE ONE EVENT, which is what licenses dropping the arbiter rather than being
+ * a reason to fear doing so. `caseCandidateId` is `CC-` plus the first 24 hex of the dedupe key, so
+ * `candidate_id` is a PURE FUNCTION of `dedupe_key`; `boundary_id` is in the dedupe preimage and is
+ * re-checked against the signal; and `assertCaseCandidateIdentity` enforces both BEFORE this insert
+ * runs. One identical candidate therefore violates all three indexes simultaneously, and which one
+ * reports it is an implementation detail of index insertion order — which is precisely why this was
+ * green locally and red in CI on the same commit, the event-ordering lesson in another costume.
+ * `candidateIdentityConstraintsAreCorrelated` in the test file pins that derivation, so a change
+ * decoupling the id from the key fails loudly instead of quietly re-opening this hole.
+ *
+ * AND IT STILL FAILS CLOSED FOR ANYTHING ELSE. DO NOTHING suppresses only unique and exclusion
+ * violations — never a CHECK — and a conflict that is NOT this candidate's dedupe key leaves the
+ * fallback SELECT empty, which throws below. A future unique constraint on some other column would
+ * therefore surface as a loud refusal rather than as a wrong `created: false`.
  */
 async function insertCandidateIfAbsent(
   client: RawQueryClient,
@@ -33,7 +58,7 @@ async function insertCandidateIfAbsent(
       (candidate_id, dedupe_key, boundary_id, agent_id, signal, status, submitted_at, persisted_at)
     VALUES (${candidate.candidateId}, ${candidate.dedupeKey}, ${candidate.boundaryId}, ${candidate.agentId},
             ${JSON.stringify(candidate.signal)}::jsonb, 'pending_review', clock_timestamp(), clock_timestamp())
-    ON CONFLICT (dedupe_key) DO NOTHING
+    ON CONFLICT DO NOTHING
     RETURNING candidate_id, dedupe_key, boundary_id, agent_id, signal, submitted_at`;
   if (inserted[0]) return { candidate: mapRow(inserted[0]), created: true };
   const existing = await client.$queryRaw<Row[]>`

@@ -28,6 +28,13 @@ function recordingStore() {
       if (result.created) saved.push(result.candidate);
       return result;
     },
+    // DELEGATED, never stubbed. This wrapper exists to OBSERVE `createIfAbsent`; answering the
+    // overlap probe itself would make the recorder an authority on a question it holds no state for.
+    // A fake that returned `false` here would silently disable the cross-case overlap gate in every
+    // test using this store, which is worse than a type error.
+    existsByDedupeKey(boundaryId: string, dedupeKey: string) {
+      return store.existsByDedupeKey(boundaryId, dedupeKey);
+    },
   };
 }
 

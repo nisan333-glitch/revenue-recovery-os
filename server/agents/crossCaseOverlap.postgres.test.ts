@@ -22,7 +22,15 @@ import { OBLIGATION_GRAIN_DECISION, SUPERSEDED_IN_PART } from "./fixtures/reconc
 import { PROVEN_GRAIN_AUTHORIZATION } from "./fixtures/reconciliation.scenarios.expectations";
 import type { CandidateSignal } from "./types";
 
-const POLICY = { recoveryType: RECONCILIATION_RECOVERY_TYPE, minimumAmountAtRiskMinor: 1 };
+// `economicThresholdMinor` is the REAL field name. My first form wrote `minimumAmountAtRiskMinor`,
+// which exists nowhere in this repository, and the consequence was not a typo: `admission.ts:177`
+// compares `signal.amountAtRiskMinor < policy.economicThresholdMinor`, and with the threshold
+// `undefined` that comparison is always false — so every test in this file ran with the ECONOMIC
+// ADMISSION GATE SILENTLY DISABLED and still passed. The ratchet caught it; no runtime assertion
+// could have. *An excess property that looks like a governed term is worse than a missing one,
+// because a reviewer believes it.* The threshold is 1 so the gate is LIVE and admits every amount
+// these cases use, which is the point: overlap is what is under test, not the economic bar.
+const POLICY = { recoveryType: RECONCILIATION_RECOVERY_TYPE, economicThresholdMinor: 1 };
 const store = new PostgresCaseCandidateStore();
 const service = new CaseAdmissionService(store, () => new Date());
 
