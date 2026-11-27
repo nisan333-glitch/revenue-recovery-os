@@ -35,6 +35,7 @@
     "scripts/k5/**/*.ts",
     "scripts/pilot-config/**/*.ts",
     "scripts/pilot-synthetic-company/**/*.ts",
+    "scripts/pilot-accounting/**/*.ts",
     "src"
   ]
 }

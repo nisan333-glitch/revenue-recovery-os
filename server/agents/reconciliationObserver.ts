@@ -109,6 +109,38 @@ export interface PlannedCandidate {
   readonly residualMinor: number;
 }
 
+/**
+ * PER-UNIT DECISION STATE · a diagnostic, never a monetary surface.
+ *
+ * WHY IT EXISTS. `counts` says "one unit was paired and held" and cannot say WHICH, so a question
+ * like "what suppressed this $799.00" could only be answered by inference from an aggregate — which
+ * is inference dressed as measurement. This records the outcome of the SAME switch that produces the
+ * counts, in the same pass, so the two cannot disagree.
+ *
+ * IT CARRIES NO MONEY AND ENTERS NO IDENTITY. No amount, no residual, no payer reference; the plan
+ * itself is in-process only and is never hashed or persisted (verified by grep before this was added),
+ * so nothing downstream can re-identify on it.
+ */
+export interface UnitDiagnostic {
+  readonly entitlementRef: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  /** The core's own classification of the unit. */
+  readonly state: string;
+  /** Which branch of the plan's switch the unit took — the bucket it was counted in. */
+  readonly outcome:
+    | "CANDIDATE"
+    | "PAIRED_AND_HELD"
+    | "WITHHELD_SIBLING_REFUSAL"
+    | "WITHHELD_NO_SINGLE_PAYER"
+    | "WITHHELD_NO_POSITIVE_RESIDUAL"
+    | "MONETARILY_BALANCED"
+    | "OVER_BILLED"
+    | "UNPRICED_UNKNOWN"
+    | "NOT_EXPECTED"
+    | "REFUSED";
+}
+
 /** Counts of everything that did NOT become a candidate. A refusal and an unknown are answers. */
 export interface ReconciliationPlanCounts {
   readonly units: number;
@@ -183,6 +215,18 @@ export interface ReconciliationPlan {
   readonly currency: string;
   readonly candidates: readonly PlannedCandidate[];
   readonly counts: ReconciliationPlanCounts;
+  /**
+   * PER-UNIT DECISION STATE · a diagnostic, declared rather than smuggled.
+   *
+   * `Object.freeze` defeats TypeScript's excess-property check, so this field typechecked without
+   * being on the interface — and *an excess property that looks like a governed term is worse than a
+   * missing one, because a reviewer believes it*. Declared here so a consumer can read it and so a
+   * future field cannot arrive the same silent way.
+   *
+   * EMPTY MEANS NO UNIT WAS EXAMINED, which is the unusable-extract case and agrees with
+   * `refusedExposure.state === "NOT_EXAMINED"` beside it. It never means "examined and nothing to say".
+   */
+  readonly unitDiagnostics: readonly UnitDiagnostic[];
   /** Σ candidate residuals. OBSERVED exposure for display next to — never inside — any proven figure. */
   readonly observedExposureMinor: number;
   /**
@@ -237,6 +281,10 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
   if (!e.usable || !b.usable) {
     return Object.freeze({
       usable: false, currency, candidates: Object.freeze([]), counts: Object.freeze(emptyCounts),
+      // EMPTY BECAUSE NOTHING WAS EXAMINED, not because everything was fine — the same reason
+      // `refusedExposure.state` below is NOT_EXAMINED rather than NONE_REFUSED. The compiler required
+      // this once the field was properly declared, which is the point of declaring it.
+      unitDiagnostics: Object.freeze([]),
       observedExposureMinor: 0,
       // NOT `NONE_REFUSED`. No unit was examined, so stating that none was refused would assert a
       // population was checked and found clean.
@@ -305,14 +353,22 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
   let balanced = 0, over = 0, held = 0, withheld = 0, noAccount = 0, unpriced = 0, refused = 0, notExpected = 0;
   let refusedExpected = 0;
   let refusedWithoutExpected = 0;
+  const diagnostics: UnitDiagnostic[] = [];
+  const note = (u: { entitlementRef: string; periodStart: string; periodEnd: string; state: string },
+    outcome: UnitDiagnostic["outcome"]) =>
+    diagnostics.push(Object.freeze({
+      entitlementRef: u.entitlementRef, periodStart: u.periodStart, periodEnd: u.periodEnd,
+      state: u.state, outcome,
+    }));
   for (const u of result.units) {
     switch (u.state) {
       case "UNDER_BILLED":
-        if (u.pairedWith !== null) { held += 1; break; }
-        if (refusedEntitlements.has(u.entitlementRef)) { withheld += 1; break; }
+        if (u.pairedWith !== null) { held += 1; note(u, "PAIRED_AND_HELD"); break; }
+        if (refusedEntitlements.has(u.entitlementRef)) { withheld += 1; note(u, "WITHHELD_SIBLING_REFUSAL"); break; }
         if (u.residualMinor !== null && u.residualMinor > 0 && u.expectedMinor !== null) {
           const payers = payersOfUnit.get(`${u.entitlementRef}|${u.periodStart}|${u.periodEnd}`) ?? new Set<string>();
-          if (payers.size !== 1) { noAccount += 1; break; }
+          if (payers.size !== 1) { noAccount += 1; note(u, "WITHHELD_NO_SINGLE_PAYER"); break; }
+          note(u, "CANDIDATE");
           units.push({
             accountRef: [...payers][0]!,
             unit: Object.freeze({
@@ -320,14 +376,20 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
               residualMinor: u.residualMinor, expectedMinor: u.expectedMinor, observedMinor: u.observedMinor,
             }),
           });
+        } else {
+          // THE BRANCH NOTHING COUNTED. An UNDER_BILLED unit with no positive residual or no stated
+          // expectation falls through every counter above, so before this it was invisible in both
+          // the counts and any reconciliation of them. Recorded here; the counters are deliberately
+          // NOT changed, because changing them would move figures this slice must keep comparable.
+          note(u, "WITHHELD_NO_POSITIVE_RESIDUAL");
         }
         break;
-      case "MONETARILY_BALANCED": balanced += 1; break;
-      case "OVER_BILLED": over += 1; break;
-      case "NO_RESIDUAL_UNPRICED": unpriced += 1; break;
-      case "NOT_EXPECTED": notExpected += 1; break;
+      case "MONETARILY_BALANCED": balanced += 1; note(u, "MONETARILY_BALANCED"); break;
+      case "OVER_BILLED": over += 1; note(u, "OVER_BILLED"); break;
+      case "NO_RESIDUAL_UNPRICED": unpriced += 1; note(u, "UNPRICED_UNKNOWN"); break;
+      case "NOT_EXPECTED": notExpected += 1; note(u, "NOT_EXPECTED"); break;
       default:
-        refused += 1; // every REFUSED_* state, counted and never zeroed
+        refused += 1; note(u, "REFUSED"); // every REFUSED_* state, counted and never zeroed
         // AND ITS EXPECTED FIGURE KEPT. What the contract side said was owed is not in doubt; only the
         // residual is. Discarding it is what made a refusal indistinguishable from "nothing was owed".
         // `expectedMinor` is `number | null` on the core unit: a refused unit may carry no expected
@@ -392,6 +454,14 @@ export function planReconciliation(input: ReconciliationObservationInput): Recon
   return Object.freeze({
     usable: true,
     currency,
+    // SORTED BY IDENTITY, NEVER BY INPUT POSITION — the rule this whole function already follows, and
+    // the pre-existing "invariant under row order" test caught the omission immediately: the first
+    // form recorded diagnostics in `result.units` order, which made the WHOLE PLAN order-dependent
+    // for the sake of a diagnostic. A field that breaks a property the function advertises is worse
+    // than no field.
+    unitDiagnostics: Object.freeze([...diagnostics].sort((x, y) =>
+      `${x.entitlementRef}|${x.periodStart}|${x.periodEnd}`
+        .localeCompare(`${y.entitlementRef}|${y.periodStart}|${y.periodEnd}`))),
     candidates: Object.freeze(candidates),
     counts: Object.freeze({
       units: result.units.length, candidateUnits: units.length, candidates: candidates.length,
