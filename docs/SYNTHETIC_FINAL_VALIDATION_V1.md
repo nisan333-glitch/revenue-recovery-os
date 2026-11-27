@@ -180,10 +180,12 @@ ruler, and correcting it is a governed benchmark revision, not an edit.**
 | full regression passes | yes | **locally yes, remote CI RED** | **FAIL** |
 | every skipped test documented | yes | 6 named locally; **CI reported 9 and the delta is uninvestigated** | **FAIL** |
 | frozen fixtures unchanged | yes | all byte-identical | **PASS** |
-| **Phase 4** — aggregate retirement design | required | **not started** | **FAIL** |
+| **Phase 4** — aggregate retirement design | required | delivered, design-only, approval requested | **PASS** (see §8.2) |
 
 **Full acceptance is therefore NOT declared**, on the mandate's own instruction: *do not declare
-full acceptance if mandatory controls remain unexercised.* Control 6 — ACCOUNT_V1/OBLIGATION_V2
+full acceptance if mandatory controls remain unexercised.* §8.2 below is marked PASS as a
+**deliverable**, not as an implemented control: nothing of Phase 4 runs, and it must not be read as
+retirement being available. Control 6 — ACCOUNT_V1/OBLIGATION_V2
 overlap at the money level — is exercised at the **ledger** and at the **service**, and **not** as
 two cases promoted from candidates of different grains both citing one arrival through the route,
 because the proof route never sees a candidate grain. The grain-independence of the settlement
@@ -214,7 +216,14 @@ commits, and not fixed: teaching the sweep to ignore fixtures would weaken the o
 ## 8 · Remaining blockers
 
 1. **Remote CI is red.** The fix is local and unpushed; pushing needs SHA-specific approval.
-2. **Phase 4 not started** — ACCOUNT_V1/OBLIGATION_V2 coexistence and safe aggregate retirement.
+2. **Phase 4 needs a schema approval.** The design is delivered
+   (`docs/architecture/AGGREGATE_RETIREMENT_DESIGN_V1.md`) and is **design-only by instruction**: it
+   requires one new append-only table, so nothing is implemented. It also records a defect of mine —
+   `caseAdmission.ts:94` refuses a claim by telling the operator to *"retire the aggregate through
+   governance"*, and **nothing implements that**; either the design lands or the sentence is corrected.
+   And it withdraws the safety argument I expected to make: `caseProvenGate` arrived **91 commits
+   before HEAD**, so proofs minted earlier were never gated on obligation coverage, and retirement is
+   therefore refused wherever an aggregate's case holds a proof.
 3. **The CI-vs-local skip delta (9 vs 6)** is uninvestigated.
 4. **The frozen ruler's false-negative bucket** conflates *refused-and-declared* with *missed*.
    Correcting it is a governed benchmark revision with its own evidence and freeze.
@@ -228,8 +237,10 @@ commits, and not fixed: teaching the sweep to ignore fixtures would weaken the o
 **GO on the push** of `1b5ca9b`, `62d132f`, `67a558e` — the remote is currently broken and these
 three are what repair it, with two genuine product defects fixed and nothing frozen touched.
 
-**NO-GO on declaring synthetic acceptance.** Three mandatory criteria fail, one control is an
-argument rather than a measurement, and the regression is only green on an unpushed tree.
+**NO-GO on declaring synthetic acceptance.** Two mandatory criteria still fail — the regression is
+green only on an **unpushed** tree, and the CI-vs-local skip delta (9 vs 6) is uninvestigated — one
+control is an argument rather than a measurement, and Phase 4 awaits a schema approval that is the
+owner's to give.
 
 **`SYNTHETIC_PARTIALLY_VALIDATED` · never `REAL_CUSTOMER_PROVEN`.** No observed amount became
 Revenue Returned.
